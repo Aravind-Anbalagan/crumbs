@@ -4,19 +4,11 @@ WORKDIR /app
 
 # Copy project files
 COPY pom.xml .
-COPY lib ./lib           # include external JARs
+COPY lib ./lib  
 COPY src ./src
 
 # Show what's in lib (for debugging)
 RUN echo "📁 lib contains:" && ls -l lib
-
-# Install the external JAR to local Maven repo (if not in pom.xml dependencies)
-RUN mvn install:install-file \
-    -Dfile=lib/smartapi-java-2.2.6.jar \
-    -DgroupId=com.angelbroking.smartapi \
-    -DartifactId=smartapi-java \
-    -Dversion=1.0.0 \
-    -Dpackaging=jar
 
 # Build the application
 RUN mvn clean package -DskipTests
