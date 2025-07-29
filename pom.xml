@@ -62,14 +62,21 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<!-- Angel One API -->
+		<!-- Angel One API
 		<dependency>
 			<groupId>com.angelbroking.smartapi</groupId>
 			<artifactId>smartapi-java</artifactId>
 			<version>1.0.0</version>
 			<scope>system</scope>
 			<systemPath>${basedir}/lib/smartapi-java-2.2.6.jar</systemPath>
-		</dependency>
+		</dependency> -->
+	<dependency>
+		<groupId>com.angelbroking.smartapi</groupId>
+		<artifactId>smartapi-java</artifactId>
+		<version>1.0.0</version>
+		<scope>system</scope>
+		<systemPath>${project.basedir}/lib/smartapi-java-2.2.6.jar</systemPath>
+	</dependency>
 		<!-- H2 Database -->
 		<dependency>
 			<groupId>com.h2database</groupId>

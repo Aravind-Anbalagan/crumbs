@@ -1,9 +1,19 @@
 # 🛠 Stage 1: Build the JAR using Maven
 FROM maven:3.9.4-eclipse-temurin-17 AS build
 WORKDIR /app
-COPY pom.xml .
-COPY src ./src
+
+# Copy project files
+COPY pom.xml .                
+COPY lib ./lib               
+COPY src ./src               
+
+# Show contents of lib to debug
+RUN echo "📁 lib folder contains:" && ls -l lib
+
+# Build the project
 RUN mvn clean package -DskipTests
+
+
 
 # 🚀 Stage 2: Run the built JAR in a smaller image
 FROM eclipse-temurin:17
