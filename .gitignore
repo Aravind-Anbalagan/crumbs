@@ -17,7 +17,7 @@ dist/
 *.log
 
 # Package files
-*.jar
+!lib/*.jar
 
 # Maven
 target/
