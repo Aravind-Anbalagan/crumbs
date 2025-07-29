@@ -25,6 +25,10 @@ VOLUME /app/data
 COPY --from=build /app/target/crumbs.jar crumbs.jar
 COPY --from=build /app/lib /app/lib
 
+# Debug to confirm contents
+RUN echo "✅ Verifying /app:" && ls -l /app
+RUN echo "✅ Verifying /app/lib:" && ls -l /app/lib
+
 # Expose Spring Boot port
 EXPOSE 8080
 
