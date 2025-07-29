@@ -23,13 +23,17 @@ VOLUME /app/data
 
 # Copy app and dependencies
 COPY --from=build /app/target/crumbs.jar crumbs.jar
-COPY --from=build /app/lib /app/lib
+COPY --from=build /app/target/lib /app/lib
 
-# Debug to confirm contents
-RUN echo "✅ Verifying /app:" && ls -l /app
-RUN echo "✅ Verifying /app/lib:" && ls -l /app/lib
+# Debug: confirm file structure
+RUN echo "✅ Verifying /app contents:" && ls -l /app
+RUN echo "✅ Verifying /app/lib contents:" && ls -l /app/lib
 
-# Expose Spring Boot port
+# ✅ Optional Debug: Verify that main class exists inside the JAR
+RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
+    jar tf crumbs.jar | grep CrumbsNewApplication || echo "❌ Main class NOT found in JAR!"
+
+# Expose Spring Boot default port
 EXPOSE 8080
 
 # Run the app with external JARs on the classpath
