@@ -70,6 +70,8 @@
 		<groupId>com.angelbroking.smartapi</groupId>
 		<artifactId>smartapi-java</artifactId>
 		<version>1.0.0</version>
+		<scope>system</scope>
+		<systemPath>${project.basedir}/lib/smartapi-java-2.2.6.jar</systemPath>
 	</dependency>
 		<!-- H2 Database -->
 		<dependency>
