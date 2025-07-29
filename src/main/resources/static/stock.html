@@ -1,0 +1,491 @@
+<!-- Saved as: stock-indicators.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Indicators Table</title>
+  <style>
+    :root {
+      --table-font-size: 14px;
+      --bg-col-name: #e3f2fd;
+      --bg-col-price: #e8f5e9;
+      --bg-col-dailysr: #fff3e0;
+      --bg-col-sr: #f3e8ff;
+      --bg-col-fibo: #e6fff7;
+      --bg-col-ma: #fffbe6;
+      --bg-col-ai: #ffeaea;
+      --bg-col-combine: #e0f7fa;
+    }
+
+    body.dark-mode {
+      background-color: #1e1e1e;
+      color: #f5f5f5;
+      --bg-col-name: #2a3b4c;
+      --bg-col-price: #2e4433;
+      --bg-col-dailysr: #4d3b26;
+      --bg-col-sr: #493d5b;
+      --bg-col-fibo: #1f4033;
+      --bg-col-ma: #464226;
+      --bg-col-ai: #4d2c2c;
+      --bg-col-combine: #264d4f;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      margin: 0;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .refresh-btn, .theme-toggle {
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    .theme-toggle {
+      margin-left: auto;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    input[type="text"], select {
+      padding: 5px;
+      min-width: 180px;
+      box-sizing: border-box;
+    }
+
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+
+    th, td {
+      border: 1px solid #999;
+      padding: 8px;
+      text-align: left;
+      white-space: normal;
+      word-break: break-word;
+      font-size: var(--table-font-size);
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    th {
+      font-weight: bold;
+      cursor: pointer;
+      position: relative;
+      padding-right: 18px;
+    }
+
+    th.sort-asc::after { content: " \25B2"; }
+    th.sort-desc::after { content: " \25BC"; }
+
+    th.col-name, td.col-name { background-color: var(--bg-col-name) !important; }
+    th.col-price, td.col-price { background-color: var(--bg-col-price) !important; }
+    th.col-dailysr, td.col-dailysr { background-color: var(--bg-col-dailysr) !important; }
+    th.sr, td.sr { background-color: var(--bg-col-sr) !important; }
+    th.fibo, td.fibo { background-color: var(--bg-col-fibo) !important; }
+    th.ma, td.ma { background-color: var(--bg-col-ma) !important; }
+    th.ai, td.ai { background-color: var(--bg-col-ai) !important; }
+    th.combine, td.combine { background-color: var(--bg-col-combine) !important; }
+
+    body.dark-mode table, body.dark-mode th, body.dark-mode td {
+      border-color: #555;
+    }
+
+    body.dark-mode th, body.dark-mode td {
+      background-color: #2c2c2c;
+      color: #f5f5f5;
+    }
+
+    body.dark-mode input, body.dark-mode select {
+      background-color: #2c2c2c;
+      color: #f5f5f5;
+      border: 1px solid #777;
+    }
+
+    #pagination {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .page-link {
+      cursor: pointer;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+      border-radius: 4px;
+      user-select: none;
+    }
+
+    .page-link.active {
+      font-weight: bold;
+      background: #e0e0e0;
+    }
+
+    #errorMessage {
+      color: #b00020;
+      background: #fdecea;
+      border: 1px solid #f5c6cb;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      display: none;
+      border-radius: 4px;
+    }
+
+    #loader {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      font-size: 16px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #ccc;
+      border-top: 4px solid #333;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 600px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+
+      thead { display: none; }
+
+      tr {
+        margin-bottom: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+      }
+
+      td {
+        padding-left: 50%;
+        position: relative;
+        border: none;
+        border-bottom: 1px solid #ddd;
+      }
+
+      td::before {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: 45%;
+        font-weight: bold;
+        white-space: nowrap;
+        content: attr(data-label);
+      }
+    }
+  </style>
+</head>
+<body>
+  <h2>Stock Indicators</h2>
+
+  <div class="toolbar">
+    <label for="timeframe">Timeframe:</label>
+    <select id="timeframe" onchange="loadTable()">
+      <option value="DAILY">Daily</option>
+      <option value="WEEKLY">Weekly</option>
+      <option value="COMBINED">Combined</option>
+    </select>
+
+    <label for="heikinPsarFilter">Heikin/Psar:</label>
+    <select id="heikinPsarFilter" onchange="loadTable()">
+      <option value="ALL">All</option>
+      <option value="FIRST BUY">First Buy</option>
+      <option value="FIRST SELL">First Sell</option>
+    </select>
+
+    <button class="refresh-btn" onclick="resetTable()">🧹 Reset</button>
+
+    <div style="margin-left: auto; display: flex; gap: 5px;">
+      <button class="refresh-btn" onclick="zoomIn()">➕ A</button>
+      <button class="refresh-btn" onclick="zoomOut()">➖ A</button>
+      <button class="refresh-btn" onclick="resetZoom()">🔄 A</button>
+      <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+    </div>
+  </div>
+
+  <div id="columnTogglePanel" style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
+
+  <div id="errorMessage" role="alert"></div>
+
+  <label for="search">Filter:</label>
+  <input type="text" id="search" placeholder="Search by any value..." onkeyup="filterTable()" autocomplete="off" />
+
+  <div class="table-container">
+    <table id="stocksTable">
+      <thead><tr id="tableHead"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div id="pagination"></div>
+
+  <div id="loader">
+    <div class="spinner"></div>
+    <div style="margin-top: 12px;">Loading data...</div>
+  </div>
+
+  <script>
+    let tableData = [], filteredData = [], visibleKeys = [];
+    let sortState = { column: null, order: null };
+    let currentPage = 1, currentFontSize = 14;
+    const rowsPerPage = 10;
+    let columnVisibility = {};
+
+    function updateFontSize() {
+      document.documentElement.style.setProperty('--table-font-size', `${currentFontSize}px`);
+      localStorage.setItem('tableFontSize', currentFontSize);
+    }
+
+    function zoomIn() { if (currentFontSize < 24) { currentFontSize++; updateFontSize(); } }
+    function zoomOut() { if (currentFontSize > 8) { currentFontSize--; updateFontSize(); } }
+    function resetZoom() { currentFontSize = 14; updateFontSize(); }
+
+    async function loadTable() {
+      const timeframe = document.getElementById("timeframe").value;
+      const filter = document.getElementById("heikinPsarFilter").value;
+      const loader = document.getElementById("loader");
+      const errorDiv = document.getElementById("errorMessage");
+
+      errorDiv.style.display = "none";
+      loader.style.display = "flex";
+
+      try {
+        const res = await fetch(`/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}`);
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (!data.length) throw new Error("No stock data found for the selected filters.");
+
+        visibleKeys = Object.entries(data[0].headers).filter(([_, val]) => val[1]).map(([key]) => key);
+        tableData = data.map(row => Object.fromEntries(visibleKeys.map(k => [k, row.headers[k][0]])));
+        filteredData = [...tableData];
+        currentPage = 1;
+        generateColumnToggles();
+        renderTable();
+      } catch (err) {
+        showError(err.message || "Could not load data.");
+        tableData = filteredData = [];
+        renderTable();
+      } finally {
+        loader.style.display = "none";
+      }
+    }
+
+    function generateColumnToggles() {
+      const panel = document.getElementById("columnTogglePanel");
+      panel.innerHTML = "";
+      visibleKeys.forEach(key => {
+        if (!(key in columnVisibility)) columnVisibility[key] = true;
+
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = columnVisibility[key];
+        checkbox.onchange = () => {
+          columnVisibility[key] = checkbox.checked;
+          renderTable();
+        };
+        label.style.display = "flex";
+        label.style.alignItems = "center";
+        label.style.gap = "4px";
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(formatHeader(key)));
+        panel.appendChild(label);
+      });
+    }
+
+    function getColumnClass(key) {
+      const lowerKey = key.toLowerCase();
+
+      if (lowerKey === "name") return "col-name";
+      if (lowerKey === "price") return "col-price";
+      if (["daily s/r", "daily_sr", "dailysr"].includes(lowerKey)) return "col-dailysr";
+      if (lowerKey.includes("sr")) return "sr";
+      if (lowerKey.includes("fibo")) return "fibo";
+      if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
+      if (lowerKey.includes("ai")) return "ai";
+      if (lowerKey.includes("combine")) return "combine"; // ✅ NEW LINE
+      return "";
+    }
+
+    function renderTable() {
+      const head = document.getElementById("tableHead");
+      const body = document.getElementById("tableBody");
+      head.innerHTML = body.innerHTML = "";
+
+      visibleKeys.forEach(key => {
+        if (!columnVisibility[key]) return;
+        const th = document.createElement("th");
+        th.textContent = formatHeader(key);
+        const className = getColumnClass(key);
+        if (className) th.classList.add(className);
+        th.onclick = () => sortTableByColumn(key);
+        if (sortState.column === key) {
+          th.classList.add(sortState.order === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+        head.appendChild(th);
+      });
+
+      if (!filteredData.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = visibleKeys.length || 1;
+        td.textContent = "No records found.";
+        td.style.textAlign = "center";
+        tr.appendChild(td);
+        body.appendChild(tr);
+        return;
+      }
+
+      const pageRows = filteredData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+      pageRows.forEach(row => {
+        const tr = document.createElement("tr");
+        visibleKeys.forEach(key => {
+          if (!columnVisibility[key]) return;
+          const td = document.createElement("td");
+          const className = getColumnClass(key);
+          if (className) td.classList.add(className);
+          td.setAttribute("data-label", formatHeader(key));
+          td.textContent = row[key];
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+
+      renderPagination();
+    }
+
+    function renderPagination() {
+      const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+      const container = document.getElementById("pagination");
+      container.innerHTML = "";
+      if (totalPages <= 1) return;
+
+      const createLink = (label, page, active = false) => {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.className = "page-link" + (active ? " active" : "");
+        btn.onclick = () => { currentPage = page; renderTable(); };
+        return btn;
+      };
+
+      if (currentPage > 1) container.append(createLink("« First", 1), createLink("Prev", currentPage - 1));
+      for (let i = 1; i <= totalPages; i++) container.appendChild(createLink(i, i, i === currentPage));
+      if (currentPage < totalPages) container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
+    }
+
+    function sortTableByColumn(col) {
+      const isAsc = sortState.column === col && sortState.order === 'asc';
+      sortState = { column: col, order: isAsc ? 'desc' : 'asc' };
+      filteredData.sort((a, b) => {
+        let valA = a[col], valB = b[col];
+        valA = valA != null ? valA.toString().trim() : '';
+        valB = valB != null ? valB.toString().trim() : '';
+        const cleanA = parseFloat(valA.replace(/[^0-9.\-]/g, ''));
+        const cleanB = parseFloat(valB.replace(/[^0-9.\-]/g, ''));
+        const isNumeric = !isNaN(cleanA) && !isNaN(cleanB);
+        return isNumeric ? (isAsc ? cleanA - cleanB : cleanB - cleanA)
+                         : (isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA));
+      });
+      currentPage = 1;
+      renderTable();
+    }
+
+    function filterTable() {
+      const keyword = document.getElementById("search").value.toLowerCase();
+      filteredData = tableData.filter(row =>
+        visibleKeys.some(k => (row[k] + '').toLowerCase().includes(keyword))
+      );
+      currentPage = 1;
+      renderTable();
+    }
+
+    function resetTable() {
+      document.getElementById("timeframe").value = "DAILY";
+      document.getElementById("heikinPsarFilter").value = "ALL";
+      document.getElementById("search").value = "";
+      document.getElementById("errorMessage").style.display = "none";
+      currentPage = 1;
+      loadTable();
+    }
+
+    function showError(msg) {
+      const errDiv = document.getElementById("errorMessage");
+      errDiv.innerText = msg;
+      errDiv.style.display = "block";
+    }
+
+    function formatHeader(key) {
+      return key.replace(/[_\s]+/g, ' ')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+        .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function toggleTheme() {
+      const body = document.body;
+      const isDark = body.classList.toggle("dark-mode");
+      body.classList.toggle("light-mode", !isDark);
+      document.querySelector(".theme-toggle").textContent = isDark ? "🌞" : "🌙";
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedTheme = localStorage.getItem("theme") || "light";
+      document.body.classList.add(savedTheme + "-mode");
+      document.querySelector(".theme-toggle").textContent = savedTheme === "dark" ? "🌞" : "🌙";
+
+      const savedFontSize = localStorage.getItem("tableFontSize");
+      if (savedFontSize) currentFontSize = parseInt(savedFontSize);
+      updateFontSize();
+      loadTable();
+    });
+  </script>
+</body>
+</html>

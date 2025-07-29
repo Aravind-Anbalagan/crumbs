@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Candlestick Chart</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: sans-serif;
+    }
+    #header {
+      padding: 8px 12px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ccc;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #info { flex: 1; }
+    #controls { display: flex; gap: 12px; align-items: center; }
+    #error {
+      padding: 8px 12px;
+      background: #ffe5e5;
+      color: #a00;
+      font-weight: bold;
+      border-bottom: 1px solid #c00;
+      display: none;
+    }
+    #chart {
+      width: 100%;
+      height: calc(100vh - 40px);
+    }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: bold;
+      font-size: 16px;
+      background: #fff;
+      padding: 12px 20px;
+      border: 1px solid #ccc;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="header">
+    <div id="info">Loading...</div>
+    <div id="controls">
+      <label><input type="checkbox" id="toggleBuySell" checked /> Buy/Sell</label>
+      <label><input type="checkbox" id="toggleSupport" checked /> Support/Resistance</label>
+      <label><input type="checkbox" id="toggleTrend" checked /> Trendline</label>
+      <label><input type="checkbox" id="toggleZigzag" checked /> Zigzag</label>
+    </div>
+  </div>
+  <div id="error"></div>
+  <div id="chart"></div>
+  <div id="loading">Loading chart data...</div>
+
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <script>
+    const info = document.getElementById('info');
+    const errorBox = document.getElementById('error');
+    const loadingBox = document.getElementById('loading');
+    const trendCheckbox = document.getElementById('toggleTrend');
+    const zigzagCheckbox = document.getElementById('toggleZigzag');
+    const buySellCheckbox = document.getElementById('toggleBuySell');
+    const supportCheckbox = document.getElementById('toggleSupport');
+    const allCheckboxes = [trendCheckbox, zigzagCheckbox, buySellCheckbox, supportCheckbox];
+
+    let chart, candleSeries;
+    let upperTrendSeries = null;
+    let lowerTrendSeries = null;
+    let zigzagSeries = null;
+    let stockData = null;
+    let supportLines = [];
+    let resistanceLines = [];
+
+    function initChart() {
+      document.getElementById('chart').innerHTML = '';
+      chart = LightweightCharts.createChart(document.getElementById('chart'), {
+        layout: { backgroundColor: '#ffffff', textColor: '#000000' },
+        grid: { vertLines: { color: '#eee' }, horzLines: { color: '#eee' } },
+        timeScale: { timeVisible: true, secondsVisible: true },
+        rightPriceScale: { scaleMargins: { top: 0.1, bottom: 0.1 } }
+      });
+      candleSeries = chart.addCandlestickSeries();
+    }
+
+    function renderChartData(data) {
+      if (!data.candles || data.candles.length === 0) {
+        info.textContent = `${data.name || ''} | No candle data available`;
+        return;
+      }
+
+      candleSeries.setData(data.candles);
+
+      // Buy/Sell markers
+      if (data.flags?.showBuySell) {
+        candleSeries.setMarkers(buySellCheckbox.checked && data.markers ? data.markers : []);
+      }
+
+      renderSupportResistance();
+
+      const last = data.candles.at(-1);
+      if (last) {
+        info.textContent = `${data.name} | O: ${last.open} H: ${last.high} L: ${last.low} C: ${last.close} Vol: ${last.volume}`;
+      }
+
+      const ohlcvMap = new Map();
+      data.candles.forEach(c => ohlcvMap.set(c.time, c));
+
+      chart.subscribeCrosshairMove(param => {
+        if (!param?.time || !param.seriesData?.has(candleSeries)) {
+          info.textContent = data.name || '';
+          return;
+        }
+        const ohlc = ohlcvMap.get(param.time);
+        if (ohlc) {
+          info.textContent = `${data.name} | O: ${ohlc.open} H: ${ohlc.high} L: ${ohlc.low} C: ${ohlc.close} Vol: ${ohlc.volume}`;
+        }
+      });
+
+      applyOptionalLines();
+    }
+
+    function renderSupportResistance() {
+      supportLines.forEach(line => candleSeries.removePriceLine(line));
+      resistanceLines.forEach(line => candleSeries.removePriceLine(line));
+      supportLines = [];
+      resistanceLines = [];
+
+      if (stockData.flags?.showSupportResistance && supportCheckbox.checked) {
+        (stockData.supportLevels || []).forEach(level => {
+          supportLines.push(candleSeries.createPriceLine({
+            price: level,
+            color: 'green',
+            lineWidth: 1,
+            title: 'Support'
+          }));
+        });
+
+        (stockData.resistanceLevels || []).forEach(level => {
+          resistanceLines.push(candleSeries.createPriceLine({
+            price: level,
+            color: 'red',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            title: 'Resistance'
+          }));
+        });
+      }
+    }
+
+    function applyOptionalLines() {
+      if (upperTrendSeries) chart.removeSeries(upperTrendSeries);
+      if (lowerTrendSeries) chart.removeSeries(lowerTrendSeries);
+      if (zigzagSeries) chart.removeSeries(zigzagSeries);
+      upperTrendSeries = lowerTrendSeries = zigzagSeries = null;
+
+      if (stockData.flags?.showTrendLine && trendCheckbox.checked && stockData.trendChannel) {
+        if (stockData.trendChannel.upper) {
+          upperTrendSeries = chart.addLineSeries({ color: 'blue', lineWidth: 2 });
+          upperTrendSeries.setData(stockData.trendChannel.upper);
+        }
+        if (stockData.trendChannel.lower) {
+          lowerTrendSeries = chart.addLineSeries({ color: 'blue', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted });
+          lowerTrendSeries.setData(stockData.trendChannel.lower);
+        }
+      }
+
+      if (stockData.flags?.showZigzag && zigzagCheckbox.checked && stockData.zigzag) {
+        zigzagSeries = chart.addLineSeries({ color: 'purple', lineWidth: 1 });
+        zigzagSeries.setData(stockData.zigzag);
+      }
+    }
+
+    function disableControls(disabled) {
+      allCheckboxes.forEach(cb => cb.disabled = disabled);
+    }
+
+    function loadData() {
+      loadingBox.style.display = 'block';
+      fetch(`/api/stock-data`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) throw new Error(data.error);
+          stockData = data;
+          initChart();
+          renderChartData(stockData);
+          errorBox.style.display = 'none';
+          disableControls(false);
+        })
+        .catch(err => {
+          info.textContent = "Error loading chart";
+          errorBox.style.display = 'block';
+          errorBox.textContent = "Exception: " + err.message;
+          disableControls(true);
+          console.error("Chart Load Error:", err);
+        })
+        .finally(() => {
+          loadingBox.style.display = 'none';
+        });
+    }
+
+    trendCheckbox.addEventListener('change', applyOptionalLines);
+    zigzagCheckbox.addEventListener('change', applyOptionalLines);
+    buySellCheckbox.addEventListener('change', () => renderChartData(stockData));
+    supportCheckbox.addEventListener('change', renderSupportResistance);
+
+    // Throttle resize
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(resizeTimeout);
+      resizeTimeout = requestAnimationFrame(() => {
+        chart?.resize(window.innerWidth, window.innerHeight - 40);
+      });
+    });
+
+    loadData();
+  </script>
+</body>
+</html>
