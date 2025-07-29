@@ -4,29 +4,37 @@ WORKDIR /app
 
 # Copy project files
 COPY pom.xml .
-COPY lib ./lib
+COPY lib ./lib           # include external JARs
 COPY src ./src
 
-# Debug: Show contents of lib
-RUN echo "📁 lib folder contains:" && ls -l lib
+# Show what's in lib (for debugging)
+RUN echo "📁 lib contains:" && ls -l lib
 
-# Build the project
+# Install the external JAR to local Maven repo (if not in pom.xml dependencies)
+RUN mvn install:install-file \
+    -Dfile=lib/smartapi-java-2.2.6.jar \
+    -DgroupId=com.angelbroking.smartapi \
+    -DartifactId=smartapi-java \
+    -Dversion=1.0.0 \
+    -Dpackaging=jar
+
+# Build the application
 RUN mvn clean package -DskipTests
 
 
-# 🚀 Stage 2: Run the built JAR in a smaller image
+# 🚀 Stage 2: Run the app
 FROM eclipse-temurin:17
 WORKDIR /app
 
-# OPTIONAL: Create a persistent data folder for H2
+# Persist H2 file-based DB
 VOLUME /app/data
 
-# Copy built JAR and external libraries from build stage
+# Copy app and dependencies
 COPY --from=build /app/target/crumbs.jar crumbs.jar
 COPY --from=build /app/lib /app/lib
 
-# Expose default Spring Boot port
+# Expose Spring Boot port
 EXPOSE 8080
 
-# Run the Spring Boot app with external JARs on classpath
+# Run the app with external JARs on the classpath
 ENTRYPOINT ["java", "-cp", "crumbs.jar:lib/*", "com.crumbs.trade.CrumbsNewApplication"]

@@ -63,20 +63,13 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<!-- Angel One API
-		<dependency>
-			<groupId>com.angelbroking.smartapi</groupId>
-			<artifactId>smartapi-java</artifactId>
-			<version>1.0.0</version>
-			<scope>system</scope>
-			<systemPath>${basedir}/lib/smartapi-java-2.2.6.jar</systemPath>
-		</dependency> -->
+	<!-- Angel One API <dependency> <groupId>com.angelbroking.smartapi</groupId> 
+		<artifactId>smartapi-java</artifactId> <version>1.0.0</version> <scope>system</scope> 
+		<systemPath>${basedir}/lib/smartapi-java-2.2.6.jar</systemPath> </dependency> -->
 	<dependency>
 		<groupId>com.angelbroking.smartapi</groupId>
 		<artifactId>smartapi-java</artifactId>
 		<version>1.0.0</version>
-		<scope>system</scope>
-		<systemPath>${project.basedir}/lib/smartapi-java-2.2.6.jar</systemPath>
 	</dependency>
 		<!-- H2 Database -->
 		<dependency>
@@ -152,7 +145,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <mainClass>com.crumbs.trade.CrumbsApplication</mainClass> <!-- Replace with your actual main class -->
+                            <mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass> <!-- Replace with your actual main class -->
                         </manifest>
                     </archive>
                 </configuration>
