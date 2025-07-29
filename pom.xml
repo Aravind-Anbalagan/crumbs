@@ -10,8 +10,7 @@
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.crumbs</groupId>
-	<artifactId>crumbs_new</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<artifactId>crumbs</artifactId>
 	<name>crumbs_new</name>
 	<description>Demo project for Spring Boot</description>
 	<url />
@@ -119,6 +118,7 @@
 		</dependencies>
 	</dependencyManagement>
 	<build>
+	  <finalName>crumbs</finalName> 
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

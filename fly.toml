@@ -1,0 +1,30 @@
+app = "crumbs"  # Replace with your Fly.io app name
+
+primary_region = "bom"  # Use your preferred region, e.g., "bom" for Mumbai
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"  # Spring Boot default port
+
+[experimental]
+  auto_rollback = true
+
+[[services]]
+  internal_port = 8080  # Must match Spring Boot app port
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.tcp_checks]]
+    interval = 10000
+    timeout = 2000
+    grace_period = "10s"
+    restart_limit = 0
