@@ -23,7 +23,7 @@ VOLUME /app/data
 
 # Copy app and dependencies
 COPY --from=build /app/target/crumbs.jar crumbs.jar
-COPY --from=build /app/target/lib /app/lib
+COPY --from=build /app/lib /app/lib
 
 # Debug: confirm file structure
 RUN echo "✅ Verifying /app contents:" && ls -l /app
