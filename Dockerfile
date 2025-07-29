@@ -3,16 +3,15 @@ FROM maven:3.9.4-eclipse-temurin-17 AS build
 WORKDIR /app
 
 # Copy project files
-COPY pom.xml .                
-COPY lib ./lib               
-COPY src ./src               
+COPY pom.xml .
+COPY lib ./lib
+COPY src ./src
 
-# Show contents of lib to debug
+# Debug: Show contents of lib
 RUN echo "📁 lib folder contains:" && ls -l lib
 
 # Build the project
 RUN mvn clean package -DskipTests
-
 
 
 # 🚀 Stage 2: Run the built JAR in a smaller image
@@ -22,11 +21,12 @@ WORKDIR /app
 # OPTIONAL: Create a persistent data folder for H2
 VOLUME /app/data
 
-# Copy only the final JAR
-COPY --from=build /app/target/crumbs.jar app.jar
+# Copy built JAR and external libraries from build stage
+COPY --from=build /app/target/crumbs.jar crumbs.jar
+COPY --from=build /app/lib /app/lib
 
 # Expose default Spring Boot port
 EXPOSE 8080
 
-# Run the Spring Boot app
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the Spring Boot app with external JARs on classpath
+ENTRYPOINT ["java", "-cp", "crumbs.jar:lib/*", "com.crumbs.trade.CrumbsNewApplication"]
