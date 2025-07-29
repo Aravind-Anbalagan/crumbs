@@ -41,4 +41,4 @@ RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
 EXPOSE 8080
 
 # Launch application (Spring Boot will use embedded dependencies)
-ENTRYPOINT ["java", "-jar", "crumbs.jar"]
+ENTRYPOINT ["java", "-jar", "crumbs.jar", "--server.address=0.0.0.0"]
