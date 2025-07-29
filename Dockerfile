@@ -4,15 +4,21 @@ WORKDIR /app
 
 # Copy project files
 COPY pom.xml .
-COPY lib ./lib  
+COPY lib ./lib
 COPY src ./src
 
-# Show what's in lib (for debugging)
-RUN echo "📁 lib contains:" && ls -l lib
+# Inject custom JAR into local Maven repo before Maven resolves dependencies
+RUN mkdir -p /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6 && \
+    cp lib/smartapi-java-2.2.6.jar /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6/smartapi-java-2.2.6.jar && \
+    echo '<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"><modelVersion>4.0.0</modelVersion><groupId>com.angelbroking.smartapi</groupId><artifactId>smartapi-java</artifactId><version>2.2.6</version><packaging>jar</packaging></project>' \
+    > /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6/smartapi-java-2.2.6.pom
 
-# Build the application
+
+# Debug: confirm local repo override
+RUN echo "✅ Custom smartapi-java manually added to local Maven repo"
+
+# Build the application (will pick from local repo)
 RUN mvn clean package -DskipTests
-
 
 # 🚀 Stage 2: Run the app
 FROM eclipse-temurin:17
@@ -21,20 +27,18 @@ WORKDIR /app
 # Persist H2 file-based DB
 VOLUME /app/data
 
-# Copy app and dependencies
+# Copy fat JAR only (dependencies are bundled inside)
 COPY --from=build /app/target/crumbs.jar crumbs.jar
-COPY --from=build /app/lib /app/lib
 
-# Debug: confirm file structure
+# Debug: confirm contents
 RUN echo "✅ Verifying /app contents:" && ls -l /app
-RUN echo "✅ Verifying /app/lib contents:" && ls -l /app/lib
 
-# ✅ Optional Debug: Verify that main class exists inside the JAR
+# Optional: Check if main class exists
 RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
     jar tf crumbs.jar | grep CrumbsNewApplication || echo "❌ Main class NOT found in JAR!"
 
 # Expose Spring Boot default port
 EXPOSE 8080
 
-# Run the app with external JARs on the classpath
+# Launch application (Spring Boot will use embedded dependencies)
 ENTRYPOINT ["java", "-jar", "crumbs.jar"]
