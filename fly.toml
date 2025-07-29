@@ -17,3 +17,8 @@ app = "crumbs"
   [[services.ports]]
     handlers = ["tls", "http"]
     port = 443
+
+# Optional persistent volume for H2 file DB
+[[mounts]]
+  source = "crumbs_data"
+  destination = "/app/data"
