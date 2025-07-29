@@ -37,4 +37,4 @@ RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
 EXPOSE 8080
 
 # Run the app with external JARs on the classpath
-ENTRYPOINT ["java", "-cp", "crumbs.jar:lib/*", "com.crumbs.trade.CrumbsNewApplication"]
+ENTRYPOINT ["java", "-jar", "crumbs.jar"]
