@@ -6,6 +6,9 @@ app = "crumbs"
 [env]
   PORT = "8080"
 
+[vm]
+  memory = 512 # or 1024 (MB)
+  
 [[services]]
   internal_port = 8080
   protocol = "tcp"

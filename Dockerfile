@@ -43,5 +43,5 @@ RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
 # Expose Spring Boot default port
 EXPOSE 8080
 
-# Launch application (Spring Boot will use embedded dependencies)
-ENTRYPOINT ["java", "-Xmx256m", "-Xms128m", "-jar", "crumbs.jar", "--server.address=0.0.0.0"]
+# ✅ Launch app using CMD so $PORT gets evaluated at runtime
+CMD ["sh", "-c", "exec java -Xmx256m -Xms128m -jar crumbs.jar --server.address=0.0.0.0 --server.port=$PORT"]
