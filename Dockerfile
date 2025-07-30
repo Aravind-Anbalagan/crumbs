@@ -13,15 +13,18 @@ RUN mkdir -p /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6 
     echo '<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"><modelVersion>4.0.0</modelVersion><groupId>com.angelbroking.smartapi</groupId><artifactId>smartapi-java</artifactId><version>2.2.6</version><packaging>jar</packaging></project>' \
     > /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6/smartapi-java-2.2.6.pom
 
-
 # Debug: confirm local repo override
 RUN echo "✅ Custom smartapi-java manually added to local Maven repo"
+
+# Debug: show what's in lib (for troubleshooting)
+RUN echo "📁 lib contains:" && ls -l lib
 
 # Build the application (will pick from local repo)
 RUN mvn clean package -DskipTests
 
+
 # 🚀 Stage 2: Run the app
-FROM eclipse-temurin:17
+FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
 # Persist H2 file-based DB
@@ -41,4 +44,4 @@ RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
 EXPOSE 8080
 
 # Launch application (Spring Boot will use embedded dependencies)
-ENTRYPOINT ["java", "-jar", "crumbs.jar", "--server.address=0.0.0.0"]
+ENTRYPOINT ["java", "-Xmx256m", "-Xms128m", "-jar", "crumbs.jar", "--server.address=0.0.0.0"]
