@@ -22,6 +22,7 @@ import com.crumbs.trade.dto.DynamicIndicatorDTO;
 import com.crumbs.trade.entity.Indicator;
 import com.crumbs.trade.exception.NoIndicatorDataException;
 import com.crumbs.trade.repo.IndicatorRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.TaskService;
 import com.crumbs.trade.service.TimeLookup;
 import com.crumbs.trade.utility.AppConstant;
@@ -44,6 +45,9 @@ public class StockController {
 	@Autowired
 	IndicatorRepo indicatorRepo;
 	
+	@Autowired
+	StrategyRepo strategyRepo;
+	
 	@GetMapping("/getStocks/{indexName}/{symbol}")
 	public String indicator(@PathVariable("indexName") String indexName, @PathVariable("symbol") String symbol)
 			throws InterruptedException, URISyntaxException, IOException, SmartAPIException, ParseException {
@@ -58,10 +62,13 @@ public class StockController {
 	/* STEP 1 & 2 & 3
 	 * Trigger for find 5 days Avg volume and execute day candle
 	 */
-	@Scheduled(cron = "0 0 22 * * ?") //Works
+	@Scheduled(cron = "0 0 22 * * ?") // Works
 	public String getStocks() throws SmartAPIException, Exception {
-		taskService.getSupportAndResistance("ALL","ALL");
-		return "Completed";
+		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
+			taskService.getSupportAndResistance("ALL", "ALL");
+			return "Completed";
+		}
+		return "STOCK Strategy Disabled";
 	}
 	
     /*
@@ -69,18 +76,24 @@ public class StockController {
      */
 	@GetMapping("/findStocks")
 	@Scheduled(cron = "0 35 09 * * ?") //Works
-	public void findBullishStocks() throws SmartAPIException, Exception {
-		taskService.findBullishStocks();
-		
+	public String findBullishStocks() throws SmartAPIException, Exception {
+		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
+			taskService.findBullishStocks();
+			return "Completed";
+		}
+		return "STOCK Strategy Disabled";
 	}
 
 	@GetMapping("/stocksResult")
 	@Scheduled(cron = "0 35 15 * * ?") //Works
 	public String getResult() throws SmartAPIException, Exception {
-		taskService.getResult();
-		return "Completed";
+		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
+			taskService.getResult();
+			return "Completed";
+		}
+		return "STOCK Strategy Disabled";
 	}
-	
+
 	@GetMapping("/indicators/flagged")
     public List<DynamicIndicatorDTO> getIndicators(
             @RequestParam(defaultValue = "DAILY") String flag,

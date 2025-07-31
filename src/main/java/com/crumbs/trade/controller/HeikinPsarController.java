@@ -42,7 +42,7 @@ public class HeikinPsarController {
 	@Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = "IST")
 	public void scheduledTask1() throws SmartAPIException, AddressException, MessagingException, IOException {
 		logger.info("First");
-		commonExecution_1();
+		//commonExecution_1();
 		commonExecution_2();
 	}
 
@@ -51,7 +51,7 @@ public class HeikinPsarController {
 	public void scheduledTask2() throws SmartAPIException, AddressException, MessagingException, IOException {
 		// Your task logic here
 		logger.info("Second");
-		commonExecution_1();
+		//commonExecution_1();
 		commonExecution_2();
 	}
 
@@ -60,8 +60,17 @@ public class HeikinPsarController {
 	public void scheduledTask3() throws SmartAPIException, AddressException, MessagingException, IOException {
 		// Your task logic here
 		logger.info("Third");
-		commonExecution_1();
+		//commonExecution_1();
 		commonExecution_2();
+	}
+	
+	// For 4:00 PM to 11:30 PM:
+	//@Scheduled(fixedRate = 10000)
+	@Scheduled(cron = "5 0/5 16-23 * * MON-FRI", zone = "IST")
+	public void scheduledTask4() throws SmartAPIException, AddressException, MessagingException, IOException {
+		logger.info("Crude");
+		commonExecution_3();
+
 	}
 
 	// Strategy 1
@@ -88,6 +97,20 @@ public class HeikinPsarController {
 		if (strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
 			chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate);
 			chartService.monitorSignal("NIFTY", "NFO", false, 0);
+		}
+
+	}
+
+	// Strategy 3 - CRUDEOIL
+	public void commonExecution_3() throws SmartAPIException, AddressException, MessagingException, IOException {
+
+		String fromDate = chartService.getDate("FROM", "MCX");
+		String toDate = chartService.getDate("TO", "MCX");
+		vixRepo.deleteAll();
+
+		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
+			chartService.readChartData("FIVE_MINUTE", "MCX", false, "CRUDEOIL", fromDate, toDate);
+			chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
 		}
 
 	}

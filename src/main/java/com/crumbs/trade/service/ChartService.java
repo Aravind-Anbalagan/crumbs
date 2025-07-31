@@ -154,7 +154,7 @@ public class ChartService {
 						.calculateHeikinAshiCandles(getValuesAsList(name));
 				if (heikinAshiList != null && !heikinAshiList.isEmpty()) {
 					updateCandleData(heikinAshiList, "HEIKINACHI");
-					List<Candlestick> pSARList = pSARIndicator.callPsar(getValuesAsList(name));
+					List<Candlestick> pSARList = pSARIndicator.calculatePSAR(getValuesAsList(name));
 					if (pSARList != null && !pSARList.isEmpty()) {
 						updateCandleData(pSARList, "PSAR");
 					} else {
@@ -249,11 +249,11 @@ public class ChartService {
 		vix.setVolume(ohlc.getVolume());
 		vix.setRangle(ohlc.getRange());
 		vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
-		getTrendLine(strategy, vix);
+		//getTrendLine(strategy, vix);
 		vixRepo.save(vix);
 	}
 
-	// Get Trend Line
+	// Get Trend Line based on last 5 days candle data
 	public Vix getTrendLine(Strategy strategy, Vix vix) {
 		try {
 			Thread.sleep(5000);
@@ -489,8 +489,10 @@ public class ChartService {
 	}
 
 	public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
-		if (vixList.get(i).getPsar().equalsIgnoreCase(vixList.get(i).getHeikinachi())) {
-			return true;
+		if (vixList.get(i).getPsar() != null && vixList.get(i).getHeikinachi() != null) {
+			if (vixList.get(i).getPsar().equalsIgnoreCase(vixList.get(i).getHeikinachi())) {
+				return true;
+			}
 		}
 		return false;
 	}

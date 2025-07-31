@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Simple Menu Layout</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    #menuBar {
+      background-color: #333;
+      color: white;
+      display: flex;
+      padding: 5px 10px;
+      white-space: nowrap; /* prevent wrapping */
+    }
+    .menu {
+      list-style-type: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+    }
+    .menu-item {
+      position: relative;
+      margin-right: 15px; /* add spacing between top-level items */
+    }
+    .menu-item > a {
+      display: inline-block;
+      color: white;
+      padding: 10px 15px;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap; /* prevent text wrap inside */
+    }
+    .menu-item:hover > a {
+      background-color: #555;
+    }
+    .submenu {
+      display: none;
+      position: absolute;
+      background-color: #444;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      z-index: 1;
+      min-width: 100%; /* ensures submenu is at least as wide as parent */
+    }
+    .submenu li a {
+      display: block;
+      padding: 10px 15px;
+      color: white;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .submenu li a:hover {
+      background-color: #666;
+    }
+    .menu-item.active .submenu {
+      display: block;
+    }
+    #contentFrame {
+      width: 100%;
+      height: calc(100vh - 50px);
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <nav id="menuBar">
+    <ul class="menu">
+      <li class="menu-item"><a href="#" onclick="loadPage('stock.html')">Home</a></li>
+      <li class="menu-item">
+        <a href="#" onclick="loadPage('stock.html')">Stocks</a>
+       
+      </li>
+      <li class="menu-item">
+        <a href="#" onclick="loadPage('intraday.html')">Intraday</a>
+        
+      </li>
+      <li class="menu-item">
+        <a href="#" onclick="toggleMenu(this)">OI</a>
+      
+      </li>
+    </ul>
+  </nav>
+
+  <iframe id="contentFrame" src="stock.html"></iframe>
+
+  <script>
+    function loadPage(url) {
+      document.getElementById("contentFrame").src = url;
+      closeAllMenus();
+    }
+
+    function toggleMenu(link) {
+      const item = link.closest(".menu-item");
+      const isActive = item.classList.contains("active");
+      closeAllMenus();
+      if (!isActive) item.classList.add("active");
+    }
+
+    function closeAllMenus() {
+      document.querySelectorAll(".menu-item").forEach(item => item.classList.remove("active"));
+    }
+
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("#menuBar")) {
+        closeAllMenus();
+      }
+    });
+
+    document.querySelectorAll(".menu-item").forEach(item => {
+      item.addEventListener("mouseleave", () => {
+        item.classList.remove("active");
+      });
+    });
+  </script>
+</body>
+</html>
