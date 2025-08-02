@@ -26,9 +26,9 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 	List<Indicator> findByDailysignalInAndPsarFlagDayInAndHeikinAshiDayIn(
 			List<String> signal,
 			List<String> psar, List<String> heikinAshi);
-	List<Indicator> findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayIn(
+	List<Indicator> findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayInOrVolumeFlagIn(
 			List<String> signal,
-			List<String> psar, List<String> heikinAshi);
+			List<String> psar, List<String> heikinAshi,List<String> volume);
 	Indicator findByname(String name);
 	Optional<Indicator> findByNameIgnoreCase(String name);
 

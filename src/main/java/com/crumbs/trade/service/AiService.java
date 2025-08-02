@@ -34,10 +34,11 @@ public class AiService {
     }
 
     public void analyzeAllStocks() {
-        List<Indicator> stocks = indicatorRepo.findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayIn(
+        List<Indicator> stocks = indicatorRepo.findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayInOrVolumeFlagIn(
                 Arrays.asList("SUPPORT", "RESISTANCE", "SUPPORT + RESISTANCE"),
                 Arrays.asList("FIRST BUY", "FIRST SELL"),
-                Arrays.asList("FIRST BUY", "FIRST SELL"));
+                Arrays.asList("FIRST BUY", "FIRST SELL"),
+                Arrays.asList("HIGH"));
 
         stocks.forEach(stock -> {
             try {

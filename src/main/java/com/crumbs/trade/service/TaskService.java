@@ -1655,9 +1655,9 @@ public class TaskService {
 	public void findBullishStocks() throws SmartAPIException {
 		// TODO Auto-generated method stub
 
-		List<Indicator> indicatorList = indicatorRepo.findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayIn(
+		List<Indicator> indicatorList = indicatorRepo.findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayInOrVolumeFlagIn(
 				Arrays.asList("SUPPORT", "SUPPORT + RESISTANCE"), Arrays.asList("FIRST BUY"),
-				Arrays.asList("FIRST BUY"));
+				Arrays.asList("FIRST BUY"),Arrays.asList("HIGH"));
 		logger.info("Bullish Stock: " + indicatorList.size());
 
 		// Get Current price and Update the table
@@ -1700,9 +1700,9 @@ public class TaskService {
 			}
 		});
 
-		indicatorList = indicatorRepo.findByDailysignalInAndPsarFlagDayInAndHeikinAshiDayIn(
+		indicatorList = indicatorRepo.findByDailysignalInOrPsarFlagDayInOrHeikinAshiDayInOrVolumeFlagIn(
 				Arrays.asList("RESISTANCE", "SUPPORT + RESISTANCE"), Arrays.asList("FIRST SELL"),
-				Arrays.asList("FIRST SELL"));
+				Arrays.asList("FIRST SELL"), Arrays.asList("HIGH"));
 		System.out.println("Bearish Stock: " + indicatorList.size());
 
 		// DOWN
