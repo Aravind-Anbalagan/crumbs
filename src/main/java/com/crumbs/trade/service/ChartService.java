@@ -395,7 +395,11 @@ public class ChartService {
 			// Entry
 			resultVix = new ResultVix();
 			resultVix.setName(vix.getName());
-			resultVix.setEntryTime(formatDateTime(vix.getTimestamp()));
+			if (testFlag) {
+				resultVix.setEntryTime(formatDateTime(vix.getTimestamp()));
+			} else {
+				resultVix.setEntryTime(currentDate);
+			}
 			resultVix.setEntryPrice(currentPrice);
 			// resultVix.setEntryPrice(vix.getClose());
 			resultVix.setActive("Y");
@@ -421,8 +425,14 @@ public class ChartService {
 						resultVix.getType()));
 			}
 
-			resultVix.setExitPrice(vix.getClose());
-			resultVix.setExitTime(formatDateTime(vix.getTimestamp()));
+			
+			if (testFlag) {
+				resultVix.setExitPrice(vix.getClose());
+				resultVix.setExitTime(formatDateTime(vix.getTimestamp()));
+			} else {
+				resultVix.setExitPrice(currentPrice);
+				resultVix.setExitTime(currentDate);
+			}
 			resultVix.setPoints(calculatePoints(resultVix));
 			resultVix.setActive(null);
 			// Place Order
@@ -580,7 +590,7 @@ public class ChartService {
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
 
 					Token token = placeOrder(setValues(resultVix), transactionType);
-					closeOrder(resultVix, token, currentPrice, vix, testFlag);
+					closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
 
 				}
 			}
@@ -598,23 +608,23 @@ public class ChartService {
 		if ("BUY".equalsIgnoreCase(transactionType)) {
 
 			if (difference.compareTo(targetThreshold) > 0) {
-				System.out.println("Target reached (BUY position)!");
+				logger.info("Target reached (BUY position)!");
 				return "TARGET";
 			} else if (difference.compareTo(stopLossThreshold) <= 0) {
-				System.out.println("Stop-loss triggered (BUY position)!");
+				logger.info("Stop-loss triggered (BUY position)!");
 				return "SL";
 			} else {
-				System.out.println("No target or stop-loss triggered (BUY position).");
+				logger.info("No target or stop-loss triggered (BUY position).");
 			}
 		} else if ("SELL".equalsIgnoreCase(transactionType)) {
 			if (difference.compareTo(stopLossThreshold) < 0) {
-				System.out.println("Target reached (SELL position)!");
+				logger.info("Target reached (SELL position)!");
 				return "TARGET";
 			} else if (difference.compareTo(targetThreshold) >= 0) {
-				System.out.println("Stop-loss triggered (SELL position)!");
+				logger.info("Stop-loss triggered (SELL position)!");
 				return "SL";
 			} else {
-				System.out.println("No target or stop-loss triggered (SELL position).");
+				logger.info("No target or stop-loss triggered (SELL position).");
 			}
 		}
 
@@ -648,25 +658,31 @@ public class ChartService {
 	}
 
 	@Transactional
-	public void closeOrder(ResultVix resultVix, Token token, BigDecimal currentPrice, Vix vix, boolean testFlag) {
-		/*
-		 * if (resultVix.getType().equalsIgnoreCase("BUY")) { resultVix.setMaxHigh(
-		 * findMaxAndLowPrice(resultVix,resultVix.getTimestamp(), vix.getTimestamp(),
-		 * resultVix.getType())); } else if
-		 * (resultVix.getType().equalsIgnoreCase("SELL")) { resultVix.setMaxLow(
-		 * findMaxAndLowPrice(resultVix,resultVix.getTimestamp(), vix.getTimestamp(),
-		 * resultVix.getType())); }
-		 */
-		resultVix.setExitPrice(token.getPrice() != null ? new BigDecimal(token.getPrice()) : currentPrice);
-		resultVix.setExitTime(vix != null ? formatDateTime(vix.getTimestamp()) : null);
+	public void closeOrder(ResultVix resultVix, Token token, BigDecimal currentPrice, Vix vix, boolean testFlag, String result) {
+		
+		/*if (resultVix.getType().equalsIgnoreCase("BUY")) {
+			resultVix.setMaxHigh(
+					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
+		} else if (resultVix.getType().equalsIgnoreCase("SELL")) {
+			resultVix.setMaxLow(
+					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
+		}*/
+
+		
 		resultVix.setPoints(calculatePoints(resultVix));
 		// For BackTest
 		if (testFlag) {
+			resultVix.setExitPrice(token.getPrice() != null ? new BigDecimal(token.getPrice()) : currentPrice);
+			resultVix.setExitTime(vix != null ? formatDateTime(vix.getTimestamp()) : null);
 			if (resultVix.getPoints() > 0) {
 				resultVix.setPoints(40);
 			} else if (resultVix.getPoints() < 0) {
 				resultVix.setPoints(-20);
 			}
+		}
+		else
+		{
+			resultVix.setResult(result);
 		}
 		resultVix.setActive(null);
 		resultVixRepo.save(resultVix);
