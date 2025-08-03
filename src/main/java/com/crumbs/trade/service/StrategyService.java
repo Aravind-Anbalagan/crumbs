@@ -335,7 +335,7 @@ public class StrategyService {
 		HttpEntity<String> entity = new HttpEntity<String>(headers);
 		ResponseEntity<String> response = restTemplate.exchange(
 				"http://localhost:8080/nifty/" + strategyName + "/" + type, HttpMethod.GET, entity, String.class);
-		logger.info("Nifty :" + response.getBody());
+		//logger.info("Nifty :" + response.getBody());
 		return response.getBody();
 	}
 	

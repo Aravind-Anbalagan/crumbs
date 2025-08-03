@@ -4,6 +4,7 @@ package com.crumbs.trade.broker;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,7 @@ public static String clientID = "R705672";
 //public static String clientPass = "Athiran#2020";
 public static String clientPass = "8889";
 public static String apiKey = "7HklvkfL";
-public static SmartConnect signIn() {
+public static SmartConnect signIn() throws InterruptedException {
 
 	// Initialize Samart API using clientcode and password.
 	Logger logger = LoggerFactory.getLogger(AngelOne.class);
@@ -50,7 +51,7 @@ public static SmartConnect signIn() {
 				{
 				  code = String.valueOf( gAuth.getTotpPassword(key));
 				  count++;
-				  
+				  TimeUnit.SECONDS.sleep(1);
 				  user = Optional.ofNullable(smartConnect.generateSession(clientID, clientPass, code));
 					logger.error(String.valueOf(count));
 				  if(count>120)

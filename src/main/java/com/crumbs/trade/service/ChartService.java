@@ -256,7 +256,7 @@ public class ChartService {
 	// Get Trend Line based on last 5 days candle data
 	public Vix getTrendLine(Strategy strategy, Vix vix) {
 		try {
-			Thread.sleep(5000);
+			Thread.sleep(2000);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
