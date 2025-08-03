@@ -25,7 +25,7 @@ public static String clientID = "R705672";
 //public static String clientPass = "Athiran#2020";
 public static String clientPass = "8889";
 public static String apiKey = "7HklvkfL";
-public static SmartConnect signIn() throws InterruptedException {
+public static SmartConnect signIn() {
 
 	// Initialize Samart API using clientcode and password.
 	Logger logger = LoggerFactory.getLogger(AngelOne.class);
@@ -51,7 +51,12 @@ public static SmartConnect signIn() throws InterruptedException {
 				{
 				  code = String.valueOf( gAuth.getTotpPassword(key));
 				  count++;
-				  TimeUnit.SECONDS.sleep(1);
+				  try {
+					TimeUnit.SECONDS.sleep(1);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 				  user = Optional.ofNullable(smartConnect.generateSession(clientID, clientPass, code));
 					logger.error(String.valueOf(count));
 				  if(count>120)
