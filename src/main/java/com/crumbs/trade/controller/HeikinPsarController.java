@@ -43,7 +43,7 @@ public class HeikinPsarController {
 	// For 9:20:05 AM to 9:55:05 AM AM:
 	@Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = "IST")
 	public void scheduledTask1() throws SmartAPIException, AddressException, MessagingException, IOException {
-		logger.info("First");
+		//logger.info("First");
 		// commonExecution_1();
 		commonExecution_2();
 	}
@@ -52,7 +52,7 @@ public class HeikinPsarController {
 	@Scheduled(cron = "5 0/5 10-14 * * MON-FRI", zone = "IST")
 	public void scheduledTask2() throws SmartAPIException, AddressException, MessagingException, IOException {
 		// Your task logic here
-		logger.info("Second");
+		//logger.info("Second");
 		// commonExecution_1();
 		commonExecution_2();
 	}
@@ -61,7 +61,7 @@ public class HeikinPsarController {
 	@Scheduled(cron = "5 0-30/5 15 * * MON-FRI", zone = "IST")
 	public void scheduledTask3() throws SmartAPIException, AddressException, MessagingException, IOException {
 		// Your task logic here
-		logger.info("Third");
+		//logger.info("Third");
 		// commonExecution_1();
 		commonExecution_2();
 	}
@@ -70,7 +70,7 @@ public class HeikinPsarController {
 	// @Scheduled(fixedRate = 10000)
 	@Scheduled(cron = "5 0/5 16-23 * * MON-FRI", zone = "IST")
 	public void scheduledTask4() throws SmartAPIException, AddressException, MessagingException, IOException {
-		logger.info("Crude");
+		//logger.info("Crude");
 		commonExecution_3();
 
 	}

@@ -453,7 +453,7 @@ public class AngelOneService {
 				
 				
 				if (order.orderId != null) {
-					logger.info("ORDER ID " + order.orderId);
+					//logger.info("ORDER ID " + order.orderId);
 					token.setOrderId(order.orderId);
 					token.setPrice(getOrderDetails(order.orderId));
 					//token.setPrice(getOrderDetails("230510000818247"));
@@ -489,7 +489,7 @@ public class AngelOneService {
 
 					if (jsonLineItem.getString("orderid").equalsIgnoreCase(orderId)) {
 						executedPrice = Double.valueOf(jsonLineItem.getInt("fillprice"));
-						logger.info("Executed Price :" + executedPrice);
+						//logger.info("Executed Price :" + executedPrice);
 						return executedPrice;
 					}
 				}

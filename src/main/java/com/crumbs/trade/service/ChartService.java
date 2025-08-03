@@ -608,23 +608,23 @@ public class ChartService {
 		if ("BUY".equalsIgnoreCase(transactionType)) {
 
 			if (difference.compareTo(targetThreshold) > 0) {
-				logger.info("Target reached (BUY position)!");
+				//logger.info("Target reached (BUY position)!");
 				return "TARGET";
 			} else if (difference.compareTo(stopLossThreshold) <= 0) {
-				logger.info("Stop-loss triggered (BUY position)!");
+				//logger.info("Stop-loss triggered (BUY position)!");
 				return "SL";
 			} else {
-				logger.info("No target or stop-loss triggered (BUY position).");
+				//logger.info("No target or stop-loss triggered (BUY position).");
 			}
 		} else if ("SELL".equalsIgnoreCase(transactionType)) {
 			if (difference.compareTo(stopLossThreshold) < 0) {
-				logger.info("Target reached (SELL position)!");
+				//logger.info("Target reached (SELL position)!");
 				return "TARGET";
 			} else if (difference.compareTo(targetThreshold) >= 0) {
-				logger.info("Stop-loss triggered (SELL position)!");
+				//logger.info("Stop-loss triggered (SELL position)!");
 				return "SL";
 			} else {
-				logger.info("No target or stop-loss triggered (SELL position).");
+				//logger.info("No target or stop-loss triggered (SELL position).");
 			}
 		}
 

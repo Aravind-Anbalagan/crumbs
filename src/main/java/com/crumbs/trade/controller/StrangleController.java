@@ -50,7 +50,7 @@ public class StrangleController {
 	// @Scheduled(cron = "0 15 15 * * ?")
 	public void runTask() {
 		// Code to run every 30 minutes from 9:45 AM to 3:30 PM
-		logger.info("30 MINUTES Candle Reading..");
+		//logger.info("30 MINUTES Candle Reading..");
 
 		DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
 		LocalDateTime now = LocalDateTime.now();

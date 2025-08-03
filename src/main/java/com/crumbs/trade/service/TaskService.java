@@ -1071,7 +1071,7 @@ public class TaskService {
 	public ReversalLevels getLevels(List<PricesIndex> list, BigDecimal index_CurrentPrice)
 			throws JsonProcessingException {
 		ReversalLevels levels = priceActionService.analyze(index_CurrentPrice, list);
-		System.out.println(levels);
+		//System.out.println(levels);
 		return levels;
 	}
 

@@ -80,8 +80,8 @@ public class AiService {
 
                     AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
 
-                    log.info("✅ [{}] Recommendation: {}, Reason: {}", dto.getTradingSymbol(),
-                            recommendation.getRecommendation(), recommendation.getReason());
+                    /*log.info("✅ [{}] Recommendation: {}, Reason: {}", dto.getTradingSymbol(),
+                            recommendation.getRecommendation(), recommendation.getReason());*/
 
                     stock.setDaily_aiSignal(recommendation.getRecommendation());
                     stock.setDaily_aiReason(recommendation.getReason());
@@ -104,8 +104,8 @@ public class AiService {
 
                     AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
 
-                    log.info("✅ [{}] Recommendation: {}, Reason: {}", dto.getTradingSymbol(),
-                            recommendation.getRecommendation(), recommendation.getReason());
+                    /*log.info("✅ [{}] Recommendation: {}, Reason: {}", dto.getTradingSymbol(),
+                            recommendation.getRecommendation(), recommendation.getReason());*/
 
                     stock.setWeekly_aiSignal(recommendation.getRecommendation());
                     stock.setWeekly_aiReason(recommendation.getReason());
@@ -226,7 +226,7 @@ public class AiService {
         Prompt prompt = new Prompt(promptText, options);
 
         String aiResponse = chatClient.call(prompt).getResult().getOutput().getContent();
-        log.info("🧠 [{}] Raw AI Response: {}", symbol, aiResponse);
+        //log.info("🧠 [{}] Raw AI Response: {}", symbol, aiResponse);
 
         String json = extractJson(aiResponse);
         if (json == null) {
