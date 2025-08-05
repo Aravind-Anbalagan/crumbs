@@ -453,9 +453,9 @@ public class ChartService {
 	}
 
 	public int calculatePoints(ResultVix resultVix) {
-		if (resultVix.getType().equalsIgnoreCase("BUY")) {
+		if (resultVix.getType().equalsIgnoreCase("BUY") && resultVix.getExitPrice() != null) {
 			return resultVix.getExitPrice().subtract(resultVix.getEntryPrice()).intValue();
-		} else if (resultVix.getType().equalsIgnoreCase("SELL")) {
+		} else if (resultVix.getType().equalsIgnoreCase("SELL") && resultVix.getEntryPrice() != null) {
 			return resultVix.getEntryPrice().subtract(resultVix.getExitPrice()).intValue();
 		}
 		return 0;
