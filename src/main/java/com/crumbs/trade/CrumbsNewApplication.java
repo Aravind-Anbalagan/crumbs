@@ -46,10 +46,11 @@ public class CrumbsNewApplication {
 
 	@Bean
 	public TaskScheduler taskScheduler() {
-		ThreadPoolTaskScheduler threadPoolTaskScheduler = new ThreadPoolTaskScheduler();
-		threadPoolTaskScheduler.setPoolSize(100);
-		threadPoolTaskScheduler.setThreadNamePrefix("ThreadPoolTaskScheduler");
-		return threadPoolTaskScheduler;
+	    ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+	    scheduler.setPoolSize(10); // ✅ Try 10 or even 4
+	    scheduler.setThreadNamePrefix("ThreadPoolTaskScheduler-");
+	    scheduler.initialize(); // Good practice
+	    return scheduler;
 	}
 
 	@Bean

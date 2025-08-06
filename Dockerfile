@@ -44,4 +44,5 @@ RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
 EXPOSE 8080
 
 # ✅ Launch app using CMD so $PORT gets evaluated at runtime
-CMD ["sh", "-c", "exec java -Xmx256m -Xms128m -jar crumbs.jar --server.address=0.0.0.0 --server.port=$PORT"]
+#CMD ["sh", "-c", "exec java -Xmx256m -Xms128m -jar crumbs.jar --server.address=0.0.0.0 --server.port=$PORT"]
+CMD ["java", "-jar", "crumbs.jar", "--server.address=0.0.0.0", "--server.port=$PORT"]
