@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,12 +55,18 @@ public class CommonController {
 	
 	// DeActivate the Strategy
 	@GetMapping(value = "/clear")
-	//@Scheduled(cron = "0 00 08 * * ?") // Works
 	public String deleteOrders() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {
 		logger.info("Delete All Data");
 		angelOneService.deleteOrders();
 		return "Completed";
 
+	}
+	
+	
+	@Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata") // Works
+	public void clear() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {
+		logger.info("Delete All Data");
+		angelOneService.deleteOrders();
 	}
 
 	/*

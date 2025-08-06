@@ -614,6 +614,7 @@ public class ChartService {
 				//logger.info("Stop-loss triggered (BUY position)!");
 				return "SL";
 			} else {
+				return "HOLD";
 				//logger.info("No target or stop-loss triggered (BUY position).");
 			}
 		} else if ("SELL".equalsIgnoreCase(transactionType)) {
@@ -624,6 +625,7 @@ public class ChartService {
 				//logger.info("Stop-loss triggered (SELL position)!");
 				return "SL";
 			} else {
+				return "HOLD";
 				//logger.info("No target or stop-loss triggered (SELL position).");
 			}
 		}

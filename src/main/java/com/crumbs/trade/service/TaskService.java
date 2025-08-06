@@ -687,7 +687,7 @@ public class TaskService {
 						pricesIndexRepo.save(prices);
 
 					} else {
-						logger.info("Unable to fetch candle data" + index.getName());
+						logger.info("Unable to fetch candle data" + weekly);
 					}
 				} catch (Exception e) {
 					// TODO Auto-generated catch block
@@ -727,7 +727,7 @@ public class TaskService {
 			monday = dateIterator.with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
 			LocalDate friday = monday.with(TemporalAdjusters.nextOrSame(DayOfWeek.FRIDAY));
 
-			weekly.setToDate(friday.toString() + " 09:15");
+			weekly.setToDate(friday.toString() + " 15:30");
 			weeklyList.add(weekly);
 			// Move to the next week
 
