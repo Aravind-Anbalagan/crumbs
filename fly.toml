@@ -5,7 +5,7 @@ app = "crumbs"
 
 [env]
   PORT = "8080"
-  JAVA_TOOL_OPTIONS = "-Xms512m -Xmx1g -XX:+UnlockDiagnosticVMOptions -XX:NativeMemoryTracking=summary"
+  
 [vm]
   memory = 1024 # or 1024 (MB)
   

@@ -40,9 +40,12 @@ RUN echo "✅ Verifying /app contents:" && ls -l /app
 RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
     jar tf crumbs.jar | grep CrumbsNewApplication || echo "❌ Main class NOT found in JAR!"
 
+# Set JAVA_TOOL_OPTIONS here
+ENV JAVA_TOOL_OPTIONS="-Xms512m -Xmx1g -XX:+UnlockDiagnosticVMOptions -XX:NativeMemoryTracking=summary"
+
 # Expose Spring Boot default port
 EXPOSE 8080
 
 # ✅ Launch app using CMD so $PORT gets evaluated at runtime
-#CMD ["sh", "-c", "exec java -Xmx256m -Xms128m -jar crumbs.jar --server.address=0.0.0.0 --server.port=$PORT"]
-CMD ["java", "-jar", "crumbs.jar", "--server.address=0.0.0.0", "--server.port=$PORT"]
+CMD ["sh", "-c", "exec java $JAVA_TOOL_OPTIONS -jar crumbs.jar --server.address=0.0.0.0 --server.port=$PORT"]
+#CMD ["java", "-jar", "crumbs.jar", "--server.address=0.0.0.0", "--server.port=$PORT"]
