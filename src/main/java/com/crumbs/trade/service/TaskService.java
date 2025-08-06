@@ -21,8 +21,11 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.Range;
 import org.json.JSONArray;
@@ -190,7 +193,7 @@ public class TaskService {
 	public void getSupportAndResistance(String indexName, String symbol)
 			throws IOException, SmartAPIException, ParseException {
 		// TODO Auto-generated method stub
-
+       
 		SmartConnect smartConnect = angelOne.signIn();
 		List<Indexes> indexesList = new ArrayList<>();
 		indicatorRepo.deleteAll();
@@ -209,49 +212,41 @@ public class TaskService {
 			indexesList.add(indexes);
 		}
 
-		// Iterate the list
-		indexesList.stream().forEach(index -> {
+		Map<Long, Candle> candleMap = Stream.of(2L, 3L, 4L, 5L, 6L)
+			    .map(id -> candleRepo.findById(id).orElse(null))
+			    .filter(Objects::nonNull)
+			    .collect(Collectors.toMap(Candle::getId, c -> c));
+		
+		int counter = 0;
+		for (Indexes index : indexesList) {
+		    try {
+		        if ("Y".equalsIgnoreCase(candleMap.get(2L).getActive())) {
+		            getDaysCandleData(index, smartConnect, candleMap.get(2L));
+		        }
+		        if ("Y".equalsIgnoreCase(candleMap.get(3L).getActive())) {
+		            get4HourCandleData(index, smartConnect, candleMap.get(3L));
+		        }
+		        if ("Y".equalsIgnoreCase(candleMap.get(4L).getActive())) {
+		            getDaysCandleData(index, smartConnect, candleMap.get(4L));
+		        }
+		        if ("Y".equalsIgnoreCase(candleMap.get(5L).getActive())) {
+		            getWeeklyCandleData(index, smartConnect, candleMap.get(5L));
+		        }
+		        if ("Y".equalsIgnoreCase(candleMap.get(6L).getActive())) {
+		            getMonthlyCandleData(index, smartConnect, candleMap.get(6L));
+		        }
 
-			try {
-				Candle candle = candleRepo.findById(2L).get();
-				// Hour
-				if ("Y".equalsIgnoreCase(candle.getActive())) {
-					getDaysCandleData(index, smartConnect, candle);
-				}
+		        Thread.sleep(500);
+		        if (++counter % 500 == 0) {
+		            Runtime rt = Runtime.getRuntime();
+		            long used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
+		            logger.info("Used memory after {} records: {} MB", counter, used);
+		        }
 
-				candle = candleRepo.findById(3L).get();
-				// 4 Hour
-				if ("Y".equalsIgnoreCase(candle.getActive())) {
-					get4HourCandleData(index, smartConnect, candle);
-				}
-
-				candle = candleRepo.findById(4L).get();
-				// Day
-				if ("Y".equalsIgnoreCase(candle.getActive())) {
-					getDaysCandleData(index, smartConnect, candle);
-				}
-
-				candle = candleRepo.findById(5L).get();
-				// Weekly
-				if ("Y".equalsIgnoreCase(candle.getActive())) {
-					getWeeklyCandleData(index, smartConnect, candle);
-				}
-
-				candle = candleRepo.findById(6L).get();
-				// Monthly
-				if ("Y".equalsIgnoreCase(candle.getActive())) {
-					getMonthlyCandleData(index, smartConnect, candle);
-				}
-
-			} catch (ParseException | IOException | SmartAPIException e) {
-				// } catch (Exception e) {
-				// TODO Auto-generated catch block
-
-				logger.error("Error occured in {} , {}", index.getName(), e.getMessage());
-				e.printStackTrace();
-			}
-
-		});
+		    } catch (Exception e) {
+		        logger.error("❌ Error in {}: {}", index.getName(), e.getMessage(), e);
+		    }
+		}
 
 		// Combine Signal
 		List<Indicator> allIndicators = indicatorRepo.findAll();
