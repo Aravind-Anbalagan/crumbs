@@ -42,4 +42,8 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 	// List<Indicator>
 	// findByOpenflagInAndLast3daycandleflagInAndCprflagIn(List<String>
 	// openFlag,List<String> last3candle,List<String> cpr);
+
+	List<Indicator> findByPsarFlagDayInOrHeikinAshiDayIn(List<String> psar, List<String> heikinAshi);
+	
+	List<Indicator> findByOnedayIsNotNullAndOneweekIsNotNull();
 }

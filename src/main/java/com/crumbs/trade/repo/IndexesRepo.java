@@ -36,6 +36,22 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
 
 	List<Indexes> findByExchangeIn(List<String> exchange);
 
-	@Query(value = "SELECT * FROM Indexes WHERE NAME NOT REGEXP '.*[0-9].*' AND EXCHANGE IN (:exchange)", nativeQuery = true)
+	@Query(value = """
+		    SELECT * FROM (
+		        SELECT *, 
+		               ROW_NUMBER() OVER (PARTITION BY NAME ORDER BY 
+		                   CASE WHEN EXCHANGE = 'NSE' THEN 1
+		                        WHEN EXCHANGE = 'BSE' THEN 2
+		                        ELSE 3
+		                   END
+		               ) AS rn
+		        FROM Indexes
+		        WHERE NAME NOT REGEXP '.*[0-9].*'
+		          AND EXCHANGE IN (:exchange)
+		    ) ranked
+		    WHERE rn = 1
+		    """, nativeQuery = true)
 	List<Indexes> findAllStocks(@Param("exchange") List<String> exchange);
+	
+	Indexes findBySymbol(String symbol);
 }

@@ -256,5 +256,11 @@ public class Indicator {
 
 	@Column(name = "combine_hold_votes")
 	private Integer combineHoldVotes;
+	
+	@Column(name = "oneday")
+	String oneday;
+	
+	@Column(name = "oneweek")
+	String oneweek;
 
 }

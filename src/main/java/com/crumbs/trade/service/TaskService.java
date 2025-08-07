@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -217,41 +218,89 @@ public class TaskService {
 			    .filter(Objects::nonNull)
 			    .collect(Collectors.toMap(Candle::getId, c -> c));
 		
-		int counter = 0;
-		for (Indexes index : indexesList) {
-		    try {
-		        if ("Y".equalsIgnoreCase(candleMap.get(2L).getActive())) {
-		            getDaysCandleData(index, smartConnect, candleMap.get(2L));
-		        }
-		        if ("Y".equalsIgnoreCase(candleMap.get(3L).getActive())) {
-		            get4HourCandleData(index, smartConnect, candleMap.get(3L));
-		        }
-		        if ("Y".equalsIgnoreCase(candleMap.get(4L).getActive())) {
-		            getDaysCandleData(index, smartConnect, candleMap.get(4L));
-		        }
-		        if ("Y".equalsIgnoreCase(candleMap.get(5L).getActive())) {
-		            getWeeklyCandleData(index, smartConnect, candleMap.get(5L));
-		        }
-		        if ("Y".equalsIgnoreCase(candleMap.get(6L).getActive())) {
-		            getMonthlyCandleData(index, smartConnect, candleMap.get(6L));
-		        }
-
-		        Thread.sleep(500);
-		        if (++counter % 500 == 0) {
-		            Runtime rt = Runtime.getRuntime();
-		            long used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
-		            logger.info("Used memory after {} records: {} MB", counter, used);
-		        }
-
-		    } catch (Exception e) {
-		        logger.error("❌ Error in {}: {}", index.getName(), e.getMessage(), e);
-		    }
-		}
+		/*
+		 * STEP 1: LOOK FOR DAY CANDLE
+		 */
+		  read_Day_Candle(smartConnect,indexesList,candleMap);
+		
+		/*
+		 * STEP 2: FETCH ONLY FIRST BUY/FIRST SELL INDEXES
+		 * STEP 2: LOOK FOR WEEKLY CANDLE - APPLICABLE FOR CERTAIN STOCK
+		 */
+		read_weekly_candle(smartConnect,fetchIndexes(),candleMap);
 
 		// Combine Signal
-		List<Indicator> allIndicators = indicatorRepo.findAll();
+		List<Indicator> allIndicators = indicatorRepo.findByOnedayIsNotNullAndOneweekIsNotNull();
 		List<Indicator> updated = combinedSignalService.updateCombinedSignals(allIndicators);
 
+	}
+	
+	private List<Indexes> fetchIndexes() {
+		List<Indexes> indexesList = new ArrayList<>();
+		List<Indicator> indicators = indicatorRepo.findByPsarFlagDayInOrHeikinAshiDayIn(
+				Arrays.asList("FIRST BUY", "FIRST SELL"), Arrays.asList("FIRST BUY", "FIRST SELL"));
+		indicators.stream().forEach(symbol -> {
+			indexesList.add(indexesRepo.findBySymbol(symbol.getTradingSymbol()));
+		});
+		return indexesList;
+	}
+	
+	private void read_Day_Candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap) {
+
+		int counter = 0;
+		for (Indexes index : indexesList) {
+			try {
+
+				if ("Y".equalsIgnoreCase(candleMap.get(4L).getActive())) {
+					getDaysCandleData(index, smartConnect, candleMap.get(4L));
+				}
+
+				Thread.sleep(500);
+				if (++counter % 100 == 0) {
+					Runtime rt = Runtime.getRuntime();
+					long used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
+					logger.info("Used memory after {} records: {} MB", counter, used);
+				}
+
+			} catch (Exception e) {
+				logger.error("❌ Error in {}: {}", index.getName(), e.getMessage(), e);
+			}
+		}
+	}
+	
+	public void read_weekly_candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap) {
+		int counter = 0;
+		for (Indexes index : indexesList) {
+			try {
+				if ("Y".equalsIgnoreCase(candleMap.get(2L).getActive())) {
+					getDaysCandleData(index, smartConnect, candleMap.get(2L));
+				}
+				if ("Y".equalsIgnoreCase(candleMap.get(3L).getActive())) {
+					get4HourCandleData(index, smartConnect, candleMap.get(3L));
+				}
+				// Day Candle Already Processed
+
+				if ("Y".equalsIgnoreCase(candleMap.get(5L).getActive())) {
+					getWeeklyCandleData(index, smartConnect, candleMap.get(5L));
+				}
+				if ("Y".equalsIgnoreCase(candleMap.get(6L).getActive())) {
+					getMonthlyCandleData(index, smartConnect, candleMap.get(6L));
+				}
+
+				Thread.sleep(500);
+				if (++counter % 100 == 0) {
+					Runtime rt = Runtime.getRuntime();
+					long used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
+					logger.info("Used memory after {} records: {} MB", counter, used);
+				}
+
+			} catch (Exception e) {
+				logger.error("❌ Error in {}: {}", index.getName(), e.getMessage(), e);
+			} catch (SmartAPIException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
 	}
 
 	// Ready Day Candle
@@ -714,7 +763,7 @@ public class TaskService {
 		LocalDate currentDate = LocalDate.now();
 
 		// Calculate the start date (one year ago from today)
-		LocalDate startDate = currentDate.minusYears(2).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		LocalDate startDate = currentDate.minusYears(1).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 
 		// Loop through each week for the past year and print the dates from Monday to
 		// Friday
@@ -1057,9 +1106,9 @@ public class TaskService {
 		indicator.setVolumeFlag(volumeService.calVolumeAvg(pricesIndexRepo.findAll(pageablev).getContent()));
 		Pageable pageablep = PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "id"));
 		indicator.setPivot(calPivot(pricesIndexRepo.findAll(pageablev).getContent()));
+		indicator.setOneday("Y");
 		indicatorRepo.save(indicator);
-		// call AI
-		aiService.dailyAnalyzeStockByName(indicator.getName());
+		
 
 	}
 
@@ -1419,8 +1468,8 @@ public class TaskService {
 							.getFibo_confidence()));
 			indicator.setWeekly_fibo_reason((priceActionService
 					.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getFibo_reason()));
-			aiService.weeklyAnalyzeStockByName(indicator.getName());
-
+			
+			indicator.setOneweek("Y");
 			indicatorRepo.save(indicator);
 
 		} else {
@@ -1686,6 +1735,9 @@ public class TaskService {
 					stock.setIntraday("UP");
 					indicatorRepo.save(stock);
 					resultService.saveNiftyResult(stock);
+					// call AI
+					aiService.dailyAnalyzeStockByName(stock.getName());
+					aiService.weeklyAnalyzeStockByName(stock.getName());
 					// sendEmail.sendmail(stock.getName() + " : " +" UP", "UP",0);
 				} catch (Exception e) {
 					// TODO Auto-generated catch block
@@ -1711,6 +1763,9 @@ public class TaskService {
 					stock.setIntraday("DOWN");
 					indicatorRepo.save(stock);
 					resultService.saveNiftyResult(stock);
+					// call AI
+					aiService.dailyAnalyzeStockByName(stock.getName());
+					aiService.weeklyAnalyzeStockByName(stock.getName());
 					// sendEmail.sendmail(stock.getName() + " : " +" DOWN", "DOWN",0);
 				} catch (Exception e) {
 					// TODO Auto-generated catch block
