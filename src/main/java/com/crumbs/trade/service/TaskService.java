@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.Month;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -2005,8 +2006,12 @@ public class TaskService {
 	public String getHourAndMinutes(String time, int interval, String type) {
 
 		String result = null;
-		LocalTime currentTime = LocalTime.now();
-		LocalTime timeMinusFiveMinutes = currentTime.minusMinutes(interval);
+		//LocalTime currentTime = LocalTime.now();
+		//LocalTime timeMinusFiveMinutes = currentTime.minusMinutes(interval);
+		ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+		ZonedDateTime timeMinusFiveMinutes = now.truncatedTo(ChronoUnit.MINUTES).minusMinutes(interval);
+		//System.out.println("Executed at: " + now);
+		//System.out.println("Using time:  " + timeMinusFiveMinutes);
 		int hour = timeMinusFiveMinutes.getHour();
 		int minute = timeMinusFiveMinutes.getMinute();
 
@@ -2028,7 +2033,7 @@ public class TaskService {
 		}
 
 		if (type.equalsIgnoreCase("MCX") && time.equalsIgnoreCase("TO")) {
-			result = " 23:15";
+			//result = " 23:15";
 		}
 		return result;
 

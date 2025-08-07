@@ -613,9 +613,6 @@ public class ChartService {
 			} else if (difference.compareTo(stopLossThreshold) <= 0) {
 				//logger.info("Stop-loss triggered (BUY position)!");
 				return "SL";
-			} else {
-				return "HOLD";
-				//logger.info("No target or stop-loss triggered (BUY position).");
 			}
 		} else if ("SELL".equalsIgnoreCase(transactionType)) {
 			if (difference.compareTo(stopLossThreshold) < 0) {
@@ -624,9 +621,6 @@ public class ChartService {
 			} else if (difference.compareTo(targetThreshold) >= 0) {
 				//logger.info("Stop-loss triggered (SELL position)!");
 				return "SL";
-			} else {
-				return "HOLD";
-				//logger.info("No target or stop-loss triggered (SELL position).");
 			}
 		}
 
@@ -661,14 +655,14 @@ public class ChartService {
 
 	@Transactional
 	public void closeOrder(ResultVix resultVix, Token token, BigDecimal currentPrice, Vix vix, boolean testFlag, String result) {
-		
-		/*if (resultVix.getType().equalsIgnoreCase("BUY")) {
+		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
+		if (resultVix.getType().equalsIgnoreCase("BUY")) {
 			resultVix.setMaxHigh(
 					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
 		} else if (resultVix.getType().equalsIgnoreCase("SELL")) {
 			resultVix.setMaxLow(
 					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
-		}*/
+		}
 
 		
 		resultVix.setPoints(calculatePoints(resultVix));
@@ -684,6 +678,8 @@ public class ChartService {
 		}
 		else
 		{
+			resultVix.setExitPrice(currentPrice);
+			resultVix.setExitTime(currentDate);
 			resultVix.setResult(result);
 		}
 		resultVix.setActive(null);
