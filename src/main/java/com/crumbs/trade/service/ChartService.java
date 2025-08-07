@@ -356,8 +356,8 @@ public class ChartService {
 
 				}
 			}
-			// Exit trade at 3.25 PM
-			if (IsExit(vix.getTimestamp(), 15, 25) && "NIFTY".equalsIgnoreCase(name)) {
+			// Exit trade at 3.20 PM
+			if (IsExit(vix.getTimestamp(), 15, 20) && "NIFTY".equalsIgnoreCase(name)) {
 				testFlag = true;
 
 				makeEntry(vix, strategy, " ", testFlag, currentPrice);
@@ -415,7 +415,7 @@ public class ChartService {
 
 			}
 
-		} else if ((resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) || testFlag) {
+		} else if ((resultVix.getType() != null && (!type.equalsIgnoreCase(resultVix.getType())) || testFlag)) {
 
 			if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
