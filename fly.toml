@@ -1,5 +1,5 @@
 app = "crumbs"
-
+primary_region = "sin"
 [build]
   dockerfile = "Dockerfile"
 
