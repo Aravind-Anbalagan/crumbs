@@ -24,7 +24,7 @@ RUN mvn clean package -DskipTests
 
 
 # 🚀 Stage 2: Run the app
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # Persist H2 file-based DB
@@ -41,7 +41,7 @@ RUN echo "🔍 Checking CrumbsNewApplication in crumbs.jar..." && \
     jar tf crumbs.jar | grep CrumbsNewApplication || echo "❌ Main class NOT found in JAR!"
 
 # Set JAVA_TOOL_OPTIONS here
-ENV JAVA_TOOL_OPTIONS="-Xms512m -Xmx1g -XX:+UnlockDiagnosticVMOptions -XX:NativeMemoryTracking=summary"
+ENV JAVA_TOOL_OPTIONS="-Xms512m -Xmx1g -XX:+UseG1GC -XX:+UnlockDiagnosticVMOptions -XX:NativeMemoryTracking=summary"
 
 # Expose Spring Boot default port
 EXPOSE 8080
