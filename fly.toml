@@ -1,7 +1,5 @@
 app = "crumbs"
-
-[build]
-  dockerfile = "Dockerfile"
+primary_region = "bom"
 
 [env]
   PORT = "8080"
