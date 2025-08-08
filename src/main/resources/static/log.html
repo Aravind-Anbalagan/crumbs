@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Log Viewer</title>
+  <style>
+    body {
+      font-family: monospace;
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      margin: 0;
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    #log-container {
+      white-space: pre-wrap;
+      background-color: #2d2d2d;
+      border: 1px solid #444;
+      padding: 1rem;
+      height: 80vh;
+      overflow-y: scroll;
+      font-size: 0.9rem;
+    }
+
+    .controls {
+      margin-bottom: 1rem;
+    }
+
+    button {
+      background-color: #444;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      margin-right: 0.5rem;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Server Log Viewer</h1>
+  <div class="controls">
+    <button onclick="refreshLogs()">Refresh</button>
+    <button onclick="toggleAutoScroll(this)">Auto-Scroll: ON</button>
+  </div>
+  <div id="log-container">Loading logs...</div>
+
+  <script>
+    let autoScroll = true;
+
+    function toggleAutoScroll(button) {
+      autoScroll = !autoScroll;
+      button.textContent = autoScroll ? "Auto-Scroll: ON" : "Auto-Scroll: OFF";
+    }
+
+    async function fetchLogs() {
+      try {
+        const response = await fetch('/api/logs/server');
+        if (!response.ok) {
+          document.getElementById('log-container').textContent = "Failed to load log file.";
+          return;
+        }
+
+        const text = await response.text();
+        const logContainer = document.getElementById('log-container');
+        logContainer.textContent = text;
+
+        if (autoScroll) {
+          logContainer.scrollTop = logContainer.scrollHeight;
+        }
+      } catch (e) {
+        document.getElementById('log-container').textContent = "Error loading log file.";
+      }
+    }
+
+    function refreshLogs() {
+      fetchLogs();
+    }
+
+    setInterval(fetchLogs, 5000); // auto-refresh every 5s
+    fetchLogs(); // initial load
+  </script>
+</body>
+</html>

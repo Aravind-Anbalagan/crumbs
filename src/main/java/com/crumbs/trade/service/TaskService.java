@@ -253,6 +253,7 @@ public class TaskService {
 			try {
 
 				if ("Y".equalsIgnoreCase(candleMap.get(4L).getActive())) {
+					logger.info("Processing {}", index.getName());
 					getDaysCandleData(index, smartConnect, candleMap.get(4L));
 				}
 

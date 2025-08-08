@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <property name="LOG_PATH" value="logs"/>
-    <property name="LOG_FILE" value="${LOG_PATH}/server.log"/>
+    <property name="LOG_PATH" value="/app/data" />
+    <property name="LOG_FILE" value="${LOG_PATH}/server.log" />
 
-    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+    <appender name="ROLLING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_FILE}</file>
-        <append>true</append>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Rotate daily or when file > 10MB -->
+            <fileNamePattern>${LOG_PATH}/server.%d{yyyy-MM-dd}.%i.log.zip</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>100MB</totalSizeCap>
+        </rollingPolicy>
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss} - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- Disable all other logs -->
+    <!-- Turn off everything globally -->
     <root level="OFF" />
 
-    <!-- Enable only your application logs -->
+    <!-- Only log your app -->
     <logger name="com.crumbs.trade" level="INFO" additivity="false">
-        <appender-ref ref="FILE"/>
+        <appender-ref ref="ROLLING_FILE" />
     </logger>
 </configuration>

@@ -7,7 +7,7 @@ app = "crumbs"
   PORT = "8080"
   
 [vm]
-  memory = 1024 # or 1024 (MB)
+  memory = 2048 # or 1024 (MB)
   
 [[services]]
   internal_port = 8080
@@ -25,3 +25,11 @@ app = "crumbs"
 [[mounts]]
   source = "crumbs_data"
   destination = "/app/data"
+
+[checks]
+  [checks.status]
+    type = "http"
+    port = 8080 # or your app port
+    path = "/" # or "/" if no actuator
+    interval = "15s"
+    timeout = "5s"
