@@ -14,7 +14,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class ReversalLevels {
+public class PriceActionResult {
     private BigDecimal currentPrice;
 
     // === Support/Resistance-Based ===

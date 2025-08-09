@@ -62,7 +62,7 @@ public class PSARCalculator {
 		}
     }
 
-    public  void createPoints(List<PricesMcx> mcxcandleList, List<PricesNifty> niftycandleList,List<PricesIndex> indexcandleList,String type) {
+    public  void createPoints(List<PricesMcx> mcxcandleList, List<PricesNifty> niftycandleList,List<PricesIndex> indexcandleList,String type, String name, String timeFrame) {
     
         List<Candle> candles = new ArrayList<>();
 
@@ -82,7 +82,7 @@ public class PSARCalculator {
 			});
 		}
 		else if (type.equalsIgnoreCase("INDEX")) {
-			psarIndexRepo.deleteAll();
+			psarIndexRepo.deleteByNameAndTimeframe(name, timeFrame);
 			indexcandleList.stream().forEach(price -> {
 				candles.add(new Candle(price.getOpen(), price.getHigh(), price.getLow(), price.getClose(),
 						price.getTimestamp(),price.getCurrentprice(),new BigDecimal("0"),price.getName()));
@@ -103,7 +103,7 @@ public class PSARCalculator {
 				saveMcxPrice(valueCandle);
 			}
 			else if (type.equalsIgnoreCase("INDEX")) {
-				saveIndexPrice(valueCandle);
+				saveIndexPrice(valueCandle,timeFrame);
 			}
         	
         }
@@ -111,7 +111,7 @@ public class PSARCalculator {
     }
     
     @Transactional
-    private void saveIndexPrice(Candle valueCandle) {
+    private void saveIndexPrice(Candle valueCandle,String timeFrame) {
 		PSARIndex psarIndex = new PSARIndex();
 		psarIndex.setCurrentprice(valueCandle.currentprice);
 		psarIndex.setPsarPrice(valueCandle.psarPrice);
@@ -119,6 +119,7 @@ public class PSARCalculator {
 		psarIndex.setHigh(valueCandle.high);
 		psarIndex.setLow(valueCandle.low);
 		psarIndex.setName(valueCandle.name);
+		psarIndex.setTimeframe(timeFrame);
 		if (valueCandle.psarPrice.compareTo(valueCandle.currentprice) > 0) {
 			psarIndex.setType("SELL");
 		} else if (valueCandle.psarPrice.compareTo(valueCandle.currentprice) < 0) {

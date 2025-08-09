@@ -1,7 +1,7 @@
 package com.crumbs.trade.service;
 
 import com.crumbs.trade.dto.FibonacciLevel;
-import com.crumbs.trade.dto.ReversalLevels;
+import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SupportResistanceZone;
 import com.crumbs.trade.entity.PricesIndex;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,8 +30,8 @@ public class PriceActionService {
         UPTREND, DOWNTREND, SIDEWAYS, UNKNOWN
     }
 
-    public ReversalLevels analyze(BigDecimal currentPrice, List<PricesIndex> candles) {
-        ReversalLevels result = new ReversalLevels();
+    public PriceActionResult analyze(BigDecimal currentPrice, List<PricesIndex> candles) {
+    	PriceActionResult result = new PriceActionResult();
         result.setCurrentPrice(currentPrice);
 
         if (candles == null || candles.size() < 5) {

@@ -20,7 +20,7 @@ public class PSARIndex {
 	@Column(name="psarPrice")
 	BigDecimal psarPrice;
 	@Column(name="timeframe")
-	BigDecimal timeframe;
+	String timeframe;
 	@Column(name="high")
 	BigDecimal high;
 	@Column(name="low")

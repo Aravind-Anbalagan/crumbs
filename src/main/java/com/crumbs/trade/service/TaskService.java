@@ -46,7 +46,7 @@ import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CandlesDetails;
 import com.crumbs.trade.dto.PivotRequest;
 import com.crumbs.trade.dto.PivotResponse;
-import com.crumbs.trade.dto.ReversalLevels;
+import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.Time;
 import com.crumbs.trade.entity.Candle;
 import com.crumbs.trade.entity.Indexes;
@@ -88,6 +88,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.mail.MessagingException;
 import jakarta.transaction.Transactional;
+import com.google.common.util.concurrent.RateLimiter;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class TaskService {
@@ -246,29 +250,145 @@ public class TaskService {
 		return indexesList;
 	}
 	
-	private void read_Day_Candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap) {
+	public void read_Day_Candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap) {
+        int maxThreads = 2; // control concurrency
+        ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
+        AtomicInteger counter = new AtomicInteger(0);
 
-		int counter = 0;
-		for (Indexes index : indexesList) {
-			try {
+        for (Indexes index : indexesList) {
+            executor.submit(() -> {
+                try {
+                    Candle dayCandle = candleMap.get(4L);
+                    if (dayCandle != null && "Y".equalsIgnoreCase(dayCandle.getActive())) {
+                        boolean done = false;
+                        int attempts = 0;
+                        long backoff = 1000; // start 1 sec
 
-				if ("Y".equalsIgnoreCase(candleMap.get(4L).getActive())) {
-					logger.info("Processing {}", index.getName());
-					getDaysCandleData(index, smartConnect, candleMap.get(4L));
-				}
+                        while (!done && attempts < 5) {
+                            try {
+                                getDaysCandleData(index, smartConnect, dayCandle);
+                                done = true;
+                            } catch (Exception e) {
+                                if (isRateLimitError(e)) {
+                                    attempts++;
+                                    logger.warn("Rate limit for {}. Retry in {} ms (attempt {}/{})",
+                                            index.getName(), backoff, attempts, 5);
+                                    Thread.sleep(backoff);
+                                    backoff *= 2;
+                                } else {
+                                    logger.error("Error processing {}: {}", index.getName(), e.getMessage(), e);
+                                    return;
+                                }
+                            }
+                        }
+                    }
 
-				Thread.sleep(500);
-				if (++counter % 100 == 0) {
-					Runtime rt = Runtime.getRuntime();
-					long used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
-					logger.info("Used memory after {} records: {} MB", counter, used);
-				}
+                    if (counter.incrementAndGet() % 100 == 0) {
+                        Runtime rt = Runtime.getRuntime();
+                        long used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
+                        logger.info("Used memory after {} records: {} MB", counter.get(), used);
+                    }
+                } catch (Exception e) {
+                    logger.error("Unexpected error in {}: {}", index.getName(), e.getMessage(), e);
+                }
+            });
+        }
 
-			} catch (Exception e) {
-				logger.error("❌ Error in {}: {}", index.getName(), e.getMessage(), e);
-			}
-		}
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(2, TimeUnit.HOURS)) {
+                logger.warn("Timeout waiting for tasks to finish");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private boolean isRateLimitError(Exception e) {
+        if (e == null) return false;
+        String msg = e.getMessage();
+        return msg != null && msg.toLowerCase().contains("rate limit");
+    }
+
+	@Transactional
+	public void getDaysCandleData(Indexes index, SmartConnect smartConnect, Candle candle) {
+	    try {
+	        // ❌ OLD: pricesIndexRepo.deleteAll();
+	        // ✅ NEW: delete only for current index & timeframe
+	        pricesIndexRepo.deleteByNameAndTimeframe(index.getName(), index.getTimeFrame());
+
+	        Indexes indexes = indexesRepo.findByNameAndSymbol(index.getName(), index.getSymbol());
+
+	        JSONObject jsonObject = smartConnect.getLTP(index.getExchange(), index.getSymbol(), index.getToken());
+	        if (jsonObject != null) {
+	            BigDecimal index_CurrentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
+	            BigDecimal index_OpenPrice = new BigDecimal(String.valueOf(jsonObject.get("open")));
+
+	            SimpleDateFormat fromFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+	            SimpleDateFormat toFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+
+	            String fromDate = toFormat.format(fromFormat.parse(calculateDate(candle.getStartTime())));
+	            String toDateStr = toFormat.format(toFormat.parse(calculateDate(candle.getEndTime())));
+
+	            JSONObject requestObject = new JSONObject();
+	            requestObject.put("exchange", index.getExchange());
+	            requestObject.put("symboltoken", index.getToken());
+	            requestObject.put("interval", candle.getTimeFrame());
+	            requestObject.put("fromdate", fromDate);
+	            requestObject.put("todate", toDateStr);
+
+	            Thread.sleep(1000); // avoid hitting rate limits
+
+	            JSONArray responseArray = smartConnect.candleData(requestObject);
+
+	            if (responseArray != null) {
+	                List<PricesIndex> pricesList = new ArrayList<>();
+	                responseArray.forEach(item -> {
+	                    JSONArray ohlcArray = (JSONArray) item;
+	                    BigDecimal open = new BigDecimal(String.valueOf(ohlcArray.getDouble(1)));
+	                    BigDecimal high = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
+	                    BigDecimal low = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
+	                    BigDecimal close = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
+	                    BigDecimal volume = new BigDecimal(String.valueOf(ohlcArray.getDouble(5)));
+	                    BigDecimal range = high.subtract(low);
+
+	                    PricesIndex prices = new PricesIndex();
+	                    prices.setHigh(high);
+	                    prices.setLow(low);
+	                    prices.setClose(close);
+	                    prices.setOpen(open);
+	                    prices.setVolume(volume);
+	                    prices.setRange(range);
+	                    prices.setName(index.getName());
+	                    prices.setTimestamp(ohlcArray.getString(0));
+	                    prices.setType(getPriceType(open, close));
+	                    prices.setTimeframe(candle.getTimeFrame());
+	                    prices.setCpr(calculateCpr(high, low, close).toString());
+	                    prices.setCurrentprice(index_CurrentPrice);
+	                    pricesList.add(prices);
+	                });
+
+	                pricesIndexRepo.saveAll(pricesList);
+	                pricesIndexRepo.flush(); // force commit before returning
+
+	                if ("HOURLY".equalsIgnoreCase(candle.getName())) {
+	                    getHourlyVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle, index_OpenPrice);
+	                } else if ("DAY".equalsIgnoreCase(candle.getName())) {
+	                    getDayVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle, index_OpenPrice);
+	                }
+
+	            } else {
+	                logger.info("Unable to fetch candle data for {}", index.getName());
+	            }
+	        } else {
+	            logger.info("Script is null {} , {} , {}", index.getExchange(), index.getSymbol(), index.getToken());
+	        }
+
+	    } catch (Exception | SmartAPIException e) {
+	        logger.error("Err Occured during processing {}, Error {}", index.getName(), e.getMessage());
+	    }
 	}
+
 	
 	public void read_weekly_candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap) {
 		int counter = 0;
@@ -303,94 +423,6 @@ public class TaskService {
 				e.printStackTrace();
 			}
 		}
-	}
-
-	// Ready Day Candle
-	public void getDaysCandleData(Indexes index, SmartConnect smartConnect, Candle candle) {
-
-		try {
-			pricesIndexRepo.deleteAll();
-			Indexes indexes = indexesRepo.findByNameAndSymbol(index.getName(), index.getSymbol());
-
-			// Get Current Price
-			JSONObject jsonObject = smartConnect.getLTP(index.getExchange(), index.getSymbol(), index.getToken());
-			if (jsonObject != null) {
-				BigDecimal index_CurrentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
-				BigDecimal index_OpenPrice = new BigDecimal(String.valueOf(jsonObject.get("open")));
-				SimpleDateFormat fromFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-				SimpleDateFormat toFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-
-				String fromDate = null;
-				String toDate = null;
-
-				fromDate = new SimpleDateFormat("yyyy-MM-dd HH:mm")
-						.format(fromFormat.parse(calculateDate(candle.getStartTime())));
-				toDate = new SimpleDateFormat("yyyy-MM-dd HH:mm")
-						.format(toFormat.parse(calculateDate(candle.getEndTime())));
-
-				JSONArray responseArray = new JSONArray();
-				JSONObject requestObejct = new JSONObject();
-				requestObejct.put("exchange", index.getExchange());
-				requestObejct.put("symboltoken", index.getToken());
-				requestObejct.put("interval", candle.getTimeFrame());
-				requestObejct.put("fromdate", fromDate);
-				requestObejct.put("todate", toDate);
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				responseArray = smartConnect.candleData(requestObejct);
-				// System.out.println(responseArray);
-				if (responseArray != null) {
-					responseArray.forEach(item -> {
-						JSONArray ohlcArray = (JSONArray) item;
-						String timeStamp = String.valueOf(ohlcArray.getString(0));
-						BigDecimal open = new BigDecimal(String.valueOf(ohlcArray.getDouble(1)));
-						BigDecimal high = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
-						BigDecimal low = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
-						BigDecimal close = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
-						BigDecimal volume = new BigDecimal(String.valueOf(ohlcArray.getDouble(5)));
-						BigDecimal range = high.subtract(low);
-						PricesIndex prices = new PricesIndex();
-						prices.setHigh(high);
-						prices.setLow(low);
-						prices.setClose(close);
-						prices.setOpen(open);
-						prices.setVolume(volume);
-						prices.setRange(range);
-						prices.setName(index.getName());
-						prices.setTimestamp(timeStamp);
-						prices.setType(getPriceType(open, close));
-						prices.setTimeframe(index.getTimeFrame());
-						prices.setCpr(calculateCpr(high, low, close).toString());
-						prices.setCurrentprice(index_CurrentPrice);
-						pricesIndexRepo.save(prices);
-					});
-
-					// Get Volume Data
-					if ("HOURLY".equalsIgnoreCase(candle.getName())) {
-						getHourlyVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle,
-								index_OpenPrice);
-					} else if ("DAY".equalsIgnoreCase(candle.getName())) {
-						getDayVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle,
-								index_OpenPrice);
-					}
-
-				} else {
-					logger.info("Unable to fetch candle data" + index.getName());
-				}
-			} else {
-				logger.info("Script is null {} , {} , {}", index.getExchange(), index.getSymbol(), index.getToken());
-				// throw new Exception();
-			}
-
-		} catch (Exception | SmartAPIException e) {
-			// TODO Auto-generated catch block
-			logger.error("Err Occured during processing {}, Error {}", index.getName(), e.getMessage());
-		}
-
 	}
 
 	public void get4HourCandleData(Indexes index, SmartConnect smartConnect, Candle candle) throws SmartAPIException {
@@ -960,59 +992,89 @@ public class TaskService {
 
 	}
 
-	public void updateHeikinAshi(String name, String timestamp, String type) {
+	public void updateHeikinAshi(String name, String timeFrame, String type) {
 		// Heikin Ashi
 
 		if (type.equalsIgnoreCase("MCX")) {
 			if (pricesMcxRepo.findAll().size() > 1) {
 				List<Candle> candles = new ArrayList<>();
-				heikinAshiCalculator.createCandle(pricesMcxRepo.findAll(), null, null, type);
-				psarCalculator.createPoints(pricesMcxRepo.findAll(), null, null, type);
+				heikinAshiCalculator.createCandle(pricesMcxRepo.findAll(), null, null, type,name,timeFrame);
+				psarCalculator.createPoints(pricesMcxRepo.findAll(), null, null, type,name,timeFrame);
 			}
 		} else if (type.equalsIgnoreCase("NFO")) {
 			if (pricesNiftyRepo.findAll().size() > 1) {
 				List<Candle> candles = new ArrayList<>();
-				heikinAshiCalculator.createCandle(null, pricesNiftyRepo.findAll(), null, type);
-				psarCalculator.createPoints(null, pricesNiftyRepo.findAll(), null, type);
+				heikinAshiCalculator.createCandle(null, pricesNiftyRepo.findAll(), null, type,name,timeFrame);
+				psarCalculator.createPoints(null, pricesNiftyRepo.findAll(), null, type,name,timeFrame);
 			}
 		} else if (type.equalsIgnoreCase("INDEX")) {
-			if (pricesIndexRepo.findAll().size() > 1) {
+			if (pricesIndexRepo.findByNameAndTimeframe(name, timeFrame).size() > 1) {
 				List<Candle> candles = new ArrayList<>();
-				heikinAshiCalculator.createCandle(null, null, pricesIndexRepo.findAll(), type);
-				psarCalculator.createPoints(null, null, pricesIndexRepo.findAll(), type);
+				heikinAshiCalculator.createCandle(null, null, pricesIndexRepo.findByNameAndTimeframe(name, timeFrame) , type, name,  timeFrame);
+				psarCalculator.createPoints(null, null, pricesIndexRepo.findByNameAndTimeframe(name, timeFrame), type, name,  timeFrame);
 			}
 		}
 
 	}
 
 	// Get Day Volume
+	
 	public void getDayVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
 			SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice)
 			throws IOException, SmartAPIException {
-		// Get the Volume data and sort it, get the high volume data and store in
-		List<PricesIndex> pricesList = pricesIndexRepo.findAll();
-		String cprData = pricesList.get(pricesList.size() - 1).getCpr();
-		PricesIndex openandclose = pricesList.get(pricesList.size() - 1);
-		pricesList.sort(Comparator.comparing(PricesIndex::getVolume, Comparator.reverseOrder()));
-		List<PricesIndex> n_pricesList = pricesList.stream().limit(10).collect(Collectors.toList());
-		List<PricesIndex> buyList = n_pricesList.stream().filter(s -> s.getType().equalsIgnoreCase("BUY"))
+
+		String name = indexes.getName();
+		String timeframe = timeFrame;
+
+// 1) Optional: delete prior volume-derived indicators if refreshing
+// pricesIndexRepo.deleteByNameAndTimeframe(name, timeframe);
+
+// 2) Get latest 15 records (desc by id) for RSI, MAs, etc.
+		Pageable latest15 = PageRequest.of(0, 15, Sort.by(Sort.Direction.DESC, "id"));
+		List<PricesIndex> last15 = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, latest15);
+
+		if (last15 == null || last15.isEmpty()) {
+			logger.info("No price rows found for {} / {} - skipping volume/indicator calc", name, timeframe);
+			return;
+		}
+
+// Extract CPR data and openAndClose from latest record
+		String cprData = last15.get(0).getCpr();
+		PricesIndex openAndClose = last15.get(0);
+
+// 3) Get top 10 records by volume for this symbol/timeframe
+		Pageable top10 = PageRequest.of(0, 10);
+		List<PricesIndex> topVolumeList = pricesIndexRepo.findByNameAndTimeframeOrderByVolumeDesc(name, timeframe,
+				top10);
+		if (topVolumeList == null)
+			topVolumeList = Collections.emptyList();
+
+// Separate BUY and SELL type lists
+		List<PricesIndex> buyList = topVolumeList.stream().filter(s -> "BUY".equalsIgnoreCase(s.getType()))
 				.collect(Collectors.toList());
-		List<PricesIndex> sellList = n_pricesList.stream().filter(s -> s.getType().equalsIgnoreCase("SELL"))
+		List<PricesIndex> sellList = topVolumeList.stream().filter(s -> "SELL".equalsIgnoreCase(s.getType()))
 				.collect(Collectors.toList());
+
+// Prepare support and resistance strings "volume=price"
 		List<String> supportList = buyList.stream()
 				.map(v -> v.getVolume().toString().concat("=").concat(v.getHigh().toString()))
 				.collect(Collectors.toList());
 		List<String> resistanceList = sellList.stream()
 				.map(v -> v.getVolume().toString().concat("=").concat(v.getLow().toString()))
 				.collect(Collectors.toList());
-		int avgRange = (int) pricesList.stream().mapToInt(d -> d.getRange().intValue()).average().orElse(0);
-		avgRange = candle.getPriceLimit(); // default value
 
-		Indicator indicator = indicatorRepo.findByname(indexes.getName());
+// Calculate avgRange safely from last 15 ranges, fallback to candle priceLimit
+		int avgRange = (int) last15.stream().mapToInt(d -> d.getRange() == null ? 0 : d.getRange().intValue()).average()
+				.orElse(candle.getPriceLimit());
+
+// Find or create indicator for this index
+		Indicator indicator = indicatorRepo.findByname(name);
 		if (indicator == null) {
 			indicator = new Indicator();
 		}
-		indicator.setName(indexes.getName());
+
+// Set base indicator values
+		indicator.setName(name);
 		indicator.setToken(indexes.getToken());
 		indicator.setTimeFrame(timeFrame);
 		indicator.setDailysupport(supportList.toString());
@@ -1022,101 +1084,124 @@ public class TaskService {
 		indicator.setExchange(indexes.getExchange());
 		indicator.setTradingSymbol(indexes.getSymbol());
 		indicator.setCreatedDate(LocalDateTime.now());
-		indicator.setLast3daycandlehigh(getSignal_eq("high"));
-		indicator.setLast3daycandlelow(getSignal_eq("low"));
+		//indicator.setLast3daycandlehigh(getSignal_eq("high"));
+		//indicator.setLast3daycandlelow(getSignal_eq("low"));
 		indicator.setCpr(cprData);
 		indicator.setCurrentPrice(index_CurrentPrice);
-		indicator.setDailyopenandcloseissame(findOpenAndClose(openandclose));
+		indicator.setDailyopenandcloseissame(findOpenAndClose(openAndClose));
 		indicator = get52WeekData(indexes, smartConnect, indicator);
-		// Find Support and Resistance
+
+// Support/Resistance signal analysis
 		indicator = checkForDaySignal(indicator, supportList, resistanceList, index_CurrentPrice,
 				new BigDecimal(avgRange));
-		// getRSI
-		Pageable pageable = PageRequest.of(0, 15, Sort.by(Sort.Direction.DESC, "id"));
-		indicator.setDailyRSI(rsiCalculator.getRSIData(pricesIndexRepo.findAll(pageable).getContent()));
-		// indicator.setDailyRSI(slowRSICalculator.getRSIData(pricesEqRepo.findAll(pageable).getContent()));
 
-		// 200 MA
-		Pageable pageable_ma = PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "id"));
-		indicator.setDailyPriceActionSupport(
-				getLevels(pricesIndexRepo.findAll(pageable_ma).getContent(), index_CurrentPrice)
-						.getSr_nearestSupportsJson());
-		indicator.setDailyPriceActionResistance(
-				getLevels(pricesIndexRepo.findAll(pageable_ma).getContent(), index_CurrentPrice)
-						.getSr_nearestSupportsJson());
-		indicator.setDailyPriceActionFlag(
-				(priceActionService.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent())
-						.isSr_priceActionTriggered()));
-		indicator.setDaily_fiboSupport(priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getFibo_supportsJson());
-		indicator.setDaily_fiboResistance(
-				(priceActionService.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent())
-						.getFibo_resistancesJson()));
-		indicator.setDaily_fiboFlag((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).isFibo_triggered()));
-		indicator.setDaily_sr_trend((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getSr_trend()));
-		indicator.setDaily_sr_signal((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getSr_signal()));
-		indicator.setDaily_sr_confidence((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getSr_confidence()));
-		indicator.setDaily_sr_reason((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getSr_reason()));
-		indicator.setDaily_fibo_trend((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getFibo_trend()));
-		indicator.setDaily_fibo_signal((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getFibo_signal()));
-		indicator.setDaily_fibo_confidence((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getFibo_confidence()));
-		indicator.setDaily_fibo_reason((priceActionService
-				.analyze(index_CurrentPrice, pricesIndexRepo.findAll(pageable_ma).getContent()).getFibo_reason()));
-
-		indicator.setMovingavg200(
-				movingAverageCalculator.getMovingAverage(pricesIndexRepo.findAll(pageable_ma).getContent(), 200));
-		if (indicator.getMovingavg200() != null) {
-			indicator.setMovingavg200Flag(index_CurrentPrice.subtract(indicator.getMovingavg200()));
-		}
-		// 50 MA
-		pageable_ma = PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "id"));
-		indicator.setMovingavg50(
-				movingAverageCalculator.getMovingAverage(pricesIndexRepo.findAll(pageable_ma).getContent(), 50));
-		if (indicator.getMovingavg50() != null) {
-			indicator.setMovingavg50Flag(index_CurrentPrice.subtract(indicator.getMovingavg50()));
-		}
-		// 20 MA
-		pageable_ma = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "id"));
-		indicator.setMovingavg20(
-				movingAverageCalculator.getMovingAverage(pricesIndexRepo.findAll(pageable_ma).getContent(), 20));
-		if (indicator.getMovingavg20() != null) {
-			indicator.setMovingavg20Flag(index_CurrentPrice.subtract(indicator.getMovingavg20()));
+// 4) RSI calculation if enough data, else null
+		if (last15.size() >= 5) {
+			indicator.setDailyRSI(rsiCalculator.getRSIData(last15));
+		} else {
+			indicator.setDailyRSI(null);
 		}
 
-		Pageable pageableb = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "id"));
-		indicator
-				.setBollingerband(bollingerBandsCalculator.createBand(pricesIndexRepo.findAll(pageableb).getContent()));
-		indicator.setBollingerflag(findBollingerBand(indicator.getBollingerband(), indicator.getCurrentPrice()));
+// 5) Moving averages and price action analysis require more history (200, 50, 20)
+		Pageable page200 = PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "id"));
+		List<PricesIndex> last200 = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page200);
 
-		updateHeikinAshi(indexes.getName(), null, "INDEX");
+		if (last200.size() >= 20) {
+// 200 MA
+			if (last200.size() >= 200) {
+				indicator.setMovingavg200(movingAverageCalculator.getMovingAverage(last200, 200));
+				if (indicator.getMovingavg200() != null) {
+					indicator.setMovingavg200Flag(index_CurrentPrice.subtract(indicator.getMovingavg200()));
+				}
+			} else {
+				indicator.setMovingavg200(null);
+			}
+
+// 50 MA
+			if (last200.size() >= 50) {
+				List<PricesIndex> last50 = last200.subList(0, 50);
+				indicator.setMovingavg50(movingAverageCalculator.getMovingAverage(last50, 50));
+				if (indicator.getMovingavg50() != null) {
+					indicator.setMovingavg50Flag(index_CurrentPrice.subtract(indicator.getMovingavg50()));
+				}
+			} else {
+				indicator.setMovingavg50(null);
+			}
+
+// 20 MA
+			if (last200.size() >= 20) {
+				List<PricesIndex> last20 = last200.subList(0, 20);
+				indicator.setMovingavg20(movingAverageCalculator.getMovingAverage(last20, 20));
+				if (indicator.getMovingavg20() != null) {
+					indicator.setMovingavg20Flag(index_CurrentPrice.subtract(indicator.getMovingavg20()));
+				}
+			} else {
+				indicator.setMovingavg20(null);
+			}
+
+// Price action / Fibonacci analysis
+			PriceActionResult pa = priceActionService.analyze(index_CurrentPrice, last200);
+			indicator.setDailyPriceActionSupport(pa.getSr_nearestSupportsJson());
+			indicator.setDailyPriceActionResistance(pa.getSr_nearestResistancesJson());
+			indicator.setDailyPriceActionFlag(pa.isSr_priceActionTriggered());
+			indicator.setDaily_fiboSupport(pa.getFibo_supportsJson());
+			indicator.setDaily_fiboResistance(pa.getFibo_resistancesJson());
+			indicator.setDaily_fiboFlag(pa.isFibo_triggered());
+			indicator.setDaily_sr_trend(pa.getSr_trend());
+			indicator.setDaily_sr_signal(pa.getSr_signal());
+			indicator.setDaily_sr_confidence(pa.getSr_confidence());
+			indicator.setDaily_sr_reason(pa.getSr_reason());
+			indicator.setDaily_fibo_trend(pa.getFibo_trend());
+			indicator.setDaily_fibo_signal(pa.getFibo_signal());
+			indicator.setDaily_fibo_confidence(pa.getFibo_confidence());
+			indicator.setDaily_fibo_reason(pa.getFibo_reason());
+		} else {
+// Not enough data for price action analysis
+			indicator.setDailyPriceActionSupport(null);
+			indicator.setDailyPriceActionResistance(null);
+			indicator.setDailyPriceActionFlag(false);
+		}
+
+// Bollinger Bands need at least 20 records
+		Pageable page20 = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "id"));
+		List<PricesIndex> last20 = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page20);
+		if (last20.size() >= 20) {
+			indicator.setBollingerband(bollingerBandsCalculator.createBand(last20));
+			indicator.setBollingerflag(findBollingerBand(indicator.getBollingerband(), indicator.getCurrentPrice()));
+		} else {
+			indicator.setBollingerband(null);
+			indicator.setBollingerflag(null);
+		}
+
+// Heikin-Ashi and PSAR flags - unchanged from previous runs
+		updateHeikinAshi(name, "ONE_DAY", "INDEX");
 		indicator.setHeikinAshiDay(checkEntryHeikinAshi("INDEX"));
 		indicator.setPsarFlagDay(checkEntryPsar("INDEX"));
 
-		indicator.setSellsl(convertStringToList(indicator.getLast3daycandlehigh(), "SELL"));
-		indicator.setBuysl(convertStringToList(indicator.getLast3daycandlelow(), "BUY"));
-		Pageable pageablev = PageRequest.of(0, 6, Sort.by(Sort.Direction.DESC, "id"));
-		indicator.setVolume(
-				volumeService.getLastNDaysVolumeJsonString(pricesIndexRepo.findAll(pageablev).getContent(), 5));
-		indicator.setVolumeFlag(volumeService.calVolumeAvg(pricesIndexRepo.findAll(pageablev).getContent()));
-		Pageable pageablep = PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "id"));
-		indicator.setPivot(calPivot(pricesIndexRepo.findAll(pageablev).getContent()));
-		indicator.setOneday("Y");
-		indicatorRepo.save(indicator);
-		
+// Convert last 3 day candle high/low to SL lists
+		//indicator.setSellsl(convertStringToList(indicator.getLast3daycandlehigh(), "SELL"));
+		//indicator.setBuysl(convertStringToList(indicator.getLast3daycandlelow(), "BUY"));
 
+// Volume for last N days (5 days here) for volumeService
+		Pageable page6 = PageRequest.of(0, 6, Sort.by(Sort.Direction.DESC, "id"));
+		List<PricesIndex> last6 = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page6);
+		indicator.setVolume(volumeService.getLastNDaysVolumeJsonString(last6, 5));
+		indicator.setVolumeFlag(volumeService.calVolumeAvg(last6));
+
+// Pivot point calculation - last record only
+		Pageable page1 = PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "id"));
+		List<PricesIndex> last1 = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page1);
+		indicator.setPivot(calPivot(last1));
+
+		indicator.setOneday("Y");
+
+// Save indicator to DB
+		indicatorRepo.save(indicator);
 	}
 
-	public ReversalLevels getLevels(List<PricesIndex> list, BigDecimal index_CurrentPrice)
+	public PriceActionResult getLevels(List<PricesIndex> list, BigDecimal index_CurrentPrice)
 			throws JsonProcessingException {
-		ReversalLevels levels = priceActionService.analyze(index_CurrentPrice, list);
+		PriceActionResult levels = priceActionService.analyze(index_CurrentPrice, list);
 		//System.out.println(levels);
 		return levels;
 	}

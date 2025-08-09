@@ -51,7 +51,7 @@ public class HeikinAshiCalculator {
         }
     }
 
-	public void createCandle(List<PricesMcx> mcxcandleList, List<PricesNifty> niftycandleList,List<PricesIndex> indexcandleList, String type) {
+	public void createCandle(List<PricesMcx> mcxcandleList, List<PricesNifty> niftycandleList,List<PricesIndex> indexcandleList, String type, String name, String timeFrame) {
 
 		List<Candle> candles = new ArrayList<>();
 
@@ -70,7 +70,7 @@ public class HeikinAshiCalculator {
 
 			});
 		} else if (type.equalsIgnoreCase("INDEX")) {
-			priceHeikinashiIndexRepo.deleteAll();
+			priceHeikinashiIndexRepo.deleteByNameAndTimeframe(name,timeFrame);
 			indexcandleList.stream().forEach(price -> {
 				candles.add(new Candle(price.getOpen(), price.getHigh(), price.getLow(), price.getClose(),
 						price.getTimestamp(),price.getCurrentprice()));
@@ -90,7 +90,7 @@ public class HeikinAshiCalculator {
 				saveMcxPrice(haCandle,type);
 			}
 			else if (type.equalsIgnoreCase("INDEX")) {
-				saveIndexPrice(haCandle,type);
+				saveIndexPrice(haCandle,type,timeFrame);
 			}
 			
 		}
@@ -99,7 +99,7 @@ public class HeikinAshiCalculator {
 	
 	
 
-	public void saveIndexPrice(Candle candle,String type)
+	public void saveIndexPrice(Candle candle,String type, String timeFrame)
 	{
 		PricesHeikinAshiIndex prices = new PricesHeikinAshiIndex();
 		prices.setHigh(candle.high);
@@ -111,7 +111,7 @@ public class HeikinAshiCalculator {
 		prices.setName(type);
 		prices.setTimestamp(candle.timeStamp);
 		prices.setType(getPriceType(candle.open, candle.close));
-		prices.setTimeframe(null);
+		prices.setTimeframe(timeFrame);
 		priceHeikinashiIndexRepo.save(prices);
 	}
 	public void saveMcxPrice(Candle candle,String type)
