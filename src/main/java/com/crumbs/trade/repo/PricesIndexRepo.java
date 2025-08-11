@@ -24,6 +24,7 @@ public interface PricesIndexRepo extends JpaRepository<PricesIndex, Long> {
 	 public List<PricesIndex> findAllByOrderByIdAsc();   
 	 
 	 public List<PricesIndex> findAllByOrderByIdDesc();
+	 public List<PricesIndex> findByNameOrderByIdDesc(String name);
 	 
 	 @Modifying
 	 @Transactional
@@ -37,4 +38,9 @@ public interface PricesIndexRepo extends JpaRepository<PricesIndex, Long> {
 	 // Get top N by volume for a given name/timeframe (descending volume)
 	 List<PricesIndex> findByNameAndTimeframeOrderByVolumeDesc(String name, String timeframe, Pageable pageable);
 	 List<PricesIndex> findByNameAndTimeframe(String name, String timeframe);
+	 
+		@Transactional
+		@Modifying
+		@Query("DELETE FROM PricesIndex p WHERE p.name = :name")
+		void deleteByName(@Param("name") String name);
 }

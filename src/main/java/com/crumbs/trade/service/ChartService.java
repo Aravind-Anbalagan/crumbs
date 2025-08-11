@@ -88,11 +88,11 @@ public class ChartService {
 		SmartConnect smartConnect = angelOne.signIn();
 		JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(), strategy.getTradingsymbol(),
 				strategy.getToken());
-		if (jsonObject == null) {
+		/*if (jsonObject == null) {
 			logger.info("Script is null {} , {} , {}", strategy.getExchange(), strategy.getTradingsymbol(),
 					strategy.getToken());
 			return null;
-		}
+		}*/
 		BigDecimal index_CurrentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
 		JSONArray responseArray = new JSONArray();
 		JSONObject requestObejct = new JSONObject();

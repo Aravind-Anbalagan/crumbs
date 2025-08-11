@@ -90,7 +90,7 @@ public class HeikinAshiCalculator {
 				saveMcxPrice(haCandle,type);
 			}
 			else if (type.equalsIgnoreCase("INDEX")) {
-				saveIndexPrice(haCandle,type,timeFrame);
+				saveIndexPrice(haCandle,type,timeFrame,name);
 			}
 			
 		}
@@ -99,7 +99,7 @@ public class HeikinAshiCalculator {
 	
 	
 
-	public void saveIndexPrice(Candle candle,String type, String timeFrame)
+	public void saveIndexPrice(Candle candle,String type, String timeFrame, String name)
 	{
 		PricesHeikinAshiIndex prices = new PricesHeikinAshiIndex();
 		prices.setHigh(candle.high);
@@ -108,7 +108,7 @@ public class HeikinAshiCalculator {
 		prices.setOpen(candle.open);
 		prices.setVolume(null);
 		prices.setRange(null);
-		prices.setName(type);
+		prices.setName(name);
 		prices.setTimestamp(candle.timeStamp);
 		prices.setType(getPriceType(candle.open, candle.close));
 		prices.setTimeframe(timeFrame);

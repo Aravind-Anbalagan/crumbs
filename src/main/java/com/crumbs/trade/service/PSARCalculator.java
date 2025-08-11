@@ -103,7 +103,7 @@ public class PSARCalculator {
 				saveMcxPrice(valueCandle);
 			}
 			else if (type.equalsIgnoreCase("INDEX")) {
-				saveIndexPrice(valueCandle,timeFrame);
+				saveIndexPrice(valueCandle,timeFrame,name);
 			}
         	
         }
@@ -111,14 +111,14 @@ public class PSARCalculator {
     }
     
     @Transactional
-    private void saveIndexPrice(Candle valueCandle,String timeFrame) {
+    private void saveIndexPrice(Candle valueCandle,String timeFrame, String name) {
 		PSARIndex psarIndex = new PSARIndex();
 		psarIndex.setCurrentprice(valueCandle.currentprice);
 		psarIndex.setPsarPrice(valueCandle.psarPrice);
 		psarIndex.setTimestamp(valueCandle.timeStamp);
 		psarIndex.setHigh(valueCandle.high);
 		psarIndex.setLow(valueCandle.low);
-		psarIndex.setName(valueCandle.name);
+		psarIndex.setName(name);
 		psarIndex.setTimeframe(timeFrame);
 		if (valueCandle.psarPrice.compareTo(valueCandle.currentprice) > 0) {
 			psarIndex.setType("SELL");
