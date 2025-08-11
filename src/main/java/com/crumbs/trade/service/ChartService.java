@@ -439,9 +439,9 @@ public class ChartService {
 					profitLoss = resultVix.getEntryPrice().subtract(resultVix.getExitPrice());
 				}
 				if (profitLoss.compareTo(BigDecimal.ZERO) > 0) {
-					System.out.println("PROFIT");
+					resultVix.setResult("PROFIT");
 				} else if (profitLoss.compareTo(BigDecimal.ZERO) < 0) {
-					System.out.println("LOSS");
+					resultVix.setResult("LOSS");
 				}
 			}
 			resultVix.setPoints(calculatePoints(resultVix));
