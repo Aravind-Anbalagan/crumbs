@@ -432,6 +432,17 @@ public class ChartService {
 			} else {
 				resultVix.setExitPrice(currentPrice);
 				resultVix.setExitTime(currentDate);
+				BigDecimal profitLoss = null;
+				if ("BUY".equalsIgnoreCase(type)) {
+					profitLoss = resultVix.getExitPrice().subtract(resultVix.getEntryPrice());
+				} else if ("SELL".equalsIgnoreCase(type)) {
+					profitLoss = resultVix.getEntryPrice().subtract(resultVix.getExitPrice());
+				}
+				if (profitLoss.compareTo(BigDecimal.ZERO) > 0) {
+					System.out.println("PROFIT");
+				} else if (profitLoss.compareTo(BigDecimal.ZERO) < 0) {
+					System.out.println("LOSS");
+				}
 			}
 			resultVix.setPoints(calculatePoints(resultVix));
 			resultVix.setActive(null);
