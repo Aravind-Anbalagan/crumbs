@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Orders List</title>
     <style>
         table {
@@ -18,78 +18,202 @@
 
         th {
             background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
 
         tbody tr:nth-child(even) {
             background-color: #f9f9f9;
         }
+
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Pagination styles */
+        #pagination {
+            margin-top: 10px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        #pagination button {
+            margin: 0 3px;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background-color: white;
+            cursor: pointer;
+        }
+
+        #pagination button.active {
+            background-color: #007BFF;
+            color: white;
+            border-color: #007BFF;
+        }
+
+        #pagination button:disabled {
+            background-color: #eee;
+            color: #999;
+            cursor: default;
+        }
     </style>
 </head>
 <body>
     <h2>Orders</h2>
-    <table id="ordersTable">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Active</th>
-                <th>Type</th>
-                <th>Exchange</th>
-                <th>Token</th>
-                <th>Symbol</th>
-                <th>Timestamp</th>
-                <th>Entry Time</th>
-                <th>Entry Price</th>
-                <th>Exit Time</th>
-                <th>Exit Price</th>
-                <th>Points</th>
-                <th>Lot Size</th>
-                <th>Max High</th>
-                <th>Max Low</th>
-                <th>Result</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Data will be inserted here by JS -->
-        </tbody>
-    </table>
+    <div class="table-container">
+        <table id="ordersTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Active</th>
+                    <th>Type</th>
+                    <th>Exchange</th>
+                    <th>Token</th>
+                    <th>Symbol</th>
+                    <th>Timestamp</th>
+                    <th>Entry Time</th>
+                    <th>Entry Price</th>
+                    <th>Exit Time</th>
+                    <th>Exit Price</th>
+                    <th>Points</th>
+                    <th>Lot Size</th>
+                    <th>Max High</th>
+                    <th>Max Low</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Data rows will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+
+    <div id="pagination"></div>
 
     <script>
+        const rowsPerPage = 10;
+        let currentPage = 1;
+        let ordersData = [];
+
         async function loadOrders() {
             try {
                 const response = await fetch('/api/orders');
-                const data = await response.json();
-
-                const tbody = document.querySelector('#ordersTable tbody');
-                tbody.innerHTML = '';
-
-                data.forEach(order => {
-                    const row = document.createElement('tr');
-
-                    row.innerHTML = `
-                        <td>${order.id}</td>
-                        <td>${order.name}</td>
-                        <td>${order.active}</td>
-                        <td>${order.type}</td>
-                        <td>${order.exchange}</td>
-                        <td>${order.token}</td>
-                        <td>${order.symbol}</td>
-                        <td>${order.timestamp}</td>
-                        <td>${order.entryTime}</td>
-                        <td>${order.entryPrice}</td>
-                        <td>${order.exitTime}</td>
-                        <td>${order.exitPrice}</td>
-                        <td>${order.points}</td>
-                        <td>${order.lotSize}</td>
-                        <td>${order.maxHigh}</td>
-                        <td>${order.maxLow}</td>
-                        <td>${order.result}</td>
-                    `;
-                    tbody.appendChild(row);
-                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                ordersData = await response.json();
+                console.log('Loaded orders:', ordersData);
+                currentPage = 1;
+                renderTablePage(currentPage);
+                renderPagination();
             } catch (error) {
                 console.error('Error loading orders:', error);
+
+                // Uncomment below to test with dummy data if API fails
+                /*
+                ordersData = [
+                    {id:1, name:"Test Order", active:true, type:"Buy", exchange:"NSE", token:"12345", symbol:"TST", timestamp:"2025-08-11 21:00", entryTime:"21:01", entryPrice:"100.50", exitTime:"21:30", exitPrice:"105.00", points:4.5, lotSize:10, maxHigh:106, maxLow:99, result:45},
+                    {id:2, name:"Another Order", active:false, type:"Sell", exchange:"BSE", token:"54321", symbol:"TST2", timestamp:"2025-08-11 21:05", entryTime:"21:06", entryPrice:"200.00", exitTime:"21:45", exitPrice:"195.00", points:-5, lotSize:5, maxHigh:201, maxLow:194, result:-25},
+                ];
+                currentPage = 1;
+                renderTablePage(currentPage);
+                renderPagination();
+                */
             }
+        }
+
+        function renderTablePage(page) {
+            console.log(`Rendering page ${page}`);
+            const tbody = document.querySelector('#ordersTable tbody');
+            tbody.innerHTML = '';
+
+            const start = (page - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const pageItems = ordersData.slice(start, end);
+
+            console.log('Page items:', pageItems);
+
+            pageItems.forEach(order => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${order.id ?? ''}</td>
+                    <td>${order.name ?? ''}</td>
+                    <td>${order.active ?? ''}</td>
+                    <td>${order.type ?? ''}</td>
+                    <td>${order.exchange ?? ''}</td>
+                    <td>${order.token ?? ''}</td>
+                    <td>${order.symbol ?? ''}</td>
+                    <td>${order.timestamp ?? ''}</td>
+                    <td>${order.entryTime ?? ''}</td>
+                    <td>${order.entryPrice ?? ''}</td>
+                    <td>${order.exitTime ?? ''}</td>
+                    <td>${order.exitPrice ?? ''}</td>
+                    <td>${order.points ?? ''}</td>
+                    <td>${order.lotSize ?? ''}</td>
+                    <td>${order.maxHigh ?? ''}</td>
+                    <td>${order.maxLow ?? ''}</td>
+                    <td>${order.result ?? ''}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderPagination() {
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = '';
+
+            const totalPages = Math.ceil(ordersData.length / rowsPerPage);
+            if (totalPages === 0) return;
+
+            // Prev button
+            const prevButton = document.createElement('button');
+            prevButton.textContent = 'Prev';
+            prevButton.disabled = currentPage === 1;
+            prevButton.onclick = () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTablePage(currentPage);
+                    renderPagination();
+                }
+            };
+            pagination.appendChild(prevButton);
+
+            // Page number buttons (max 5 visible)
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                if (i === currentPage) {
+                    btn.classList.add('active');
+                }
+                btn.onclick = () => {
+                    currentPage = i;
+                    renderTablePage(currentPage);
+                    renderPagination();
+                };
+                pagination.appendChild(btn);
+            }
+
+            // Next button
+            const nextButton = document.createElement('button');
+            nextButton.textContent = 'Next';
+            nextButton.disabled = currentPage === totalPages;
+            nextButton.onclick = () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTablePage(currentPage);
+                    renderPagination();
+                }
+            };
+            pagination.appendChild(nextButton);
         }
 
         window.onload = loadOrders;
