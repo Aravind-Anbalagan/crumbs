@@ -169,7 +169,7 @@ public class ChartService {
 			}
 
 		} catch (Exception e) {
-			logger.error("Error Occured while get volume date , {}", e.getMessage());
+			logger.error("Error Occured in readChartData() , {}", e.getMessage());
 		}
 		return "Completed";
 	}

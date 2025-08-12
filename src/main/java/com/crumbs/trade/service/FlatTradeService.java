@@ -133,7 +133,7 @@ public class FlatTradeService {
 		return generatedToken;
     }
     
-    public void placeOrder(JData jData,String jKey) throws JsonProcessingException, UnsupportedEncodingException {
+    public APIResponse placeOrder(JData jData,String jKey) throws JsonProcessingException, UnsupportedEncodingException {
         String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
 
         try {
@@ -157,10 +157,11 @@ public class FlatTradeService {
             	    )
             	    .bodyToMono(APIResponse.class)
             	    .block();
-            System.out.println(response);
+            return response;
 
         } catch (Exception e) {
-            throw new RuntimeException("Order placement failed: " + e.getMessage(), e);
+        	logger.error("Order placement failed: {}" ,e.getMessage());
+            return null;
         }
     }
     

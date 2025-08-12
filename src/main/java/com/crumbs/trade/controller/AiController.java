@@ -39,7 +39,7 @@ public class AiController {
     // 🔍 Analyze a single stock by name
     @PostMapping("/analyze/name/{name}")
     public ResponseEntity<String> analyzeStockByName(@PathVariable String name) {
-        aiService.dailyAnalyzeStockByName(name);
+        //aiService.dailyAnalyzeStockByName(name);
         return ResponseEntity.ok("Completed");
     }
 

@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.crumbs.trade.dto.APIResponse;
 import com.crumbs.trade.dto.JData;
+import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.FlatTradeService;
@@ -77,18 +79,22 @@ public class StrangleController {
 	public void optionChain() throws SmartAPIException, Exception {
 
 		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
-		String token = flatTradeService.getTokenForFlatTrade();
-		flatTradeService.placeOrder(setJDataValues(), token);
+		String key = flatTradeService.getTokenForFlatTrade();
+		Token token= new Token();
+		token.setExch_seg("MCX");
+		token.setSymbol("457922");
+		
+		APIResponse apiResponse=flatTradeService.placeOrder(setJDataValues(token), key);
 		//flatTradeService.placeOrder();
 	}
 	
-	public JData setJDataValues()
+	public JData setJDataValues(Token token)
 	{
 		JData jdata = new JData();
 		jdata.setUid("MALIT158");
 		jdata.setActid("MALIT158");
-		jdata.setExch("NSE");
-		jdata.setTsym("TCS-EQ");
+		jdata.setExch(token.getExch_seg());
+		jdata.setTsym(token.getSymbol());
 		jdata.setQty("20");
 		jdata.setMkt_protection("5");
 		jdata.setPrc("0");

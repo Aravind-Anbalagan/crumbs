@@ -69,53 +69,42 @@ public class AiService {
         });
     }
 
-    public void dailyAnalyzeStockByName(String name) {
-        indicatorRepo.findByNameIgnoreCase(name.trim())
-            .ifPresentOrElse(stock -> {
-                try {
-                    StockAnalysisDTO dto = dailyDto(stock);
-                    String aiResponse = analyzeDailyWithAi(dto);
+    public void dailyAnalyzeStock(Indicator stock) {
+        try {
+            StockAnalysisDTO dto = dailyDto(stock);
+            String aiResponse = analyzeDailyWithAi(dto);
 
-                    if (aiResponse == null) return;
+            if (aiResponse == null) return;
 
-                    AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
+            AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
 
-                    /*log.info("✅ [{}] Recommendation: {}, Reason: {}", dto.getTradingSymbol(),
-                            recommendation.getRecommendation(), recommendation.getReason());*/
+            stock.setDaily_aiSignal(recommendation.getRecommendation());
+            stock.setDaily_aiReason(recommendation.getReason());
+            indicatorRepo.save(stock);
 
-                    stock.setDaily_aiSignal(recommendation.getRecommendation());
-                    stock.setDaily_aiReason(recommendation.getReason());
-                    indicatorRepo.save(stock);
-
-                } catch (Exception e) {
-                    log.error("❌ AI Error while analyzing [{}]: {}", name, e.getMessage(), e);
-                }
-            }, () -> log.warn("❌ Stock not found with name: {}", name));
+        } catch (Exception e) {
+            log.error("❌ AI Error while analyzing [{}]: {}", stock.getName(), e.getMessage(), e);
+        }
     }
 
-    public void weeklyAnalyzeStockByName(String name) {
-        indicatorRepo.findByNameIgnoreCase(name.trim())
-            .ifPresentOrElse(stock -> {
-                try {
-                    StockAnalysisDTO dto = weeklyDto(stock);
-                    String aiResponse = analyzeWeeklyWithAi(dto);
+    public void weeklyAnalyzeStock(Indicator stock) {
+        try {
+            StockAnalysisDTO dto = weeklyDto(stock);
+            String aiResponse = analyzeWeeklyWithAi(dto);
 
-                    if (aiResponse == null) return;
+            if (aiResponse == null) return;
 
-                    AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
+            AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
 
-                    /*log.info("✅ [{}] Recommendation: {}, Reason: {}", dto.getTradingSymbol(),
-                            recommendation.getRecommendation(), recommendation.getReason());*/
+            stock.setWeekly_aiSignal(recommendation.getRecommendation());
+            stock.setWeekly_aiReason(recommendation.getReason());
+            indicatorRepo.save(stock);
 
-                    stock.setWeekly_aiSignal(recommendation.getRecommendation());
-                    stock.setWeekly_aiReason(recommendation.getReason());
-                    indicatorRepo.save(stock);
-
-                } catch (Exception e) {
-                    log.error("❌ AI Error while analyzing [{}]: {}", name, e.getMessage(), e);
-                }
-            }, () -> log.warn("❌ Stock not found with name: {}", name));
+        } catch (Exception e) {
+            log.error("❌ AI Error while analyzing [{}]: {}", stock.getName(), e.getMessage(), e);
+        }
     }
+
 
     // ---------------- DAILY ----------------
 

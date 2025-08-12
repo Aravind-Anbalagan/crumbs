@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -93,25 +94,21 @@ public class StockController {
 	}
 
 	@GetMapping("/indicators/flagged")
-	public List<DynamicIndicatorDTO> getIndicators(@RequestParam(defaultValue = "DAILY") String flag,
-			@RequestParam(defaultValue = "ALL") String heikinPsarFilter) {
+	public List<DynamicIndicatorDTO> getIndicatorData(
+	        @RequestParam(defaultValue = "DAILY") String flag,
+	        @RequestParam(defaultValue = "ALL") String heikinPsarFilter) {
 
-		// If "ALL" → don't filter on Heikin/Psar
-		String filterValue = "ALL".equalsIgnoreCase(heikinPsarFilter) ? null : heikinPsarFilter;
+	    List<Indicator> indicators = getIndicators(flag, heikinPsarFilter);
 
-		boolean isWeekly = "WEEKLY".equalsIgnoreCase(flag);
-		boolean isCombined = "COMBINED".equalsIgnoreCase(flag);
+	    if (indicators.isEmpty()) {
+	        throw new NoIndicatorDataException("No stocks matched your selected filters.");
+	    }
 
-		List<Indicator> indicators = indicatorRepo.findIndicatorsWithFilters(filterValue, // heikin
-				filterValue, // psar
-				isWeekly, isCombined);
-
-		if (indicators.isEmpty()) {
-			throw new NoIndicatorDataException("No stocks matched your selected filters.");
-		}
-
-		return indicators.stream().map(ind -> toDTO(ind, flag)).collect(Collectors.toList());
+	    return indicators.stream()
+	            .map(ind -> toDTO(ind, flag))
+	            .toList();
 	}
+
 
 	private DynamicIndicatorDTO toDTO(Indicator ind, String flag) {
 		DynamicIndicatorDTO dto = new DynamicIndicatorDTO();
@@ -164,7 +161,7 @@ public class StockController {
 			dto.addHeader("weekly_AIReason", ind.getWeekly_aiReason(), true);
 		}
 
-		if ("COMBINED".equalsIgnoreCase(flag)) {
+		if ("COMBINE".equalsIgnoreCase(flag)) {
 			dto.addHeader("daily_volume", ind.getVolumeFlag(), true);
 			dto.addHeader("daily_srsignal", ind.getDaily_sr_signal(), true);
 			dto.addHeader("daily_fibosignal", ind.getDaily_fibo_signal(), true);
@@ -185,5 +182,44 @@ public class StockController {
 		}
 
 	}
+	
+	public List<Indicator> getIndicators(String flag, String filter) {
+        filter = filter.equalsIgnoreCase("ALL") ? null : filter.toUpperCase();
+
+        switch (flag.toUpperCase()) {
+            case "DAILY":
+                if (filter == null) {
+                    return indicatorRepo.findAllData();
+                }
+                return indicatorRepo.findDayByValue(filter);
+
+            case "WEEKLY":
+                if (filter == null) {
+                    return Stream.concat(
+                    		indicatorRepo.findDayByValue("FIRST BUY").stream(),
+                    		indicatorRepo.findDayByValue("FIRST SELL").stream()
+                    ).toList();
+                }
+                return indicatorRepo.findWeeklyByValue(filter);
+
+            case "COMBINE":
+                if (filter == null) {
+                    return Stream.concat(
+                    		indicatorRepo.findAllData().stream(),
+                        Stream.concat(
+                        		indicatorRepo.findDayByValue("FIRST BUY").stream(),
+                        		indicatorRepo.findDayByValue("FIRST SELL").stream()
+                        )
+                    ).toList();
+                }
+                return Stream.concat(
+                		indicatorRepo.findDayByValue(filter).stream(),
+                		indicatorRepo.findWeeklyByValue(filter).stream()
+                ).toList();
+
+            default:
+                throw new IllegalArgumentException("Unknown flag: " + flag);
+        }
+    }
 
 }
