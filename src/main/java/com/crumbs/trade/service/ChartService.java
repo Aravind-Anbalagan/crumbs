@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -356,17 +357,36 @@ public class ChartService {
 
 				}
 			}
-			// Exit trade at 3.20 PM
-			if (IsExit(vix.getTimestamp(), 15, 20) && "NIFTY".equalsIgnoreCase(name)) {
-				testFlag = true;
-
-				makeEntry(vix, strategy, " ", testFlag, currentPrice);
-
-			}
-
+			// Exit trade at martket close
+			exitFromTrade(vix.getTimestamp(), name, vix, strategy, currentPrice);
 		}
 	}
+	
+	public void exitFromTrade(String timeStamp, String name, Vix vix, Strategy strategy, BigDecimal currentPrice)
+			throws AddressException, MessagingException, IOException {
+		int hour = 0;
+		int min = 0;
+		if ("NIFTY".equalsIgnoreCase(name)) {
+			hour = 15;
+			min = 20;
+		} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+			hour = 17;
+			min = 00;
+		}
+		if (isToday(timeStamp) && IsExit(timeStamp, hour, min)) {
 
+			makeEntry(vix, strategy, " ", false, currentPrice);
+			logger.info("Order Exited for {}", name);
+		}
+
+	}
+
+	public static boolean isToday(String timestamp) {
+		ZonedDateTime zdt = ZonedDateTime.parse(timestamp); // parse ISO format
+		LocalDate givenDate = zdt.toLocalDate(); // extract date part
+		LocalDate today = LocalDate.now(zdt.getZone()); // today in same timezone
+		return givenDate.equals(today);
+	}
 	public boolean IsExit(String input, int hour, int min) {
 		String pattern = "yyyy-MM-dd HH:mm";
 		// Parse the string to OffsetDateTime (handles date, time, and timezone)
@@ -433,9 +453,9 @@ public class ChartService {
 				resultVix.setExitPrice(currentPrice);
 				resultVix.setExitTime(currentDate);
 				BigDecimal profitLoss = null;
-				if ("BUY".equalsIgnoreCase(type)) {
+				if ("BUY".equalsIgnoreCase(resultVix.getType())) {
 					profitLoss = resultVix.getExitPrice().subtract(resultVix.getEntryPrice());
-				} else if ("SELL".equalsIgnoreCase(type)) {
+				} else if ("SELL".equalsIgnoreCase(resultVix.getType())) {
 					profitLoss = resultVix.getEntryPrice().subtract(resultVix.getExitPrice());
 				}
 				if (profitLoss.compareTo(BigDecimal.ZERO) > 0) {
@@ -594,7 +614,7 @@ public class ChartService {
 				currentPrice = vix.getClose();
 			}
 
-			if (timeCheck(vix.getTimestamp(), name, testFlag) || currentPrice != null) {
+			if (currentPrice != null) {
 				String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType());
 				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 						: Constants.TRANSACTION_TYPE_BUY;
@@ -660,6 +680,10 @@ public class ChartService {
 			if (IsExit(timeStamp, 15, 20) && "NIFTY".equalsIgnoreCase(name)) {
 				return true;
 			}
+			// Normal
+			if (IsExit(timeStamp, 17, 00) && "CRUDEOIL".equalsIgnoreCase(name)) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -675,8 +699,6 @@ public class ChartService {
 					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
 		}
 
-		
-		resultVix.setPoints(calculatePoints(resultVix));
 		// For BackTest
 		if (testFlag) {
 			resultVix.setExitPrice(token.getPrice() != null ? new BigDecimal(token.getPrice()) : currentPrice);
@@ -693,6 +715,7 @@ public class ChartService {
 			resultVix.setExitTime(currentDate);
 			resultVix.setResult(result);
 		}
+		resultVix.setPoints(calculatePoints(resultVix));
 		resultVix.setActive(null);
 		resultVixRepo.save(resultVix);
 	}

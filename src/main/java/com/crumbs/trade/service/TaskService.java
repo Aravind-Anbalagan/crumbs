@@ -96,6 +96,7 @@ import com.google.common.util.concurrent.RateLimiter;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -3026,21 +3027,22 @@ public class TaskService {
 	}
 	
 	public void callAI() {
-		List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNullOrderByIntradayAsc();
-		indicatorList.stream().forEach(stock -> {
+	    List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNullOrderByIntradayAsc();
 
-			try {
+	    int maxThreads = 5; // process multiple stocks at once
+	    ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
 
-				// call AI
-				aiService.dailyAnalyzeStock(stock);
-				aiService.weeklyAnalyzeStock(stock);
+	    List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				logger.error("Error in callAI() : " + e.getMessage());
-				e.printStackTrace();
-			}
+	    for (Indicator stock : indicatorList) {
+	        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+	           aiService.analyzeStockCombined(stock);
+	        }, executor);
+	        futures.add(future);
+	    }
 
-		});
+	    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+	    executor.shutdown();
 	}
+
 }

@@ -193,6 +193,7 @@ public class Indicator {
 	String daily_fibo_reason;
 	@Column(name = "daily_aiSignal")
 	String daily_aiSignal;
+	@Lob
 	@Column(name = "daily_aiReason")
 	String daily_aiReason;
 	@Column(name = "daily_aiConfidence")
@@ -230,6 +231,7 @@ public class Indicator {
 	String weekly_fibo_reason;
 	@Column(name = "weekly_aiSignal")
 	String weekly_aiSignal;
+	@Lob
 	@Column(name = "weekly_aiReason")
 	String weekly_aiReason;
 	@Column(name = "weekly_aiConfidence")

@@ -11,8 +11,9 @@ import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
+import java.util.concurrent.CompletableFuture;
 import java.math.BigDecimal;
 import java.util.*;
 
@@ -20,8 +21,9 @@ import java.util.*;
 @Slf4j
 public class AiService {
 
-    private static final String MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-
+    //private static final String MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+	@Value("${spring.ai.openai.model}")
+    private String model;
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
 
@@ -98,6 +100,49 @@ public class AiService {
 
             stock.setWeekly_aiSignal(recommendation.getRecommendation());
             stock.setWeekly_aiReason(recommendation.getReason());
+            indicatorRepo.save(stock);
+
+        } catch (Exception e) {
+            log.error("❌ AI Error while analyzing [{}]: {}", stock.getName(), e.getMessage(), e);
+        }
+    }
+
+
+
+    public void analyzeStockCombined(Indicator stock) {
+        try {
+            // Daily analysis
+            try {
+                String dailyResponse = analyzeDailyWithAi(dailyDto(stock));
+                if (dailyResponse != null) {
+                    AiRecommendation dailyRec = objectMapper.readValue(dailyResponse, AiRecommendation.class);
+                    stock.setDaily_aiSignal(dailyRec.getRecommendation());
+                    stock.setDaily_aiReason(dailyRec.getReason());
+                }
+            } catch (Exception e) {
+                log.error("❌ Daily AI analysis error [{}]: {}", stock.getName(), e.getMessage(), e);
+            }
+
+            // Wait 3 seconds before weekly
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            // Weekly analysis
+            try {
+                String weeklyResponse = analyzeWeeklyWithAi(weeklyDto(stock));
+                if (weeklyResponse != null) {
+                    AiRecommendation weeklyRec = objectMapper.readValue(weeklyResponse, AiRecommendation.class);
+                    stock.setWeekly_aiSignal(weeklyRec.getRecommendation());
+                    stock.setWeekly_aiReason(weeklyRec.getReason());
+                }
+            } catch (Exception e) {
+                log.error("❌ Weekly AI analysis error [{}]: {}", stock.getName(), e.getMessage(), e);
+            }
+
+            // Save the stock after both analyses
             indicatorRepo.save(stock);
 
         } catch (Exception e) {
@@ -210,7 +255,7 @@ public class AiService {
 
     private String callAiAndExtractJson(String symbol, String promptText) {
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .withModel(MODEL)
+                .withModel(model)
                 .build();
         Prompt prompt = new Prompt(promptText, options);
 
@@ -298,7 +343,7 @@ public class AiService {
 
     public String ask(String userMessage) {
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .withModel(MODEL)
+                .withModel(model)
                 .build();
         Prompt prompt = new Prompt(userMessage, options);
         return chatClient.call(prompt).getResult().getOutput().getContent();
