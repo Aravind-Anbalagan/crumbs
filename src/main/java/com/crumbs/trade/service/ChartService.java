@@ -370,7 +370,7 @@ public class ChartService {
 			hour = 15;
 			min = 20;
 		} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
-			hour = 17;
+			hour = 23;
 			min = 00;
 		}
 		if (isToday(timeStamp) && IsExit(timeStamp, hour, min)) {
