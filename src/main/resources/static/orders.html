@@ -4,10 +4,15 @@
     <meta charset="UTF-8" />
     <title>Orders List</title>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0 0 70px 0; /* bottom padding for fixed pagination */
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            font-family: Arial, sans-serif;
         }
 
         th, td {
@@ -18,9 +23,9 @@
 
         th {
             background-color: #f2f2f2;
-            position: sticky;
+            position: sticky; /* freeze header */
             top: 0;
-            z-index: 2;
+            z-index: 5; /* ensure it stays above table rows */
         }
 
         tbody tr:nth-child(even) {
@@ -28,15 +33,22 @@
         }
 
         .table-container {
-            max-height: 400px;
             overflow-y: auto;
+            max-height: calc(100vh - 120px); /* table scroll area minus header/padding */
         }
 
-        /* Pagination styles */
+        /* Pagination fixed at bottom */
         #pagination {
-            margin-top: 10px;
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            box-shadow: 0 0 6px rgba(0,0,0,0.1);
+            z-index: 999;
             text-align: center;
-            font-family: Arial, sans-serif;
         }
 
         #pagination button {
@@ -61,7 +73,6 @@
     </style>
 </head>
 <body>
-    <h2>Orders</h2>
     <div class="table-container">
         <table id="ordersTable">
             <thead>
@@ -101,40 +112,23 @@
         async function loadOrders() {
             try {
                 const response = await fetch('/api/orders');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 ordersData = await response.json();
-                console.log('Loaded orders:', ordersData);
                 currentPage = 1;
                 renderTablePage(currentPage);
                 renderPagination();
             } catch (error) {
                 console.error('Error loading orders:', error);
-
-                // Uncomment below to test with dummy data if API fails
-                /*
-                ordersData = [
-                    {id:1, name:"Test Order", active:true, type:"Buy", exchange:"NSE", token:"12345", symbol:"TST", timestamp:"2025-08-11 21:00", entryTime:"21:01", entryPrice:"100.50", exitTime:"21:30", exitPrice:"105.00", points:4.5, lotSize:10, maxHigh:106, maxLow:99, result:45},
-                    {id:2, name:"Another Order", active:false, type:"Sell", exchange:"BSE", token:"54321", symbol:"TST2", timestamp:"2025-08-11 21:05", entryTime:"21:06", entryPrice:"200.00", exitTime:"21:45", exitPrice:"195.00", points:-5, lotSize:5, maxHigh:201, maxLow:194, result:-25},
-                ];
-                currentPage = 1;
-                renderTablePage(currentPage);
-                renderPagination();
-                */
             }
         }
 
         function renderTablePage(page) {
-            console.log(`Rendering page ${page}`);
             const tbody = document.querySelector('#ordersTable tbody');
             tbody.innerHTML = '';
 
             const start = (page - 1) * rowsPerPage;
             const end = start + rowsPerPage;
             const pageItems = ordersData.slice(start, end);
-
-            console.log('Page items:', pageItems);
 
             pageItems.forEach(order => {
                 const row = document.createElement('tr');
@@ -168,32 +162,24 @@
             const totalPages = Math.ceil(ordersData.length / rowsPerPage);
             if (totalPages === 0) return;
 
-            // Prev button
             const prevButton = document.createElement('button');
             prevButton.textContent = 'Prev';
             prevButton.disabled = currentPage === 1;
             prevButton.onclick = () => {
-                if (currentPage > 1) {
-                    currentPage--;
-                    renderTablePage(currentPage);
-                    renderPagination();
-                }
+                currentPage--;
+                renderTablePage(currentPage);
+                renderPagination();
             };
             pagination.appendChild(prevButton);
 
-            // Page number buttons (max 5 visible)
             let startPage = Math.max(1, currentPage - 2);
             let endPage = Math.min(totalPages, startPage + 4);
-            if (endPage - startPage < 4) {
-                startPage = Math.max(1, endPage - 4);
-            }
+            if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
 
             for (let i = startPage; i <= endPage; i++) {
                 const btn = document.createElement('button');
                 btn.textContent = i;
-                if (i === currentPage) {
-                    btn.classList.add('active');
-                }
+                if (i === currentPage) btn.classList.add('active');
                 btn.onclick = () => {
                     currentPage = i;
                     renderTablePage(currentPage);
@@ -202,16 +188,13 @@
                 pagination.appendChild(btn);
             }
 
-            // Next button
             const nextButton = document.createElement('button');
             nextButton.textContent = 'Next';
             nextButton.disabled = currentPage === totalPages;
             nextButton.onclick = () => {
-                if (currentPage < totalPages) {
-                    currentPage++;
-                    renderTablePage(currentPage);
-                    renderPagination();
-                }
+                currentPage++;
+                renderTablePage(currentPage);
+                renderPagination();
             };
             pagination.appendChild(nextButton);
         }
