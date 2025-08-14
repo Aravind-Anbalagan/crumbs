@@ -77,7 +77,7 @@ public class StockController {
 	@Scheduled(cron = "0 35 09 * * ?") // Works
 	public String findBullishStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
-			//taskService.findBullishStocks();
+			taskService.findBullishStocks();
 			taskService.callAI();
 			return "Completed";
 		}

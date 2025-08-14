@@ -193,11 +193,11 @@ public class OISignalGenerator {
         mapSignalToMarketMovement(dataPoints);
         detectSupportResistance(dataPoints);
 
-        System.out.println("Time\t\t\t\tSignal\t\tMarketMove\tSupport/Resistance");
+       /* System.out.println("Time\t\t\t\tSignal\t\tMarketMove\tSupport/Resistance");
         for (DataPoint dp : dataPoints) {
             System.out.println(dp.getTime() + "\t" + dp.getConfirmedSignal() + "\t" + dp.getMarketMovement()
                     + "\t" + Optional.ofNullable(dp.getSupportResistanceType()).orElse(""));
-        }
+        }*/
 
         DataPoint last = dataPoints.get(dataPoints.size() - 1);
         return last.getTime() + " = " + last.getConfirmedSignal() + " - " + last.getMarketMovement();
