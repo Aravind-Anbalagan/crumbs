@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -181,46 +182,81 @@ public class StockController {
 			dto.addHeader("combineHoldVotes", ind.getCombineHoldVotes(), true);
 
 		}
+		if ("INTRADAY".equalsIgnoreCase(flag)) {
+			dto.addHeader("Intraday", ind.getIntraday(), true);
+			dto.addHeader("Result", ind.getResult(), true);
+		}
 
 	}
 	
-	public List<Indicator> getIndicators(String flag, String filter) {
-        filter = filter.equalsIgnoreCase("ALL") ? null : filter.toUpperCase();
+	public List<Indicator> getIndicators(String flag, String heikinPsarFilter) {
+	    heikinPsarFilter = heikinPsarFilter.equalsIgnoreCase("ALL") ? null : heikinPsarFilter.toUpperCase();
 
-        switch (flag.toUpperCase()) {
-            case "DAILY":
-                if (filter == null) {
-                    return indicatorRepo.findAllData();
-                }
-                return indicatorRepo.findDayByValue(filter);
+	    switch (flag.toUpperCase()) {
+	        // ================== DAY ==================
+	        case "DAILY":
+	            if (heikinPsarFilter == null) { // CASE 1
+	                return indicatorRepo.findAllData();
+	            } else if ("FIRST BUY".equals(heikinPsarFilter)) { // CASE 2
+	                return indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST BUY", "FIRST BUY");
+	            } else if ("FIRST SELL".equals(heikinPsarFilter)) { // CASE 3
+	                return indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST SELL", "FIRST SELL");
+	            }
+	            break;
 
-            case "WEEKLY":
-                if (filter == null) {
-                    return Stream.concat(
-                    		indicatorRepo.findDayByValue("FIRST BUY").stream(),
-                    		indicatorRepo.findDayByValue("FIRST SELL").stream()
-                    ).toList();
-                }
-                return indicatorRepo.findWeeklyByValue(filter);
+	        // ================== WEEKLY ==================
+	        case "WEEKLY":
+	            if (heikinPsarFilter == null) { // CASE 4
+	                return Stream.concat(
+	                        indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST BUY", "FIRST BUY").stream(),
+	                        indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST SELL", "FIRST SELL").stream()
+	                ).toList();
+	            } else if ("FIRST BUY".equals(heikinPsarFilter)) { // CASE 5
+	                return indicatorRepo.findByHeikinAshiWeeklyAndPsarFlagWeekly("FIRST BUY", "FIRST BUY");
+	            } else if ("FIRST SELL".equals(heikinPsarFilter)) { // CASE 6
+	                return indicatorRepo.findByHeikinAshiWeeklyAndPsarFlagWeekly("FIRST SELL", "FIRST SELL");
+	            }
+	            break;
 
-            case "COMBINE":
-                if (filter == null) {
-                    return Stream.concat(
-                    		indicatorRepo.findAllData().stream(),
-                        Stream.concat(
-                        		indicatorRepo.findDayByValue("FIRST BUY").stream(),
-                        		indicatorRepo.findDayByValue("FIRST SELL").stream()
-                        )
-                    ).toList();
-                }
-                return Stream.concat(
-                		indicatorRepo.findDayByValue(filter).stream(),
-                		indicatorRepo.findWeeklyByValue(filter).stream()
-                ).toList();
+	        // ================== COMBINE ==================
+	        case "COMBINE":
+	            if (heikinPsarFilter == null) { // CASE 7
+	                return Stream.of(
+	                        indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST BUY", "FIRST BUY"),
+	                        indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST SELL", "FIRST SELL"),
+	                        indicatorRepo.findByHeikinAshiWeeklyAndPsarFlagWeekly("FIRST BUY", "FIRST BUY"),
+	                        indicatorRepo.findByHeikinAshiWeeklyAndPsarFlagWeekly("FIRST SELL", "FIRST SELL")
+	                ).flatMap(List::stream).toList();
+	            } else if ("FIRST BUY".equals(heikinPsarFilter)) { // CASE 8
+	                return Stream.concat(
+	                        indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST BUY", "FIRST BUY").stream(),
+	                        indicatorRepo.findByHeikinAshiWeeklyAndPsarFlagWeekly("FIRST BUY", "FIRST BUY").stream()
+	                ).toList();
+	            } else if ("FIRST SELL".equals(heikinPsarFilter)) { // CASE 9
+	                return Stream.concat(
+	                        indicatorRepo.findByHeikinAshiDayAndPsarFlagDay("FIRST SELL", "FIRST SELL").stream(),
+	                        indicatorRepo.findByHeikinAshiWeeklyAndPsarFlagWeekly("FIRST SELL", "FIRST SELL").stream()
+	                ).toList();
+	            }
+	            break;
 
-            default:
-                throw new IllegalArgumentException("Unknown flag: " + flag);
-        }
-    }
+	        // ================== INTRADAY ==================
+	        case "INTRADAY":
+	        	 if (heikinPsarFilter == null || "ALL".equals(heikinPsarFilter))  { // CASE 10
+	                return indicatorRepo.findByIntradayIsNotNull();
+	            } else if ("UP".equals(heikinPsarFilter)) { // CASE 11
+	                return indicatorRepo.findByIntraday("UP");
+	            } else if ("DOWN".equals(heikinPsarFilter)) { // CASE 12
+	                return indicatorRepo.findByIntraday("DOWN");
+	            }
+	            break;
+
+	        default:
+	            throw new IllegalArgumentException("Unknown flag: " + flag);
+	    }
+
+	    return Collections.emptyList();
+	}
+
 
 }

@@ -33,6 +33,8 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 	Optional<Indicator> findByNameIgnoreCase(String name);
 
 	List<Indicator> findBymailsentIsNotNull();
+	
+	List<Indicator> findByIntradayIsNotNull();
 
 	List<Indicator> findByMailsentIsNotNullOrderByMailsentAsc();
 
@@ -115,5 +117,10 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 
     @Query("SELECT i FROM Indicator i WHERE i.heikinAshiWeekly = :value AND i.psarFlagWeekly = :value")
     List<Indicator> findWeeklyByValue(@Param("value") String value);
+    
+    List<Indicator> findByHeikinAshiWeeklyAndPsarFlagWeekly(String heikinAshiWeekly, String psarFlagWeekly);
+
+    List<Indicator> findByIntraday(String value);
+
 
 }

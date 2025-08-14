@@ -1,8 +1,11 @@
 package com.crumbs.trade.service;
 
+import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.controller.StrangleController;
 import com.crumbs.trade.dto.APIResponse;
 import com.crumbs.trade.dto.JData;
+import com.crumbs.trade.dto.Token;
+import com.crumbs.trade.utility.Utility;
 import com.eatthepath.otp.TimeBasedOneTimePasswordGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,6 +63,50 @@ public class FlatTradeService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     @Autowired
 	WebClient webClient;
+    
+	public void PlaceOrderInFlatTrade(Token token) throws SmartAPIException, Exception {
+
+		String key = getTokenForFlatTrade();	
+		//Token token= new Token();
+		token.setExch_seg("MCX");
+		token.setSymbol(Utility.normalizeToken(token.getSymbol()));
+		token.setTransactionType("S");
+		token.setQuantity(100);
+		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
+		APIResponse apiResponse=callFlatTrade(setJDataForOrder(token), key, url);
+		
+		//flatTradeService.placeOrder();
+	}
+	
+	public JData setJDataForSearch(String name,String exch)
+	{
+		JData jdata = new JData();
+		jdata.setUid("MALIT158");
+		jdata.setStext(name);
+		jdata.setExch(exch);
+		return jdata;
+	}
+	
+	public JData setJDataForOrder(Token token)
+	{
+		JData jdata = new JData();
+		jdata.setUid("MALIT158");
+		jdata.setActid("MALIT158");
+		jdata.setExch(token.getExch_seg());
+		jdata.setTsym(token.getSymbol());
+		jdata.setQty(String.valueOf(token.getQuantity()));
+		//jdata.setMkt_protection("5");
+		//jdata.setPrc("0");
+		//jdata.setDscqty("0");
+		jdata.setPrd("I"); //Intraday
+		jdata.setTrantype(token.getTransactionType());
+		jdata.setPrctyp("MKT");
+		jdata.setRet("DAY");
+		jdata.setOrdersource("API");
+		return jdata;
+		
+	}
+	
     public String getTokenForFlatTrade() throws Exception
     {
     	  String hashedPassword = generateSHA256(PASSWORD);
@@ -133,8 +180,8 @@ public class FlatTradeService {
 		return generatedToken;
     }
     
-    public APIResponse placeOrder(JData jData,String jKey) throws JsonProcessingException, UnsupportedEncodingException {
-        String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
+    public APIResponse callFlatTrade(JData jData,String jKey,String url) throws JsonProcessingException, UnsupportedEncodingException {
+       
 
         try {
             // Convert JData object to raw JSON string

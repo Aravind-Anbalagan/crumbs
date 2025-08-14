@@ -81,6 +81,8 @@ public class ChartService {
 	@Autowired
 	AngelOneService angelOneService;
 
+	@Autowired
+	FlatTradeService flatTradeService;
 	/*
 	 * Get JsonDetail
 	 */
@@ -371,7 +373,7 @@ public class ChartService {
 			min = 20;
 		} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
 			hour = 23;
-			min = 00;
+			min = 20;
 		}
 		if (isToday(timeStamp) && IsExit(timeStamp, hour, min)) {
 
@@ -425,7 +427,7 @@ public class ChartService {
 			resultVix.setActive("Y");
 			resultVix.setTimestamp(vix.getTimestamp());
 			resultVix.setType(type);
-			// Place Order
+			// Place Order - ENTRY
 			Token token = triggerEntryOrder(strategy, type, resultVix);
 			if (token != null) {
 				resultVix.setLotSize(token.getQuantity());
@@ -466,7 +468,7 @@ public class ChartService {
 			}
 			resultVix.setPoints(calculatePoints(resultVix));
 			resultVix.setActive(null);
-			// Place Order
+			// Place Order  - EXIT
 			triggerExitOrder(resultVix);
 		}
 
@@ -479,7 +481,7 @@ public class ChartService {
 		strategyModified.setTradingsymbol(resultVix.getSymbol());
 		String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 				: Constants.TRANSACTION_TYPE_BUY;
-		return placeOrder(strategyModified, transactionType);
+		return placeOrder(strategyModified, transactionType,"S");
 
 	}
 
@@ -544,7 +546,7 @@ public class ChartService {
 		Strategy strategyModified = taskService.getStrategyDetails(strategy.getName(), strategy.getExchange());
 		strategy = getNameAndTradingSymbol(strategyModified, type);
 		// Place an Order and SL
-		return placeOrder(strategy, type);
+		return placeOrder(strategy, type,"B");
 	}
 
 	public Strategy getNameAndTradingSymbol(Strategy strategy, String type)
@@ -572,14 +574,14 @@ public class ChartService {
 		return Math.round(number / (float) base) * base;
 	}
 
-	public Token placeOrder(Strategy strategy, String transactionType) {
+	public Token placeOrder(Strategy strategy, String transactionType, String flatTradeType) {
 		SmartConnect smartconnect = angelOne.signIn();
 		Token token = new Token();
 
 		Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), strategy.getTradingsymbol());
 		if (indexes != null) {
 
-			// Order Execution
+			// Order Execution - For Angelone
 			token.setVariety(Constants.VARIETY_NORMAL);
 			token.setExch_seg(indexes.getExchange());
 			token.setOrderType(Constants.ORDER_TYPE_MARKET);
@@ -589,10 +591,27 @@ public class ChartService {
 			token.setToken(indexes.getToken());
 			token.setSymbol(indexes.getSymbol());
 			// orderService.PlaceOrder(smartconnect, token, null);
+			
+			//Place trade in Flat Trade
+			//placeOrderInFlatTrade(token,flatTradeType);
 		}
 		return token;
 	}
 
+	public void placeOrderInFlatTrade(Token token, String flatTradeType) {
+		Token flatToken = new Token();
+		try {
+			flatToken.setExch_seg(token.getExch_seg());
+			flatToken.setSymbol(token.getSymbol());
+			flatToken.setTransactionType(flatTradeType);
+			flatToken.setQuantity(token.getQuantity());
+			flatTradeService.PlaceOrderInFlatTrade(flatToken);
+		} catch (SmartAPIException | Exception e) {
+			// TODO Auto-generated catch block
+			logger.error("Error occured while place order in FlatTrade : {}", e.getMessage());
+		}
+	}
+	
 	/*
 	 * Look for Executed Orders
 	 */
@@ -619,8 +638,8 @@ public class ChartService {
 				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 						: Constants.TRANSACTION_TYPE_BUY;
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
-
-					Token token = placeOrder(setValues(resultVix), transactionType);
+                    //Place Order - EXIT
+					Token token = placeOrder(setValues(resultVix), transactionType,"S");
 					closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
 
 				}

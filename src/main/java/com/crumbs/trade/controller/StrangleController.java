@@ -22,6 +22,7 @@ import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.FlatTradeService;
 import com.crumbs.trade.service.StrategyService;
 import com.crumbs.trade.service.TaskService;
+import com.crumbs.trade.utility.Utility;
 
 @RestController
 @RequestMapping("/strangle")
@@ -40,6 +41,9 @@ public class StrangleController {
 	
 	@Autowired
 	FlatTradeService flatTradeService;
+	
+	@Autowired
+	Utility utility;
 
 	/*
 	 * NIFTY MODIFIED - READ 30 MINS CANDLE Read Candle based on time interval and
@@ -78,29 +82,39 @@ public class StrangleController {
 	//@Scheduled(fixedRate = 10000)
 	public void optionChain() throws SmartAPIException, Exception {
 
-		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
-		String key = flatTradeService.getTokenForFlatTrade();
+		String key = flatTradeService.getTokenForFlatTrade();	
 		Token token= new Token();
 		token.setExch_seg("MCX");
-		token.setSymbol("457922");
+		token.setSymbol(Utility.normalizeToken("CRUDEOIL14AUG255500PE"));
+		token.setTransactionType("S");
+		token.setQuantity(100);
+		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
+		APIResponse apiResponse=flatTradeService.callFlatTrade(setJDataForOrder(token), key, url);
 		
-		APIResponse apiResponse=flatTradeService.placeOrder(setJDataValues(token), key);
 		//flatTradeService.placeOrder();
 	}
+	public JData setJDataForSearch(String name,String exch)
+	{
+		JData jdata = new JData();
+		jdata.setUid("MALIT158");
+		jdata.setStext(name);
+		jdata.setExch(exch);
+		return jdata;
+	}
 	
-	public JData setJDataValues(Token token)
+	public JData setJDataForOrder(Token token)
 	{
 		JData jdata = new JData();
 		jdata.setUid("MALIT158");
 		jdata.setActid("MALIT158");
 		jdata.setExch(token.getExch_seg());
 		jdata.setTsym(token.getSymbol());
-		jdata.setQty("20");
-		jdata.setMkt_protection("5");
-		jdata.setPrc("0");
-		jdata.setDscqty("0");
-		jdata.setPrd("C");
-		jdata.setTrantype("B");
+		jdata.setQty(String.valueOf(token.getQuantity()));
+		//jdata.setMkt_protection("5");
+		//jdata.setPrc("0");
+		//jdata.setDscqty("0");
+		jdata.setPrd("I"); //Intraday
+		jdata.setTrantype(token.getTransactionType());
 		jdata.setPrctyp("MKT");
 		jdata.setRet("DAY");
 		jdata.setOrdersource("API");

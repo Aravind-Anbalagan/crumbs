@@ -22,4 +22,5 @@ public class JData {
     private String usr_agent;
     private String app_inst_id;
     private String ordersource;
+    private String stext;
 }

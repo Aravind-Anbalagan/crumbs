@@ -2370,24 +2370,25 @@ public class TaskService {
 		return strategy;
 	}
 
+	@Transactional
 	public void getResult() {
 		// TODO Auto-generated method stub
-		List<Indicator> indicatorList = indicatorRepo.findBymailsentIsNotNull();
+		List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNull();
 
-		System.out.println("Getting result : " + indicatorList.size());
+		logger.info("Getting result count : {}", indicatorList.size());
 
 		// Get Current price and Update the table
 		SmartConnect smartConnect = angelOne.signIn();
 		indicatorList.stream().forEach(stock -> {
 			BigDecimal openPrice = getPrice(smartConnect,stock, "open");
 			BigDecimal ltp = getPrice(smartConnect,stock, "ltp");
-			if ("UP".equalsIgnoreCase(stock.getMailsent())) {
+			if ("UP".equalsIgnoreCase(stock.getIntraday())) {
 				if (ltp.compareTo(openPrice) > 0) {
 					stock.setResult("SUCCESS");
 				} else {
 					stock.setResult("FAIL");
 				}
-			} else if ("DOWN".equalsIgnoreCase(stock.getMailsent())) {
+			} else if ("DOWN".equalsIgnoreCase(stock.getIntraday())) {
 				if (ltp.compareTo(openPrice) < 0) {
 					stock.setResult("SUCCESS");
 				} else {

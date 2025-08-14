@@ -341,18 +341,19 @@
   <div class="toolbar">
     <div class="controls">
       <label for="timeframe">Timeframe:</label>
-      <select id="timeframe" onchange="loadTable()">
+      <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
         <option value="DAILY">Daily</option>
         <option value="WEEKLY">Weekly</option>
         <option value="COMBINE">Combine</option>
+        <option value="INTRADAY">Intraday</option>
       </select>
 
-      <label for="heikinPsarFilter">Heikin/Psar:</label>
-      <select id="heikinPsarFilter" onchange="loadTable()">
-        <option value="ALL">All</option>
-        <option value="FIRST BUY">First Buy</option>
-        <option value="FIRST SELL">First Sell</option>
-      </select>
+      <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
+<select id="secondaryFilter" onchange="loadTable()">
+  <option value="ALL">All</option>
+  <option value="FIRST BUY">First Buy</option>
+  <option value="FIRST SELL">First Sell</option>
+</select>
 
       <button class="refresh-btn" onclick="resetTable()">🧹 Reset</button>
 
@@ -409,9 +410,34 @@ function zoomOut() { if (currentFontSize > 8) { currentFontSize--; updateFontSiz
 function resetZoom() { currentFontSize = 14; updateFontSize(); }
 
 // --- LOAD TABLE DATA ---
+function updateSecondaryFilter() {
+    const tf = document.getElementById("timeframe").value;
+    const label = document.getElementById("secondaryFilterLabel");
+    const select = document.getElementById("secondaryFilter");
+
+    select.innerHTML = ""; // clear old options
+    if (tf === "INTRADAY") {
+        label.textContent = "Trend:";
+        ["ALL", "UP", "DOWN"].forEach(val => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = val.charAt(0) + val.slice(1).toLowerCase();
+            select.appendChild(opt);
+        });
+    } else {
+        label.textContent = "Heikin/Psar:";
+        ["ALL", "FIRST BUY", "FIRST SELL"].forEach(val => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = val.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
+            select.appendChild(opt);
+        });
+    }
+}
+
 async function loadTable() {
     const timeframe = document.getElementById("timeframe").value;
-    const filter = document.getElementById("heikinPsarFilter").value;
+    const filter = document.getElementById("secondaryFilter").value;
     const loader = document.getElementById("loader");
     const errorDiv = document.getElementById("errorMessage");
 
@@ -419,7 +445,14 @@ async function loadTable() {
     loader.style.display = "flex";
 
     try {
-        const res = await fetch(`/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}`);
+        let url;
+        if (timeframe === "INTRADAY") {
+            url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(filter)}`;
+        } else {
+            url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}`;
+        }
+
+        const res = await fetch(url);
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         if (!data.length) throw new Error("No stock data found for the selected filters.");
@@ -442,6 +475,7 @@ async function loadTable() {
         loader.style.display = "none";
     }
 }
+
 
 // --- COLUMN TOGGLE PANEL ---
 function generateColumnToggles() {
