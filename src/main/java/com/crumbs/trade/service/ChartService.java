@@ -32,6 +32,7 @@ import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.dto.OHLC;
+import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.ResultVix;
@@ -211,7 +212,7 @@ public class ChartService {
 	 * Get Token Details
 	 */
 	public Strategy getTokenDetails(String name, String exchange) {
-		Strategy strategyModified = taskService.getStrategyDetails(name, exchange);
+		StrategyDTO strategyModified = taskService.getStrategyDetails(name, exchange);
 		Strategy strategy = taskService.getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
 		if (strategy != null) {
 			return strategy;
@@ -419,11 +420,11 @@ public class ChartService {
 			resultVix.setName(vix.getName());
 			if (testFlag) {
 				resultVix.setEntryTime(formatDateTime(vix.getTimestamp()));
+				resultVix.setEntryPrice(vix.getOpen());
 			} else {
 				resultVix.setEntryTime(currentDate);
+				resultVix.setEntryPrice(currentPrice);
 			}
-			resultVix.setEntryPrice(currentPrice);
-			// resultVix.setEntryPrice(vix.getClose());
 			resultVix.setActive("Y");
 			resultVix.setTimestamp(vix.getTimestamp());
 			resultVix.setType(type);
@@ -437,7 +438,7 @@ public class ChartService {
 
 			}
 
-		} else if ((resultVix.getType() != null && (!type.equalsIgnoreCase(resultVix.getType())) || testFlag)) {
+		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 
 			if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
@@ -449,7 +450,7 @@ public class ChartService {
 
 			
 			if (testFlag) {
-				resultVix.setExitPrice(vix.getClose());
+				resultVix.setExitPrice(vix.getOpen());
 				resultVix.setExitTime(formatDateTime(vix.getTimestamp()));
 			} else {
 				resultVix.setExitPrice(currentPrice);
@@ -476,7 +477,7 @@ public class ChartService {
 	}
 
 	public Token triggerExitOrder(ResultVix resultVix) {
-		Strategy strategyModified = new Strategy();
+		StrategyDTO strategyModified = new StrategyDTO();
 		strategyModified.setName(resultVix.getName().equalsIgnoreCase("NIFTY") == true ? "NIFTY" : resultVix.getName());
 		strategyModified.setTradingsymbol(resultVix.getSymbol());
 		String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
@@ -543,13 +544,13 @@ public class ChartService {
 	public Token triggerEntryOrder(Strategy strategy, String type, ResultVix resultVix)
 			throws AddressException, MessagingException, IOException {
 		// Get Name and Trading Symbol
-		Strategy strategyModified = taskService.getStrategyDetails(strategy.getName(), strategy.getExchange());
-		strategy = getNameAndTradingSymbol(strategyModified, type);
+		StrategyDTO strategyModified = taskService.getStrategyDetails(strategy.getName(), strategy.getExchange());
+		strategyModified = getNameAndTradingSymbol(strategyModified, type);
 		// Place an Order and SL
-		return placeOrder(strategy, type,"B");
+		return placeOrder(strategyModified, type,"B");
 	}
 
-	public Strategy getNameAndTradingSymbol(Strategy strategy, String type)
+	public StrategyDTO getNameAndTradingSymbol(StrategyDTO strategy, String type)
 			throws AddressException, MessagingException, IOException {
 		SmartConnect smartconnect = angelOne.signIn();
 		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
@@ -574,7 +575,7 @@ public class ChartService {
 		return Math.round(number / (float) base) * base;
 	}
 
-	public Token placeOrder(Strategy strategy, String transactionType, String flatTradeType) {
+	public Token placeOrder(StrategyDTO strategy, String transactionType, String flatTradeType) {
 		SmartConnect smartconnect = angelOne.signIn();
 		Token token = new Token();
 
@@ -678,8 +679,8 @@ public class ChartService {
 
 	}
 
-	public Strategy setValues(ResultVix resultVix) {
-		Strategy strategy = new Strategy();
+	public StrategyDTO setValues(ResultVix resultVix) {
+		StrategyDTO strategy = new StrategyDTO();
 		strategy.setToken(resultVix.getToken());
 		strategy.setTradingsymbol(resultVix.getSymbol());
 		strategy.setName(resultVix.getName());

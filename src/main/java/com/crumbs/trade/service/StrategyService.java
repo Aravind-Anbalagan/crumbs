@@ -226,7 +226,7 @@ public class StrategyService {
 		{
 			//Gap Down
 			int diff = nifty_ClosePrice.intValue() - nifty_OpenPrice.intValue();
-			if(diff<=70)
+			if(diff<=50)
 			{
 				return true; // No big move 
 			}
@@ -235,7 +235,7 @@ public class StrategyService {
 		{
 			//Gap Up
 			int diff = nifty_OpenPrice.intValue() - nifty_ClosePrice.intValue();
-			if(diff<=70)
+			if(diff<=50)
 			{
 				return true; // No big move 
 			}

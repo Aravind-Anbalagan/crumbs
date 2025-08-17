@@ -50,10 +50,9 @@ public class StrangleController {
 	 * save in DB
 	 */
 
-	// @Scheduled(cron = "0 45 9 * * ?")
-	// @Scheduled(cron = "0 15 10-15 * * ?")
-	// @Scheduled(cron = "0 45 10-14 * * ?")
-	// @Scheduled(cron = "0 15 15 * * ?")
+	@Scheduled(cron = "0 45 9 * * MON-FRI", zone = "IST")        // 9:45
+	@Scheduled(cron = "0 15,45 10-14 * * MON-FRI", zone = "IST") // 10:15–14:45
+	@Scheduled(cron = "0 15 15 * * MON-FRI", zone = "IST")       // 3:15
 	public void runTask() {
 		// Code to run every 30 minutes from 9:45 AM to 3:30 PM
 		//logger.info("30 MINUTES Candle Reading..");
@@ -66,7 +65,7 @@ public class StrangleController {
 	}
 
 	// Run every 30 sec from 9.15 AM to 3:30 PM
-	@Scheduled(cron = "0/30 * 9-15 * * ?", zone = "IST")
+	@Scheduled(cron = "0/30 * 9-15 * * MON-FRI", zone = "IST")
 	public void modifiedShortStrangle() throws SmartAPIException, Exception {
 		LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
 		LocalTime start = LocalTime.of(9, 15);

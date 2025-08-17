@@ -52,6 +52,7 @@ import com.crumbs.trade.dto.CandlesDetails;
 import com.crumbs.trade.dto.PivotRequest;
 import com.crumbs.trade.dto.PivotResponse;
 import com.crumbs.trade.dto.PriceActionResult;
+import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Time;
 import com.crumbs.trade.entity.Candle;
 import com.crumbs.trade.entity.Indexes;
@@ -2445,24 +2446,32 @@ public class TaskService {
 
 	}
 
-	public Strategy getStrategyDetails(String name, String exchange) {
+	public StrategyDTO getStrategyDetails(String name, String exchange) {
 
 		if ("NIFTY_OI".equalsIgnoreCase(name) && "NSE".equalsIgnoreCase(exchange)) {
-			return strategyRepo.findByName("NIFTY");
+			// return strategyRepo.findByName("NIFTY");
+			return convertStrategyToDto(strategyRepo.findByName("NIFTY"));
 		} else if ("NFO".equalsIgnoreCase(exchange)) {
-			return strategyRepo.findByName("NIFTY");
+			// return strategyRepo.findByName("NIFTY");
+			return convertStrategyToDto(strategyRepo.findByName("NIFTY"));
 		} else if ("MCX".equalsIgnoreCase(exchange)) {
-			return strategyRepo.findByName("CRUDEOIL");
+			// return strategyRepo.findByName("CRUDEOIL");
+			return convertStrategyToDto(strategyRepo.findByName("CRUDEOIL"));
 		} else if ("NSE".equalsIgnoreCase(exchange)) {
-			return strategyRepo.findByName("VIX");
+			// return strategyRepo.findByName("VIX");
+			return convertStrategyToDto(strategyRepo.findByName("VIX"));
 		}
 		return null;
 	}
 
+	public StrategyDTO convertStrategyToDto(Strategy strategy) {
+		return objectMapper.convertValue(strategy, StrategyDTO.class);
+	}
+	
 	public void getVolumeData(String timeFrame, String type, boolean testflag) throws SmartAPIException {
 		try {
 
-			Strategy strategyModified = getStrategyDetails("NIFTY", type);
+			StrategyDTO strategyModified = getStrategyDetails("NIFTY", type);
 			Strategy strategy = getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
 			SmartConnect smartConnect = angelOne.signIn();
 			// pricesRepo.deleteAll();
@@ -2685,7 +2694,7 @@ public class TaskService {
 		BigDecimal firstVolume = new BigDecimal("0");
 		try {
 
-			Strategy strategyModified = getStrategyDetails("NIFTY", type);
+			StrategyDTO strategyModified = getStrategyDetails("NIFTY", type);
 			Strategy strategy = getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
 			SmartConnect smartConnect = angelOne.signIn();
 
