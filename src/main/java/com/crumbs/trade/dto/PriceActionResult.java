@@ -42,7 +42,7 @@ public class PriceActionResult {
     private String fibo_supportsJson;
     private String fibo_resistancesJson;
 
-    private BigDecimal fibo_nearestLevel;
+    private FibonacciLevel fibo_nearestLevel;
     private String fibo_label;
     private String fibo_type;                      // Support / Resistance
     private String fibo_bias;                      // Bullish bounce expected / Bearish rejection likely
@@ -57,6 +57,11 @@ public class PriceActionResult {
     private BigDecimal buyStopLoss;
     private BigDecimal sellStopLoss;
 
+    private String bias;                // Bullish / Bearish / Neutral
+    private String confluence;          // Description of confluence (e.g., "Support + Fibonacci + Volume")
+    private String betweenLevels;       // Example: "22000 - 22500"
+    private int confidenceScore;        // New: confidence score (0–100)
+    
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public void serializeListsToJson() {

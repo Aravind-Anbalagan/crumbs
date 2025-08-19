@@ -37,22 +37,19 @@ public class SRController {
 
 	// @Scheduled(fixedRate = 10000)
 	@GetMapping("/zones")
-	public PriceActionResult detectZones() {
+	public PriceActionResult detectZones(
+			@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame) {
 		// Mock OHLCV candles
 		pricesIndexRepo.deleteAll();
-		CandleRequestDto candle = new CandleRequestDto();
-		candle.setFromDate("2025-08-01 15:25");
-		candle.setToDate("2025-08-18 15:25");
-		candle.setTimeFrame("FIVE_MINUTE");
-		candle.setType("NFO");
+		
+		CandleRequestDto candle = srService.getCandleTiming(timeFrame);
+		
 		List<PricesIndex> candles = srService.getCandleData(candle);
 
 		if (candles != null && !candles.isEmpty()) {
 			BigDecimal currentPrice = srService.getCurrentPriceForIndex();
-			BigDecimal tolerance = BigDecimal.valueOf(0.5); // example tolerance
-			BigDecimal avgVolume = BigDecimal.valueOf(100000); // example volume filter
 
-			PriceActionResult pa = priceActionService.analyze(currentPrice, candles, PriceActionService.Mode.INTRADAY);
+			PriceActionResult pa = priceActionService.analyze(currentPrice, candles,timeFrame);
 			return pa;
 		}
 

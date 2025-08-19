@@ -1340,7 +1340,7 @@ public class TaskService {
 			}
 
 // Price action / Fibonacci analysis
-			PriceActionResult pa = priceActionService.analyze(index_CurrentPrice, last200);
+			PriceActionResult pa = priceActionService.analyze(index_CurrentPrice, last200,timeframe);
 			indicator.setDailyPriceActionSupport(pa.getSr_nearestSupportsJson());
 			indicator.setDailyPriceActionResistance(pa.getSr_nearestResistancesJson());
 			indicator.setDailyPriceActionFlag(pa.isSr_priceActionTriggered());
@@ -1408,7 +1408,7 @@ public class TaskService {
 
 	public PriceActionResult getLevels(List<PricesIndex> list, BigDecimal index_CurrentPrice)
 			throws JsonProcessingException {
-		PriceActionResult levels = priceActionService.analyze(index_CurrentPrice, list);
+		PriceActionResult levels = priceActionService.analyze(index_CurrentPrice, list,"ONE_DAY");
 		// System.out.println(levels);
 		return levels;
 	}
@@ -1732,7 +1732,7 @@ public class TaskService {
 		// Price Action & Fibonacci — analyze once
 		Pageable pageable_ma = PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "id"));
 		List<PricesIndex> last200 = pricesList.subList(0, Math.min(200, pricesList.size()));
-		var analysis = priceActionService.analyze(index_CurrentPrice, last200);
+		var analysis = priceActionService.analyze(index_CurrentPrice, last200,timeFrame);
 
 		indicator.setWeeklyPriceActionSupport(analysis.getSr_nearestSupportsJson());
 		indicator.setWeeklyPriceActionResistance(analysis.getSr_nearestResistancesJson());

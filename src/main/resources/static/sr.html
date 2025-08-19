@@ -16,11 +16,12 @@
       background: #fff;
       padding: 5px 10px;
       height: 40px;
+      flex-wrap: wrap;
   }
 
   #ohlcDisplay {
       font-weight: bold;
-      white-space: nowrap;  /* show fully */
+      white-space: nowrap;
   }
 
   #timeframeContainer {
@@ -87,10 +88,7 @@
     <label for="timeframeSelect">Interval / Best Days:</label>
     <select id="timeframeSelect">
       <option value="ONE_MINUTE" data-bestdays="15">ONE_MINUTE (15)</option>
-      <option value="THREE_MINUTE" data-bestdays="30">THREE_MINUTE (30)</option>
-      <option value="FIVE_MINUTE" data-bestdays="50">FIVE_MINUTE (50)</option>
-      <option value="TEN_MINUTE" data-bestdays="50">TEN_MINUTE (50)</option>
-      <option value="FIFTEEN_MINUTE" data-bestdays="100">FIFTEEN_MINUTE (100)</option>
+      <option value="FIVE_MINUTE" data-bestdays="50" selected>FIVE_MINUTE (50)</option>
       <option value="THIRTY_MINUTE" data-bestdays="100">THIRTY_MINUTE (100)</option>
       <option value="ONE_HOUR" data-bestdays="200">ONE_HOUR (200)</option>
       <option value="ONE_DAY" data-bestdays="1000">ONE_DAY (1000)</option>
@@ -104,6 +102,7 @@
     <label><input type="checkbox" id="toggleFiboSupport" checked> Fib S</label>
     <label><input type="checkbox" id="toggleFiboResistance" checked> Fib R</label>
     <label><input type="checkbox" id="toggleSignal" checked> Signal</label>
+    <label><input type="checkbox" id="toggleGrid" checked> Grid</label>
   </div>
 </div>
 
@@ -116,100 +115,76 @@
 <div id="chart"></div>
 
 <script>
-async function loadChart() {
-    // Show loader
+let chart, candleSeries;
+let supportLines = [], resistanceLines = [], fiboSupportLines = [], fiboResistanceLines = [], signalMarkers = [];
+
+function updateOHLC(o, h, l, c, dateTime) {
+    document.getElementById('oVal').textContent = o;
+    document.getElementById('hVal').textContent = h;
+    document.getElementById('lVal').textContent = l;
+    document.getElementById('cVal').textContent = c;
+    if(dateTime) document.getElementById('ohlcDisplay').title = dateTime;
+}
+
+function formatToIST(utcSeconds) {
+    const d = new Date(utcSeconds * 1000);
+    d.setHours(d.getHours() + 5);
+    d.setMinutes(d.getMinutes() + 30);
+    const h = d.getHours().toString().padStart(2,'0');
+    const m = d.getMinutes().toString().padStart(2,'0');
+    return `${h}:${m}`;
+}
+
+async function loadChart(timeFrame) {
     document.getElementById('loader').style.display = 'flex';
 
     try {
-        const paResponse = await fetch('/sr/zones');
+        const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}`);
         const pa = await paResponse.json();
+        const candles = await fetch('/sr/getCandleList').then(r => r.json());
 
-        const candleResponse = await fetch('/sr/getCandleList');
-        const candles = await candleResponse.json();
+        if(!chart) {
+            chart = LightweightCharts.createChart(document.getElementById('chart'), {
+                layout: { backgroundColor: '#ffffff', textColor: '#000' },
+                rightPriceScale: { borderColor: '#ccc' },
+                timeScale: { borderColor: '#ccc', timeVisible: true, secondsVisible: true },
+                grid: { vertLines: { color: '#eee', visible: true }, horzLines: { color: '#eee', visible: true } }
+            });
 
-        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-            layout: { backgroundColor: '#ffffff', textColor: '#000' },
-            rightPriceScale: { borderColor: '#ccc' },
-            timeScale: { borderColor: '#ccc', timeVisible: true, secondsVisible: true }
-        });
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#4caf50', downColor: '#f44336', borderVisible: true,
+                wickUpColor: '#4caf50', wickDownColor: '#f44336'
+            });
 
-        const candleSeries = chart.addCandlestickSeries({
-            upColor: '#4caf50', downColor: '#f44336', borderVisible: true,
-            wickUpColor: '#4caf50', wickDownColor: '#f44336'
-        });
+            chart.subscribeCrosshairMove(function(param) {
+                if (!param || !param.point) return;
+                const sd = param.seriesData && param.seriesData.get ? param.seriesData.get(candleSeries) : null;
+                if(sd && sd.open !== undefined) {
+                    const d = new Date(param.time * 1000);
+                    d.setHours(d.getHours() + 5);
+                    d.setMinutes(d.getMinutes() + 30);
+                    const year = d.getFullYear();
+                    const month = (d.getMonth()+1).toString().padStart(2,'0');
+                    const day = d.getDate().toString().padStart(2,'0');
+                    const hours = d.getHours().toString().padStart(2,'0');
+                    const minutes = d.getMinutes().toString().padStart(2,'0');
+                    updateOHLC(sd.open, sd.high, sd.low, sd.close, `${year}-${month}-${day} ${hours}:${minutes}`);
+                    return;
+                }
+            });
+        }
 
-        const candleData = candles.map(c => {
-            const istDate = new Date(c.timestamp);
-            const utcMillis = istDate.getTime() - (5.5 * 60 * 60 * 1000);
-            return {
-                time: Math.floor(utcMillis / 1000),
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close
-            };
-        });
+        // Candle data
+        const candleData = candles.map(c => ({ time: Math.floor(new Date(c.timestamp).getTime()/1000), open: c.open, high: c.high, low: c.low, close: c.close }));
         candleSeries.setData(candleData);
 
-        function formatToIST(utcSeconds) {
-            const d = new Date(utcSeconds * 1000);
-            d.setHours(d.getHours() + 5);
-            d.setMinutes(d.getMinutes() + 30);
-            const h = d.getHours().toString().padStart(2,'0');
-            const m = d.getMinutes().toString().padStart(2,'0');
-            return `${h}:${m}`;
-        }
-
-        chart.applyOptions({
-            timeScale: { timeVisible: true, secondsVisible: true, tickMarkFormatter: formatToIST },
-            localization: { timeFormatter: formatToIST }
-        });
-
-        // ---- OHLC updater (single source of truth) ----
-        function updateOHLC(o, h, l, c) {
-            document.getElementById('oVal').textContent = o;
-            document.getElementById('hVal').textContent = h;
-            document.getElementById('lVal').textContent = l;
-            document.getElementById('cVal').textContent = c;
-        }
-
-        // Show last candle on load
-        const lastCandle = candleData[candleData.length - 1];
-        if (lastCandle) {
-            updateOHLC(lastCandle.open, lastCandle.high, lastCandle.low, lastCandle.close);
-        }
-
-        // Single crosshair handler (uses seriesData map; falls back to time lookup)
-        chart.subscribeCrosshairMove(function(param) {
-            if (!param || !param.point) return; // ignore when cursor leaves chart
-            const sd = param.seriesData && param.seriesData.get ? param.seriesData.get(candleSeries) : null;
-            if (sd && sd.open !== undefined) {
-                updateOHLC(sd.open, sd.high, sd.low, sd.close);
-                return;
-            }
-            // Fallback: match by time if needed
-            if (param.time) {
-                const c = candleData.find(x => x.time === param.time);
-                if (c) updateOHLC(c.open, c.high, c.low, c.close);
-            }
-        });
-        // ---- end OHLC ----
-
-        let supportLines = [];
-        let resistanceLines = [];
-        let fiboSupportLines = [];
-        let fiboResistanceLines = [];
-        let signalMarkers = [];
-
+        // Draw lines & signals
         function drawSupport() {
             supportLines.forEach(line => candleSeries.removePriceLine(line));
             supportLines = (pa.sr_nearestSupports || []).map(level => candleSeries.createPriceLine({
-                price: level,
-                color: '#2196f3',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: `S: ${level}`
+                price: Number(level),
+                color: '#2196f3', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true, title: `S: ${level}`
             }));
             return supportLines;
         }
@@ -217,12 +192,9 @@ async function loadChart() {
         function drawResistance() {
             resistanceLines.forEach(line => candleSeries.removePriceLine(line));
             resistanceLines = (pa.sr_nearestResistances || []).map(level => candleSeries.createPriceLine({
-                price: level,
-                color: '#f44336',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: `R: ${level}`
+                price: Number(level),
+                color: '#f44336', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true, title: `R: ${level}`
             }));
             return resistanceLines;
         }
@@ -230,12 +202,9 @@ async function loadChart() {
         function drawFiboSupport() {
             fiboSupportLines.forEach(line => candleSeries.removePriceLine(line));
             fiboSupportLines = (pa.fibo_supports || []).map(f => candleSeries.createPriceLine({
-                price: typeof f === 'number' ? f : f.level,
-                color: '#ff9800',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: `Fib S: ${typeof f === 'number' ? f : f.level}`
+                price: Number(typeof f === 'number' ? f : f.level),
+                color: '#ff9800', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true, title: `Fib S: ${Number(typeof f === 'number' ? f : f.level)}`
             }));
             return fiboSupportLines;
         }
@@ -243,12 +212,9 @@ async function loadChart() {
         function drawFiboResistance() {
             fiboResistanceLines.forEach(line => candleSeries.removePriceLine(line));
             fiboResistanceLines = (pa.fibo_resistances || []).map(f => candleSeries.createPriceLine({
-                price: typeof f === 'number' ? f : f.level,
-                color: '#ff9800',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: `Fib R: ${typeof f === 'number' ? f : f.level}`
+                price: Number(typeof f === 'number' ? f : f.level),
+                color: '#9c27b0', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true, title: `Fib R: ${Number(typeof f === 'number' ? f : f.level)}`
             }));
             return fiboResistanceLines;
         }
@@ -258,23 +224,18 @@ async function loadChart() {
             signalMarkers = [];
             const lastTime = candleData[candleData.length-1]?.time;
             if(!lastTime) return;
-
-            if(pa.sr_signal === 'BUY') {
-                signalMarkers.push({ time: lastTime, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'BUY' });
-            } else if(pa.sr_signal === 'SELL') {
-                signalMarkers.push({ time: lastTime, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL' });
-            }
+            if(pa.sr_signal === 'BUY') signalMarkers.push({ time: lastTime, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'BUY' });
+            else if(pa.sr_signal === 'SELL') signalMarkers.push({ time: lastTime, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL' });
             candleSeries.setMarkers(signalMarkers);
         }
 
-        // Initial draw
         supportLines = drawSupport();
         resistanceLines = drawResistance();
         fiboSupportLines = drawFiboSupport();
         fiboResistanceLines = drawFiboResistance();
         drawSignal();
 
-        // ✅ Checkbox toggles preserved
+        // Toggles
         const toggles = [
             {id:'toggleSupport', drawFn: drawSupport, lines: supportLines},
             {id:'toggleResistance', drawFn: drawResistance, lines: resistanceLines},
@@ -285,15 +246,10 @@ async function loadChart() {
 
         toggles.forEach(t => {
             document.getElementById(t.id).addEventListener('change', function() {
-                if(this.checked) {
-                    t.lines = t.drawFn();
-                } else {
-                    if(t.lines) {
-                        t.lines.forEach(line => candleSeries.removePriceLine(line));
-                        t.lines.length = 0;
-                    } else if(t.id === 'toggleSignal') {
-                        candleSeries.setMarkers([]);
-                    }
+                if(this.checked) t.lines = t.drawFn();
+                else {
+                    if(t.lines) { t.lines.forEach(line => candleSeries.removePriceLine(line)); t.lines=[]; }
+                    else if(t.id==='toggleSignal') candleSeries.setMarkers([]);
                 }
                 updateMasterCheckbox();
             });
@@ -305,44 +261,40 @@ async function loadChart() {
             toggles.forEach(t => {
                 const checkbox = document.getElementById(t.id);
                 checkbox.checked = check;
-                if(check) {
-                    t.lines = t.drawFn();
-                } else {
-                    if(t.lines) {
-                        t.lines.forEach(line => candleSeries.removePriceLine(line));
-                        t.lines.length = 0;
-                    } else if(t.id === 'toggleSignal') {
-                        candleSeries.setMarkers([]);
-                    }
-                }
+                if(check) t.lines = t.drawFn();
+                else { if(t.lines) { t.lines.forEach(line => candleSeries.removePriceLine(line)); t.lines=[]; } else if(t.id==='toggleSignal') candleSeries.setMarkers([]); }
             });
         });
 
         function updateMasterCheckbox() {
             const allChecked = toggles.every(t => document.getElementById(t.id).checked);
             const noneChecked = toggles.every(t => !document.getElementById(t.id).checked);
-            if(allChecked) {
-                toggleAll.checked = true;
-                toggleAll.indeterminate = false;
-            } else if(noneChecked) {
-                toggleAll.checked = false;
-                toggleAll.indeterminate = false;
-            } else {
-                toggleAll.checked = false;
-                toggleAll.indeterminate = true;
-            }
+            if(allChecked) { toggleAll.checked=true; toggleAll.indeterminate=false; }
+            else if(noneChecked) { toggleAll.checked=false; toggleAll.indeterminate=false; }
+            else { toggleAll.checked=false; toggleAll.indeterminate=true; }
         }
 
-    } catch (e) {
+        // Grid toggle
+        const toggleGrid = document.getElementById('toggleGrid');
+        toggleGrid.addEventListener('change', function() {
+            chart.applyOptions({ grid: { vertLines: { visible: this.checked }, horzLines: { visible: this.checked } } });
+        });
+
+    } catch(e) {
         console.error("Error loading chart:", e);
         document.getElementById('loaderText').textContent = "⚠️ Failed to load chart data";
     } finally {
-        // Hide loader when done
-        document.getElementById('loader').style.display = 'none';
+        document.getElementById('loader').style.display='none';
     }
 }
 
-loadChart();
+// Load initial chart
+const initialTimeFrame = document.getElementById('timeframeSelect').value;
+loadChart(initialTimeFrame);
+
+document.getElementById('timeframeSelect').addEventListener('change', function() {
+    loadChart(this.value);
+});
 </script>
 
 </body>
