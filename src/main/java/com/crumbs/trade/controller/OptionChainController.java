@@ -69,7 +69,7 @@ public class OptionChainController {
 	@Scheduled(cron = "5 0/5 15-22 * * *", zone = "IST")
 	public void scheduledTask4() throws SmartAPIException, IOException {
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
-			oiService.getOptionChain("CRUDEOIL");
+			//oiService.getOptionChain("CRUDEOIL");
 		}
 
 	}

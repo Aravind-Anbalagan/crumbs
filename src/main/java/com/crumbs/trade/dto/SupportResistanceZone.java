@@ -15,4 +15,13 @@ public class SupportResistanceZone {
     private BigDecimal level;         // The price level
     private int touches;              // Number of times price touched this zone
     private String lastTouchedDate;   // Timestamp of last touch (assumed format from PricesIndex.getTimestamp())
+    private boolean volumeConfirmed;
+    
+ // Convenience constructor (defaults volumeConfirmed to false)
+    public SupportResistanceZone(BigDecimal level, int touches, String lastTouchedDate) {
+        this.level = level;
+        this.touches = touches;
+        this.lastTouchedDate = lastTouchedDate;
+        this.volumeConfirmed = false;
+    }
 }

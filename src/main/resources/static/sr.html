@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nifty SR + Fibonacci Chart</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
+
+  #controls {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      padding: 5px 10px;
+      height: 40px;
+  }
+
+  #ohlcDisplay {
+      font-weight: bold;
+      white-space: nowrap;  /* show fully */
+  }
+
+  #timeframeContainer {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+  }
+
+  #checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      justify-content: flex-end;
+  }
+
+  #chart { width: 100%; height: 600px; }
+
+  /* Loader styles */
+  #loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 1000;
+  }
+
+  .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 10px;
+  }
+
+  @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+  }
+
+  #loaderText {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+  }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <div id="ohlcDisplay">
+    O: <span id="oVal">-</span>
+    H: <span id="hVal">-</span>
+    L: <span id="lVal">-</span>
+    C: <span id="cVal">-</span>
+  </div>
+
+  <div id="timeframeContainer">
+    <label for="timeframeSelect">Interval / Best Days:</label>
+    <select id="timeframeSelect">
+      <option value="ONE_MINUTE" data-bestdays="15">ONE_MINUTE (15)</option>
+      <option value="THREE_MINUTE" data-bestdays="30">THREE_MINUTE (30)</option>
+      <option value="FIVE_MINUTE" data-bestdays="50">FIVE_MINUTE (50)</option>
+      <option value="TEN_MINUTE" data-bestdays="50">TEN_MINUTE (50)</option>
+      <option value="FIFTEEN_MINUTE" data-bestdays="100">FIFTEEN_MINUTE (100)</option>
+      <option value="THIRTY_MINUTE" data-bestdays="100">THIRTY_MINUTE (100)</option>
+      <option value="ONE_HOUR" data-bestdays="200">ONE_HOUR (200)</option>
+      <option value="ONE_DAY" data-bestdays="1000">ONE_DAY (1000)</option>
+    </select>
+  </div>
+
+  <div id="checkboxes">
+    <label><input type="checkbox" id="toggleAll" checked> All</label>
+    <label><input type="checkbox" id="toggleSupport" checked> Support</label>
+    <label><input type="checkbox" id="toggleResistance" checked> Resistance</label>
+    <label><input type="checkbox" id="toggleFiboSupport" checked> Fib S</label>
+    <label><input type="checkbox" id="toggleFiboResistance" checked> Fib R</label>
+    <label><input type="checkbox" id="toggleSignal" checked> Signal</label>
+  </div>
+</div>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="spinner"></div>
+  <div id="loaderText">Loading chart data...</div>
+</div>
+
+<div id="chart"></div>
+
+<script>
+async function loadChart() {
+    // Show loader
+    document.getElementById('loader').style.display = 'flex';
+
+    try {
+        const paResponse = await fetch('/sr/zones');
+        const pa = await paResponse.json();
+
+        const candleResponse = await fetch('/sr/getCandleList');
+        const candles = await candleResponse.json();
+
+        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+            layout: { backgroundColor: '#ffffff', textColor: '#000' },
+            rightPriceScale: { borderColor: '#ccc' },
+            timeScale: { borderColor: '#ccc', timeVisible: true, secondsVisible: true }
+        });
+
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#4caf50', downColor: '#f44336', borderVisible: true,
+            wickUpColor: '#4caf50', wickDownColor: '#f44336'
+        });
+
+        const candleData = candles.map(c => {
+            const istDate = new Date(c.timestamp);
+            const utcMillis = istDate.getTime() - (5.5 * 60 * 60 * 1000);
+            return {
+                time: Math.floor(utcMillis / 1000),
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close
+            };
+        });
+        candleSeries.setData(candleData);
+
+        function formatToIST(utcSeconds) {
+            const d = new Date(utcSeconds * 1000);
+            d.setHours(d.getHours() + 5);
+            d.setMinutes(d.getMinutes() + 30);
+            const h = d.getHours().toString().padStart(2,'0');
+            const m = d.getMinutes().toString().padStart(2,'0');
+            return `${h}:${m}`;
+        }
+
+        chart.applyOptions({
+            timeScale: { timeVisible: true, secondsVisible: true, tickMarkFormatter: formatToIST },
+            localization: { timeFormatter: formatToIST }
+        });
+
+        // ---- OHLC updater (single source of truth) ----
+        function updateOHLC(o, h, l, c) {
+            document.getElementById('oVal').textContent = o;
+            document.getElementById('hVal').textContent = h;
+            document.getElementById('lVal').textContent = l;
+            document.getElementById('cVal').textContent = c;
+        }
+
+        // Show last candle on load
+        const lastCandle = candleData[candleData.length - 1];
+        if (lastCandle) {
+            updateOHLC(lastCandle.open, lastCandle.high, lastCandle.low, lastCandle.close);
+        }
+
+        // Single crosshair handler (uses seriesData map; falls back to time lookup)
+        chart.subscribeCrosshairMove(function(param) {
+            if (!param || !param.point) return; // ignore when cursor leaves chart
+            const sd = param.seriesData && param.seriesData.get ? param.seriesData.get(candleSeries) : null;
+            if (sd && sd.open !== undefined) {
+                updateOHLC(sd.open, sd.high, sd.low, sd.close);
+                return;
+            }
+            // Fallback: match by time if needed
+            if (param.time) {
+                const c = candleData.find(x => x.time === param.time);
+                if (c) updateOHLC(c.open, c.high, c.low, c.close);
+            }
+        });
+        // ---- end OHLC ----
+
+        let supportLines = [];
+        let resistanceLines = [];
+        let fiboSupportLines = [];
+        let fiboResistanceLines = [];
+        let signalMarkers = [];
+
+        function drawSupport() {
+            supportLines.forEach(line => candleSeries.removePriceLine(line));
+            supportLines = (pa.sr_nearestSupports || []).map(level => candleSeries.createPriceLine({
+                price: level,
+                color: '#2196f3',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true,
+                title: `S: ${level}`
+            }));
+            return supportLines;
+        }
+
+        function drawResistance() {
+            resistanceLines.forEach(line => candleSeries.removePriceLine(line));
+            resistanceLines = (pa.sr_nearestResistances || []).map(level => candleSeries.createPriceLine({
+                price: level,
+                color: '#f44336',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true,
+                title: `R: ${level}`
+            }));
+            return resistanceLines;
+        }
+
+        function drawFiboSupport() {
+            fiboSupportLines.forEach(line => candleSeries.removePriceLine(line));
+            fiboSupportLines = (pa.fibo_supports || []).map(f => candleSeries.createPriceLine({
+                price: typeof f === 'number' ? f : f.level,
+                color: '#ff9800',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: `Fib S: ${typeof f === 'number' ? f : f.level}`
+            }));
+            return fiboSupportLines;
+        }
+
+        function drawFiboResistance() {
+            fiboResistanceLines.forEach(line => candleSeries.removePriceLine(line));
+            fiboResistanceLines = (pa.fibo_resistances || []).map(f => candleSeries.createPriceLine({
+                price: typeof f === 'number' ? f : f.level,
+                color: '#ff9800',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: `Fib R: ${typeof f === 'number' ? f : f.level}`
+            }));
+            return fiboResistanceLines;
+        }
+
+        function drawSignal() {
+            candleSeries.setMarkers([]);
+            signalMarkers = [];
+            const lastTime = candleData[candleData.length-1]?.time;
+            if(!lastTime) return;
+
+            if(pa.sr_signal === 'BUY') {
+                signalMarkers.push({ time: lastTime, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'BUY' });
+            } else if(pa.sr_signal === 'SELL') {
+                signalMarkers.push({ time: lastTime, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL' });
+            }
+            candleSeries.setMarkers(signalMarkers);
+        }
+
+        // Initial draw
+        supportLines = drawSupport();
+        resistanceLines = drawResistance();
+        fiboSupportLines = drawFiboSupport();
+        fiboResistanceLines = drawFiboResistance();
+        drawSignal();
+
+        // ✅ Checkbox toggles preserved
+        const toggles = [
+            {id:'toggleSupport', drawFn: drawSupport, lines: supportLines},
+            {id:'toggleResistance', drawFn: drawResistance, lines: resistanceLines},
+            {id:'toggleFiboSupport', drawFn: drawFiboSupport, lines: fiboSupportLines},
+            {id:'toggleFiboResistance', drawFn: drawFiboResistance, lines: fiboResistanceLines},
+            {id:'toggleSignal', drawFn: drawSignal, lines: null}
+        ];
+
+        toggles.forEach(t => {
+            document.getElementById(t.id).addEventListener('change', function() {
+                if(this.checked) {
+                    t.lines = t.drawFn();
+                } else {
+                    if(t.lines) {
+                        t.lines.forEach(line => candleSeries.removePriceLine(line));
+                        t.lines.length = 0;
+                    } else if(t.id === 'toggleSignal') {
+                        candleSeries.setMarkers([]);
+                    }
+                }
+                updateMasterCheckbox();
+            });
+        });
+
+        const toggleAll = document.getElementById('toggleAll');
+        toggleAll.addEventListener('change', function() {
+            const check = this.checked;
+            toggles.forEach(t => {
+                const checkbox = document.getElementById(t.id);
+                checkbox.checked = check;
+                if(check) {
+                    t.lines = t.drawFn();
+                } else {
+                    if(t.lines) {
+                        t.lines.forEach(line => candleSeries.removePriceLine(line));
+                        t.lines.length = 0;
+                    } else if(t.id === 'toggleSignal') {
+                        candleSeries.setMarkers([]);
+                    }
+                }
+            });
+        });
+
+        function updateMasterCheckbox() {
+            const allChecked = toggles.every(t => document.getElementById(t.id).checked);
+            const noneChecked = toggles.every(t => !document.getElementById(t.id).checked);
+            if(allChecked) {
+                toggleAll.checked = true;
+                toggleAll.indeterminate = false;
+            } else if(noneChecked) {
+                toggleAll.checked = false;
+                toggleAll.indeterminate = false;
+            } else {
+                toggleAll.checked = false;
+                toggleAll.indeterminate = true;
+            }
+        }
+
+    } catch (e) {
+        console.error("Error loading chart:", e);
+        document.getElementById('loaderText').textContent = "⚠️ Failed to load chart data";
+    } finally {
+        // Hide loader when done
+        document.getElementById('loader').style.display = 'none';
+    }
+}
+
+loadChart();
+</script>
+
+</body>
+</html>

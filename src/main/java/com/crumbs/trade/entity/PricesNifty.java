@@ -37,8 +37,12 @@ public class PricesNifty {
 	BigDecimal percentage;
 	@Column(name="signal")
 	String signal;
-	@Column(name="result")
-	String result;
+	@Column(name="cpr")
+	String cpr;
+	@Column(name="hourly")
+	String hourly;
 	@Column(name="currentprice")
 	BigDecimal currentprice;
+	@Column(name="result")
+	String result;
 }

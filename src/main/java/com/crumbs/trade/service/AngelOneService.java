@@ -193,7 +193,7 @@ public class AngelOneService {
 					//Live
 					if (strategy.getLive().equalsIgnoreCase("Y")) {
 						placeOrder(smartConnect, tokenCE,strategy);
-						insertOrder(tokenCE, StrategyService.MAX);
+						//insertOrder(tokenCE, StrategyService.MAX);
 						if (tokenCE.getPrice() != 0) {
 							tokenCE.setTriggerPrice((((double) 45) / 100) * tokenCE.getPrice() + tokenCE.getPrice());
 							// SL LEG
@@ -234,7 +234,7 @@ public class AngelOneService {
 					//Live
 					if (strategy.getLive().equalsIgnoreCase("Y")) {
 						placeOrder(smartConnect, tokenPE, strategy);
-						insertOrder(tokenPE, StrategyService.MIN);
+						//insertOrder(tokenPE, StrategyService.MIN);
 						if (tokenPE.getPrice() != 0) {
 							tokenPE.setTriggerPrice((((double) 45) / 100) * tokenPE.getPrice() + tokenPE.getPrice());
 							// SL-LEG

@@ -35,10 +35,12 @@ import com.crumbs.trade.dto.OHLC;
 import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
+import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.ResultVix;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.Vix;
 import com.crumbs.trade.repo.IndexesRepo;
+import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.ResultVixRepo;
 import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.TrendLineService.OHLCV;
@@ -84,6 +86,9 @@ public class ChartService {
 
 	@Autowired
 	FlatTradeService flatTradeService;
+	
+	@Autowired
+	PricesIndexRepo pricesIndexRepo;
 	/*
 	 * Get JsonDetail
 	 */
@@ -153,7 +158,7 @@ public class ChartService {
 
 			Strategy strategy = getTokenDetails(name, type);
 			if (strategy.getName() != null) {
-				readCandle(strategy, type, testflag, timeFrame, name, fromDate, toDate);
+				readCandle(strategy, type, testflag, timeFrame, name, fromDate, toDate,"HEIKIN_PSAR");
 				List<Candlestick> heikinAshiList = heikinAshiIndicator
 						.calculateHeikinAshiCandles(getValuesAsList(name));
 				if (heikinAshiList != null && !heikinAshiList.isEmpty()) {
@@ -221,7 +226,7 @@ public class ChartService {
 	}
 
 	public void readCandle(Strategy strategy, String type, boolean testflag, String timeFrame, String name,
-			String fromDate, String toDate) {
+			String fromDate, String toDate, String tableName) {
 		if (strategy != null) {
 
 			JSONArray responseArray = getJsonDetails(strategy, type, testflag, fromDate, toDate, timeFrame);
@@ -231,7 +236,14 @@ public class ChartService {
 					JSONArray ohlcArray = (JSONArray) item;
 					OHLC ohlc = getOHLC(ohlcArray);
 					if (ohlc != null) {
-						saveCandleData(ohlc, name, strategy);
+						if("HEIKIN_PSAR".equalsIgnoreCase(tableName))
+						{
+							saveCandleData(ohlc, name, strategy);
+						}
+						else
+						{
+							saveCandleData_Index(ohlc, tableName, strategy);
+						}
 
 					}
 				});
@@ -251,10 +263,24 @@ public class ChartService {
 		vix.setLow(ohlc.getLow());
 		vix.setName(name);
 		vix.setVolume(ohlc.getVolume());
-		vix.setRangle(ohlc.getRange());
+		vix.setRange(ohlc.getRange());
 		vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
 		// getTrendLine(strategy, vix);
 		vixRepo.save(vix);
+	}
+	public void saveCandleData_Index(OHLC ohlc, String name, Strategy strategy) {
+		PricesIndex vix = new PricesIndex();
+		vix.setTimestamp(ohlc.getTimestamp());
+		vix.setClose(ohlc.getClose());
+		vix.setHigh(ohlc.getHigh());
+		vix.setOpen(ohlc.getOpen());
+		vix.setLow(ohlc.getLow());
+		vix.setName(name);
+		vix.setVolume(ohlc.getVolume());
+		vix.setRange(ohlc.getRange());
+		vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
+		// getTrendLine(strategy, vix);
+		pricesIndexRepo.save(vix);
 	}
 
 	// Get Trend Line based on last 5 days candle data

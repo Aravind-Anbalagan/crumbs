@@ -163,8 +163,10 @@ public class Indicator {
 	@Column(name = "pivotFlag")
 	String pivotFlag;
 	// Daily
+	@Lob
 	@Column(name = "dailyPriceActionSupport")
 	String dailyPriceActionSupport;
+	@Lob
 	@Column(name = "dailyPriceActionResistance")
 	String dailyPriceActionResistance;
 	@Column(name = "dailyPriceActionFlag")
@@ -201,8 +203,10 @@ public class Indicator {
 
 	// weekly
 	// Daily
+	@Lob
 	@Column(name = "weeklyPriceActionSupport")
 	String weeklyPriceActionSupport;
+	@Lob
 	@Column(name = "weeklyPriceActionResistance")
 	String weeklyPriceActionResistance;
 	@Column(name = "weeklyPriceActionFlag")

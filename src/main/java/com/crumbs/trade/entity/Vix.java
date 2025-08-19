@@ -33,7 +33,7 @@ public class Vix {
 	@Column(name="volume")
 	BigDecimal volume;
 	@Column(name="range")
-	BigDecimal rangle;
+	BigDecimal range;
 	@Column(name="heikinachi")
 	String heikinachi;
 	@Column(name="psar")

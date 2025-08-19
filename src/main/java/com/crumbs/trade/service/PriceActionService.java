@@ -16,7 +16,8 @@ import java.util.stream.Collectors;
 @Service
 public class PriceActionService {
 
-    private static final int MAX_ZONES = 3;
+    private static final int MAX_ZONES_POSITIONAL = 3;
+    private static final int MAX_ZONES_INTRADAY = 5;
     private static final BigDecimal VOLUME_SPIKE_THRESHOLD = BigDecimal.valueOf(1.2);
 
     @Autowired
@@ -30,8 +31,16 @@ public class PriceActionService {
         UPTREND, DOWNTREND, SIDEWAYS, UNKNOWN
     }
 
+    public enum Mode {
+        POSITIONAL, INTRADAY
+    }
+
     public PriceActionResult analyze(BigDecimal currentPrice, List<PricesIndex> candles) {
-    	PriceActionResult result = new PriceActionResult();
+        return analyze(currentPrice, candles, Mode.POSITIONAL);
+    }
+
+    public PriceActionResult analyze(BigDecimal currentPrice, List<PricesIndex> candles, Mode mode) {
+        PriceActionResult result = new PriceActionResult();
         result.setCurrentPrice(currentPrice);
 
         if (candles == null || candles.size() < 5) {
@@ -56,19 +65,29 @@ public class PriceActionService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .divide(BigDecimal.valueOf(candles.size()), RoundingMode.HALF_UP);
 
-        BigDecimal tolerance = avgRange.multiply(BigDecimal.valueOf(0.4));
+        BigDecimal toleranceFactor = (mode == Mode.INTRADAY) ? BigDecimal.valueOf(0.25) : BigDecimal.valueOf(0.4);
+        BigDecimal tolerance = avgRange.multiply(toleranceFactor);
 
-        List<SupportResistanceZone> sr_supportZones = detectZones(candles, tolerance, true);
-        List<SupportResistanceZone> sr_resistanceZones = detectZones(candles, tolerance, false);
+        // --- Detect zones separately and remove duplicates ---
+        List<SupportResistanceZone> sr_supportZones = detectZones(candles, tolerance, true, avgVolume, mode);
+        List<BigDecimal> sr_supportLevels = sr_supportZones.stream()
+                .map(SupportResistanceZone::getLevel)
+                .distinct()
+                .sorted() // ascending
+                .collect(Collectors.toList());
 
-        List<BigDecimal> sr_supportLevels = sr_supportZones.stream().map(SupportResistanceZone::getLevel).toList();
-        List<BigDecimal> sr_resistanceLevels = sr_resistanceZones.stream().map(SupportResistanceZone::getLevel).toList();
+        List<SupportResistanceZone> sr_resistanceZones = detectZones(candles, tolerance, false, avgVolume, mode);
+        List<BigDecimal> sr_resistanceLevels = sr_resistanceZones.stream()
+                .map(SupportResistanceZone::getLevel)
+                .distinct()
+                .sorted(Comparator.reverseOrder()) // descending
+                .collect(Collectors.toList());
 
         boolean sr_nearSupport = isNearAny(currentPrice, sr_supportLevels, tolerance);
         boolean sr_nearResistance = isNearAny(currentPrice, sr_resistanceLevels, tolerance);
 
         Signal signal;
-        String reason = "";
+        String reason;
         String confidence = "LOW";
 
         if (sr_nearSupport && !sr_nearResistance) {
@@ -96,13 +115,14 @@ public class PriceActionService {
                 && (signal == Signal.BUY || signal == Signal.SELL);
 
         BigDecimal sr_stopLoss = signal != Signal.HOLD
-                ? calculateStopLoss(currentPrice, signal, sr_supportLevels, sr_resistanceLevels, avgRange)
+                ? calculateStopLoss(currentPrice, signal, sr_supportLevels, sr_resistanceLevels, avgRange, mode)
                 : null;
 
         BigDecimal sr_projectedTarget = signal != Signal.HOLD
-                ? projectTarget(currentPrice, signal.name(), avgRange)
+                ? projectTarget(currentPrice, signal.name(), avgRange, mode)
                 : null;
 
+        // Fibonacci levels
         List<FibonacciLevel> fibo_levels = calculateFibonacciLevelsWithLabels(
                 candles.stream().map(PricesIndex::getHigh).max(Comparator.naturalOrder()).orElse(currentPrice),
                 candles.stream().map(PricesIndex::getLow).min(Comparator.naturalOrder()).orElse(currentPrice)
@@ -194,37 +214,46 @@ public class PriceActionService {
         }
 
         result.serializeListsToJson();
-
         return result;
     }
 
-    private List<SupportResistanceZone> detectZones(List<PricesIndex> candles, BigDecimal tolerance, boolean isSupport) {
-        Map<BigDecimal, SupportResistanceZone> zoneMap = new TreeMap<>();
+    public List<SupportResistanceZone> detectZones(
+            List<PricesIndex> candles,
+            BigDecimal tolerance,
+            boolean isSupport,
+            BigDecimal avgVolume,
+            Mode mode) {
+
+        List<SupportResistanceZone> zones = new ArrayList<>();
+        int maxZones = (mode == Mode.INTRADAY) ? MAX_ZONES_INTRADAY : MAX_ZONES_POSITIONAL;
 
         for (PricesIndex c : candles) {
-            BigDecimal level = isSupport ? c.getLow() : c.getHigh();
-            if (level == null) continue;
+            BigDecimal level = (mode == Mode.POSITIONAL) ? c.getClose() : (isSupport ? c.getLow() : c.getHigh());
 
             boolean matched = false;
-            for (Map.Entry<BigDecimal, SupportResistanceZone> entry : zoneMap.entrySet()) {
-                if (isWithinTolerance(entry.getKey(), level, tolerance)) {
-                    SupportResistanceZone zone = entry.getValue();
-                    zone.setTouches(zone.getTouches() + 1);
-                    zone.setLastTouchedDate(c.getTimestamp());
+            for (SupportResistanceZone z : zones) {
+                if (z.getLevel().subtract(level).abs().compareTo(tolerance) <= 0) {
+                    z.setTouches(z.getTouches() + 1);
+                    z.setLastTouchedDate(c.getTimestamp());
+                    if (c.getVolume().compareTo(avgVolume) > 0) {
+                        z.setVolumeConfirmed(true);
+                    }
                     matched = true;
                     break;
                 }
             }
 
-            if (!matched) {
-                zoneMap.put(level, new SupportResistanceZone(level, 1, c.getTimestamp()));
+            if (!matched && zones.size() < maxZones) {
+                SupportResistanceZone newZone = new SupportResistanceZone();
+                newZone.setLevel(level);
+                newZone.setTouches(1);
+                newZone.setLastTouchedDate(c.getTimestamp());
+                newZone.setVolumeConfirmed(c.getVolume().compareTo(avgVolume) > 0);
+                zones.add(newZone);
             }
         }
 
-        return zoneMap.values().stream()
-                .sorted((a, b) -> isSupport ? b.getLevel().compareTo(a.getLevel()) : a.getLevel().compareTo(b.getLevel()))
-                .limit(MAX_ZONES)
-                .collect(Collectors.toList());
+        return zones;
     }
 
     private boolean isWithinTolerance(BigDecimal a, BigDecimal b, BigDecimal tolerance) {
@@ -239,8 +268,9 @@ public class PriceActionService {
     }
 
     private BigDecimal calculateStopLoss(BigDecimal price, Signal signal,
-                                         List<BigDecimal> supports, List<BigDecimal> resistances, BigDecimal range) {
-        BigDecimal buffer = range.multiply(BigDecimal.valueOf(0.5));
+                                         List<BigDecimal> supports, List<BigDecimal> resistances,
+                                         BigDecimal range, Mode mode) {
+        BigDecimal buffer = range.multiply(mode == Mode.INTRADAY ? BigDecimal.valueOf(0.3) : BigDecimal.valueOf(0.5));
         if (signal == Signal.BUY && !supports.isEmpty()) {
             return supports.get(0).subtract(buffer).setScale(2, RoundingMode.HALF_UP);
         } else if (signal == Signal.SELL && !resistances.isEmpty()) {
@@ -249,10 +279,12 @@ public class PriceActionService {
         return price;
     }
 
-    private BigDecimal projectTarget(BigDecimal currentPrice, String signal, BigDecimal avgRange) {
+    private BigDecimal projectTarget(BigDecimal currentPrice, String signal,
+                                     BigDecimal avgRange, Mode mode) {
+        BigDecimal multiplier = (mode == Mode.INTRADAY) ? BigDecimal.valueOf(1.0) : BigDecimal.valueOf(1.5);
         return switch (signal) {
-            case "BUY" -> currentPrice.add(avgRange.multiply(BigDecimal.valueOf(1.5))).setScale(2, RoundingMode.HALF_UP);
-            case "SELL" -> currentPrice.subtract(avgRange.multiply(BigDecimal.valueOf(1.5))).setScale(2, RoundingMode.HALF_UP);
+            case "BUY" -> currentPrice.add(avgRange.multiply(multiplier)).setScale(2, RoundingMode.HALF_UP);
+            case "SELL" -> currentPrice.subtract(avgRange.multiply(multiplier)).setScale(2, RoundingMode.HALF_UP);
             default -> currentPrice;
         };
     }
@@ -273,7 +305,6 @@ public class PriceActionService {
             BigDecimal level = high.subtract(range.multiply(ratios[i])).setScale(2, RoundingMode.HALF_UP);
             levels.add(new FibonacciLevel(level, labels[i]));
         }
-
         levels.sort(Comparator.comparing(FibonacciLevel::getLevel));
         return levels;
     }
@@ -289,7 +320,6 @@ public class PriceActionService {
     private Trend detectTrendDirection(List<PricesIndex> candles) {
         BigDecimal start = candles.get(0).getClose();
         BigDecimal end = candles.get(candles.size() - 1).getClose();
-
         if (start == null || end == null) return Trend.UNKNOWN;
 
         BigDecimal percentChange = end.subtract(start)
