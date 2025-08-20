@@ -1,16 +1,15 @@
 package com.crumbs.trade.utility;
 
 import java.io.File;
-import java.io.IOException;
 
 public class JVMRestarter {
 
     public static void restartJVM() {
         try {
-            // Path to current Java executable
+            // Path to current java executable
             String java = System.getProperty("java.home") + "/bin/java";
 
-            // Path to the currently running JAR
+            // Path to the running JAR file
             String jarPath = new File(
                     JVMRestarter.class.getProtectionDomain()
                             .getCodeSource()
@@ -18,10 +17,11 @@ public class JVMRestarter {
                             .toURI()
             ).getPath();
 
-            System.out.println("Restarting JVM...");
-            // Launch a new JVM process
+            System.out.println("Restarting JVM... old PID: " + ProcessHandle.current().pid());
+
+            // Start new JVM process
             new ProcessBuilder(java, "-jar", jarPath)
-                    .inheritIO() // optional: inherit stdout/stderr
+                    .inheritIO()
                     .start();
 
             // Exit current JVM
@@ -33,3 +33,4 @@ public class JVMRestarter {
         }
     }
 }
+

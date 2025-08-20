@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -270,7 +271,7 @@ public class ChartService {
 	}
 	public void saveCandleData_Index(OHLC ohlc, String name, Strategy strategy) {
 		PricesIndex vix = new PricesIndex();
-		vix.setTimestamp(ohlc.getTimestamp());
+		vix.setTimestamp(formatTime(ohlc.getTimestamp()));
 		vix.setClose(ohlc.getClose());
 		vix.setHigh(ohlc.getHigh());
 		vix.setOpen(ohlc.getOpen());
@@ -281,6 +282,18 @@ public class ChartService {
 		vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
 		// getTrendLine(strategy, vix);
 		pricesIndexRepo.save(vix);
+	}
+	
+	public String formatTime(String input) {
+		// Parse the IST timestamp
+        OffsetDateTime istDateTime = OffsetDateTime.parse(input);
+
+        // Convert to UTC
+        OffsetDateTime utcDateTime = istDateTime.withOffsetSameInstant(ZoneOffset.UTC);
+
+        // Format as ISO string for DB storage
+        String utcString = utcDateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+		return utcString;
 	}
 
 	// Get Trend Line based on last 5 days candle data
