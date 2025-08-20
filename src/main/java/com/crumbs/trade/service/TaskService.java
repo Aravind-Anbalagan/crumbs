@@ -2030,7 +2030,7 @@ public class TaskService {
 	private void processStockWithRetry(SmartConnect smartConnect, Indicator stock, boolean isBullish) {
 	    int attempts = 0;
 	    int maxAttempts = 5;
-	    long backoff = 1000;
+	    long backoff = 2000;
 
 	    while (attempts < maxAttempts) {
 	        try {
@@ -2076,7 +2076,7 @@ public class TaskService {
 	private BigDecimal getPriceWithRetry(SmartConnect smartConnect, Indicator stock) throws Exception {
 	    int attempts = 0;
 	    int maxAttempts = 5;
-	    long backoff = 500;
+	    long backoff = 2000;
 
 	    while (attempts < maxAttempts) {
 	        try {
@@ -2111,7 +2111,7 @@ public class TaskService {
 	private String getFirst3FiveMinsCandleWithRetry(SmartConnect smartConnect, Indicator stock) throws Exception {
 	    int attempts = 0;
 	    int maxAttempts = 10;
-	    long backoff = 1000;
+	    long backoff = 2000;
 
 	    while (attempts < maxAttempts) {
 	        try {
