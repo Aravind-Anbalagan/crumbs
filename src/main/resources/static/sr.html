@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nifty SR + Fibonacci Chart (IST)</title>
+<title>SR + Fibonacci Chart (IST)</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
@@ -65,18 +65,20 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
 #chart { width: 100%; height: 600px; }
 
 #loader {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #fff;       /* solid white, hides old chart */
     display: flex;
     flex-direction: column;
     align-items: center;
-    z-index: 1000;
-    background: rgba(255,255,255,0.7);
-    padding: 20px;
-    border-radius: 8px;
+    justify-content: center;
+    z-index: 9999;          /* on top of chart */
 }
+
+
 
 .spinner {
     border: 4px solid #f3f3f3;
@@ -190,50 +192,40 @@ function updateMasterCheckbox(){
     else{ toggleAll.checked=false; toggleAll.indeterminate=true; }
 }
 
+let lastRequestId = 0;
+
 async function loadChart(selectedValue) {
+    const requestId = ++lastRequestId;
     document.getElementById('loader').style.display = 'flex';
     document.getElementById('loaderText').textContent = 'Loading chart data...';
-
-    // Clear previous chart objects
-    if(candleSeries){ 
-        candleSeries.setData([]); 
-        candleSeries.setMarkers([]);
-    }
-    [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(l=>{
-        if(candleSeries && l) candleSeries.removePriceLine(l);
-    });
-    supportLines=[]; resistanceLines=[]; fiboSupportLines=[]; fiboResistanceLines=[]; signalMarkers=[];
-    currentPA={};
-    candleData=[];
 
     const [exchange,timeFrame] = selectedValue.split('|');
     const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
 
     try {
-        // 1️⃣ Fetch Price Action / SR zones first
+        // 1️⃣ Fetch SR zones first
         const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
-        currentPA = await paResponse.json();
+        if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
+        const paData = await paResponse.json();
+        if(requestId !== lastRequestId) return; // ignore stale response
+        currentPA = paData || {};
 
-        // 2️⃣ Only after SR zones, fetch candle data
+        // 2️⃣ Fetch candle data
         const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
+        if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
         const rawCandles = await candleResponse.json();
+        if(requestId !== lastRequestId) return;
 
-        // Map and filter candles
-        candleData = rawCandles
-            .filter(c => c && c.timestamp != null) // remove invalid timestamps
+        const newCandleData = (rawCandles || [])
+            .filter(c => c && c.timestamp != null)
             .map(c => ({
                 time: toISTEpoch(c.timestamp),
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close
+                open: c.open, high: c.high, low: c.low, close: c.close
             }));
 
-        if(candleData.length === 0){
-            throw new Error('No valid candle data received.');
-        }
+        if(newCandleData.length === 0) throw new Error('No valid candle data.');
 
-        // Initialize chart if first load
+        // Initialize chart only once
         if(!chart){
             chart = LightweightCharts.createChart(document.getElementById('chart'), {
                 layout:{ backgroundColor:'#ffffff', textColor:'#000' },
@@ -246,36 +238,50 @@ async function loadChart(selectedValue) {
                 wickUpColor:'#4caf50', wickDownColor:'#f44336'
             });
 
-            chart.subscribeCrosshairMove(function(param){
+            chart.subscribeCrosshairMove(param=>{
                 if(!param || !param.point) return;
-                const sd = param.seriesData && param.seriesData.get ? param.seriesData.get(candleSeries) : null;
+                const sd = param.seriesData?.get?.(candleSeries);
                 if(sd && sd.open !== undefined){
                     updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
                 }
             });
         }
 
-        // Set candle data
+        // ✅ Now replace data (do not clear earlier)
+        candleData = newCandleData;
         candleSeries.setData(candleData);
 
-        // Draw lines/markers based on toggles
+        // Clear old lines/markers
+        [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(l=>{
+            if(candleSeries && l) candleSeries.removePriceLine(l);
+        });
+        supportLines=[]; resistanceLines=[]; fiboSupportLines=[]; fiboResistanceLines=[]; signalMarkers=[];
+
+        // Redraw overlays
         if(document.getElementById('toggleSupport').checked) drawSupport();
         if(document.getElementById('toggleResistance').checked) drawResistance();
         if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
         if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
         if(document.getElementById('toggleSignal').checked) drawSignal();
 
-        // Fit chart to new data
         chart.timeScale().fitContent();
-
-    } catch(e) {
-        console.error(e);
+    } catch(err) {
+        console.error(err);
         updateOHLC('-', '-', '-', '-', '');
-        document.getElementById('loaderText').textContent="⚠️ Failed to load chart data";
-    } finally {
+        document.getElementById('loaderText').textContent = "⚠️ Failed to load chart data";
+        setTimeout(()=>{ 
+            if(requestId === lastRequestId) 
+                document.getElementById('loader').style.display='none'; 
+        }, 2000);
+        return;
+    }
+
+    if(requestId === lastRequestId){
         document.getElementById('loader').style.display='none';
     }
 }
+
+
 
 
 
