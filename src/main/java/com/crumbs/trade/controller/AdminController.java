@@ -61,9 +61,20 @@ public class AdminController {
      */
     @GetMapping("/restart-jvm")
     public String restartJVM() {
-        new Thread(() -> JVMRestarter.restartJVM()).start();
+        // Trigger JVM restart in a new thread to allow HTTP response
+        new Thread(() -> {
+            try {
+                // Optional: short delay for response to be sent
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            JVMRestarter.restartJVM();
+        }).start();
+
         return "JVM restart triggered!";
     }
+
 
     private long bytesToMB(long bytes) {
         return bytes / (1024 * 1024);
