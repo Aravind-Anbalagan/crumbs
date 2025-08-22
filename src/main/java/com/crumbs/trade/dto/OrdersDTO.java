@@ -14,6 +14,7 @@ public class OrdersDTO {
 	    private Date modifiedDate;
 	    private String comment;
 	    private String type;
+	    private String pr;
 	    private String result;
 	    private String timestamp;
 	    private String entryTime;

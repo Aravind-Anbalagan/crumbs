@@ -48,6 +48,7 @@ public class OrdersController {
         dto.setExchange(order.getExchange());
         dto.setToken(order.getToken());
         dto.setSymbol(order.getSymbol());
+        dto.setPr(order.getPriceAction());
         return dto;
     }
 }

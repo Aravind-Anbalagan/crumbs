@@ -4,43 +4,47 @@
     <meta charset="UTF-8" />
     <title>Orders List</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        html, body {
+            height: 100%;
             margin: 0;
-            padding: 0 0 70px 0; /* bottom padding for fixed pagination */
+            padding: 0;
+            overflow: hidden; /* prevent body scrolling */
+            font-family: Arial, sans-serif;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+   table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto; /* <-- let columns resize based on content */
+    font-size: 13px;    /* slightly smaller text for better fit */
+}
 
-        th, td {
-            border: 1px solid #cccccc;
-            padding: 8px;
-            text-align: left;
-        }
+th, td {
+    border: 1px solid #cccccc;
+    padding: 6px;
+    text-align: left;
+    white-space: nowrap; /* keep in single line */
+}
 
-        th {
-            background-color: #f2f2f2;
-            position: sticky; /* freeze header */
-            top: 0;
-            z-index: 5; /* ensure it stays above table rows */
-        }
+th {
+    font-size: 13px; /* slightly bigger for header */
+}
 
         tbody tr:nth-child(even) {
             background-color: #f9f9f9;
         }
 
-        .table-container {
-            overflow-y: auto;
-            max-height: calc(100vh - 120px); /* table scroll area minus header/padding */
-        }
+       .table-container {
+    height: calc(100vh - 70px);
+    overflow-y: auto;
+    overflow-x: auto; /* horizontal scroll if needed */
+}
+
 
         /* Pagination fixed at bottom */
         #pagination {
             position: fixed;
-            bottom: 10px;
+            bottom: 0;
             left: 50%;
             transform: translateX(-50%);
             background: white;
@@ -49,6 +53,7 @@
             box-shadow: 0 0 6px rgba(0,0,0,0.1);
             z-index: 999;
             text-align: center;
+            width: fit-content;
         }
 
         #pagination button {
@@ -70,6 +75,22 @@
             color: #999;
             cursor: default;
         }
+
+        /* Mobile-friendly pagination */
+        @media (max-width: 600px) {
+            #pagination {
+                bottom: 0;
+                width: 100%;
+                left: 0;
+                transform: none;
+                border-radius: 0;
+                box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+            }
+            #pagination button {
+                flex: 1;
+                padding: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -77,10 +98,10 @@
         <table id="ordersTable">
             <thead>
                 <tr>
-                    <th>ID</th>
                     <th>Name</th>
                     <th>Active</th>
                     <th>Type</th>
+                    <th>PR</th>
                     <th>Exchange</th>
                     <th>Token</th>
                     <th>Symbol</th>
@@ -110,6 +131,9 @@
         let ordersData = [];
 
         async function loadOrders() {
+            const tbody = document.querySelector('#ordersTable tbody');
+            tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; color:#007BFF;">Loading...</td></tr>`;
+
             try {
                 const response = await fetch('/api/orders');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -118,6 +142,7 @@
                 renderTablePage(currentPage);
                 renderPagination();
             } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; color:red;">Error loading orders</td></tr>`;
                 console.error('Error loading orders:', error);
             }
         }
@@ -126,6 +151,13 @@
             const tbody = document.querySelector('#ordersTable tbody');
             tbody.innerHTML = '';
 
+            if (ordersData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="17" style="text-align:center; color:#666;">No orders found</td>`;
+                tbody.appendChild(row);
+                return;
+            }
+
             const start = (page - 1) * rowsPerPage;
             const end = start + rowsPerPage;
             const pageItems = ordersData.slice(start, end);
@@ -133,10 +165,10 @@
             pageItems.forEach(order => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${order.id ?? ''}</td>
                     <td>${order.name ?? ''}</td>
                     <td>${order.active ?? ''}</td>
                     <td>${order.type ?? ''}</td>
+                    <td>${order.pr ?? ''}</td>
                     <td>${order.exchange ?? ''}</td>
                     <td>${order.token ?? ''}</td>
                     <td>${order.symbol ?? ''}</td>
@@ -151,6 +183,10 @@
                     <td>${order.maxLow ?? ''}</td>
                     <td>${order.result ?? ''}</td>
                 `;
+                if (order.active === true || order.active === "YES") {
+                    row.style.backgroundColor = "#e6f7ff";
+                    row.style.fontWeight = "bold";
+                }
                 tbody.appendChild(row);
             });
         }
