@@ -60,6 +60,7 @@ public class PriceActionService {
         String finalReason = "HOLD - No strong confluence detected.";
         String finalConfidence = "LOW";
 
+        // --- Determine final_signal based on SR and Fibonacci ---
         if (srSignal == fiboSignal && srSignal != Signal.HOLD) {
             finalSignal = srSignal;
             finalReason = "Strong confluence: " + srSignal + " from both SR & Fibonacci.";
@@ -76,6 +77,7 @@ public class PriceActionService {
             finalConfidence = "LOW";
         }
 
+        // --- Adjust confidence based on trend ---
         if (finalSignal == Signal.BUY && trend == Trend.UPTREND) {
             finalConfidence = "VERY_HIGH";
             finalReason += " Supported by uptrend.";
@@ -89,10 +91,27 @@ public class PriceActionService {
             }
         }
 
+        // --- Set final fields ---
         result.setFinal_signal(finalSignal.name());
         result.setFinal_reason(finalReason);
         result.setFinal_confidence(finalConfidence);
+
+        // --- Consolidated decision for DB storage ---
+        String consolidatedDecision;
+        if ("BUY".equals(result.getFinal_signal()) &&
+            ("UPTREND".equals(result.getSr_trend()) || "SIDEWAYS".equals(result.getSr_trend())) &&
+            ("VERY_HIGH".equals(result.getFinal_confidence()) || "HIGH".equals(result.getFinal_confidence()))) {
+            consolidatedDecision = "BUY";
+        } else if ("SELL".equals(result.getFinal_signal()) &&
+                   ("DOWNTREND".equals(result.getSr_trend()) || "SIDEWAYS".equals(result.getSr_trend())) &&
+                   ("VERY_HIGH".equals(result.getFinal_confidence()) || "HIGH".equals(result.getFinal_confidence()))) {
+            consolidatedDecision = "SELL";
+        } else {
+            consolidatedDecision = "NO_TRADE";
+        }
+        result.setConsolidatedDecision(consolidatedDecision);
     }
+
 
     // ---------------------- PRICE ACTION SR ----------------------
     private void analyzePriceActionSR(BigDecimal currentPrice, List<PricesIndex> candles, String timeframe, PriceActionResult result) {

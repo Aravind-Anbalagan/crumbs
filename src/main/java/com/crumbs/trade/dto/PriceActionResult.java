@@ -34,7 +34,7 @@ public class PriceActionResult {
     private BigDecimal fibo_stopLoss;
     private BigDecimal fibo_projectedTarget;
     private boolean volumeConfirmed;
-
+    private String consolidatedDecision;
     // === Fibonacci-Based ===
     private boolean fibo_triggered;
 
