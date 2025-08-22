@@ -46,4 +46,6 @@ public class PricesIndex {
 	BigDecimal currentprice;
 	@Column(name="result")
 	String result;
+	@Column(name="exchange")
+	String exchange;
 }

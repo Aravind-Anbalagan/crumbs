@@ -10,30 +10,57 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
 
 #controls {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     background: #fff;
     padding: 5px 10px;
-    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
     flex-wrap: wrap;
+    gap: 8px;
 }
 
-#ohlcDisplay { font-weight: bold; white-space: nowrap; }
+#ohlcDisplay {
+    font-weight: bold;
+    white-space: nowrap;
+    z-index: 1;
+}
 
-#timeframeContainer {
+#symbolIntervalContainer {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 2;
 }
 
-#checkboxes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    justify-content: flex-end;
+#optionsDropdown { margin-left:auto; position:relative; z-index:3; }
+#optionsButton { padding: 4px 8px; cursor: pointer; }
+#optionsMenu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    z-index: 999;
+    min-width: 180px; /* Ensures content fits */
+    white-space: nowrap; /* Prevents text from wrapping */
 }
+
+#optionsMenu label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+#optionsMenu label:last-child { margin-bottom: 0; }
+
+#optionsDropdown.open #optionsMenu { display: block; }
 
 #chart { width: 100%; height: 600px; }
 
@@ -46,6 +73,9 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
     flex-direction: column;
     align-items: center;
     z-index: 1000;
+    background: rgba(255,255,255,0.7);
+    padding: 20px;
+    border-radius: 8px;
 }
 
 .spinner {
@@ -73,26 +103,38 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
     C: <span id="cVal">-</span>
   </div>
 
-  <div id="timeframeContainer">
-    <label for="timeframeSelect">Interval / Best Days:</label>
-    <select id="timeframeSelect">
-      <option value="ONE_MINUTE" data-bestdays="15">ONE_MINUTE (15)</option>
-      <option value="FIVE_MINUTE" data-bestdays="50" selected>FIVE_MINUTE (50)</option>
-      <option value="THIRTY_MINUTE" data-bestdays="100">THIRTY_MINUTE (100)</option>
-      <option value="ONE_HOUR" data-bestdays="200">ONE_HOUR (200)</option>
-      <option value="ONE_DAY" data-bestdays="1000">ONE_DAY (1000)</option>
+  <div id="symbolIntervalContainer">
+    <label for="symbolIntervalSelect">Exchange / Interval / Best Days:</label>
+    <select id="symbolIntervalSelect">
+      <option value="NFO|ONE_MINUTE" data-nse="15" data-mcx="10">NFO - ONE_MINUTE (NSE:15, MCX:10)</option>
+      <option value="NFO|FIVE_MINUTE" data-nse="50" data-mcx="10" selected>NFO - FIVE_MINUTE (NSE:50, MCX:10)</option>
+      <option value="NFO|FIFTEEN_MINUTE" data-nse="100" data-mcx="30">NFO - FIFTEEN_MINUTE (NSE:100, MCX:30)</option>
+      <option value="NFO|THIRTY_MINUTE" data-nse="150" data-mcx="50">NFO - THIRTY_MINUTE (NSE:150, MCX:50)</option>
+      <option value="NFO|ONE_HOUR" data-nse="200" data-mcx="80">NFO - ONE_HOUR (NSE:200, MCX:80)</option>
+      <option value="NFO|ONE_DAY" data-nse="365" data-mcx="365">NFO - ONE_DAY (NSE:365, MCX:365)</option>
+      <option value="MCX|ONE_MINUTE" data-nse="15" data-mcx="10">MCX - ONE_MINUTE (NSE:15, MCX:10)</option>
+      <option value="MCX|FIVE_MINUTE" data-nse="50" data-mcx="10">MCX - FIVE_MINUTE (NSE:50, MCX:10)</option>
+      <option value="MCX|FIFTEEN_MINUTE" data-nse="100" data-mcx="30">MCX - FIFTEEN_MINUTE (NSE:100, MCX:30)</option>
+      <option value="MCX|THIRTY_MINUTE" data-nse="150" data-mcx="50">MCX - THIRTY_MINUTE (NSE:150, MCX:50)</option>
+      <option value="MCX|ONE_HOUR" data-nse="200" data-mcx="80">MCX - ONE_HOUR (NSE:200, MCX:80)</option>
+      <option value="MCX|ONE_DAY" data-nse="365" data-mcx="365">MCX - ONE_DAY (NSE:365, MCX:365)</option>
     </select>
   </div>
 
-  <div id="checkboxes">
-    <label><input type="checkbox" id="toggleAll" checked> All</label>
-    <label><input type="checkbox" id="toggleSupport" checked> Support</label>
-    <label><input type="checkbox" id="toggleResistance" checked> Resistance</label>
-    <label><input type="checkbox" id="toggleFiboSupport" checked> Fib S</label>
-    <label><input type="checkbox" id="toggleFiboResistance" checked> Fib R</label>
-    <label><input type="checkbox" id="toggleSignal" checked> Signal</label>
-    <label><input type="checkbox" id="toggleGrid" checked> Grid</label>
-  </div>
+  <div id="optionsDropdown">
+    <button id="refreshButton">🔄 Refresh</button>
+    <button id="optionsButton">Options ⚙️</button>
+    <div id="optionsMenu">
+      <label><input type="checkbox" id="toggleAll" checked> All</label>
+      <label><input type="checkbox" id="toggleSupport" checked> Support</label>
+      <label><input type="checkbox" id="toggleResistance" checked> Resistance</label>
+      <label><input type="checkbox" id="toggleFiboSupport" checked> Fib S</label>
+      <label><input type="checkbox" id="toggleFiboResistance" checked> Fib R</label>
+      <label><input type="checkbox" id="toggleSignal" checked> Signal</label>
+      <label><input type="checkbox" id="toggleGrid" checked> Grid</label>
+    </div>
+</div>
+
 </div>
 
 <div id="loader">
@@ -105,141 +147,136 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
 <script>
 let chart, candleSeries;
 let supportLines=[], resistanceLines=[], fiboSupportLines=[], fiboResistanceLines=[], signalMarkers=[];
+let currentPA={}, candleData=[];
 
-function toISTEpoch(utcTimestamp) {
-    const d = new Date(utcTimestamp);
-    const ist = new Date(d.getTime() + 5.5*60*60*1000);
-    return Math.floor(ist.getTime()/1000);
-}
-
-function formatToIST(istEpochSeconds) {
-    const d = new Date(istEpochSeconds*1000);
-    return d.toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12:false });
-}
+// Convert UTC timestamp to IST epoch seconds
+function toISTEpoch(utcTimestamp){ return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000); }
+function formatToIST(epoch){ return new Date(epoch*1000).toLocaleString('en-GB',{timeZone:'Asia/Kolkata',hour12:false}); }
 
 function updateOHLC(o,h,l,c,dateTime){
-    document.getElementById('oVal').textContent = o;
-    document.getElementById('hVal').textContent = h;
-    document.getElementById('lVal').textContent = l;
-    document.getElementById('cVal').textContent = c;
+    document.getElementById('oVal').textContent=o;
+    document.getElementById('hVal').textContent=h;
+    document.getElementById('lVal').textContent=l;
+    document.getElementById('cVal').textContent=c;
     if(dateTime) document.getElementById('ohlcDisplay').title=dateTime;
 }
 
-async function loadChart(timeFrame){
+// Draw functions
+function drawSupport(){ supportLines=(currentPA.sr_nearestSupports||[]).map(l=>candleSeries.createPriceLine({price:Number(l),color:'#2196f3',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:`S: ${l}`})); }
+function drawResistance(){ resistanceLines=(currentPA.sr_nearestResistances||[]).map(l=>candleSeries.createPriceLine({price:Number(l),color:'#f44336',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:`R: ${l}`})); }
+function drawFiboSupport(){ fiboSupportLines=(currentPA.fibo_supports||[]).map(f=>candleSeries.createPriceLine({price:Number(typeof f==='number'?f:f.level),color:'#ff9800',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:`Fib S: ${Number(typeof f==='number'?f:f.level)}`})); }
+function drawFiboResistance(){ fiboResistanceLines=(currentPA.fibo_resistances||[]).map(f=>candleSeries.createPriceLine({price:Number(typeof f==='number'?f:f.level),color:'#9c27b0',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:`Fib R: ${Number(typeof f==='number'?f:f.level)}`})); }
+function drawSignal(){ signalMarkers=[]; const lastTime=candleData[candleData.length-1]?.time; if(!lastTime) return; if(currentPA.sr_signal==='BUY') signalMarkers.push({time:lastTime,position:'belowBar',color:'green',shape:'arrowUp',text:'BUY'}); else if(currentPA.sr_signal==='SELL') signalMarkers.push({time:lastTime,position:'aboveBar',color:'red',shape:'arrowDown',text:'SELL'}); candleSeries.setMarkers(signalMarkers); }
+
+function updateMasterCheckbox(){
+    const toggles=['Support','Resistance','FiboSupport','FiboResistance','Signal'];
+    const allChecked=toggles.every(t=>document.getElementById('toggle'+t).checked);
+    const noneChecked=toggles.every(t=>!document.getElementById('toggle'+t).checked);
+    const toggleAll=document.getElementById('toggleAll');
+    if(allChecked){ toggleAll.checked=true; toggleAll.indeterminate=false; }
+    else if(noneChecked){ toggleAll.checked=false; toggleAll.indeterminate=false; }
+    else{ toggleAll.checked=false; toggleAll.indeterminate=true; }
+}
+
+async function loadChart(selectedValue){
     document.getElementById('loader').style.display='flex';
+    document.getElementById('loaderText').textContent = 'Loading chart data...';
+
+    // Clear previous chart objects
+    if(candleSeries){ 
+        candleSeries.setData([]); 
+        candleSeries.setMarkers([]);
+    }
+    [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(l=>{
+        if(candleSeries && l) candleSeries.removePriceLine(l);
+    });
+    supportLines=[]; resistanceLines=[]; fiboSupportLines=[]; fiboResistanceLines=[]; signalMarkers=[];
+    currentPA={};
+    candleData=[];
+
+    const [exchange,timeFrame]=selectedValue.split('|');
+    const symbol=exchange==='NFO'?'NIFTY':'CRUDEOIL';
+
     try{
-        const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}`);
-        const pa = await paResponse.json();
-        const candles = await fetch('/sr/getCandleList').then(r=>r.json());
+        currentPA=await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`)
+                            .then(r=>r.json());
+        candleData=await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`)
+                            .then(r=>r.json());
+
+        candleData=candleData.map(c=>({
+            time: toISTEpoch(c.timestamp),
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close
+        }));
 
         if(!chart){
-            chart = LightweightCharts.createChart(document.getElementById('chart'),{
+            chart=LightweightCharts.createChart(document.getElementById('chart'),{
                 layout:{ backgroundColor:'#ffffff', textColor:'#000' },
                 rightPriceScale:{ borderColor:'#ccc' },
                 timeScale:{ borderColor:'#ccc', timeVisible:true, secondsVisible:true },
                 grid:{ vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
             });
-
-            candleSeries = chart.addCandlestickSeries({
-                upColor:'#4caf50', downColor:'#f44336',
-                borderVisible:true, wickUpColor:'#4caf50', wickDownColor:'#f44336'
+            candleSeries=chart.addCandlestickSeries({
+                upColor:'#4caf50', downColor:'#f44336', borderVisible:true,
+                wickUpColor:'#4caf50', wickDownColor:'#f44336'
             });
 
             chart.subscribeCrosshairMove(function(param){
                 if(!param || !param.point) return;
-                const sd = param.seriesData && param.seriesData.get ? param.seriesData.get(candleSeries) : null;
-                if(sd && sd.open!==undefined){
-                    updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
-                }
+                const sd=param.seriesData && param.seriesData.get ? param.seriesData.get(candleSeries) : null;
+                if(sd && sd.open!==undefined){ updateOHLC(sd.open,sd.high,sd.low,sd.close,formatToIST(sd.time)); }
             });
         }
 
-        const candleData = candles.map(c=>({
-            time: toISTEpoch(c.timestamp),
-            open:c.open, high:c.high, low:c.low, close:c.close
-        }));
         candleSeries.setData(candleData);
+        if(document.getElementById('toggleSupport').checked) drawSupport();
+        if(document.getElementById('toggleResistance').checked) drawResistance();
+        if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+        if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+        if(document.getElementById('toggleSignal').checked) drawSignal();
 
-        // --- Draw Functions ---
-        function drawSupport(){ supportLines.forEach(l=>candleSeries.removePriceLine(l));
-            supportLines = (pa.sr_nearestSupports||[]).map(l=>candleSeries.createPriceLine({ price:Number(l), color:'#2196f3', lineWidth:1, lineStyle:LightweightCharts.LineStyle.Solid, axisLabelVisible:true, title:`S: ${l}` }));
-            return supportLines;
-        }
-        function drawResistance(){ resistanceLines.forEach(l=>candleSeries.removePriceLine(l));
-            resistanceLines = (pa.sr_nearestResistances||[]).map(l=>candleSeries.createPriceLine({ price:Number(l), color:'#f44336', lineWidth:1, lineStyle:LightweightCharts.LineStyle.Solid, axisLabelVisible:true, title:`R: ${l}` }));
-            return resistanceLines;
-        }
-        function drawFiboSupport(){ fiboSupportLines.forEach(l=>candleSeries.removePriceLine(l));
-            fiboSupportLines = (pa.fibo_supports||[]).map(f=>candleSeries.createPriceLine({ price:Number(typeof f==='number'?f:f.level), color:'#ff9800', lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dashed, axisLabelVisible:true, title:`Fib S: ${Number(typeof f==='number'?f:f.level)}` }));
-            return fiboSupportLines;
-        }
-        function drawFiboResistance(){ fiboResistanceLines.forEach(l=>candleSeries.removePriceLine(l));
-            fiboResistanceLines = (pa.fibo_resistances||[]).map(f=>candleSeries.createPriceLine({ price:Number(typeof f==='number'?f:f.level), color:'#9c27b0', lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dashed, axisLabelVisible:true, title:`Fib R: ${Number(typeof f==='number'?f:f.level)}` }));
-            return fiboResistanceLines;
-        }
-        function drawSignal(){
-            candleSeries.setMarkers([]); signalMarkers=[];
-            const lastTime = candleData[candleData.length-1]?.time;
-            if(!lastTime) return;
-            if(pa.sr_signal==='BUY') signalMarkers.push({time:lastTime, position:'belowBar', color:'green', shape:'arrowUp', text:'BUY'});
-            else if(pa.sr_signal==='SELL') signalMarkers.push({time:lastTime, position:'aboveBar', color:'red', shape:'arrowDown', text:'SELL'});
-            candleSeries.setMarkers(signalMarkers);
-        }
-
-        supportLines=drawSupport();
-        resistanceLines=drawResistance();
-        fiboSupportLines=drawFiboSupport();
-        fiboResistanceLines=drawFiboResistance();
-        drawSignal();
-
-        // --- Toggle Handling ---
-        const toggles=[
-            {id:'toggleSupport', drawFn:drawSupport, lines:supportLines},
-            {id:'toggleResistance', drawFn:drawResistance, lines:resistanceLines},
-            {id:'toggleFiboSupport', drawFn:drawFiboSupport, lines:fiboSupportLines},
-            {id:'toggleFiboResistance', drawFn:drawFiboResistance, lines:fiboResistanceLines},
-            {id:'toggleSignal', drawFn:drawSignal, lines:null}
-        ];
-
-        toggles.forEach(t=>{
-            document.getElementById(t.id).addEventListener('change',function(){
-                if(this.checked) t.lines = t.drawFn();
-                else{
-                    if(t.lines){ t.lines.forEach(l=>candleSeries.removePriceLine(l)); t.lines=[]; }
-                    else if(t.id==='toggleSignal') candleSeries.setMarkers([]);
-                }
-                updateMasterCheckbox();
-            });
-        });
-
-        const toggleAll=document.getElementById('toggleAll');
-        toggleAll.addEventListener('change',function(){
-            const check=this.checked;
-            toggles.forEach(t=>{
-                const cb=document.getElementById(t.id); cb.checked=check;
-                if(check) t.lines=t.drawFn();
-                else{ if(t.lines){ t.lines.forEach(l=>candleSeries.removePriceLine(l)); t.lines=[]; } else if(t.id==='toggleSignal') candleSeries.setMarkers([]); }
-            });
-        });
-
-        function updateMasterCheckbox(){
-            const allChecked=toggles.every(t=>document.getElementById(t.id).checked);
-            const noneChecked=toggles.every(t=>!document.getElementById(t.id).checked);
-            if(allChecked){ toggleAll.checked=true; toggleAll.indeterminate=false; }
-            else if(noneChecked){ toggleAll.checked=false; toggleAll.indeterminate=false; }
-            else{ toggleAll.checked=false; toggleAll.indeterminate=true; }
-        }
-
-        const toggleGrid=document.getElementById('toggleGrid');
-        toggleGrid.addEventListener('change',function(){ chart.applyOptions({ grid:{ vertLines:{visible:this.checked}, horzLines:{visible:this.checked} } }); });
-
-    }catch(e){ console.error("Error loading chart:", e); document.getElementById('loaderText').textContent="⚠️ Failed to load chart data"; }
-    finally{ document.getElementById('loader').style.display='none'; }
+    }catch(e){
+        console.error(e);
+        // Reset OHLC display
+        updateOHLC('-', '-', '-', '-', '');
+        document.getElementById('loaderText').textContent="⚠️ Failed to load chart data";
+    }finally{
+        document.getElementById('loader').style.display='none';
+    }
 }
 
+
+// Checkbox events
+['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t=>{
+    document.getElementById('toggle'+t).addEventListener('change',()=>{
+        if(candleSeries){
+            if(t==='Support'){ supportLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleSupport').checked) drawSupport(); }
+            if(t==='Resistance'){ resistanceLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleResistance').checked) drawResistance(); }
+            if(t==='FiboSupport'){ fiboSupportLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport(); }
+            if(t==='FiboResistance'){ fiboResistanceLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance(); }
+            if(t==='Signal'){ candleSeries.setMarkers([]); if(document.getElementById('toggleSignal').checked) drawSignal(); }
+            updateMasterCheckbox();
+        }
+    });
+});
+document.getElementById('toggleAll').addEventListener('change',()=>{
+    const check=document.getElementById('toggleAll').checked;
+    ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t=>{
+        const cb=document.getElementById('toggle'+t); cb.checked=check; cb.dispatchEvent(new Event('change'));
+    });
+});
+document.getElementById('toggleGrid').addEventListener('change',function(){ chart.applyOptions({ grid:{ vertLines:{visible:this.checked}, horzLines:{visible:this.checked} } }); });
+
 // Initial load
-loadChart(document.getElementById('timeframeSelect').value);
-document.getElementById('timeframeSelect').addEventListener('change',function(){ loadChart(this.value); });
+loadChart(document.getElementById('symbolIntervalSelect').value);
+document.getElementById('symbolIntervalSelect').addEventListener('change',function(){ loadChart(this.value); });
+document.getElementById('optionsButton').addEventListener('click',()=>{ document.getElementById('optionsDropdown').classList.toggle('open'); });
+document.getElementById('refreshButton').addEventListener('click',()=>{
+    loadChart(document.getElementById('symbolIntervalSelect').value);
+});
+
 </script>
 
 </body>

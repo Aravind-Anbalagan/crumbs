@@ -281,6 +281,7 @@ public class ChartService {
 		vix.setRange(ohlc.getRange());
 		vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
 		// getTrendLine(strategy, vix);
+		vix.setExchange(strategy.getExchange());
 		pricesIndexRepo.save(vix);
 	}
 	

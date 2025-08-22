@@ -30,6 +30,7 @@ import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.PriceHeikinashiMcxRepo;
 import com.crumbs.trade.repo.PriceHeikinashiNiftyRepo;
+import com.crumbs.trade.repo.PriceRepo;
 import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.PricesMcxRepo;
 import com.crumbs.trade.repo.PricesNiftyRepo;
@@ -104,6 +105,9 @@ public class AngelOneService {
 	@Autowired
 	OrderRepository orderRepository;
 	
+	@Autowired
+	PriceRepo priceRepo;
+	
 	/*
 	 * Get current price
 	 */
@@ -143,6 +147,8 @@ public class AngelOneService {
 		oiRepo.deleteAll();
 		resultVixRepo.deleteAll();
 		vixRepo.deleteAll();
+		orderRepository.deleteAll();
+		priceRepo.deleteAll();
 	}
 	/*
 	 * Get current price

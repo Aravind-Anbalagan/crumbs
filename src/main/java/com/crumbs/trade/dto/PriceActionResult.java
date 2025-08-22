@@ -23,7 +23,7 @@ public class PriceActionResult {
     private String sr_reason;                      // Reason for SR signal
     private String sr_confidence;                  // LOW / MEDIUM / HIGH
     private boolean sr_priceActionTriggered;
-
+    private String exchange;
     private BigDecimal sr_stopLoss;
     private BigDecimal sr_projectedTarget;
 
@@ -31,7 +31,8 @@ public class PriceActionResult {
     private List<BigDecimal> sr_nearestResistances;
     private String sr_nearestSupportsJson;
     private String sr_nearestResistancesJson;
-
+    private BigDecimal fibo_stopLoss;
+    private BigDecimal fibo_projectedTarget;
     private boolean volumeConfirmed;
 
     // === Fibonacci-Based ===
@@ -61,7 +62,10 @@ public class PriceActionResult {
     private String confluence;          // Description of confluence (e.g., "Support + Fibonacci + Volume")
     private String betweenLevels;       // Example: "22000 - 22500"
     private int confidenceScore;        // New: confidence score (0–100)
-    
+    private String final_signal;
+    private String final_reason;
+    private String final_confidence;
+
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public void serializeListsToJson() {

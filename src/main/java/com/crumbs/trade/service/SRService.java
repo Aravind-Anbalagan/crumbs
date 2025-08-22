@@ -41,67 +41,89 @@ public class SRService {
 
 	    
 	public enum TimeFrame {
-        ONE_MINUTE(15, 1),
-        FIVE_MINUTE(50, 5),
-        THIRTY_MINUTE(100, 30),
-        ONE_HOUR(200, 60),
-        ONE_DAY(1000, 1440);
+	    ONE_MINUTE(15, 1, 10),       // NSE=15, MCX=10
+	    FIVE_MINUTE(50, 5, 10),      // NSE=50, MCX=10
+	    FIFTEEN_MINUTE(100, 15, 30), // NSE=100, MCX=30
+	    THIRTY_MINUTE(150, 30, 50),  // NSE=150, MCX=50
+	    ONE_HOUR(200, 60, 80),       // NSE=200, MCX=80
+	    ONE_DAY(365, 1440, 365);     // NSE=365, MCX=365 (daily is light anyway)
 
-        private final int bestDays;
-        private final int candleMinutes;
+	    private final int nseBestDays;
+	    private final int candleMinutes;
+	    private final int mcxBestDays;
 
-        TimeFrame(int bestDays, int candleMinutes) {
-            this.bestDays = bestDays;
-            this.candleMinutes = candleMinutes;
-        }
+	    TimeFrame(int nseBestDays, int candleMinutes, int mcxBestDays) {
+	        this.nseBestDays = nseBestDays;
+	        this.candleMinutes = candleMinutes;
+	        this.mcxBestDays = mcxBestDays;
+	    }
 
-        public int getBestDays() {
-            return bestDays;
-        }
+	    public int getCandleMinutes() {
+	        return candleMinutes;
+	    }
 
-        public int getCandleMinutes() {
-            return candleMinutes;
-        }
-    }
+	    public int getBestDays(Market market) {
+	        return market == Market.NSE ? nseBestDays : mcxBestDays;
+	    }
+
+	    public enum Market {
+	        NSE, MCX
+	    }
+	}
+
 	
-	public List<PricesIndex> getCandleData(CandleRequestDto candleRequestDto)
+	public List<PricesIndex> getCandleData(CandleRequestDto candleRequestDto,
+			String name, String exchange)
 	{
-		Strategy strategy = chartService.getTokenDetails("NIFTY", "NFO");
+		Strategy strategy = chartService.getTokenDetails(name, exchange);
+		BigDecimal currentPrice = getCurrentPriceForIndex(strategy);
 		if (strategy.getName() != null) {
 			chartService.readCandle(strategy, candleRequestDto.getType() , false, candleRequestDto.getTimeFrame(), candleRequestDto.getName(),
-					candleRequestDto.getFromDate(), candleRequestDto.getToDate(),"OTHER");
+					candleRequestDto.getFromDate(), candleRequestDto.getToDate(),name);
 			return pricesIndexRepo.findAll();
 		}
 		return null;
 	}
 	
-	public BigDecimal getCurrentPriceForIndex()
+	public BigDecimal getCurrentPriceForIndex(Strategy strategy)
 	{
 		SmartConnect smartConnect = angelOne.signIn();
-		Indexes indexes = indexesRepo.findByNameAndSymbol("NIFTY", "NIFTY28AUG25FUT");
+		Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), strategy.getTradingsymbol());
 		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartConnect, indexes.getExchange(),
 				indexes.getSymbol(), indexes.getToken());
 		return currentPrice;
 	}
 	
-	public CandleRequestDto getCandleTiming(String timeFrame) {
-		
-		CandleRequestDto candle = new CandleRequestDto();
-		TimeFrame selected = TimeFrame.valueOf(timeFrame);
+	public CandleRequestDto getCandleTiming(String timeFrame, String exchange) {
+	    CandleRequestDto candle = new CandleRequestDto();
+	    TimeFrame selected = TimeFrame.valueOf(timeFrame);
 
-		LocalDateTime toDateTime = getLastValidCandleClose(selected);
-		LocalDateTime fromDateTime = toDateTime.minusDays(selected.getBestDays());
+	    // map exchange → Market enum
+	    TimeFrame.Market market = mapExchangeToMarket(exchange);
 
-		System.out.println("Timeframe: " + selected);
-		System.out.println("From: " + fromDateTime.format(FORMATTER));
-		System.out.println("To:   " + toDateTime.format(FORMATTER));
-		candle.setFromDate(fromDateTime.format(FORMATTER));
-		candle.setToDate(toDateTime.format(FORMATTER));
-		//candle.setFromDate("2025-08-01 15:25");
-		//candle.setToDate("2025-08-18 15:25");
-		candle.setTimeFrame(timeFrame);
-		candle.setType("NFO");
-		return candle;
+	    int bestDays = selected.getBestDays(market);
+
+	    LocalDateTime toDateTime = getLastValidCandleClose(selected);
+	    LocalDateTime fromDateTime = toDateTime.minusDays(bestDays);
+
+	    System.out.println("Exchange: " + exchange + " (Market: " + market + ")");
+	    System.out.println("Timeframe: " + selected);
+	    System.out.println("From: " + fromDateTime.format(FORMATTER));
+	    System.out.println("To:   " + toDateTime.format(FORMATTER));
+
+	    candle.setFromDate(fromDateTime.format(FORMATTER));
+	    candle.setToDate(toDateTime.format(FORMATTER));
+	    candle.setTimeFrame(timeFrame);
+	    candle.setType(exchange); // now type matches UI exchange (NFO, MCX, etc.)
+	    return candle;
+	}
+
+	private TimeFrame.Market mapExchangeToMarket(String exchange) {
+	    if ("MCX".equalsIgnoreCase(exchange)) {
+	        return TimeFrame.Market.MCX;
+	    }
+	    // Default to NSE if not MCX
+	    return TimeFrame.Market.NSE;
 	}
 	
 	private static LocalDateTime getLastValidCandleClose(TimeFrame tf) {
