@@ -62,6 +62,8 @@ public class ResultVix {
 	String token;
 	@Column(name="symbol")
 	String symbol;
+	@Column(name="priceAction")
+	String priceAction;
 	
 }
 

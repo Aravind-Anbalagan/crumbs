@@ -33,6 +33,7 @@ import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.dto.OHLC;
+import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
@@ -90,6 +91,9 @@ public class ChartService {
 	
 	@Autowired
 	PricesIndexRepo pricesIndexRepo;
+	
+	@Autowired
+	SRService srService;
 	/*
 	 * Get JsonDetail
 	 */
@@ -512,7 +516,11 @@ public class ChartService {
 			// Place Order  - EXIT
 			triggerExitOrder(resultVix);
 		}
-
+		PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+		if(pr!=null && pr.getConsolidatedDecision()!=null)
+		{
+			resultVix.setPriceAction(pr.getConsolidatedDecision());
+		}
 		resultVixRepo.save(resultVix);
 	}
 

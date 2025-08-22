@@ -46,22 +46,9 @@ public class SRController {
 			@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
 			@RequestParam(name = "name") String name,
 			@RequestParam(name = "exchange") String exchange) {
-		// Mock OHLCV candles
-		pricesIndexRepo.deleteAll();
 		
-		CandleRequestDto candle = srService.getCandleTiming(timeFrame,exchange);
-		
-		List<PricesIndex> candles = srService.getCandleData(candle,name,exchange);
 
-		if (candles != null && !candles.isEmpty()) {
-			Strategy strategy = chartService.getTokenDetails(name, exchange);
-			BigDecimal currentPrice = srService.getCurrentPriceForIndex(strategy);
-
-			PriceActionResult pa = priceActionService.analyze(currentPrice, candles,timeFrame);
-			return pa;
-		}
-
-		return null;
+		return srService.getPriceAction(timeFrame,name,exchange);
 	}
 	
 	@GetMapping("/getCandleList")

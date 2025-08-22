@@ -1,5 +1,7 @@
 package com.crumbs.trade.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.*;
@@ -8,6 +10,7 @@ import java.time.temporal.ChronoUnit;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CandleRequestDto;
+import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.entity.Candle;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.PricesIndex;
@@ -36,9 +39,12 @@ public class SRService {
 	@Autowired
 	AngelOne angelOne;
 	
+	@Autowired
+	PriceActionService priceActionService;
+	
 	private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
 	private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-
+	Logger logger = LoggerFactory.getLogger(SRService.class);
 	    
 	public enum TimeFrame {
 	    ONE_MINUTE(15, 1, 10),       // NSE=15, MCX=10
@@ -162,4 +168,24 @@ public class SRService {
 
         return marketStart.plusMinutes(completed);
     }
+	
+	public PriceActionResult getPriceAction(String timeFrame, String name, String exchange) {
+		// Mock OHLCV candles
+		pricesIndexRepo.deleteAll();
+
+		CandleRequestDto candle = getCandleTiming(timeFrame, exchange);
+
+		List<PricesIndex> candles = getCandleData(candle, name, exchange);
+
+		if (candles != null && !candles.isEmpty()) {
+			Strategy strategy = chartService.getTokenDetails(name, exchange);
+			BigDecimal currentPrice = getCurrentPriceForIndex(strategy);
+
+			PriceActionResult pa = priceActionService.analyze(currentPrice, candles, timeFrame);
+			return pa;
+		}
+		logger.error("Unable to get price action for {} ", name);
+		return null;
+
+	}
 }
