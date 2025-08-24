@@ -13,44 +13,75 @@
       padding: 1rem;
     }
 
+    /* Header row: title + controls */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.8rem;
+      flex-wrap: wrap; /* wrap on very small screens */
+    }
+
     h1 {
-      font-size: 1.5rem;
+      font-size: 1.4rem;
+      color: #00a8ff;
+      margin: 0;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.3rem; /* small spacing if wrapped */
+    }
+
+    button {
+      background-color: #333;
+      color: #eee;
+      border: 1px solid #555;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+
+    button:hover {
+      background-color: #555;
+    }
+
+    #refresh-status {
+      font-size: 0.8rem;
+      color: #999;
     }
 
     #log-container {
       white-space: pre-wrap;
       background-color: #2d2d2d;
       border: 1px solid #444;
+      border-radius: 6px;
       padding: 1rem;
-      height: 80vh;
-      overflow-y: scroll;
+      height: 75vh;
+      overflow-y: auto;
       font-size: 0.9rem;
+      line-height: 1.4em;
     }
 
-    .controls {
-      margin-bottom: 1rem;
-    }
-
-    button {
-      background-color: #444;
-      color: white;
-      border: none;
-      padding: 0.5rem 1rem;
-      margin-right: 0.5rem;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #666;
-    }
+    /* Highlight log levels */
+    .log-error { color: #ff6b6b; font-weight: bold; }
+    .log-warn  { color: #ffd93d; }
+    .log-info  { color: #4cd137; }
   </style>
 </head>
 <body>
-  <h1>Server Log Viewer</h1>
-  <div class="controls">
-    <button onclick="refreshLogs()">Refresh</button>
-    <button onclick="toggleAutoScroll(this)">Auto-Scroll: ON</button>
+  <div class="header">
+    <h1>Server Log Viewer</h1>
+    <div class="controls">
+      <button onclick="refreshLogs()">Refresh</button>
+      <button onclick="toggleAutoScroll(this)">Auto-Scroll: ON</button>
+      <span id="refresh-status">Last updated: never</span>
+    </div>
   </div>
+
   <div id="log-container">Loading logs...</div>
 
   <script>
@@ -69,13 +100,19 @@
           return;
         }
 
-        const text = await response.text();
-        const logContainer = document.getElementById('log-container');
-        logContainer.textContent = text;
+        let text = await response.text();
+        text = highlightLogs(text);
 
-        if (autoScroll) {
+        const logContainer = document.getElementById('log-container');
+        logContainer.innerHTML = text;
+
+        // only autoscroll if user is near bottom
+        const nearBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight < 50;
+        if (autoScroll && nearBottom) {
           logContainer.scrollTop = logContainer.scrollHeight;
         }
+
+        document.getElementById('refresh-status').textContent = "Last updated: " + new Date().toLocaleTimeString();
       } catch (e) {
         document.getElementById('log-container').textContent = "Error loading log file.";
       }
@@ -83,6 +120,13 @@
 
     function refreshLogs() {
       fetchLogs();
+    }
+
+    function highlightLogs(text) {
+      return text
+        .replace(/ERROR/g, '<span class="log-error">ERROR</span>')
+        .replace(/WARN/g, '<span class="log-warn">WARN</span>')
+        .replace(/INFO/g, '<span class="log-info">INFO</span>');
     }
 
     setInterval(fetchLogs, 5000); // auto-refresh every 5s

@@ -21,6 +21,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.OIDto;
+import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.entity.Expiry;
 import com.crumbs.trade.entity.OIDATA;
 import com.crumbs.trade.entity.Strategy;
@@ -61,7 +62,7 @@ public class OIDataService {
 		// Iterate Each Expiry - only monthly
 		if (expiryList != null && !expiryList.isEmpty()) {
 			expiryList.stream().forEach(expiry -> {
-				Strategy strategy = strategyRepo.findByName(name);
+				StrategyDTO strategy = taskService.convertStrategyToDto(strategyRepo.findByName(name));
 				List<OIDto> optionChainList = new ArrayList<>();
 
 				if (strategy != null) {
@@ -329,7 +330,7 @@ public class OIDataService {
 		return newValue;
 	}
 
-	public BigDecimal getCurrentAdjustedPrice(Strategy strategy, int roundOff) {
+	public BigDecimal getCurrentAdjustedPrice(StrategyDTO strategy, int roundOff) {
 		SmartConnect smartConnect = angelOne.signIn();
 		JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(), strategy.getTradingsymbol(),
 				strategy.getToken());
@@ -356,7 +357,7 @@ public class OIDataService {
 		return divided.multiply(divisor);
 	}
 
-	public List<OIDto> prepareOIStrikeData(BigDecimal currentPrice, Strategy strategy, String name, int count,
+	public List<OIDto> prepareOIStrikeData(BigDecimal currentPrice, StrategyDTO strategy, String name, int count,
 			int roundoff) throws IOException, SmartAPIException {
 		List<OIDto> optionChainList = new ArrayList<>();
 		OIDto oiDto = new OIDto();
@@ -404,7 +405,7 @@ public class OIDataService {
 
 	}
 
-	public OIDto prepareOIData(OIDto oiDto, Strategy strategy, String name) throws IOException, SmartAPIException {
+	public OIDto prepareOIData(OIDto oiDto, StrategyDTO strategy, String name) throws IOException, SmartAPIException {
 		String CEType = null;
 		String PEType = null;
 		String expiry = null;

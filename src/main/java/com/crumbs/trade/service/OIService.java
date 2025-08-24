@@ -22,6 +22,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.OIDto;
+import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.entity.OI;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.OIRepo;
@@ -52,10 +53,9 @@ public class OIService {
 	 * Get the option Chain of the given index/stock
 	 */
 	public void getOptionChain(String name) throws IOException, SmartAPIException {
-		Strategy strategy = new Strategy();
+	
 		BigDecimal currentPrice;
-
-		strategy = strategyRepo.findByName(name);
+		StrategyDTO strategy = taskService.convertStrategyToDto(strategyRepo.findByName(name));
 		List<OIDto> optionChainList = new ArrayList<>();
 
 		if (strategy != null) {
@@ -105,6 +105,7 @@ public class OIService {
 			oi.setName(t.getName());
 			oi.setCallLTP(setNewValue(t.getCallLtp()));
 			oi.setCallOI(setNewValue(t.getCallOi()));
+			oi.setTotalVolume(setNewValue(t.getTotalVolume()));
 			oi.setCallOIChange(setNewValue(t.getCallOiChange()));
 			oi.setPutLTP(setNewValue(t.getPutLtp()));
 			oi.setPutOI(setNewValue(t.getPutOi()));
@@ -303,7 +304,7 @@ public class OIService {
 		return newValue;
 	}
 
-	public BigDecimal getCurrentAdjustedPrice(Strategy strategy) {
+	public BigDecimal getCurrentAdjustedPrice(StrategyDTO strategy) {
 		SmartConnect smartConnect = angelOne.signIn();
 		JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(), strategy.getTradingsymbol(),
 				strategy.getToken());
@@ -320,7 +321,7 @@ public class OIService {
 
 	}
 
-	public List<OIDto> prepareOIStrikeData(BigDecimal currentPrice, Strategy strategy, String name)
+	public List<OIDto> prepareOIStrikeData(BigDecimal currentPrice, StrategyDTO strategy, String name)
 			throws IOException, SmartAPIException {
 		List<OIDto> optionChainList = new ArrayList<>();
 		OIDto oiDto = new OIDto();
@@ -368,7 +369,7 @@ public class OIService {
 
 	}
 
-	public OIDto prepareOIData(OIDto oiDto, Strategy strategy, String name) throws IOException, SmartAPIException {
+	public OIDto prepareOIData(OIDto oiDto, StrategyDTO strategy, String name) throws IOException, SmartAPIException {
 		String CEType = null;
 		String PEType = null;
 		String expiry = null;
@@ -413,6 +414,7 @@ public class OIService {
 						getFormatedInput(item.get("exchTradeTime").toString(), item.get("opnInterest").toString()));
 				oiDto.setPutLtp(getFormatedInput(item.get("exchTradeTime").toString(), item.get("ltp").toString()));
 			}
+			oiDto.setTotalVolume(getFormatedInput(item.get("exchTradeTime").toString(), item.get("tradeVolume").toString()));
 			oiDto.setName(name);
 		}
 		return oiDto;

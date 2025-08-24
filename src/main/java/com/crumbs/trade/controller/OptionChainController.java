@@ -41,7 +41,7 @@ public class OptionChainController {
 
 	// For 9:20:05 AM to 9:55:05 AM AM:
 	//@Scheduled(fixedRate = 10000)
-	@Scheduled(cron = "5 20-59/5 9 * * *", zone = "IST")
+	//@Scheduled(cron = "5 20-59/5 9 * * *", zone = "IST")
 	public void scheduledTask1() throws SmartAPIException, IOException {
 
 		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
@@ -50,7 +50,7 @@ public class OptionChainController {
 	}
 
 	// For 10:00:05 AM to 2:55:05 PM
-	@Scheduled(cron = "5 0/5 10-14 * * *", zone = "IST")
+	//@Scheduled(cron = "5 0/5 10-14 * * *", zone = "IST")
 	public void scheduledTask2() throws SmartAPIException, IOException {
 		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
 			oiService.getOptionChain("NIFTY_OI");
@@ -58,7 +58,7 @@ public class OptionChainController {
 	}
 
 	// For 3:00:05 PM to 3:30:05 PM
-	@Scheduled(cron = "5 0-30/5 15 * * *", zone = "IST")
+	//@Scheduled(cron = "5 0-30/5 15 * * *", zone = "IST")
 	public void scheduledTask3() throws SmartAPIException, IOException {
 		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
 			oiService.getOptionChain("NIFTY_OI");
@@ -66,7 +66,7 @@ public class OptionChainController {
 	}
 
 	// For 3:00 PM to 3:30 PM:
-	@Scheduled(cron = "5 0/5 15-22 * * *", zone = "IST")
+	//@Scheduled(cron = "5 0/5 15-22 * * *", zone = "IST")
 	public void scheduledTask4() throws SmartAPIException, IOException {
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
 			//oiService.getOptionChain("CRUDEOIL");

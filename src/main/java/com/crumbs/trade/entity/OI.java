@@ -51,5 +51,9 @@ public class OI {
 	String callSignal;
 	@Column(name="expiry")
 	String expiry;
+	@Lob
+	@Column(name="totalVolume")
+	String totalVolume;
+	
 
 }

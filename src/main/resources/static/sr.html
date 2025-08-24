@@ -180,8 +180,32 @@ function drawSupport(){ supportLines=(currentPA.sr_nearestSupports||[]).map(l=>c
 function drawResistance(){ resistanceLines=(currentPA.sr_nearestResistances||[]).map(l=>candleSeries.createPriceLine({price:Number(l),color:'#f44336',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:`R: ${l}`})); }
 function drawFiboSupport(){ fiboSupportLines=(currentPA.fibo_supports||[]).map(f=>candleSeries.createPriceLine({price:Number(typeof f==='number'?f:f.level),color:'#ff9800',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:`Fib S: ${Number(typeof f==='number'?f:f.level)}`})); }
 function drawFiboResistance(){ fiboResistanceLines=(currentPA.fibo_resistances||[]).map(f=>candleSeries.createPriceLine({price:Number(typeof f==='number'?f:f.level),color:'#9c27b0',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:`Fib R: ${Number(typeof f==='number'?f:f.level)}`})); }
-function drawSignal(){ signalMarkers=[]; const lastTime=candleData[candleData.length-1]?.time; if(!lastTime) return; if(currentPA.sr_signal==='BUY') signalMarkers.push({time:lastTime,position:'belowBar',color:'green',shape:'arrowUp',text:'BUY'}); else if(currentPA.sr_signal==='SELL') signalMarkers.push({time:lastTime,position:'aboveBar',color:'red',shape:'arrowDown',text:'SELL'}); candleSeries.setMarkers(signalMarkers); }
+function drawSignal(){ 
+    signalMarkers=[]; 
+    const lastTime = candleData[candleData.length-1]?.time; 
+    if(!lastTime) return; 
 
+    if(currentPA.consolidatedDecision === 'BUY') {
+        signalMarkers.push({
+            time: lastTime,
+            position: 'belowBar',
+            color: 'green',
+            shape: 'arrowUp',
+            text: 'BUY'
+        });
+    } 
+    else if(currentPA.consolidatedDecision === 'SELL') {
+        signalMarkers.push({
+            time: lastTime,
+            position: 'aboveBar',
+            color: 'red',
+            shape: 'arrowDown',
+            text: 'SELL'
+        });
+    }
+
+    candleSeries.setMarkers(signalMarkers); 
+}
 function updateMasterCheckbox(){
     const toggles=['Support','Resistance','FiboSupport','FiboResistance','Signal'];
     const allChecked=toggles.every(t=>document.getElementById('toggle'+t).checked);
