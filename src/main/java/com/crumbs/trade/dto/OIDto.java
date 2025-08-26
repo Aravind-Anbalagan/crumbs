@@ -21,6 +21,7 @@ public class OIDto {
 	String name;
 	String spot;
 	String expiry;
-	String totalVolume;
+	String callVolume;
+	String putVolume;
 	
 }

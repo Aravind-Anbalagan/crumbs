@@ -5,110 +5,106 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crumbs</title>
   <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { 
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-    background-color: #f5f6fa; 
-    color: #333; 
-  }
-
-  /* Navbar as Tabs */
-  #menuBar {
-    background: linear-gradient(90deg, #1e272e, #2c3e50);
-    display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    overflow-x: auto;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-  }
-  .menu {
-    list-style: none;
-    display: flex;
-    flex: 1;
-    width: 100%;
-  }
-  .menu-item {
-    flex: 1; /* equal width tabs */
-    text-align: center;
-    position: relative;
-  }
-  .menu-item > a {
-    display: block;
-    padding: 14px 0;
-    color: #d2dae2;
-    text-decoration: none;
-    font-size: 15px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-  }
-  .menu-item > a:hover { 
-    background-color: rgba(255,255,255,0.05); 
-    color: #fff; 
-  }
-  .menu-item.active-menu > a { 
-    background: #00a8ff;
-    color: #fff;
-    font-weight: 600;
-    box-shadow: inset 0 -3px 0 #0077b6; /* tab underline effect */
-  }
-
-  /* Iframe */
-  #iframeContainer {
-    position: relative;
-    width: 100%;
-    height: calc(100vh - 50px);
-  }
-  #contentFrame {
-    width: 100%;
-    height: 100%;
-    border: none;
-    background: #fff;
-  }
-
-  /* Loading Spinner */
-  #spinner {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #00a8ff;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    display: none;
-    z-index: 20;
-  }
-  @keyframes spin { 
-    0% { transform: translate(-50%, -50%) rotate(0deg);} 
-    100% { transform: translate(-50%, -50%) rotate(360deg);} 
-  }
-</style>
-
+    html { box-sizing: border-box; }
+    *, *:before, *:after { box-sizing: inherit; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fa;
+      color: #333;
+    }
+    nav {
+      background: linear-gradient(90deg, #1e272e, #2c3e50);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    .menu {
+      display: flex;
+      list-style: none;
+      width: 100%;
+      overflow-x: auto;
+    }
+    .menu-item {
+      flex: 1;
+      text-align: center;
+    }
+    .menu-link {
+      display: block;
+      padding: 14px 0;
+      color: #d2dae2;
+      background: none;
+      font-size: 15px;
+      font-weight: 500;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 100%;
+    }
+    .menu-link:hover,
+    .menu-item.active-menu .menu-link {
+      background-color: rgba(255,255,255,0.05);
+      color: #fff;
+    }
+    .menu-item.active-menu .menu-link {
+      background: #00a8ff;
+      color: #fff;
+      font-weight: 600;
+      box-shadow: inset 0 -3px 0 #0077b6;
+    }
+    #iframeContainer {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 50px);
+    }
+    #contentFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #fff;
+    }
+    #spinner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #00a8ff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      display: none;
+      z-index: 20;
+    }
+    @keyframes spin {
+      0% { transform: translate(-50%, -50%) rotate(0deg);}
+      100% { transform: translate(-50%, -50%) rotate(360deg);}
+    }
+  </style>
 </head>
 <body>
-
-  <nav id="menuBar">
+  <nav aria-label="Main navigation">
     <ul class="menu">
-      <li class="menu-item"><a href="#" onclick="loadPage('stock.html')">Stocks</a></li>
-      <li class="menu-item"><a href="#" onclick="loadPage('sr.html')">Support-Resistance</a></li>
-      <li class="menu-item"><a href="#" onclick="loadPage('oi-daily.html')">OI - Daily</a></li>
-      <li class="menu-item"><a href="#" onclick="loadPage('oi-monthly.html')">OI - Monthly</a></li>
-      <li class="menu-item"><a href="#" onclick="loadPage('orders.html')">Orders</a></li>
-      <li class="menu-item"><a href="#" onclick="loadPage('log.html')">Log</a></li>
+      <li class="menu-item" data-url="stock.html"><button class="menu-link" type="button">Stocks</button></li>
+      <li class="menu-item" data-url="sr.html"><button class="menu-link" type="button">Support-Resistance</button></li>
+      <li class="menu-item" data-url="oi-daily.html"><button class="menu-link" type="button">OI - Daily</button></li>
+      <li class="menu-item" data-url="oi-monthly.html"><button class="menu-link" type="button">OI - Monthly</button></li>
+      <li class="menu-item" data-url="orders.html"><button class="menu-link" type="button">Orders</button></li>
+      <li class="menu-item" data-url="log.html"><button class="menu-link" type="button">Log</button></li>
     </ul>
   </nav>
 
   <div id="iframeContainer">
-    <div id="spinner"></div>
-    <iframe id="contentFrame" src="stock.html"></iframe>
+    <div id="spinner" role="status" aria-label="Loading"></div>
+    <iframe id="contentFrame" src="stock.html" title="Main Content"></iframe>
   </div>
 
   <script>
     const spinner = document.getElementById('spinner');
     const iframe = document.getElementById('contentFrame');
+    const menuItems = document.querySelectorAll('.menu-item');
 
     function loadPage(url) {
       spinner.style.display = 'block';
@@ -117,23 +113,29 @@
     }
 
     function highlightMenuByUrl(url) {
-      document.querySelectorAll(".menu-item").forEach(item => {
-        const link = item.querySelector("a");
-        if (link.getAttribute("onclick")?.includes(`'${url}'`)) {
-          item.classList.add("active-menu");
+      menuItems.forEach(item => {
+        if (item.dataset.url === url) {
+          item.classList.add('active-menu');
         } else {
-          item.classList.remove("active-menu");
+          item.classList.remove('active-menu');
         }
       });
     }
 
-    iframe.addEventListener("load", () => { 
+    menuItems.forEach(item => {
+      item.querySelector('.menu-link').addEventListener('click', () => {
+        loadPage(item.dataset.url);
+      });
+    });
+
+    iframe.addEventListener('load', () => {
       spinner.style.display = 'none';
-      const url = iframe.contentWindow.location.pathname.split("/").pop();
+      // Remove query params if any
+      const url = iframe.contentWindow.location.pathname.split("/").pop().split('?');
       highlightMenuByUrl(url);
     });
 
-    // Highlight default
+    // Initial highlight
     highlightMenuByUrl('stock.html');
   </script>
 </body>

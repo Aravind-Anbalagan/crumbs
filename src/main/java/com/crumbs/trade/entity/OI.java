@@ -27,9 +27,6 @@ public class OI {
 	@Column(name="callLTP")
 	String callLTP;
 	@Lob
-	@Column(name="callTrend")
-	String callTrend;
-	@Lob
 	@Column(name="putOIChange")
 	String putOIChange;
 	@Lob
@@ -38,9 +35,6 @@ public class OI {
 	@Lob
 	@Column(name="putLTP")
 	String putLTP;
-	@Lob
-	@Column(name="putTrend")
-	String putTrend;
 	@Column(name="spot")
 	String spot;
 	@Lob
@@ -52,8 +46,11 @@ public class OI {
 	@Column(name="expiry")
 	String expiry;
 	@Lob
-	@Column(name="totalVolume")
-	String totalVolume;
+	@Column(name="callVolume")
+	String callVolume;
+	@Lob
+	@Column(name="putVolume")
+	String putVolume;
 	
 
 }

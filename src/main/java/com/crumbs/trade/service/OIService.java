@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -22,11 +23,17 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.OIDto;
+import com.crumbs.trade.dto.OIUIDto;
+import com.crumbs.trade.dto.OptionTrackDTO;
 import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.entity.OI;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.OIParsingUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.transaction.Transactional;
 
@@ -105,10 +112,11 @@ public class OIService {
 			oi.setName(t.getName());
 			oi.setCallLTP(setNewValue(t.getCallLtp()));
 			oi.setCallOI(setNewValue(t.getCallOi()));
-			oi.setTotalVolume(setNewValue(t.getTotalVolume()));
+			oi.setCallVolume(setNewValue(t.getCallVolume()));
 			oi.setCallOIChange(setNewValue(t.getCallOiChange()));
 			oi.setPutLTP(setNewValue(t.getPutLtp()));
 			oi.setPutOI(setNewValue(t.getPutOi()));
+			oi.setPutVolume(setNewValue(t.getPutVolume()));
 			oi.setPutOIChange(setNewValue(t.getPutOiChange()));
 			oi.setExpiry(t.getExpiry());
 			oi.setCallSignal("BASE");
@@ -147,18 +155,14 @@ public class OIService {
 				oi.setPutLTP(getExistingValue(oi.getPutLTP(), t.getPutLtp()));
 				oi.setPutOI(getExistingValue(oi.getPutOI(), t.getPutOi()));
 				oi.setPutOIChange(getExistingValue(oi.getPutOIChange(), t.getPutOiChange()));
-				oi.setPutTrend(getExistingValue(oi.getPutTrend(), getOIList(oi, "PUT", t.getPutLtp().split("=")[0])));
-				oi.setCallTrend(
-						getExistingValue(oi.getCallTrend(), getOIList(oi, "CALL", t.getCallLtp().split("=")[0])));
 				oi.setStrikePrice(t.getStrikePrice());
 				oi.setName(t.getName());
-				// oi.setPutSignal(oiPrediction.getOISignal(convertStringToList(oi.getPutTrend())));
-				// oi.setCallSignal(oiPrediction.getOISignal(convertStringToList(oi.getCallTrend())));
-				oi.setPutSignal(getExistingValue(oi.getPutSignal(),
-						oiSignalGenerator.getSignal(oi.getPutLTP(), oi.getPutOI(), "PE")));
-				oi.setCallSignal(getExistingValue(oi.getCallSignal(),
-						oiSignalGenerator.getSignal(oi.getCallLTP(), oi.getCallOI(), "CE")));
+				
+				oi.setPutSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(oi.getPutLTP(),oi.getPutOI(),oi.getPutVolume()));
+				oi.setCallSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(oi.getCallLTP(),oi.getCallOI(),oi.getCallVolume()));
 				oi.setExpiry(t.getExpiry());
+				oi.setCallVolume(getExistingValue(oi.getCallVolume(), t.getCallVolume()));
+				oi.setPutVolume(getExistingValue(oi.getPutVolume(), t.getPutVolume()));
 				if (t.getSpot() != null) {
 					updateSpot(t.getName());
 					oi.setSpot(t.getSpot());
@@ -409,12 +413,14 @@ public class OIService {
 				oiDto.setCallOi(
 						getFormatedInput(item.get("exchTradeTime").toString(), item.get("opnInterest").toString()));
 				oiDto.setCallLtp(getFormatedInput(item.get("exchTradeTime").toString(), item.get("ltp").toString()));
+				oiDto.setCallVolume(getFormatedInput(item.get("exchTradeTime").toString(), item.get("tradeVolume").toString()));
 			} else {
 				oiDto.setPutOi(
 						getFormatedInput(item.get("exchTradeTime").toString(), item.get("opnInterest").toString()));
 				oiDto.setPutLtp(getFormatedInput(item.get("exchTradeTime").toString(), item.get("ltp").toString()));
+				oiDto.setPutVolume(getFormatedInput(item.get("exchTradeTime").toString(), item.get("tradeVolume").toString()));
 			}
-			oiDto.setTotalVolume(getFormatedInput(item.get("exchTradeTime").toString(), item.get("tradeVolume").toString()));
+			
 			oiDto.setName(name);
 		}
 		return oiDto;
@@ -423,4 +429,39 @@ public class OIService {
 	public String getFormatedInput(String key, String value) {
 		return key.concat(" = ").concat(value);
 	}
+
+	public List<OIUIDto> getOIDataDetails() {
+	    List<OI> entities = oiRepo.findAll();
+	    List<OIUIDto> dtoList = new ArrayList<>();
+
+	    for (OI entity : entities) {
+	        OIUIDto dto = new OIUIDto();
+	        //dto.setId(entity.getId());
+	        dto.setName(entity.getName());
+	        dto.setStrikePrice(entity.getStrikePrice());
+	        dto.setExpiry(entity.getExpiry());
+	        dto.setSpot(entity.getSpot());
+
+	        // Call side
+	        dto.setCallLTP(OIParsingUtil.parseTimeValueString(entity.getCallLTP()));
+	        //dto.setCallOI(OIParsingUtil.parseTimeValueString(entity.getCallOI()));
+	        //dto.setCallOIChange(OIParsingUtil.parseTimeValueString(entity.getCallOIChange()));
+	        dto.setCallSignal(entity.getCallSignal());
+	        //dto.setCallVolume(OIParsingUtil.parseTimeValueString(entity.getCallVolume())); // if you store call volume
+
+	        // Put side
+	        dto.setPutLTP(OIParsingUtil.parseTimeValueString(entity.getPutLTP()));
+	        //dto.setPutOI(OIParsingUtil.parseTimeValueString(entity.getPutOI()));
+	        //dto.setPutOIChange(OIParsingUtil.parseTimeValueString(entity.getPutOIChange()));
+	         dto.setPutSignal(entity.getPutSignal());
+	        //dto.setPutVolume(OIParsingUtil.parseTimeValueString(entity.getPutVolume())); // if you store put volume
+
+	       
+
+	        dtoList.add(dto);
+	    }
+
+	    return dtoList;
+	}
+
 }

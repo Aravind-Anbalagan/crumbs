@@ -1,205 +1,210 @@
 package com.crumbs.trade.service;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class OISignalGenerator {
 
-    public static class DataPoint {
-        private final LocalDateTime time;
-        private final BigDecimal oi;
-        private final BigDecimal ltp;
-        private final String type;
-        private String rawSignal;
-        private String confirmedSignal;
-        private String marketMovement;
-        private String supportResistanceType;
+    private static final List<Duration> DEFAULT_INTERVALS = Arrays.asList(
+            Duration.ofMinutes(15),
+            Duration.ofMinutes(30),
+            Duration.ofHours(1),
+            Duration.ofHours(4)
+    );
 
-        public DataPoint(String timestamp, BigDecimal oi, BigDecimal ltp, String type) {
-            this.time = LocalDateTime.parse(timestamp, DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss"));
+    private final List<DataPoint> history = new ArrayList<>();
+
+    public static class DataPoint {
+        private String time;
+        private BigDecimal oi;     // ✅ Open Interest
+        private BigDecimal ltp;    // ✅ Last Traded Price
+        private BigDecimal volume; // ✅ Volume
+
+        private Map<String, IntervalChange> intervalChanges = new LinkedHashMap<>();
+
+        @JsonIgnore
+        private LocalDateTime parsedTime;
+
+        public DataPoint(String time, BigDecimal oi, BigDecimal ltp, BigDecimal volume) {
+            this.time = time;
             this.oi = oi;
             this.ltp = ltp;
-            this.type = type;
+            this.volume = volume;
+            this.parsedTime = LocalDateTime.parse(time, DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss"));
         }
 
-        public LocalDateTime getTime() { return time; }
+        public String getTime() { return time; }
         public BigDecimal getOi() { return oi; }
         public BigDecimal getLtp() { return ltp; }
-        public String getType() { return type; }
+        public BigDecimal getVolume() { return volume; }
+        public Map<String, IntervalChange> getIntervalChanges() { return intervalChanges; }
 
-        public String getRawSignal() { return rawSignal; }
-        public void setRawSignal(String rawSignal) { this.rawSignal = rawSignal; }
+        public static class IntervalChange {
+            public BigDecimal oiChange;
+            public BigDecimal ltpChange;
+            public BigDecimal ltpPercentChange;
+            public BigDecimal volumeChange;
+            public String startTime;
+            public String endTime;
 
-        public String getConfirmedSignal() { return confirmedSignal; }
-        public void setConfirmedSignal(String confirmedSignal) { this.confirmedSignal = confirmedSignal; }
-
-        public String getMarketMovement() { return marketMovement; }
-        public void setMarketMovement(String marketMovement) { this.marketMovement = marketMovement; }
-
-        public String getSupportResistanceType() { return supportResistanceType; }
-        public void setSupportResistanceType(String supportResistanceType) { this.supportResistanceType = supportResistanceType; }
+            public IntervalChange(BigDecimal oiChange, BigDecimal ltpChange, BigDecimal ltpPercentChange,
+                                  BigDecimal volumeChange, String startTime, String endTime) {
+                this.oiChange = oiChange;
+                this.ltpChange = ltpChange;
+                this.ltpPercentChange = ltpPercentChange;
+                this.volumeChange = volumeChange;
+                this.startTime = startTime;
+                this.endTime = endTime;
+            }
+        }
     }
 
-    public static Map<String, BigDecimal> parseStringToMap(String dataString) {
+    // Parse string like "[26-Aug-2025 11:16:31 = 151900, ...]" to Map<timestamp,value>
+    private static Map<String, BigDecimal> parseStringToMap(String dataString) {
         Map<String, BigDecimal> map = new LinkedHashMap<>();
+        if (dataString == null || dataString.isEmpty()) return map;
         String[] entries = dataString.substring(1, dataString.length() - 1).split(", (?=\\d{2}-)");
-
         for (String entry : entries) {
             String[] parts = entry.split(" = ");
-            if (parts.length == 2) {
+            if (parts.length == 2 && !parts[1].trim().isEmpty()) {
                 map.put(parts[0].trim(), new BigDecimal(parts[1].trim()));
             }
         }
         return map;
     }
 
-    public static List<DataPoint> parseDataPoints(String ltpString, String oiString, String type) {
+    public DataPoint addTicksFromTimestampedStrings(String ltpString, String oiString, String volumeString) {
         Map<String, BigDecimal> ltpMap = parseStringToMap(ltpString);
         Map<String, BigDecimal> oiMap = parseStringToMap(oiString);
-        List<DataPoint> dataPoints = new ArrayList<>();
+        Map<String, BigDecimal> volumeMap = parseStringToMap(volumeString);
 
-        for (String timestamp : ltpMap.keySet()) {
-            if (oiMap.containsKey(timestamp)) {
-                dataPoints.add(new DataPoint(timestamp, oiMap.get(timestamp), ltpMap.get(timestamp), type));
-            }
+        BigDecimal lastOI = BigDecimal.ZERO;
+        BigDecimal lastVolume = BigDecimal.ZERO;
+        DataPoint latest = null;
+
+        for (String ts : ltpMap.keySet()) {
+            BigDecimal ltp = ltpMap.get(ts);                  // ✅ LTP from ltpMap
+            BigDecimal oi = oiMap.getOrDefault(ts, lastOI);   // ✅ OI from oiMap
+            BigDecimal volume = volumeMap.getOrDefault(ts, lastVolume); // ✅ Volume
+
+            DataPoint dp = new DataPoint(ts, oi, ltp, volume);
+            history.add(dp);
+            computeIntervalChanges(dp);
+            latest = dp;
+
+            lastOI = oi;
+            lastVolume = volume;
         }
-        dataPoints.sort(Comparator.comparing(DataPoint::getTime));
-        return dataPoints;
+
+        history.sort(Comparator.comparing(dp -> dp.parsedTime));
+        return latest;
     }
 
-    public static void generateRawSignals(List<DataPoint> dataPoints) {
-        for (int i = 0; i < dataPoints.size(); i++) {
-            if (i == 0) {
-                dataPoints.get(i).setRawSignal("BASE");
-                continue;
-            }
-            DataPoint prev = dataPoints.get(i - 1);
-            DataPoint curr = dataPoints.get(i);
-
-            int oiCompare = curr.getOi().compareTo(prev.getOi());
-            int ltpCompare = curr.getLtp().compareTo(prev.getLtp());
-
-            String signal;
-            if (oiCompare > 0 && ltpCompare > 0) signal = "SELL";
-            else if (oiCompare < 0 && ltpCompare > 0) signal = "BUY";
-            else if (oiCompare < 0 && ltpCompare < 0) signal = "HOLD";
-            else signal = "SIDEWAYS";
-
-            curr.setRawSignal(signal);
+    public String addTicksFromTimestampedStringsAsJson(String ltpString, String oiString, String volumeString) {
+        DataPoint latest = addTicksFromTimestampedStrings(ltpString, oiString, volumeString);
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.writeValueAsString(latest);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "{}";
         }
     }
 
-    public static List<String> confirmSignals(List<DataPoint> dataPoints) {
-        List<String> confirmedSignals = new ArrayList<>();
+    public String addNewTick(BigDecimal oi, BigDecimal ltp, BigDecimal volume) {
+        String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss"));
+        return addNewTick(time, oi, ltp, volume);
+    }
 
-        for (int i = 0; i < dataPoints.size(); i++) {
-            String confirmed;
-            if (i < 3) {
-                confirmed = dataPoints.get(i).getRawSignal();
+    public String addNewTick(String time, BigDecimal oi, BigDecimal ltp, BigDecimal volume) {
+        DataPoint dp = new DataPoint(time, oi, ltp, volume);
+        history.add(dp);
+        computeIntervalChanges(dp);
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.writeValueAsString(dp);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "{}";
+        }
+    }
+
+    private void computeIntervalChanges(DataPoint latest) {
+        history.sort(Comparator.comparing(dp -> dp.parsedTime));
+        LocalDateTime now = latest.parsedTime;
+
+        DataPoint overallBase = history.get(0);
+        latest.intervalChanges.put("Overall", buildIntervalChange(overallBase, latest));
+
+        for (Duration interval : DEFAULT_INTERVALS) {
+            DataPoint base = findBaseBefore(interval, now);
+            latest.intervalChanges.put(formatHumanReadable(interval), buildIntervalChange(base, latest));
+        }
+    }
+
+    private DataPoint findBaseBefore(Duration interval, LocalDateTime now) {
+        LocalDateTime target = now.minus(interval);
+        DataPoint closest = null;
+        for (DataPoint dp : history) {
+            if (!dp.parsedTime.isAfter(target)) {
+                closest = dp;
             } else {
-                List<String> recent = Arrays.asList(
-                        dataPoints.get(i - 2).getRawSignal(),
-                        dataPoints.get(i - 1).getRawSignal(),
-                        dataPoints.get(i).getRawSignal()
-                );
-
-                confirmed = recent.stream()
-                        .collect(Collectors.groupingBy(s -> s, Collectors.counting()))
-                        .entrySet().stream()
-                        .max(Map.Entry.comparingByValue())
-                        .map(Map.Entry::getKey)
-                        .orElse("HOLD");
+                break;
             }
-            confirmedSignals.add(confirmed);
-            dataPoints.get(i).setConfirmedSignal(confirmed);
         }
-        return confirmedSignals;
+        return closest != null ? closest : history.get(0);
     }
 
-    public static void filterRepeatedSignals(List<DataPoint> dataPoints) {
-        String lastConfirmed = null;
-        for (DataPoint dp : dataPoints) {
-            String current = dp.getConfirmedSignal();
-            if (("BUY".equals(current) || "SELL".equals(current))) {
-                if (current.equals(lastConfirmed)) {
-                    dp.setConfirmedSignal("HOLD");
-                } else {
-                    lastConfirmed = current;
-                }
-            }
+    private DataPoint.IntervalChange buildIntervalChange(DataPoint base, DataPoint latest) {
+        BigDecimal oiChange = latest.oi.subtract(base.oi);
+        BigDecimal ltpChange = latest.ltp.subtract(base.ltp);
+
+        BigDecimal ltpPercentChange = BigDecimal.ZERO;
+        if (base.ltp != null && base.ltp.abs().compareTo(BigDecimal.ZERO) > 0) {
+            ltpPercentChange = ltpChange
+                    .divide(base.ltp, 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
         }
+
+        BigDecimal volumeChange = latest.volume.subtract(base.volume);
+
+        return new DataPoint.IntervalChange(
+                oiChange,
+                ltpChange,
+                ltpPercentChange,
+                volumeChange,
+                base.time,
+                latest.time
+        );
     }
 
-    public static void mapSignalToMarketMovement(List<DataPoint> dataPoints) {
-        for (DataPoint dp : dataPoints) {
-            switch (dp.getConfirmedSignal()) {
-                case "BUY":
-                    dp.setMarketMovement("UP");
-                    break;
-                case "SELL":
-                    dp.setMarketMovement("DOWN");
-                    break;
-                case "HOLD":
-                case "SIDEWAYS":
-                case "BASE":
-                    dp.setMarketMovement("SIDEWAYS");
-                    break;
-                default:
-                    dp.setMarketMovement("UNKNOWN");
-            }
+    private static String formatHumanReadable(Duration duration) {
+        long hours = duration.toHours();
+        long minutes = duration.toMinutesPart();
+        StringBuilder label = new StringBuilder("Last ");
+        if (hours > 0) {
+            label.append(hours).append(" hour");
+            if (hours > 1) label.append("s");
         }
+        if (minutes > 0) {
+            if (hours > 0) label.append(" ");
+            label.append(minutes).append(" min");
+        }
+        if (hours == 0 && minutes == 0) label.append("0 min");
+        return label.toString();
     }
 
-    public static void detectSupportResistance(List<DataPoint> dataPoints) {
-        BigDecimal maxSupportOI = BigDecimal.ZERO;
-        BigDecimal maxResistanceOI = BigDecimal.ZERO;
-        int supportIndex = -1, resistanceIndex = -1;
-
-        for (int i = 1; i < dataPoints.size(); i++) {
-            DataPoint prev = dataPoints.get(i - 1);
-            DataPoint curr = dataPoints.get(i);
-            int oiCompare = curr.getOi().compareTo(prev.getOi());
-            int ltpCompare = curr.getLtp().compareTo(prev.getLtp());
-
-            if ("PE".equalsIgnoreCase(curr.getType()) && oiCompare > 0 && ltpCompare < 0 && curr.getOi().compareTo(maxSupportOI) > 0) {
-                maxSupportOI = curr.getOi();
-                supportIndex = i;
-            }
-            if ("CE".equalsIgnoreCase(curr.getType()) && oiCompare > 0 && ltpCompare < 0 && curr.getOi().compareTo(maxResistanceOI) > 0) {
-                maxResistanceOI = curr.getOi();
-                resistanceIndex = i;
-            }
-        }
-
-        if (supportIndex != -1) {
-            dataPoints.get(supportIndex).setSupportResistanceType("SUPPORT");
-        }
-        if (resistanceIndex != -1) {
-            dataPoints.get(resistanceIndex).setSupportResistanceType("RESISTANCE");
-        }
-    }
-
-    public String getSignal(String ltpString, String oiString, String type) {
-        List<DataPoint> dataPoints = parseDataPoints(ltpString, oiString, type);
-        generateRawSignals(dataPoints);
-        confirmSignals(dataPoints);
-        filterRepeatedSignals(dataPoints);
-        mapSignalToMarketMovement(dataPoints);
-        detectSupportResistance(dataPoints);
-
-       /* System.out.println("Time\t\t\t\tSignal\t\tMarketMove\tSupport/Resistance");
-        for (DataPoint dp : dataPoints) {
-            System.out.println(dp.getTime() + "\t" + dp.getConfirmedSignal() + "\t" + dp.getMarketMovement()
-                    + "\t" + Optional.ofNullable(dp.getSupportResistanceType()).orElse(""));
-        }*/
-
-        DataPoint last = dataPoints.get(dataPoints.size() - 1);
-        return last.getTime() + " = " + last.getConfirmedSignal() + " - " + last.getMarketMovement();
+    public void resetHistory() {
+        history.clear();
     }
 }

@@ -20,6 +20,7 @@
       justify-content: space-between;
       margin-bottom: 0.8rem;
       flex-wrap: wrap; /* wrap on very small screens */
+      gap: 0.5rem;
     }
 
     h1 {
@@ -32,21 +33,24 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      margin-top: 0.3rem; /* small spacing if wrapped */
+      margin-top: 0.3rem;
+      flex-wrap: wrap;
     }
 
-    button {
+    button, input {
       background-color: #333;
       color: #eee;
       border: 1px solid #555;
       padding: 0.4rem 0.8rem;
-      cursor: pointer;
       border-radius: 4px;
       font-size: 0.9rem;
     }
-
+    button { cursor: pointer; }
     button:hover {
       background-color: #555;
+    }
+    #search {
+      min-width: 150px;
     }
 
     #refresh-status {
@@ -60,10 +64,12 @@
       border: 1px solid #444;
       border-radius: 6px;
       padding: 1rem;
-      height: 75vh;
+      height: calc(100vh - 140px);
       overflow-y: auto;
       font-size: 0.9rem;
       line-height: 1.4em;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
 
     /* Highlight log levels */
@@ -77,7 +83,9 @@
     <h1>Server Log Viewer</h1>
     <div class="controls">
       <button onclick="refreshLogs()">Refresh</button>
+      <button onclick="toggleAutoRefresh(this)">Auto-Refresh: ON</button>
       <button onclick="toggleAutoScroll(this)">Auto-Scroll: ON</button>
+      <input type="text" id="search" placeholder="Search..." oninput="filterLogs()">
       <span id="refresh-status">Last updated: never</span>
     </div>
   </div>
@@ -86,13 +94,28 @@
 
   <script>
     let autoScroll = true;
+    let autoRefresh = true;
+    let intervalId = null;
+    let lastLogLength = 0;
+    let fullLogCache = ""; // keep the entire log text for filtering
 
     function toggleAutoScroll(button) {
       autoScroll = !autoScroll;
       button.textContent = autoScroll ? "Auto-Scroll: ON" : "Auto-Scroll: OFF";
     }
 
-    async function fetchLogs() {
+    function toggleAutoRefresh(button) {
+      autoRefresh = !autoRefresh;
+      button.textContent = autoRefresh ? "Auto-Refresh: ON" : "Auto-Refresh: OFF";
+
+      if (autoRefresh) {
+        intervalId = setInterval(fetchLogs, 5000);
+      } else {
+        clearInterval(intervalId);
+      }
+    }
+
+    async function fetchLogs(forceFull = false) {
       try {
         const response = await fetch('/api/logs/server');
         if (!response.ok) {
@@ -101,36 +124,68 @@
         }
 
         let text = await response.text();
-        text = highlightLogs(text);
+        fullLogCache = text;
 
         const logContainer = document.getElementById('log-container');
-        logContainer.innerHTML = text;
 
-        // only autoscroll if user is near bottom
-        const nearBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight < 50;
-        if (autoScroll && nearBottom) {
-          logContainer.scrollTop = logContainer.scrollHeight;
+        if (forceFull) {
+          logContainer.innerHTML = highlightLogs(text);
+
+          setTimeout(() => {
+            logContainer.scrollTop = logContainer.scrollHeight;
+          }, 0);
+
+        } else {
+          const newText = text.slice(lastLogLength);
+          if (newText.trim()) {
+            logContainer.insertAdjacentHTML('beforeend', highlightLogs(newText));
+          }
         }
 
-        document.getElementById('refresh-status').textContent = "Last updated: " + new Date().toLocaleTimeString();
+        lastLogLength = text.length;
+
+        const nearBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight < 50;
+        if (autoScroll && nearBottom) {
+          setTimeout(() => {
+            logContainer.scrollTop = logContainer.scrollHeight;
+          }, 0);
+        }
+
+        document.getElementById('refresh-status').textContent =
+          "Last updated: " + new Date().toLocaleTimeString();
+
       } catch (e) {
         document.getElementById('log-container').textContent = "Error loading log file.";
       }
     }
 
     function refreshLogs() {
-      fetchLogs();
+      fetchLogs(true);
     }
 
     function highlightLogs(text) {
       return text
-        .replace(/ERROR/g, '<span class="log-error">ERROR</span>')
-        .replace(/WARN/g, '<span class="log-warn">WARN</span>')
-        .replace(/INFO/g, '<span class="log-info">INFO</span>');
+        .replace(/\bERROR\b/g, '<span class="log-error">ERROR</span>')
+        .replace(/\bWARN\b/g,  '<span class="log-warn">WARN</span>')
+        .replace(/\bINFO\b/g,  '<span class="log-info">INFO</span>');
     }
 
-    setInterval(fetchLogs, 5000); // auto-refresh every 5s
-    fetchLogs(); // initial load
+    function filterLogs() {
+      const query = document.getElementById('search').value.toLowerCase();
+      const lines = fullLogCache.split("\n");
+      const filtered = lines.filter(line => line.toLowerCase().includes(query)).join("\n");
+      const logContainer = document.getElementById('log-container');
+      logContainer.innerHTML = highlightLogs(filtered);
+
+      // Scroll to bottom on filter results to show latest matches
+      setTimeout(() => {
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }, 0);
+    }
+
+    // Start auto-refresh when page loads
+    intervalId = setInterval(fetchLogs, 5000);
+    fetchLogs(true); // initial full load
   </script>
 </body>
 </html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Option Chain with Change Indicators</title>
+<style>
+  body {font-family: 'Segoe UI',sans-serif;background: #f6f9fc;margin:0;padding:16px;}
+  #optionInfo {text-align:center;background:#e3f2fd;border-radius:8px;padding:8px 16px;font-weight:500;margin-bottom:16px;}
+  .interval-bar {text-align:center;margin-bottom:14px;}
+  table {width:100%;border-collapse:collapse;box-shadow:0 2px 12px rgba(0,0,0,.07);background:#fff;font-size:.95rem;}
+  th,td {text-align:center;padding:10px 4px;border:1px solid #eee;font-variant-numeric:tabular-nums;}
+  thead {background:#0d47a1;color:#fff;}
+  .pos {color: #388e3c; font-weight: 600;}
+  .neg {color: #d32f2f; font-weight: 600;}
+  .highlight {background:#fff8e1;}
+  tr.spot {border-left:5px solid #1565c0;background:#e8f4ff;}
+  @media(max-width:700px){
+    table,thead,tbody,tr,th,td {display:block;width:100%;}
+    th {background:#e3f2fd;color:#222;}
+    tr {background:#fff;margin-bottom:0.6rem;border-radius:6px;}
+    td {border:none;text-align:left;position:relative;padding-left:44%;}
+    td::before {position:absolute;left:0.6rem;top:8px;font-weight:700;color:#467fde;}
+    td:nth-of-type(1)::before {content:"Call OI";}
+    td:nth-of-type(2)::before {content:"Call Vol";}
+    td:nth-of-type(3)::before {content:"Call LTP";}
+    td:nth-of-type(4)::before {content:"Strike";}
+    td:nth-of-type(5)::before {content:"Put LTP";}
+    td:nth-of-type(6)::before {content:"Put Vol";}
+    td:nth-of-type(7)::before {content:"Put OI";}
+  }
+</style>
+</head>
+<body>
+<div id="optionInfo">
+  Name: <span id="optName">-</span> |
+  Expiry: <span id="expiry">-</span> |
+  Last Update: <span id="lastUpdate">-</span>
+</div>
+<div class="interval-bar">
+  <label for="intervalSelector"><strong>Interval:</strong></label>
+  <select id="intervalSelector"></select>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Call OI</th>
+      <th>Call Vol</th>
+      <th>Call LTP</th>
+      <th>Strike</th>
+      <th>Put LTP</th>
+      <th>Put Vol</th>
+      <th>Put OI</th>
+    </tr>
+  </thead>
+  <tbody id="optionChainBody"></tbody>
+</table>
+<script>
+let intervalOptions = [];
+let apiData = [];
+
+function fmt(v){ return v != null ? v.toLocaleString(undefined, {maximumFractionDigits: 2}) : "-"; }
+function fmtP(p){ return p != null ? p.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "-"; }
+function colorCls(val){ return val > 0 ? 'pos' : val < 0 ? 'neg' : ''; }
+
+function arrowSymbol(change){
+  if(change > 0) return '<span class="pos">▲</span>';
+  else if(change < 0) return '<span class="neg">▼</span>';
+  else return '';
+}
+
+async function fetchData(){
+  try {
+    const response = await fetch("http://localhost:8080/optionChain/oi-data");
+    if(!response.ok) throw new Error("HTTP " + response.status);
+    return await response.json();
+  } catch(err){
+    console.error("Error fetching API", err);
+    return [];
+  }
+}
+
+async function setupAndRender(selectedInterval){
+  apiData = await fetchData();
+  if(apiData.length > 0){
+    document.getElementById("optName").textContent = apiData[0].name || "-";
+    document.getElementById("expiry").textContent = apiData[0].expiry || "-";
+    document.getElementById("lastUpdate").textContent = new Date().toLocaleString(undefined, {hour12: false});
+  }
+  if(intervalOptions.length === 0 && apiData.length){
+    const firstCall = JSON.parse(apiData[0].callSignal || "{}");
+    if(firstCall.intervalChanges){
+      intervalOptions = Object.keys(firstCall.intervalChanges);
+      const sel = document.getElementById('intervalSelector');
+      sel.innerHTML = intervalOptions.map(k => `<option value="${k}">${k}</option>`).join('');
+      sel.value = selectedInterval || intervalOptions[0];
+      sel.onchange = () => renderTable(sel.value);
+    }
+  }
+  renderTable(selectedInterval || intervalOptions[0]);
+}
+
+function renderTable(selectedInterval){
+  const tbody = document.getElementById("optionChainBody");
+  tbody.innerHTML = "";
+
+  let maxCallOI = 0, maxPutOI = 0;
+
+  const processed = apiData.map(item => {
+    const call = item.callSignal ? JSON.parse(item.callSignal) : {};
+    const put = item.putSignal ? JSON.parse(item.putSignal) : {};
+    const cInt = call.intervalChanges?.[selectedInterval] || {};
+    const pInt = put.intervalChanges?.[selectedInterval] || {};
+    maxCallOI = Math.max(maxCallOI, call.oi || 0);
+    maxPutOI = Math.max(maxPutOI, put.oi || 0);
+    return {item, call, put, cInt, pInt};
+  });
+
+  processed.forEach(({item, call, put, cInt, pInt}) => {
+    const tr = document.createElement("tr");
+    if(item.spot === "Y") tr.classList.add("spot");
+
+    tr.innerHTML = `
+      <td class="${call.oi === maxCallOI ? 'highlight' : ''}">
+        ${fmt(call.oi)} ${arrowSymbol(cInt.oiChange)}<br>
+        <small class="${colorCls(cInt.oiChange)}">Δ ${fmt(cInt.oiChange)}</small>
+      </td>
+      <td>
+        ${fmt(call.volume)} ${arrowSymbol(cInt.volumeChange)}<br>
+        <small class="${colorCls(cInt.volumeChange)}">Δ ${fmt(cInt.volumeChange)}</small>
+      </td>
+      <td class="${colorCls(cInt.ltpChange)}">
+        ${fmtP(call.ltp)} ${arrowSymbol(cInt.ltpChange)}<br>
+        <small>${fmtP(cInt.ltpPercentChange)}%</small>
+      </td>
+      <td>${item.strikePrice}</td>
+      <td class="${colorCls(pInt.ltpChange)}">
+        ${fmtP(put.ltp)} ${arrowSymbol(pInt.ltpChange)}<br>
+        <small>${fmtP(pInt.ltpPercentChange)}%</small>
+      </td>
+      <td>
+        ${fmt(put.volume)} ${arrowSymbol(pInt.volumeChange)}<br>
+        <small class="${colorCls(pInt.volumeChange)}">Δ ${fmt(pInt.volumeChange)}</small>
+      </td>
+      <td class="${put.oi === maxPutOI ? 'highlight' : ''}">
+        ${fmt(put.oi)} ${arrowSymbol(pInt.oiChange)}<br>
+        <small class="${colorCls(pInt.oiChange)}">Δ ${fmt(pInt.oiChange)}</small>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+setupAndRender("Overall");
+setInterval(() => { setupAndRender(document.getElementById('intervalSelector').value); }, 180000);
+</script>
+</body>
+</html>

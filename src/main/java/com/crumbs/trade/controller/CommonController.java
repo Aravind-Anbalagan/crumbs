@@ -30,6 +30,7 @@ import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.service.AngelOneService;
+import com.crumbs.trade.utility.JVMRestarter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,12 +63,31 @@ public class CommonController {
 
 	}
 	
-	
-	@Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata") // Works
+	/*
+	 * 8 AM clear DB
+	 */
+	@Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata") // Works
 	public void clear() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {
 		logger.info("Delete All Data");
 		angelOneService.deleteOrders();
 	}
+	
+	/*
+	 * 9  AM restart the JVM
+	 */
+	@Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata") // Works
+    public void restartJVM() {
+        // Trigger JVM restart in a new thread to allow HTTP response
+        new Thread(() -> {
+            try {
+                // Optional: short delay for response to be sent
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            JVMRestarter.restartJVM();
+        }).start();
+    }
 
 	/*
 	 * Used to get the instrument details

@@ -160,9 +160,6 @@ public class OIDataService {
 				oi.setPutLTP(getExistingValue(oi.getPutLTP(), t.getPutLtp()));
 				oi.setPutOI(getExistingValue(oi.getPutOI(), t.getPutOi()));
 				oi.setPutOIChange(getExistingValue(oi.getPutOIChange(), t.getPutOiChange()));
-				oi.setPutTrend(getExistingValue(oi.getPutTrend(), getOIList(oi, "PUT", t.getPutLtp().split("=")[0])));
-				oi.setCallTrend(
-						getExistingValue(oi.getCallTrend(), getOIList(oi, "CALL", t.getCallLtp().split("=")[0])));
 				oi.setStrikePrice(t.getStrikePrice());
 				oi.setName(t.getName());
 				oi.setPutSignal(oiPrediction.getOISignal(convertStringToList(oi.getPutTrend())));

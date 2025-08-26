@@ -1,19 +1,27 @@
 package com.crumbs.trade.controller;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.crumbs.trade.dto.OIUIDto;
+import com.crumbs.trade.entity.OI;
+import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.OIDataService;
 import com.crumbs.trade.service.OIService;
+import com.crumbs.trade.utility.OIParsingUtil;
 
 @RestController
 @RequestMapping(value = "/optionChain")
@@ -28,6 +36,8 @@ public class OptionChainController {
 
 	@Autowired
 	StrategyRepo strategyRepo;
+	
+	
 
 	// @Scheduled(fixedRate = 10000)
 	@GetMapping("/dailyoi")
@@ -67,10 +77,18 @@ public class OptionChainController {
 
 	// For 3:00 PM to 3:30 PM:
 	//@Scheduled(cron = "5 0/5 15-22 * * *", zone = "IST")
+	//@Scheduled(fixedRate = 10000)
 	public void scheduledTask4() throws SmartAPIException, IOException {
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
-			//oiService.getOptionChain("CRUDEOIL");
+			oiService.getOptionChain("CRUDEOIL");
 		}
 
 	}
+	
+	//Get OI data for daily
+	@GetMapping("/oi-data")
+    public ResponseEntity<List<OIUIDto>> getAllOiDataForToday() {
+        List<OIUIDto> oiDataList = oiService.getOIDataDetails();
+        return ResponseEntity.ok(oiDataList);
+    }
 }

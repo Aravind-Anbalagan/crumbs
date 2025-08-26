@@ -46,8 +46,8 @@ public class HeikinPsarController {
 	OIService oiService;
 
 
-	// For 9:20:05 AM to 9:55:05 AM AM:
-	@Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = "IST")
+	// For 9:10:05 AM to 9:55:05 AM AM:
+	@Scheduled(cron = "5 10-55/5 9 * * MON-FRI", zone = "IST")
 	public void scheduledTask1() throws SmartAPIException, AddressException, MessagingException, IOException {
 		//logger.info("First");
 		// commonExecution_1();
