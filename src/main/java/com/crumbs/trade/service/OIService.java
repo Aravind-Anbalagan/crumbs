@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -30,6 +32,7 @@ import com.crumbs.trade.entity.OI;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.service.TradingSignalService.TradingSignalResult;
 import com.crumbs.trade.utility.OIParsingUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -55,7 +58,10 @@ public class OIService {
 
 	@Autowired
 	OISignalGenerator oiSignalGenerator;
-
+    
+	@Autowired
+	TradingSignalService tradingSignalService;
+	
 	/*
 	 * Get the option Chain of the given index/stock
 	 */
@@ -160,6 +166,17 @@ public class OIService {
 				
 				oi.setPutSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(oi.getPutLTP(),oi.getPutOI(),oi.getPutVolume()));
 				oi.setCallSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(oi.getCallLTP(),oi.getCallOI(),oi.getCallVolume()));
+				
+				LocalDateTime now = LocalDateTime.now();
+
+			        // Format the time
+			    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+			    String formattedTime = now.format(formatter);
+				oi.setCallTradingSignal(formattedTime.concat(" - ").concat(tradingSignalService.generateBestSignal(oi.getCallOI(), oi.getCallLTP(),
+						oi.getCallVolume())));
+				oi.setPutTradingSignal(formattedTime.concat(" - ").concat(tradingSignalService.generateBestSignal(oi.getPutOI(), oi.getPutLTP(),
+						oi.getPutVolume())));
+				
 				oi.setExpiry(t.getExpiry());
 				oi.setCallVolume(getExistingValue(oi.getCallVolume(), t.getCallVolume()));
 				oi.setPutVolume(getExistingValue(oi.getPutVolume(), t.getPutVolume()));
@@ -443,17 +460,19 @@ public class OIService {
 	        dto.setSpot(entity.getSpot());
 
 	        // Call side
-	        dto.setCallLTP(OIParsingUtil.parseTimeValueString(entity.getCallLTP()));
+	        //dto.setCallLTP(OIParsingUtil.parseTimeValueString(entity.getCallLTP()));
 	        //dto.setCallOI(OIParsingUtil.parseTimeValueString(entity.getCallOI()));
 	        //dto.setCallOIChange(OIParsingUtil.parseTimeValueString(entity.getCallOIChange()));
 	        dto.setCallSignal(entity.getCallSignal());
+	        dto.setCallTradingSignal(entity.getCallTradingSignal());
 	        //dto.setCallVolume(OIParsingUtil.parseTimeValueString(entity.getCallVolume())); // if you store call volume
 
 	        // Put side
-	        dto.setPutLTP(OIParsingUtil.parseTimeValueString(entity.getPutLTP()));
+	        //dto.setPutLTP(OIParsingUtil.parseTimeValueString(entity.getPutLTP()));
 	        //dto.setPutOI(OIParsingUtil.parseTimeValueString(entity.getPutOI()));
 	        //dto.setPutOIChange(OIParsingUtil.parseTimeValueString(entity.getPutOIChange()));
 	         dto.setPutSignal(entity.getPutSignal());
+	         dto.setPutTradingSignal(entity.getPutTradingSignal());
 	        //dto.setPutVolume(OIParsingUtil.parseTimeValueString(entity.getPutVolume())); // if you store put volume
 
 	       

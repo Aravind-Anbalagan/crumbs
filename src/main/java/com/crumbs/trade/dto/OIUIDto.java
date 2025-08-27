@@ -18,6 +18,8 @@ public class OIUIDto {
     private String spot;
     private String putSignal;
     private String callSignal;
+    private String putTradingSignal;
+    private String callTradingSignal;
     private String expiry;
     private List<TimeValue> callVolume;
     private List<TimeValue> putVolume;

@@ -51,6 +51,12 @@ public class OI {
 	@Lob
 	@Column(name="putVolume")
 	String putVolume;
+	@Lob
+	@Column(name="putTradingSignal")
+	String putTradingSignal;
+	@Lob
+	@Column(name="callTradingSignal")
+	String callTradingSignal;
 	
 
 }

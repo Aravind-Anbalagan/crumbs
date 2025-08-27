@@ -23,5 +23,7 @@ public class OIDto {
 	String expiry;
 	String callVolume;
 	String putVolume;
+	String callSignal;
+	String putSignal;
 	
 }

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Option Chain with Change Indicators</title>
+<title>Option Chain with Δ Indicators</title>
 <style>
   body {font-family: 'Segoe UI',sans-serif;background: #f6f9fc;margin:0;padding:16px;}
   #optionInfo {text-align:center;background:#e3f2fd;border-radius:8px;padding:8px 16px;font-weight:500;margin-bottom:16px;}
   .interval-bar {text-align:center;margin-bottom:14px;}
   table {width:100%;border-collapse:collapse;box-shadow:0 2px 12px rgba(0,0,0,.07);background:#fff;font-size:.95rem;}
-  th,td {text-align:center;padding:10px 4px;border:1px solid #eee;font-variant-numeric:tabular-nums;}
+  th,td {text-align:center;padding:8px 4px;border:1px solid #eee;font-variant-numeric:tabular-nums;}
   thead {background:#0d47a1;color:#fff;}
   .pos {color: #388e3c; font-weight: 600;}
   .neg {color: #d32f2f; font-weight: 600;}
@@ -59,14 +59,25 @@
 let intervalOptions = [];
 let apiData = [];
 
-function fmt(v){ return v != null ? v.toLocaleString(undefined, {maximumFractionDigits: 2}) : "-"; }
-function fmtP(p){ return p != null ? p.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "-"; }
-function colorCls(val){ return val > 0 ? 'pos' : val < 0 ? 'neg' : ''; }
+// Format numbers in K, L, CR
+function fmtUnits(num){
+  if(num == null) return "-";
+  const abs = Math.abs(num);
+  if(abs >= 1e7) return (num/1e7).toFixed(2) + " CR";
+  if(abs >= 1e5) return (num/1e5).toFixed(2) + " L";
+  if(abs >= 1e3) return (num/1e3).toFixed(2) + " K";
+  return num.toString();
+}
 
-function arrowSymbol(change){
-  if(change > 0) return '<span class="pos">▲</span>';
-  else if(change < 0) return '<span class="neg">▼</span>';
-  else return '';
+// LTP formatting
+function fmtP(p){ return p != null ? p.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "-"; }
+
+// Format Δ values with arrows using human-readable units
+function formatDelta(val){
+  if(val == null || val === 0) return '';
+  if(val > 0) return `<span class="pos">▲ ${fmtUnits(val)}</span>`;
+  if(val < 0) return `<span class="neg">▼ ${fmtUnits(Math.abs(val))}</span>`;
+  return '';
 }
 
 async function fetchData(){
@@ -87,20 +98,29 @@ async function setupAndRender(selectedInterval){
     document.getElementById("expiry").textContent = apiData[0].expiry || "-";
     document.getElementById("lastUpdate").textContent = new Date().toLocaleString(undefined, {hour12: false});
   }
-  if(intervalOptions.length === 0 && apiData.length){
-    const firstCall = JSON.parse(apiData[0].callSignal || "{}");
-    if(firstCall.intervalChanges){
-      intervalOptions = Object.keys(firstCall.intervalChanges);
-      const sel = document.getElementById('intervalSelector');
-      sel.innerHTML = intervalOptions.map(k => `<option value="${k}">${k}</option>`).join('');
-      sel.value = selectedInterval || intervalOptions[0];
-      sel.onchange = () => renderTable(sel.value);
-    }
+
+  if(apiData.length){
+    const firstItem = apiData[0];
+
+    const callIntervals = firstItem.callSignal ? Object.keys(JSON.parse(firstItem.callSignal).intervalChanges || {}) : [];
+    const putIntervals  = firstItem.putSignal  ? Object.keys(JSON.parse(firstItem.putSignal).intervalChanges || {})  : [];
+    intervalOptions = Array.from(new Set([...callIntervals, ...putIntervals])); // merge & remove duplicates
+
+    const sel = document.getElementById('intervalSelector');
+    sel.innerHTML = intervalOptions.map(k => `<option value="${k}">${k}</option>`).join('');
+
+    let defaultInterval = intervalOptions.includes("Overall") ? "Overall" : intervalOptions[0];
+    sel.value = selectedInterval && intervalOptions.includes(selectedInterval) ? selectedInterval : defaultInterval;
+
+    sel.onchange = () => renderTable(sel.value);
+
+    renderTable(sel.value);
   }
-  renderTable(selectedInterval || intervalOptions[0]);
 }
 
 function renderTable(selectedInterval){
+  if(!intervalOptions.includes(selectedInterval)) selectedInterval = intervalOptions[0];
+
   const tbody = document.getElementById("optionChainBody");
   tbody.innerHTML = "";
 
@@ -122,29 +142,29 @@ function renderTable(selectedInterval){
 
     tr.innerHTML = `
       <td class="${call.oi === maxCallOI ? 'highlight' : ''}">
-        ${fmt(call.oi)} ${arrowSymbol(cInt.oiChange)}<br>
-        <small class="${colorCls(cInt.oiChange)}">Δ ${fmt(cInt.oiChange)}</small>
+        ${fmtUnits(call.oi)}<br>
+        <small>${formatDelta(cInt.oiChange)}</small>
       </td>
       <td>
-        ${fmt(call.volume)} ${arrowSymbol(cInt.volumeChange)}<br>
-        <small class="${colorCls(cInt.volumeChange)}">Δ ${fmt(cInt.volumeChange)}</small>
+        ${fmtUnits(call.volume)}<br>
+        <small>${formatDelta(cInt.volumeChange)}</small>
       </td>
-      <td class="${colorCls(cInt.ltpChange)}">
-        ${fmtP(call.ltp)} ${arrowSymbol(cInt.ltpChange)}<br>
-        <small>${fmtP(cInt.ltpPercentChange)}%</small>
+      <td class="${cInt.ltpChange > 0 ? 'pos' : cInt.ltpChange < 0 ? 'neg' : ''}">
+        ${fmtP(call.ltp)}<br>
+        <small>${formatDelta(cInt.ltpChange)}</small>
       </td>
       <td>${item.strikePrice}</td>
-      <td class="${colorCls(pInt.ltpChange)}">
-        ${fmtP(put.ltp)} ${arrowSymbol(pInt.ltpChange)}<br>
-        <small>${fmtP(pInt.ltpPercentChange)}%</small>
+      <td class="${pInt.ltpChange > 0 ? 'pos' : pInt.ltpChange < 0 ? 'neg' : ''}">
+        ${fmtP(put.ltp)}<br>
+        <small>${formatDelta(pInt.ltpChange)}</small>
       </td>
       <td>
-        ${fmt(put.volume)} ${arrowSymbol(pInt.volumeChange)}<br>
-        <small class="${colorCls(pInt.volumeChange)}">Δ ${fmt(pInt.volumeChange)}</small>
+        ${fmtUnits(put.volume)}<br>
+        <small>${formatDelta(pInt.volumeChange)}</small>
       </td>
       <td class="${put.oi === maxPutOI ? 'highlight' : ''}">
-        ${fmt(put.oi)} ${arrowSymbol(pInt.oiChange)}<br>
-        <small class="${colorCls(pInt.oiChange)}">Δ ${fmt(pInt.oiChange)}</small>
+        ${fmtUnits(put.oi)}<br>
+        <small>${formatDelta(pInt.oiChange)}</small>
       </td>
     `;
     tbody.appendChild(tr);

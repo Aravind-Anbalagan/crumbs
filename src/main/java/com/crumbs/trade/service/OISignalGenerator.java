@@ -1,5 +1,6 @@
 package com.crumbs.trade.service;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class OISignalGenerator {
             this.oi = oi;
             this.ltp = ltp;
             this.volume = volume;
-            this.parsedTime = LocalDateTime.parse(time, DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss"));
+            this.parsedTime = LocalDateTime.parse(time, DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH));
         }
 
         public String getTime() { return time; }
@@ -48,6 +49,7 @@ public class OISignalGenerator {
         public BigDecimal getVolume() { return volume; }
         public Map<String, IntervalChange> getIntervalChanges() { return intervalChanges; }
 
+        @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY) // ✅ ensures all fields are serialized
         public static class IntervalChange {
             public BigDecimal oiChange;
             public BigDecimal ltpChange;
@@ -56,31 +58,72 @@ public class OISignalGenerator {
             public String startTime;
             public String endTime;
 
+            // ✅ Tick values (now included in JSON)
+            public BigDecimal baseOi;
+            public BigDecimal baseLtp;
+            public BigDecimal baseVolume;
+
+            public BigDecimal latestOi;
+            public BigDecimal latestLtp;
+            public BigDecimal latestVolume;
+
             public IntervalChange(BigDecimal oiChange, BigDecimal ltpChange, BigDecimal ltpPercentChange,
-                                  BigDecimal volumeChange, String startTime, String endTime) {
+                                  BigDecimal volumeChange, String startTime, String endTime,
+                                  BigDecimal baseOi, BigDecimal baseLtp, BigDecimal baseVolume,
+                                  BigDecimal latestOi, BigDecimal latestLtp, BigDecimal latestVolume) {
                 this.oiChange = oiChange;
                 this.ltpChange = ltpChange;
                 this.ltpPercentChange = ltpPercentChange;
                 this.volumeChange = volumeChange;
                 this.startTime = startTime;
                 this.endTime = endTime;
+
+                this.baseOi = baseOi;
+                this.baseLtp = baseLtp;
+                this.baseVolume = baseVolume;
+
+                this.latestOi = latestOi;
+                this.latestLtp = latestLtp;
+                this.latestVolume = latestVolume;
             }
         }
     }
 
-    // Parse string like "[26-Aug-2025 11:16:31 = 151900, ...]" to Map<timestamp,value>
-    private static Map<String, BigDecimal> parseStringToMap(String dataString) {
+    private static Map<String, BigDecimal> parseStringToMap(String input) {
         Map<String, BigDecimal> map = new LinkedHashMap<>();
-        if (dataString == null || dataString.isEmpty()) return map;
-        String[] entries = dataString.substring(1, dataString.length() - 1).split(", (?=\\d{2}-)");
+        if (input == null || input.trim().isEmpty()) {
+            return map;
+        }
+
+        // Split by comma (multiple entries)
+        String[] entries = input.split(",");
         for (String entry : entries) {
-            String[] parts = entry.split(" = ");
-            if (parts.length == 2 && !parts[1].trim().isEmpty()) {
-                map.put(parts[0].trim(), new BigDecimal(parts[1].trim()));
+            entry = entry.trim();
+
+            // Remove any brackets
+            entry = entry.replaceAll("[\\[\\]]", "").trim();
+
+            if (entry.contains("=")) {
+                String[] parts = entry.split("=");
+                if (parts.length == 2) {
+                    String key = parts[0].trim();
+                    String valueStr = parts[1].trim();
+
+                    try {
+                        BigDecimal value = new BigDecimal(valueStr);
+                        map.put(key, value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid number format: " + valueStr);
+                    }
+                }
             }
         }
         return map;
     }
+
+
+
+
 
     public DataPoint addTicksFromTimestampedStrings(String ltpString, String oiString, String volumeString) {
         Map<String, BigDecimal> ltpMap = parseStringToMap(ltpString);
@@ -92,9 +135,9 @@ public class OISignalGenerator {
         DataPoint latest = null;
 
         for (String ts : ltpMap.keySet()) {
-            BigDecimal ltp = ltpMap.get(ts);                  // ✅ LTP from ltpMap
-            BigDecimal oi = oiMap.getOrDefault(ts, lastOI);   // ✅ OI from oiMap
-            BigDecimal volume = volumeMap.getOrDefault(ts, lastVolume); // ✅ Volume
+            BigDecimal ltp = ltpMap.get(ts);
+            BigDecimal oi = oiMap.getOrDefault(ts, lastOI);
+            BigDecimal volume = volumeMap.getOrDefault(ts, lastVolume);
 
             DataPoint dp = new DataPoint(ts, oi, ltp, volume);
             history.add(dp);
@@ -121,7 +164,7 @@ public class OISignalGenerator {
     }
 
     public String addNewTick(BigDecimal oi, BigDecimal ltp, BigDecimal volume) {
-        String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss"));
+        String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH));
         return addNewTick(time, oi, ltp, volume);
     }
 
@@ -140,7 +183,11 @@ public class OISignalGenerator {
     }
 
     private void computeIntervalChanges(DataPoint latest) {
-        history.sort(Comparator.comparing(dp -> dp.parsedTime));
+        // only sort if needed
+        if (!history.isEmpty() && latest.parsedTime.isBefore(history.get(history.size() - 1).parsedTime)) {
+            history.sort(Comparator.comparing(dp -> dp.parsedTime));
+        }
+
         LocalDateTime now = latest.parsedTime;
 
         DataPoint overallBase = history.get(0);
@@ -166,8 +213,8 @@ public class OISignalGenerator {
     }
 
     private DataPoint.IntervalChange buildIntervalChange(DataPoint base, DataPoint latest) {
-        BigDecimal oiChange = latest.oi.subtract(base.oi);
-        BigDecimal ltpChange = latest.ltp.subtract(base.ltp);
+        BigDecimal oiChange = safeSubtract(latest.oi, base.oi);
+        BigDecimal ltpChange = safeSubtract(latest.ltp, base.ltp);
 
         BigDecimal ltpPercentChange = BigDecimal.ZERO;
         if (base.ltp != null && base.ltp.abs().compareTo(BigDecimal.ZERO) > 0) {
@@ -176,32 +223,28 @@ public class OISignalGenerator {
                     .multiply(BigDecimal.valueOf(100));
         }
 
-        BigDecimal volumeChange = latest.volume.subtract(base.volume);
+        BigDecimal volumeChange = safeSubtract(latest.volume, base.volume);
 
         return new DataPoint.IntervalChange(
-                oiChange,
-                ltpChange,
-                ltpPercentChange,
-                volumeChange,
-                base.time,
-                latest.time
+                oiChange, ltpChange, ltpPercentChange, volumeChange,
+                base.time, latest.time,
+                base.oi, base.ltp, base.volume,
+                latest.oi, latest.ltp, latest.volume
         );
+    }
+
+    private static BigDecimal safeSubtract(BigDecimal a, BigDecimal b) {
+        return (a == null ? BigDecimal.ZERO : a)
+                .subtract(b == null ? BigDecimal.ZERO : b);
     }
 
     private static String formatHumanReadable(Duration duration) {
         long hours = duration.toHours();
-        long minutes = duration.toMinutesPart();
-        StringBuilder label = new StringBuilder("Last ");
-        if (hours > 0) {
-            label.append(hours).append(" hour");
-            if (hours > 1) label.append("s");
-        }
-        if (minutes > 0) {
-            if (hours > 0) label.append(" ");
-            label.append(minutes).append(" min");
-        }
-        if (hours == 0 && minutes == 0) label.append("0 min");
-        return label.toString();
+        long minutes = duration.toMinutes() % 60;
+        if (hours > 0 && minutes > 0) return "Last " + hours + "h " + minutes + "m";
+        if (hours > 0) return "Last " + hours + "h";
+        if (minutes > 0) return "Last " + minutes + "m";
+        return "Last 0m";
     }
 
     public void resetHistory() {
