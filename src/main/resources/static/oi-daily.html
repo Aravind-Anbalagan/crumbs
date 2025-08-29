@@ -5,30 +5,63 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Option Chain with Δ Indicators</title>
 <style>
-  body {font-family: 'Segoe UI',sans-serif;background: #f6f9fc;margin:0;padding:16px;}
-  #optionInfo {text-align:center;background:#e3f2fd;border-radius:8px;padding:8px 16px;font-weight:500;margin-bottom:16px;}
+  body {
+    font-family: 'Segoe UI',sans-serif;
+    background: #f6f9fc;
+    margin:0;
+    padding:16px;
+  }
+  #optionInfo {
+    text-align:center;
+    background:#e3f2fd;
+    border-radius:8px;
+    padding:8px 16px;
+    font-weight:500;
+    margin-bottom:16px;
+  }
   .interval-bar {text-align:center;margin-bottom:14px;}
-  table {width:100%;border-collapse:collapse;box-shadow:0 2px 12px rgba(0,0,0,.07);background:#fff;font-size:.95rem;}
-  th,td {text-align:center;padding:8px 4px;border:1px solid #eee;font-variant-numeric:tabular-nums;}
+  table {
+    width:100%;
+    border-collapse:collapse;
+    box-shadow:0 2px 12px rgba(0,0,0,.07);
+    background:#fff;
+    font-size:.9rem;
+    table-layout: fixed; /* locks column width */
+  }
+  th,td {
+    text-align:center;
+    padding:6px 4px;
+    border:1px solid #eee;
+    font-variant-numeric:tabular-nums;
+    word-wrap:break-word;
+  }
   thead {background:#0d47a1;color:#fff;}
-  .pos {color: #388e3c; font-weight: 600;}
-  .neg {color: #d32f2f; font-weight: 600;}
+  .pos {color:#388e3c;font-weight:600;}
+  .neg {color:#d32f2f;font-weight:600;}
   .highlight {background:#fff8e1;}
   tr.spot {border-left:5px solid #1565c0;background:#e8f4ff;}
-  @media(max-width:700px){
-    table,thead,tbody,tr,th,td {display:block;width:100%;}
-    th {background:#e3f2fd;color:#222;}
-    tr {background:#fff;margin-bottom:0.6rem;border-radius:6px;}
-    td {border:none;text-align:left;position:relative;padding-left:44%;}
-    td::before {position:absolute;left:0.6rem;top:8px;font-weight:700;color:#467fde;}
-    td:nth-of-type(1)::before {content:"Call OI";}
-    td:nth-of-type(2)::before {content:"Call Vol";}
-    td:nth-of-type(3)::before {content:"Call LTP";}
-    td:nth-of-type(4)::before {content:"Strike";}
-    td:nth-of-type(5)::before {content:"Put LTP";}
-    td:nth-of-type(6)::before {content:"Put Vol";}
-    td:nth-of-type(7)::before {content:"Put OI";}
+
+  /* Fixed column widths */
+  th:nth-child(1), td:nth-child(1) { width:90px; }   /* Call Signal */
+  th:nth-child(2), td:nth-child(2) { width:100px; }  /* Call OI */
+  th:nth-child(3), td:nth-child(3) { width:100px; }  /* Call Vol */
+  th:nth-child(4), td:nth-child(4) { width:100px; }  /* Call LTP */
+  th:nth-child(5), td:nth-child(5) { width:80px; }   /* Strike */
+  th:nth-child(6), td:nth-child(6) { width:100px; }  /* Put LTP */
+  th:nth-child(7), td:nth-child(7) { width:100px; }  /* Put Vol */
+  th:nth-child(8), td:nth-child(8) { width:100px; }  /* Put OI */
+  th:nth-child(9), td:nth-child(9) { width:90px; }   /* Put Signal */
+
+  /* Trading Signal Pills */
+  .status {
+    font-weight:600;
+    padding:2px 6px;
+    border-radius:5px;
+    display:inline-block;
   }
+  .buy {color:#1b5e20; background:#c8e6c9;}
+  .sell{color:#b71c1c; background:#ffcdd2;}
+  .hold{color:#555; background:#e0e0e0;}
 </style>
 </head>
 <body>
@@ -37,6 +70,7 @@
   Expiry: <span id="expiry">-</span> |
   Last Update: <span id="lastUpdate">-</span>
 </div>
+
 <div class="interval-bar">
   <label for="intervalSelector"><strong>Interval:</strong></label>
   <select id="intervalSelector"></select>
@@ -44,6 +78,7 @@
 <table>
   <thead>
     <tr>
+      <th>Call Signal</th>
       <th>Call OI</th>
       <th>Call Vol</th>
       <th>Call LTP</th>
@@ -51,6 +86,7 @@
       <th>Put LTP</th>
       <th>Put Vol</th>
       <th>Put OI</th>
+      <th>Put Signal</th>
     </tr>
   </thead>
   <tbody id="optionChainBody"></tbody>
@@ -59,7 +95,7 @@
 let intervalOptions = [];
 let apiData = [];
 
-// Format numbers in K, L, CR
+// Helpers
 function fmtUnits(num){
   if(num == null) return "-";
   const abs = Math.abs(num);
@@ -68,24 +104,30 @@ function fmtUnits(num){
   if(abs >= 1e3) return (num/1e3).toFixed(2) + " K";
   return num.toString();
 }
-
-// LTP formatting
-function fmtP(p){ return p != null ? p.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "-"; }
-
-// Format Δ values with arrows using human-readable units
+function fmtP(p){ return p != null ? p.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : "-"; }
 function formatDelta(val){
   if(val == null || val === 0) return '';
   if(val > 0) return `<span class="pos">▲ ${fmtUnits(val)}</span>`;
   if(val < 0) return `<span class="neg">▼ ${fmtUnits(Math.abs(val))}</span>`;
   return '';
 }
+function formatSignal(tradingSignal){
+  if(!tradingSignal) return "-";
+  const parts = tradingSignal.split("-");
+  const decision = parts.pop().trim().toUpperCase();
+  const timestamp = parts.join("-").trim();
+  let cls = "hold";
+  if(decision === "BUY") cls = "buy";
+  if(decision === "SELL") cls = "sell";
+  return `<span class="status ${cls}" title="${timestamp}">${decision}</span>`;
+}
 
 async function fetchData(){
-  try {
+  try{
     const response = await fetch("http://localhost:8080/optionChain/oi-data");
     if(!response.ok) throw new Error("HTTP " + response.status);
     return await response.json();
-  } catch(err){
+  }catch(err){
     console.error("Error fetching API", err);
     return [];
   }
@@ -96,83 +138,64 @@ async function setupAndRender(selectedInterval){
   if(apiData.length > 0){
     document.getElementById("optName").textContent = apiData[0].name || "-";
     document.getElementById("expiry").textContent = apiData[0].expiry || "-";
-    document.getElementById("lastUpdate").textContent = new Date().toLocaleString(undefined, {hour12: false});
+    document.getElementById("lastUpdate").textContent = new Date().toLocaleString(undefined, {hour12:false});
   }
-
   if(apiData.length){
     const firstItem = apiData[0];
-
     const callIntervals = firstItem.callSignal ? Object.keys(JSON.parse(firstItem.callSignal).intervalChanges || {}) : [];
-    const putIntervals  = firstItem.putSignal  ? Object.keys(JSON.parse(firstItem.putSignal).intervalChanges || {})  : [];
-    intervalOptions = Array.from(new Set([...callIntervals, ...putIntervals])); // merge & remove duplicates
-
+    const putIntervals  = firstItem.putSignal  ? Object.keys(JSON.parse(firstItem.putSignal).intervalChanges || {}) : [];
+    intervalOptions = Array.from(new Set([...callIntervals,...putIntervals]));
     const sel = document.getElementById('intervalSelector');
-    sel.innerHTML = intervalOptions.map(k => `<option value="${k}">${k}</option>`).join('');
-
-    let defaultInterval = intervalOptions.includes("Overall") ? "Overall" : intervalOptions[0];
-    sel.value = selectedInterval && intervalOptions.includes(selectedInterval) ? selectedInterval : defaultInterval;
-
-    sel.onchange = () => renderTable(sel.value);
-
+    sel.innerHTML = intervalOptions.map(k=>`<option value="${k}">${k}</option>`).join('');
+    let defaultInterval = intervalOptions.includes("Overall")? "Overall": intervalOptions[0];
+    sel.value = (selectedInterval && intervalOptions.includes(selectedInterval)) ? selectedInterval : defaultInterval;
+    sel.onchange = ()=> renderTable(sel.value);
     renderTable(sel.value);
   }
 }
 
 function renderTable(selectedInterval){
   if(!intervalOptions.includes(selectedInterval)) selectedInterval = intervalOptions[0];
-
   const tbody = document.getElementById("optionChainBody");
   tbody.innerHTML = "";
-
   let maxCallOI = 0, maxPutOI = 0;
-
-  const processed = apiData.map(item => {
-    const call = item.callSignal ? JSON.parse(item.callSignal) : {};
-    const put = item.putSignal ? JSON.parse(item.putSignal) : {};
+  const processed = apiData.map(item=>{
+    const call = item.callSignal? JSON.parse(item.callSignal):{};
+    const put  = item.putSignal? JSON.parse(item.putSignal):{};
     const cInt = call.intervalChanges?.[selectedInterval] || {};
     const pInt = put.intervalChanges?.[selectedInterval] || {};
-    maxCallOI = Math.max(maxCallOI, call.oi || 0);
-    maxPutOI = Math.max(maxPutOI, put.oi || 0);
-    return {item, call, put, cInt, pInt};
+    maxCallOI = Math.max(maxCallOI, call.oi||0);
+    maxPutOI = Math.max(maxPutOI, put.oi||0);
+    return {item,call,put,cInt,pInt};
   });
-
-  processed.forEach(({item, call, put, cInt, pInt}) => {
+  processed.forEach(({item,call,put,cInt,pInt})=>{
     const tr = document.createElement("tr");
     if(item.spot === "Y") tr.classList.add("spot");
-
     tr.innerHTML = `
-      <td class="${call.oi === maxCallOI ? 'highlight' : ''}">
-        ${fmtUnits(call.oi)}<br>
-        <small>${formatDelta(cInt.oiChange)}</small>
+      <td>${formatSignal(item.callTradingSignal)}</td>
+      <td class="${call.oi===maxCallOI?'highlight':''}">
+        ${fmtUnits(call.oi)}<br><small>${formatDelta(cInt.oiChange)}</small>
       </td>
-      <td>
-        ${fmtUnits(call.volume)}<br>
-        <small>${formatDelta(cInt.volumeChange)}</small>
-      </td>
-      <td class="${cInt.ltpChange > 0 ? 'pos' : cInt.ltpChange < 0 ? 'neg' : ''}">
-        ${fmtP(call.ltp)}<br>
-        <small>${formatDelta(cInt.ltpChange)}</small>
+      <td>${fmtUnits(call.volume)}<br><small>${formatDelta(cInt.volumeChange)}</small></td>
+      <td class="${cInt.ltpChange>0?'pos':cInt.ltpChange<0?'neg':''}">
+        ${fmtP(call.ltp)}<br><small>${formatDelta(cInt.ltpChange)}</small>
       </td>
       <td>${item.strikePrice}</td>
-      <td class="${pInt.ltpChange > 0 ? 'pos' : pInt.ltpChange < 0 ? 'neg' : ''}">
-        ${fmtP(put.ltp)}<br>
-        <small>${formatDelta(pInt.ltpChange)}</small>
+      <td class="${pInt.ltpChange>0?'pos':pInt.ltpChange<0?'neg':''}">
+        ${fmtP(put.ltp)}<br><small>${formatDelta(pInt.ltpChange)}</small>
       </td>
-      <td>
-        ${fmtUnits(put.volume)}<br>
-        <small>${formatDelta(pInt.volumeChange)}</small>
+      <td>${fmtUnits(put.volume)}<br><small>${formatDelta(pInt.volumeChange)}</small></td>
+      <td class="${put.oi===maxPutOI?'highlight':''}">
+        ${fmtUnits(put.oi)}<br><small>${formatDelta(pInt.oiChange)}</small>
       </td>
-      <td class="${put.oi === maxPutOI ? 'highlight' : ''}">
-        ${fmtUnits(put.oi)}<br>
-        <small>${formatDelta(pInt.oiChange)}</small>
-      </td>
+      <td>${formatSignal(item.putTradingSignal)}</td>
     `;
     tbody.appendChild(tr);
   });
 }
 
 setupAndRender("Overall");
-setInterval(() => { setupAndRender(document.getElementById('intervalSelector').value); }, 180000);
+setInterval(()=>{ setupAndRender(document.getElementById('intervalSelector').value); },180000);
 </script>
 </body>
 </html>

@@ -1,6 +1,8 @@
 package com.crumbs.trade.controller;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -8,9 +10,11 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.MessagingException;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.Vix;
 import com.crumbs.trade.repo.PricesNiftyRepo;
 import com.crumbs.trade.repo.StrategyRepo;
@@ -19,6 +23,7 @@ import com.crumbs.trade.service.ChartService;
 import com.crumbs.trade.service.OIDataService;
 import com.crumbs.trade.service.OIService;
 import com.crumbs.trade.service.TaskService;
+import com.crumbs.trade.service.ChartService.CandleRange;
 
 import jakarta.mail.internet.AddressException;
 
@@ -159,5 +164,10 @@ public class HeikinPsarController {
 
 		}
 
+	}
+	
+	@GetMapping("/getCandleList")
+	public List<Vix> getCandleData() {
+		return vixRepo.findByName("CRUDEOIL");
 	}
 }

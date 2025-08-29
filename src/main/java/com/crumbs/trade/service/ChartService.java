@@ -45,6 +45,7 @@ import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.ResultVixRepo;
 import com.crumbs.trade.repo.VixRepo;
+import com.crumbs.trade.service.ChartService.CandleRange;
 import com.crumbs.trade.service.TrendLineService.OHLCV;
 import com.crumbs.trade.service.TrendLineService.TrendAnalysisResult;
 import com.crumbs.trade.utility.NSEWorkingDays;
@@ -99,26 +100,33 @@ public class ChartService {
 	 */
 	public JSONArray getJsonDetails(Strategy strategy, String type, boolean testflag, String fromDate, String toDate,
 			String timeFrame) {
-		SmartConnect smartConnect = angelOne.signIn();
-		JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(), strategy.getTradingsymbol(),
-				strategy.getToken());
-		/*if (jsonObject == null) {
-			logger.info("Script is null {} , {} , {}", strategy.getExchange(), strategy.getTradingsymbol(),
-					strategy.getToken());
-			return null;
-		}*/
-		BigDecimal index_CurrentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
-		JSONArray responseArray = new JSONArray();
-		JSONObject requestObejct = new JSONObject();
-		requestObejct.put("exchange", strategy.getExchange());
-		requestObejct.put("symboltoken", strategy.getToken());
-		requestObejct.put("interval", timeFrame);
-		requestObejct.put("fromdate", fromDate);
-		requestObejct.put("todate", toDate);
+		try {
+			SmartConnect smartConnect = angelOne.signIn();
+			// JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(),
+			// strategy.getTradingsymbol(),
+			// strategy.getToken());
+			/*
+			 * if (jsonObject == null) { logger.info("Script is null {} , {} , {}",
+			 * strategy.getExchange(), strategy.getTradingsymbol(), strategy.getToken());
+			 * return null; }
+			 */
+			// BigDecimal index_CurrentPrice = new
+			// BigDecimal(String.valueOf(jsonObject.get("ltp")));
+			JSONArray responseArray = new JSONArray();
+			JSONObject requestObejct = new JSONObject();
+			requestObejct.put("exchange", strategy.getExchange());
+			requestObejct.put("symboltoken", strategy.getToken());
+			requestObejct.put("interval", timeFrame);
+			requestObejct.put("fromdate", fromDate);
+			requestObejct.put("todate", toDate);
 
-		responseArray = smartConnect.candleData(requestObejct);
-		// logger.info("fromdate " + fromDate + "todate ", toDate);
-		return responseArray;
+			responseArray = smartConnect.candleData(requestObejct);
+			// logger.info("fromdate " + fromDate + "todate ", toDate);
+			return responseArray;
+		} catch (Exception ex) {
+			logger.error("Error occured in getJsonDetails() {} ", strategy.getName());
+		}
+		return null;
 
 	}
 
@@ -153,6 +161,43 @@ public class ChartService {
 		}
 
 	}
+
+	public String getCurrentCandleTime(String input) {
+		LocalDateTime now = LocalDateTime.now();
+		CandleRange range = getLastFiveMinuteRange(now);
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+		if ("FROM".equalsIgnoreCase(input)) {
+			return range.getFrom().format(formatter);
+		} else if ("TO".equalsIgnoreCase(input)) {
+			return range.getTo().format(formatter);
+		}
+		return null;
+
+	}
+    public static CandleRange getLastFiveMinuteRange(LocalDateTime time) {
+        // Round down to nearest multiple of 5
+        int minute = (time.getMinute() / 5) * 5;
+        LocalDateTime to = time.withMinute(minute).withSecond(0).withNano(0);
+
+        // "from" is 5 mins before "to"
+        LocalDateTime from = to.minusMinutes(5);
+
+        return new CandleRange(from, to);
+    }
+
+    public static class CandleRange {
+        private final LocalDateTime from;
+        private final LocalDateTime to;
+
+        public CandleRange(LocalDateTime from, LocalDateTime to) {
+            this.from = from;
+            this.to = to;
+        }
+
+        public LocalDateTime getFrom() { return from; }
+        public LocalDateTime getTo() { return to; }
+    }
 
 	// 1. Read the chart based on given time frame
 	// 2.HeikinAchi + psar store
@@ -301,49 +346,7 @@ public class ChartService {
 		return utcString;
 	}
 
-	// Get Trend Line based on last 5 days candle data
-	public Vix getTrendLine(Strategy strategy, Vix vix) {
-		try {
-			Thread.sleep(2000);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		List<OHLCV> ohlcvList = new ArrayList<>();
-		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-		List<LocalDate> last5WorkingDays = volumeService.getLastWorkingDays(2);
-		Collections.reverse(last5WorkingDays);
-		String fromDate = last5WorkingDays.get(0).atStartOfDay().format(formatter).concat(" 09:15");
-		String toDate = new SimpleDateFormat("yyyy-MM-dd").format(new Date())
-				.concat(taskService.getHourAndMinutes("TO", 5, strategy.getExchange()));
-		JSONArray responseArray = getJsonDetails(strategy, null, false, fromDate, toDate, "FIVE_MINUTE");
-		if (responseArray != null) {
-			responseArray.forEach(item -> {
-
-				JSONArray ohlcArray = (JSONArray) item;
-				OHLC ohlc = getOHLC(ohlcArray);
-				OffsetDateTime offsetDateTime = OffsetDateTime.parse(ohlc.getTimestamp());
-				LocalDateTime localDateTime = offsetDateTime.toLocalDateTime();
-				if (ohlc != null) {
-					ohlcvList.add(new OHLCV(localDateTime, ohlc.getOpen(), ohlc.getHigh(), ohlc.getLow(),
-							ohlc.getClose(), ohlc.getVolume()));
-				}
-			});
-		}
-		/*
-		 * List<TrendLineService.OHLCV> data = entityList.stream() .map(e -> new
-		 * TrendLineService.OHLCV( e.getTime(), e.getOpen(), e.getHigh(), e.getLow(),
-		 * e.getClose(), e.getVolume())) .collect(Collectors.toList());
-		 */
-		TrendAnalysisResult trendAnalysisResult = trendLineService.analyzeTrend(ohlcvList, "5m");
-		if (trendAnalysisResult != null) {
-			vix.setTrendSignal(trendAnalysisResult.getTrendSignal());
-			vix.setTrendDirection(trendAnalysisResult.getTrendDirection());
-			vix.setZigzagSignal(trendAnalysisResult.getZigzagSignal());
-			vix.setZigzagDirection(trendAnalysisResult.getZigzagDirection());
-		}
-		return vix;
-	}
+	
 
 	/*
 	 * get the value as List

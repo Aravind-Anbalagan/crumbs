@@ -44,13 +44,6 @@ public class Vix {
 	String active;
 	@Column(name="candleType")
 	String candleType;
-	@Column(name="trendSignal")
-	String trendSignal;
-	@Column(name="zigzagSignal")
-	String zigzagSignal;
-	@Column(name="trendDirection")
-	String trendDirection;
-	@Column(name="zigzagDirection")
-	String zigzagDirection;
+
 
 }
