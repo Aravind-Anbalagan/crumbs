@@ -3,7 +3,7 @@ package com.crumbs.trade.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "NIFTY")
+@Table(name = "FO_STOCKS")
 public class Nifty {
 	@Id
 	@Column(name="id", nullable = false, unique = true)

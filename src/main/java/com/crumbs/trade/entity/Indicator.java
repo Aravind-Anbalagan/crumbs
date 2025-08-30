@@ -268,5 +268,7 @@ public class Indicator {
 	
 	@Column(name = "oneweek")
 	String oneweek;
+	@Column(name = "options")
+	String options;
 
 }

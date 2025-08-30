@@ -57,4 +57,6 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
 	List<Indexes> findAllStocks(@Param("exchange") List<String> exchange);
 	
 	Indexes findBySymbol(String symbol);
+	
+	List<Indexes> findBySymbolIn(List<String> names);
 }

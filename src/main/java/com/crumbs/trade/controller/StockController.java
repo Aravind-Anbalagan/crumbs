@@ -96,19 +96,21 @@ public class StockController {
 	}
 
 	@GetMapping("/indicators/flagged")
-	public List<DynamicIndicatorDTO> getIndicatorData(
-	        @RequestParam(defaultValue = "DAILY") String flag,
-	        @RequestParam(defaultValue = "ALL") String heikinPsarFilter) {
+	public List<DynamicIndicatorDTO> getIndicatorData(@RequestParam(defaultValue = "DAILY") String flag,
+			@RequestParam(defaultValue = "ALL") String heikinPsarFilter,
+			@RequestParam(defaultValue = "true") boolean optionFlag) {
 
-	    List<Indicator> indicators = getIndicators(flag, heikinPsarFilter);
+		List<Indicator> indicators = getIndicators(flag, heikinPsarFilter);
 
-	    if (indicators.isEmpty()) {
-	        throw new NoIndicatorDataException("No stocks matched your selected filters.");
-	    }
+		// Apply filtering only if optionFlag = true
+		if (optionFlag) {
+			indicators = indicators.stream().filter(ind -> "Y".equalsIgnoreCase(ind.getOptions())).toList();
+		}
+		if (indicators.isEmpty()) {
+			throw new NoIndicatorDataException("No stocks matched your selected filters.");
+		}
 
-	    return indicators.stream()
-	            .map(ind -> toDTO(ind, flag))
-	            .toList();
+		return indicators.stream().map(ind -> toDTO(ind, flag)).toList();
 	}
 
 

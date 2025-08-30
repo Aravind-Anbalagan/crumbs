@@ -244,7 +244,7 @@ public class TaskService {
 		if (indexName.equalsIgnoreCase("ALL")) {
 			indexesList = indexesRepo.findAllStocks(Arrays.asList("NSE", "BSE"));
 		} else if (indexName.equalsIgnoreCase("NIFTY50")) {
-			indexesList = indexesRepo.findByNameIn(niftyRepo.getAllNames());
+			indexesList = indexesRepo.findBySymbolIn(niftyRepo.getAllNames());
 		} else if (indexName != null) {
 			Indexes indexes = indexesRepo.findByNameAndSymbol(indexName, symbol);
 			indexesList.add(indexes);
@@ -298,6 +298,7 @@ public class TaskService {
 		ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
 		AtomicInteger counter = new AtomicInteger(0);
 
+		List<String> optionNameList = niftyRepo.getAllNames();
 		for (Indexes index : indexesList) {
 			executor.submit(() -> {
 				try {
@@ -309,7 +310,7 @@ public class TaskService {
 
 						while (!done && attempts < 5) {
 							try {
-								getDaysCandleData(index, smartConnect, dayCandle);
+								getDaysCandleData(index, smartConnect, dayCandle,optionNameList);
 								done = true;
 							} catch (Exception e) {
 								if (isRateLimitError(e)) {
@@ -379,7 +380,7 @@ public class TaskService {
 	}
 
 	@Transactional
-	public void getDaysCandleData(Indexes index, SmartConnect smartConnect, Candle candle) {
+	public void getDaysCandleData(Indexes index, SmartConnect smartConnect, Candle candle, List<String> optionNameList) {
 		try {
 			// ❌ OLD: pricesIndexRepo.deleteAll();
 			// ✅ NEW: delete only for current index & timeframe
@@ -444,7 +445,7 @@ public class TaskService {
 								index_OpenPrice);
 					} else if ("DAY".equalsIgnoreCase(candle.getName())) {
 						getDayVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle,
-								index_OpenPrice);
+								index_OpenPrice,optionNameList);
 					}
 					// Once work is done - delete the data
 					pricesIndexRepo.deleteByNameAndTimeframe(index.getName(), "ONE_DAY");
@@ -1220,7 +1221,7 @@ public class TaskService {
 	// Get Day Volume
 
 	public void getDayVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
-			SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice)
+			SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice, List<String> optionNameList)
 			throws IOException, SmartAPIException {
 
 		String name = indexes.getName();
@@ -1397,6 +1398,10 @@ public class TaskService {
 
 		indicator.setOneday("Y");
 
+		if(optionNameList.contains(name))
+		{
+			indicator.setOptions("Y");
+		}
 // Save indicator to DB
 		indicatorRepo.save(indicator);
 	}

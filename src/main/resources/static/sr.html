@@ -1,112 +1,95 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SR + Fibonacci Chart (IST)</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SR + Fibonacci Chart (IST) - Improved</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
-
-#controls {
-    position: relative;
-    background: #fff;
-    padding: 5px 10px;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-#ohlcDisplay {
-    font-weight: bold;
-    white-space: nowrap;
-    z-index: 1;
-}
-
-#symbolIntervalContainer {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    z-index: 2;
-}
-
-#optionsDropdown { margin-left:auto; position:relative; z-index:3; }
-#optionsButton { padding: 4px 8px; cursor: pointer; }
-#optionsMenu {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: 100%;
-    background: #fff;
-    border: 1px solid #ccc;
-    padding: 8px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-    z-index: 999;
-    min-width: 180px;
-    white-space: nowrap;
-}
-
-#optionsMenu label {
-    display: flex;
-    align-items: center;
-    margin-bottom: 5px;
-    font-size: 14px;
-}
-
-#optionsMenu label:last-child { margin-bottom: 0; }
-
-#optionsDropdown.open #optionsMenu { display: block; }
-
-#chart { width: 100%; height: 600px; }
-
-#loader {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: #fff;       /* solid white, hides old chart */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;          /* on top of chart */
-}
-
-
-
-.spinner {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin-bottom: 10px;
-}
-
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-#loaderText { font-size: 16px; font-weight: bold; color: #333; }
-
-#tradeDecision {
-    margin:10px auto;
-    padding:8px 12px;
-    font-weight:bold;
-    font-size:18px;
-    text-align:center;
-    width:fit-content;
-    border-radius:5px;
-}
+  body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
+  #controls {
+      position: relative;
+      background: #fff;
+      padding: 5px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      gap: 8px;
+  }
+  #ohlcDisplay {
+      font-weight: bold;
+      white-space: nowrap;
+      z-index: 1;
+  }
+  #symbolIntervalContainer {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 2;
+  }
+  #optionsDropdown { margin-left:auto; position:relative; z-index:3; }
+  #optionsButton { padding: 4px 8px; cursor: pointer; }
+  #optionsMenu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+      z-index: 999;
+      min-width: 180px;
+      white-space: nowrap;
+  }
+  #optionsMenu label {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 14px;
+  }
+  #optionsMenu label:last-child { margin-bottom: 0; }
+  #optionsDropdown.open #optionsMenu { display: block; }
+  #chart { width: 100%; height: 600px; }
+  #loader {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: #fff;       /* solid white, hides old chart */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;          /* on top of chart */
+  }
+  .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 10px;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  #loaderText { font-size: 16px; font-weight: bold; color: #333; }
+  #tradeDecision {
+      margin:10px auto;
+      padding:8px 12px;
+      font-weight:bold;
+      font-size:18px;
+      text-align:center;
+      width:fit-content;
+      border-radius:5px;
+  }
 </style>
 </head>
 <body>
-
 <div id="controls">
   <div id="ohlcDisplay">
     O: <span id="oVal">-</span>
@@ -114,7 +97,6 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
     L: <span id="lVal">-</span>
     C: <span id="cVal">-</span>
   </div>
-
   <div id="symbolIntervalContainer">
     <label for="symbolIntervalSelect">Exchange / Interval / Best Days:</label>
     <select id="symbolIntervalSelect">
@@ -132,7 +114,6 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
       <option value="MCX|ONE_DAY" data-nse="365" data-mcx="365">MCX - ONE_DAY (NSE:365, MCX:365)</option>
     </select>
   </div>
-
   <div id="optionsDropdown">
     <button id="refreshButton">🔄 Refresh</button>
     <button id="optionsButton">Options ⚙️</button>
@@ -145,46 +126,91 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; 
       <label><input type="checkbox" id="toggleSignal" checked> Signal</label>
       <label><input type="checkbox" id="toggleGrid" checked> Grid</label>
     </div>
+  </div>
 </div>
-
-</div>
-
-
-
 <div id="loader">
   <div class="spinner"></div>
   <div id="loaderText">Loading chart data...</div>
 </div>
-
 <div id="chart"></div>
-
 <script>
 let chart, candleSeries;
 let supportLines=[], resistanceLines=[], fiboSupportLines=[], fiboResistanceLines=[], signalMarkers=[];
 let currentPA={}, candleData=[];
+let lastRequestId = 0;
 
 // Convert UTC timestamp to IST epoch seconds
-function toISTEpoch(utcTimestamp){ return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000); }
-function formatToIST(epoch){ return new Date(epoch*1000).toLocaleString('en-GB',{timeZone:'Asia/Kolkata',hour12:false}); }
-
+function toISTEpoch(utcTimestamp) {
+    return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000);
+}
+// Format epoch seconds to IST locale string
+function formatToIST(epoch) {
+    return new Date(epoch*1000).toLocaleString('en-GB', {timeZone:'Asia/Kolkata', hour12:false});
+}
+// Update OHLC display values
 function updateOHLC(o,h,l,c,dateTime){
-    document.getElementById('oVal').textContent=o;
-    document.getElementById('hVal').textContent=h;
-    document.getElementById('lVal').textContent=l;
-    document.getElementById('cVal').textContent=c;
-    if(dateTime) document.getElementById('ohlcDisplay').title=dateTime;
+    document.getElementById('oVal').textContent = o;
+    document.getElementById('hVal').textContent = h;
+    document.getElementById('lVal').textContent = l;
+    document.getElementById('cVal').textContent = c;
+    if(dateTime) {
+        document.getElementById('ohlcDisplay').title = dateTime;
+    } else {
+        document.getElementById('ohlcDisplay').removeAttribute('title');
+    }
 }
 
-// Draw functions
-function drawSupport(){ supportLines=(currentPA.sr_nearestSupports||[]).map(l=>candleSeries.createPriceLine({price:Number(l),color:'#2196f3',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:`S: ${l}`})); }
-function drawResistance(){ resistanceLines=(currentPA.sr_nearestResistances||[]).map(l=>candleSeries.createPriceLine({price:Number(l),color:'#f44336',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:`R: ${l}`})); }
-function drawFiboSupport(){ fiboSupportLines=(currentPA.fibo_supports||[]).map(f=>candleSeries.createPriceLine({price:Number(typeof f==='number'?f:f.level),color:'#ff9800',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:`Fib S: ${Number(typeof f==='number'?f:f.level)}`})); }
-function drawFiboResistance(){ fiboResistanceLines=(currentPA.fibo_resistances||[]).map(f=>candleSeries.createPriceLine({price:Number(typeof f==='number'?f:f.level),color:'#9c27b0',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:`Fib R: ${Number(typeof f==='number'?f:f.level)}`})); }
-function drawSignal(){ 
-    signalMarkers=[]; 
-    const lastTime = candleData[candleData.length-1]?.time; 
-    if(!lastTime) return; 
-
+// Drawing functions
+function drawSupport(){
+    supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
+        price: Number(l),
+        color: '#2196f3',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `S: ${l}`
+    }));
+}
+function drawResistance(){
+    resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
+        price: Number(l),
+        color: '#f44336',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `R: ${l}`
+    }));
+}
+function drawFiboSupport(){
+    fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
+        let level = (typeof f === 'number') ? f : f.level;
+        return candleSeries.createPriceLine({
+            price: Number(level),
+            color: '#ff9800',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `Fib S: ${Number(level)}`
+        });
+    });
+}
+function drawFiboResistance(){
+    fiboResistanceLines = (currentPA.fibo_resistances || []).map(f => {
+        let level = (typeof f === 'number') ? f : f.level;
+        return candleSeries.createPriceLine({
+            price: Number(level),
+            color: '#9c27b0',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `Fib R: ${Number(level)}`
+        });
+    });
+}
+function drawSignal(){
+    signalMarkers = [];
+    const lastTime = candleData[candleData.length - 1]?.time;
+    if(!lastTime) return;
     if(currentPA.consolidatedDecision === 'BUY') {
         signalMarkers.push({
             time: lastTime,
@@ -193,8 +219,7 @@ function drawSignal(){
             shape: 'arrowUp',
             text: 'BUY'
         });
-    } 
-    else if(currentPA.consolidatedDecision === 'SELL') {
+    } else if(currentPA.consolidatedDecision === 'SELL') {
         signalMarkers.push({
             time: lastTime,
             position: 'aboveBar',
@@ -203,66 +228,83 @@ function drawSignal(){
             text: 'SELL'
         });
     }
-
-    candleSeries.setMarkers(signalMarkers); 
+    candleSeries.setMarkers(signalMarkers);
 }
 function updateMasterCheckbox(){
-    const toggles=['Support','Resistance','FiboSupport','FiboResistance','Signal'];
-    const allChecked=toggles.every(t=>document.getElementById('toggle'+t).checked);
-    const noneChecked=toggles.every(t=>!document.getElementById('toggle'+t).checked);
-    const toggleAll=document.getElementById('toggleAll');
-    if(allChecked){ toggleAll.checked=true; toggleAll.indeterminate=false; }
-    else if(noneChecked){ toggleAll.checked=false; toggleAll.indeterminate=false; }
-    else{ toggleAll.checked=false; toggleAll.indeterminate=true; }
+    const toggles = ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'];
+    const allChecked = toggles.every(t => document.getElementById('toggle' + t).checked);
+    const noneChecked = toggles.every(t => !document.getElementById('toggle' + t).checked);
+    const toggleAll = document.getElementById('toggleAll');
+    if(allChecked) { toggleAll.checked = true; toggleAll.indeterminate = false; }
+    else if(noneChecked) { toggleAll.checked = false; toggleAll.indeterminate = false; }
+    else { toggleAll.checked = false; toggleAll.indeterminate = true; }
 }
-
-let lastRequestId = 0;
 
 async function loadChart(selectedValue) {
     const requestId = ++lastRequestId;
     document.getElementById('loader').style.display = 'flex';
     document.getElementById('loaderText').textContent = 'Loading chart data...';
-
-    const [exchange,timeFrame] = selectedValue.split('|');
-    const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
-
+    updateOHLC('-', '-', '-', '-', '');
     try {
-        // 1️⃣ Fetch SR zones first
+        const [exchange,timeFrame] = selectedValue.split('|');
+        const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
+
+        // Fetch SR zones
         const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
         if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
         const paData = await paResponse.json();
-        if(requestId !== lastRequestId) return; // ignore stale response
+        console.log("SR Zones Response:", paData);
+
+        // Validate SR data presence
+        if(!paData || (!paData.sr_nearestSupports && !paData.sr_nearestResistances && !paData.fibo_supports && !paData.fibo_resistances)){
+            console.warn('SR zones data missing or empty');
+        }
         currentPA = paData || {};
 
-        // 2️⃣ Fetch candle data
+        // Fetch candles
         const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
         if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
         const rawCandles = await candleResponse.json();
+        console.log("Candles Response:", rawCandles);
+
+        if(!rawCandles || rawCandles.length === 0) throw new Error('No candle data received.');
+
+        const newCandleData = rawCandles.filter(c => c && c.timestamp != null).map(c => {
+            try {
+                return {
+                    time: toISTEpoch(c.timestamp),
+                    open: Number(c.open),
+                    high: Number(c.high),
+                    low: Number(c.low),
+                    close: Number(c.close)
+                };
+            } catch(e){
+                console.error("Error parsing candle:", c, e);
+                return null;
+            }
+        }).filter(c => c != null);
+
+        console.log("Filtered Candle Data Count:", newCandleData.length, newCandleData);
+        if(newCandleData.length === 0) throw new Error('No valid candle data after filtering.');
         if(requestId !== lastRequestId) return;
 
-        const newCandleData = (rawCandles || [])
-            .filter(c => c && c.timestamp != null)
-            .map(c => ({
-                time: toISTEpoch(c.timestamp),
-                open: c.open, high: c.high, low: c.low, close: c.close
-            }));
+        candleData = newCandleData;
 
-        if(newCandleData.length === 0) throw new Error('No valid candle data.');
-
-        // Initialize chart only once
         if(!chart){
             chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                layout:{ backgroundColor:'#ffffff', textColor:'#000' },
-                rightPriceScale:{ borderColor:'#ccc' },
-                timeScale:{ borderColor:'#ccc', timeVisible:true, secondsVisible:true },
-                grid:{ vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
+                layout: { backgroundColor:'#ffffff', textColor:'#000' },
+                rightPriceScale: { borderColor:'#ccc' },
+                timeScale: { borderColor:'#ccc', timeVisible:true, secondsVisible:true },
+                grid: { vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
             });
             candleSeries = chart.addCandlestickSeries({
-                upColor:'#4caf50', downColor:'#f44336', borderVisible:true,
-                wickUpColor:'#4caf50', wickDownColor:'#f44336'
+                upColor:'#4caf50',
+                downColor:'#f44336',
+                borderVisible:true,
+                wickUpColor:'#4caf50',
+                wickDownColor:'#f44336'
             });
-
-            chart.subscribeCrosshairMove(param=>{
+            chart.subscribeCrosshairMove(param => {
                 if(!param || !param.point) return;
                 const sd = param.seriesData?.get?.(candleSeries);
                 if(sd && sd.open !== undefined){
@@ -270,18 +312,14 @@ async function loadChart(selectedValue) {
                 }
             });
         }
-
-        // ✅ Now replace data (do not clear earlier)
-        candleData = newCandleData;
         candleSeries.setData(candleData);
 
-        // Clear old lines/markers
-        [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(l=>{
-            if(candleSeries && l) candleSeries.removePriceLine(l);
+        // Remove old overlays
+        [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
+            if(candleSeries && line) candleSeries.removePriceLine(line);
         });
-        supportLines=[]; resistanceLines=[]; fiboSupportLines=[]; fiboResistanceLines=[]; signalMarkers=[];
+        supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
 
-        // Redraw overlays
         if(document.getElementById('toggleSupport').checked) drawSupport();
         if(document.getElementById('toggleResistance').checked) drawResistance();
         if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
@@ -289,54 +327,76 @@ async function loadChart(selectedValue) {
         if(document.getElementById('toggleSignal').checked) drawSignal();
 
         chart.timeScale().fitContent();
+
+        if(requestId === lastRequestId){
+            document.getElementById('loader').style.display = 'none';
+        }
     } catch(err) {
         console.error(err);
         updateOHLC('-', '-', '-', '-', '');
         document.getElementById('loaderText').textContent = "⚠️ Failed to load chart data";
-        setTimeout(()=>{ 
-            if(requestId === lastRequestId) 
-                document.getElementById('loader').style.display='none'; 
+        setTimeout(() => {
+            if(lastRequestId === lastRequestId)
+                document.getElementById('loader').style.display = 'none';
         }, 2000);
-        return;
-    }
-
-    if(requestId === lastRequestId){
-        document.getElementById('loader').style.display='none';
     }
 }
 
-
-
-
-
-// Checkbox events
-['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t=>{
-    document.getElementById('toggle'+t).addEventListener('change',()=>{
+// Checkbox toggle handlers
+['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
+    document.getElementById('toggle'+t).addEventListener('change', () => {
         if(candleSeries){
-            if(t==='Support'){ supportLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleSupport').checked) drawSupport(); }
-            if(t==='Resistance'){ resistanceLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleResistance').checked) drawResistance(); }
-            if(t==='FiboSupport'){ fiboSupportLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport(); }
-            if(t==='FiboResistance'){ fiboResistanceLines.forEach(l=>candleSeries.removePriceLine(l)); if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance(); }
-            if(t==='Signal'){ candleSeries.setMarkers([]); if(document.getElementById('toggleSignal').checked) drawSignal(); }
+            if(t === 'Support') {
+                supportLines.forEach(l => candleSeries.removePriceLine(l));
+                if(document.getElementById('toggleSupport').checked) drawSupport();
+            }
+            if(t === 'Resistance') {
+                resistanceLines.forEach(l => candleSeries.removePriceLine(l));
+                if(document.getElementById('toggleResistance').checked) drawResistance();
+            }
+            if(t === 'FiboSupport') {
+                fiboSupportLines.forEach(l => candleSeries.removePriceLine(l));
+                if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+            }
+            if(t === 'FiboResistance') {
+                fiboResistanceLines.forEach(l => candleSeries.removePriceLine(l));
+                if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+            }
+            if(t === 'Signal') {
+                candleSeries.setMarkers([]);
+                if(document.getElementById('toggleSignal').checked) drawSignal();
+            }
             updateMasterCheckbox();
         }
     });
 });
-document.getElementById('toggleAll').addEventListener('change',()=>{
-    const check=document.getElementById('toggleAll').checked;
-    ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t=>{
-        const cb=document.getElementById('toggle'+t); cb.checked=check; cb.dispatchEvent(new Event('change'));
+// All toggle handler
+document.getElementById('toggleAll').addEventListener('change', () => {
+    const check = document.getElementById('toggleAll').checked;
+    ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
+        const cb = document.getElementById('toggle'+t);
+        cb.checked = check;
+        cb.dispatchEvent(new Event('change'));
     });
 });
-document.getElementById('toggleGrid').addEventListener('change',function(){ chart.applyOptions({ grid:{ vertLines:{visible:this.checked}, horzLines:{visible:this.checked} } }); });
+// Grid toggle handler
+document.getElementById('toggleGrid').addEventListener('change', function(){
+    chart.applyOptions({
+        grid: { vertLines: {visible:this.checked}, horzLines: {visible:this.checked} }
+    });
+});
 
-// Initial load
+// Initial load and event handlers
 loadChart(document.getElementById('symbolIntervalSelect').value);
-document.getElementById('symbolIntervalSelect').addEventListener('change',function(){ loadChart(this.value); });
-document.getElementById('optionsButton').addEventListener('click',()=>{ document.getElementById('optionsDropdown').classList.toggle('open'); });
-document.getElementById('refreshButton').addEventListener('click',()=>{ loadChart(document.getElementById('symbolIntervalSelect').value); });
-
+document.getElementById('symbolIntervalSelect').addEventListener('change', function(){
+    loadChart(this.value);
+});
+document.getElementById('optionsButton').addEventListener('click', () => {
+    document.getElementById('optionsDropdown').classList.toggle('open');
+});
+document.getElementById('refreshButton').addEventListener('click', () => {
+    loadChart(document.getElementById('symbolIntervalSelect').value);
+});
 </script>
-
 </body>
 </html>

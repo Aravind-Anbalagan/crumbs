@@ -340,6 +340,11 @@
 <body>
   <div class="toolbar">
     <div class="controls">
+       <label for="timeframe">Filter:</label>
+		<div>
+		  <label><input type="radio" name="optionFilter" value="ALL" checked> All</label>
+		  <label><input type="radio" name="optionFilter" value="OPTIONS"> Options</label>
+		</div>
       <label for="timeframe">Timeframe:</label>
       <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
         <option value="DAILY">Daily</option>
@@ -438,6 +443,11 @@ function updateSecondaryFilter() {
 async function loadTable() {
     const timeframe = document.getElementById("timeframe").value;
     const filter = document.getElementById("secondaryFilter").value;
+
+    // 👇 NEW: read radio button
+    const selected = document.querySelector('input[name="optionFilter"]:checked').value;
+    const optionFlag = (selected === "OPTIONS"); // true only when Options selected
+
     const loader = document.getElementById("loader");
     const errorDiv = document.getElementById("errorMessage");
 
@@ -447,9 +457,9 @@ async function loadTable() {
     try {
         let url;
         if (timeframe === "INTRADAY") {
-            url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(filter)}`;
+            url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
         } else {
-            url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}`;
+            url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
         }
 
         const res = await fetch(url);
@@ -475,6 +485,7 @@ async function loadTable() {
         loader.style.display = "none";
     }
 }
+
 
 
 // --- COLUMN TOGGLE PANEL ---
@@ -655,8 +666,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (storedFont) { currentFontSize = storedFont; updateFontSize(); }
     const theme = localStorage.getItem('theme');
     if (theme === 'dark') document.body.classList.add("dark-mode");
-    loadTable();
+
+    // 👇 NEW: reload table when radio button changes
+    document.querySelectorAll('input[name="optionFilter"]').forEach(radio => {
+        radio.addEventListener("change", () => {
+            currentPage = 1;   // reset pagination
+            loadTable();
+        });
+    });
+
+    loadTable(); // initial load
 });
+
 </script>
 
 </body>
