@@ -5,7 +5,9 @@ import java.text.SimpleDateFormat;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -39,16 +41,20 @@ public class ResultService {
 	
 	@Transactional
 	public void saveNiftyResult(Indicator stock) {
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+		sdf.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+		String dateTimeIST = sdf.format(new Date());
 		Result result = resultRepo.findByName(stock.getName());
 		if (result == null) {
 			result = new Result();
 			result.setName(stock.getName());
+			result.setTimestamp(dateTimeIST);
 			result.setToken(stock.getToken());
 			result.setTradingSymbol(stock.getTradingSymbol());
 			result.setExchange(stock.getExchange());
 			result.setExecutedltp(stock.getPrevdaycloseprice());
 			result.setCurrentltp(stock.getCurrentPrice());
-			result.setType(stock.getFirst3FiveMinsCandle()); // common field indicate buy /sell
+			result.setType(stock.getIntraday()); // common field indicate buy /sell
 			if ("UP".equalsIgnoreCase(result.getType())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
 

@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -21,6 +22,7 @@ import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.controller.CommonController;
 import com.crumbs.trade.service.DownloadService;
 @EnableScheduling
+@EnableJpaAuditing
 @EntityScan("com.crumbs.trade.entity")
 @SpringBootApplication
 public class CrumbsNewApplication {
