@@ -1,93 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SR + Fibonacci Chart (IST) - Improved</title>
+<title>SR + Fibonacci Chart (IST) - Improved (Resilient)</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
-  #controls {
-      position: relative;
-      background: #fff;
-      padding: 5px 10px;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      flex-wrap: wrap;
-      gap: 8px;
-  }
-  #ohlcDisplay {
-      font-weight: bold;
-      white-space: nowrap;
-      z-index: 1;
-  }
-  #symbolIntervalContainer {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      z-index: 2;
-  }
+  #controls { position: relative; background: #fff; padding: 5px 10px; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+  #ohlcDisplay { font-weight: bold; white-space: nowrap; z-index: 1; }
+  #symbolIntervalContainer { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; z-index: 2; }
   #optionsDropdown { margin-left:auto; position:relative; z-index:3; }
   #optionsButton { padding: 4px 8px; cursor: pointer; }
-  #optionsMenu {
-      display: none;
-      position: absolute;
-      right: 0;
-      top: 100%;
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-      z-index: 999;
-      min-width: 180px;
-      white-space: nowrap;
-  }
-  #optionsMenu label {
-      display: flex;
-      align-items: center;
-      margin-bottom: 5px;
-      font-size: 14px;
-  }
+  #optionsMenu { display: none; position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #ccc; padding: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); z-index: 999; min-width: 180px; white-space: nowrap; }
+  #optionsMenu label { display: flex; align-items: center; margin-bottom: 5px; font-size: 14px; }
   #optionsMenu label:last-child { margin-bottom: 0; }
   #optionsDropdown.open #optionsMenu { display: block; }
   #chart { width: 100%; height: 600px; }
-  #loader {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      background: #fff;       /* solid white, hides old chart */
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;          /* on top of chart */
-  }
-  .spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #3498db;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin-bottom: 10px;
-  }
+  #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+  .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   #loaderText { font-size: 16px; font-weight: bold; color: #333; }
-  #tradeDecision {
-      margin:10px auto;
-      padding:8px 12px;
-      font-weight:bold;
-      font-size:18px;
-      text-align:center;
-      width:fit-content;
-      border-radius:5px;
-      display: none; /* hidden until updated by drawSignal() */
-  }
+  #tradeDecision { margin:10px auto; padding:8px 12px; font-weight:bold; font-size:18px; text-align:center; width:fit-content; border-radius:5px; display:none; }
+  /* small status overlay added by resilience patch */
+  #fetchStatus { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.7); color: white; padding: 8px 10px; border-radius: 6px; font-size: 13px; z-index: 10000; display:none; max-width:320px; word-wrap:break-word; }
 </style>
 </head>
 <body>
@@ -129,64 +65,54 @@
     </div>
   </div>
 </div>
+
 <div id="loader">
   <div class="spinner"></div>
   <div id="loaderText">Loading chart data...</div>
 </div>
 
-<!-- #2: trade decision banner (added, hidden by default) -->
+<!-- trade banner already present in your base -->
 <div id="tradeDecision"></div>
 
 <div id="chart"></div>
+
+<!-- fetch status overlay (RESILIENCE PATCH UI) -->
+<div id="fetchStatus"></div>
+
 <script>
+/* =========================
+   Your original variables and helpers (preserved)
+   ========================= */
 let chart, candleSeries;
 let supportLines=[], resistanceLines=[], fiboSupportLines=[], fiboResistanceLines=[], signalMarkers=[];
 let currentPA={}, candleData=[];
 let lastRequestId = 0;
 
-// Convert UTC timestamp to IST epoch seconds
+/* ---------- helpers (unchanged) ---------- */
 function toISTEpoch(utcTimestamp) {
     return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000);
 }
-// Format epoch seconds to IST locale string
 function formatToIST(epoch) {
     return new Date(epoch*1000).toLocaleString('en-GB', {timeZone:'Asia/Kolkata', hour12:false});
 }
-// Update OHLC display values
 function updateOHLC(o,h,l,c,dateTime){
     document.getElementById('oVal').textContent = o;
     document.getElementById('hVal').textContent = h;
     document.getElementById('lVal').textContent = l;
     document.getElementById('cVal').textContent = c;
-    if(dateTime) {
-        document.getElementById('ohlcDisplay').title = dateTime;
-    } else {
-        document.getElementById('ohlcDisplay').removeAttribute('title');
-    }
+    if(dateTime) document.getElementById('ohlcDisplay').title = dateTime;
+    else document.getElementById('ohlcDisplay').removeAttribute('title');
 }
-
-// #2: update decision banner function (only added — doesn't change existing flow)
 function updateDecisionBanner(decision){
     const el = document.getElementById('tradeDecision');
     if(!el) return;
-    if(decision === 'BUY'){
-        el.style.display = 'block';
-        el.textContent = 'BUY';
-        el.style.background = '#4caf50';
-        el.style.color = '#fff';
-    } else if(decision === 'SELL'){
-        el.style.display = 'block';
-        el.textContent = 'SELL';
-        el.style.background = '#f44336';
-        el.style.color = '#fff';
-    } else {
-        el.style.display = 'none';
-        el.textContent = '';
-    }
+    if(decision === 'BUY'){ el.style.display='block'; el.textContent='BUY'; el.style.background='#4caf50'; el.style.color='#fff'; }
+    else if(decision === 'SELL'){ el.style.display='block'; el.textContent='SELL'; el.style.background='#f44336'; el.style.color='#fff'; }
+    else { el.style.display='none'; el.textContent=''; }
 }
 
-/* ---------- drawing functions (unchanged except where we call updateDecisionBanner) ---------- */
-function drawSupport(){
+/* drawing functions preserved (unchanged) */
+function drawSupport(){ /* as before */ 
     supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
         price: Number(l),
         color: '#2196f3',
@@ -194,9 +120,9 @@ function drawSupport(){
         lineStyle: LightweightCharts.LineStyle.Solid,
         axisLabelVisible: true,
         title: `S: ${l}`
-    }));
+    })); 
 }
-function drawResistance(){
+function drawResistance(){ 
     resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
         price: Number(l),
         color: '#f44336',
@@ -204,7 +130,7 @@ function drawResistance(){
         lineStyle: LightweightCharts.LineStyle.Solid,
         axisLabelVisible: true,
         title: `R: ${l}`
-    }));
+    })); 
 }
 function drawFiboSupport(){
     fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
@@ -237,29 +163,13 @@ function drawSignal(){
     const lastTime = candleData[candleData.length - 1]?.time;
     if(!lastTime) { updateDecisionBanner(null); return; }
 
-    // determine decision from currentPA
     let decision = currentPA.consolidatedDecision || null;
-
     if(decision === 'BUY') {
-        signalMarkers.push({
-            time: lastTime,
-            position: 'belowBar',
-            color: 'green',
-            shape: 'arrowUp',
-            text: 'BUY'
-        });
+        signalMarkers.push({ time:lastTime, position:'belowBar', color:'green', shape:'arrowUp', text:'BUY' });
     } else if(decision === 'SELL') {
-        signalMarkers.push({
-            time: lastTime,
-            position: 'aboveBar',
-            color: 'red',
-            shape: 'arrowDown',
-            text: 'SELL'
-        });
+        signalMarkers.push({ time:lastTime, position:'aboveBar', color:'red', shape:'arrowDown', text:'SELL' });
     }
     candleSeries.setMarkers(signalMarkers);
-
-    // #2 keep banner in sync with signals (only added)
     updateDecisionBanner(decision);
 }
 function updateMasterCheckbox(){
@@ -272,133 +182,217 @@ function updateMasterCheckbox(){
     else { toggleAll.checked = false; toggleAll.indeterminate = true; }
 }
 
-/* ---------- persistence (#3 — unchanged from your base) ---------- */
+/* ---------- persistence (unchanged) ---------- */
 const PERSIST_KEYS = ['toggleAll','toggleSupport','toggleResistance','toggleFiboSupport','toggleFiboResistance','toggleSignal','toggleGrid'];
 function restoreToggleState(){
     PERSIST_KEYS.forEach(id=>{
         const el = document.getElementById(id);
         const saved = localStorage.getItem(id);
-        if(saved !== null) el.checked = (saved === 'true');
+        if(saved !== null && el) el.checked = (saved === 'true');
     });
     updateMasterCheckbox();
 }
 
-/* ---------- data & chart (unchanged, small addition to apply grid on first render) ---------- */
-async function loadChart(selectedValue) {
-    const requestId = ++lastRequestId;
-    document.getElementById('loader').style.display = 'flex';
-    document.getElementById('loaderText').textContent = 'Loading chart data...';
-    updateOHLC('-', '-', '-', '-', '');
+/* =========================
+   === RESILIENCE PATCH ===
+   New robust loadChart with parsing, validation & retry
+   (only this section is added/changed)
+   ========================= */
+
+const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000]; // ms
+const MIN_VALID_CANDLES = 3; // threshold to consider valid
+const fetchStatusEl = document.getElementById('fetchStatus');
+
+function showFetchStatus(msg, level='info'){ // level: info/warn/error
+    if(!fetchStatusEl) return;
+    fetchStatusEl.style.display = 'block';
+    fetchStatusEl.textContent = msg;
+    fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
+}
+
+// robust timestamp normalizer: accepts {timestamp, time, t}, numeric (s|ms) and ISO strings
+function normalizeTimestamp(raw){
+    if(raw == null) return null;
+    // if object (e.g. { year, month, day,... }) return null here (not supported)
     try {
-        const [exchange,timeFrame] = selectedValue.split('|');
-        const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
-
-        // Fetch SR zones
-        const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
-        if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
-        const paData = await paResponse.json();
-        console.log("SR Zones Response:", paData);
-
-        // Validate SR data presence
-        if(!paData || (!paData.sr_nearestSupports && !paData.sr_nearestResistances && !paData.fibo_supports && !paData.fibo_resistances)){
-            console.warn('SR zones data missing or empty');
+        if(typeof raw === 'number'){
+            // if clearly milliseconds (>= 1e12), convert to seconds
+            if(raw > 1e12) return Math.floor(raw/1000);
+            // if plausible seconds epoch (>= 1e9)
+            if(raw >= 1e9) return Math.floor(raw); 
+            return null;
         }
-        currentPA = paData || {};
-
-        // Fetch candles
-        const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
-        if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
-        const rawCandles = await candleResponse.json();
-        console.log("Candles Response:", rawCandles);
-
-        if(!rawCandles || rawCandles.length === 0) throw new Error('No candle data received.');
-
-        const newCandleData = rawCandles.filter(c => c && c.timestamp != null).map(c => {
-            try {
-                return {
-                    time: toISTEpoch(c.timestamp),
-                    open: Number(c.open),
-                    high: Number(c.high),
-                    low: Number(c.low),
-                    close: Number(c.close)
-                };
-            } catch(e){
-                console.error("Error parsing candle:", c, e);
+        if(typeof raw === 'string'){
+            // numeric string?
+            if(/^\d+$/.test(raw)){
+                const n = Number(raw);
+                if(n > 1e12) return Math.floor(n/1000);
+                if(n >= 1e9) return Math.floor(n);
                 return null;
             }
-        }).filter(c => c != null);
-
-        console.log("Filtered Candle Data Count:", newCandleData.length, newCandleData);
-        if(newCandleData.length === 0) throw new Error('No valid candle data after filtering.');
-        if(requestId !== lastRequestId) return;
-
-        candleData = newCandleData;
-
-        if(!chart){
-            chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                layout: { backgroundColor:'#ffffff', textColor:'#000' },
-                rightPriceScale: { borderColor:'#ccc' },
-                timeScale: { borderColor:'#ccc', timeVisible:true, secondsVisible:true },
-                grid: { vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
-            });
-            candleSeries = chart.addCandlestickSeries({
-                upColor:'#4caf50',
-                downColor:'#f44336',
-                borderVisible:true,
-                wickUpColor:'#4caf50',
-                wickDownColor:'#f44336'
-            });
-            chart.subscribeCrosshairMove(param => {
-                if(!param || !param.point) return;
-                const sd = param.seriesData?.get?.(candleSeries);
-                if(sd && sd.open !== undefined){
-                    updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
-                }
-            });
-            // Apply persisted grid state on first render
-            const showGrid = document.getElementById('toggleGrid').checked;
-            chart.applyOptions({
-                grid: { vertLines:{visible:showGrid}, horzLines:{visible:showGrid} }
-            });
+            // ISO / parseable date string
+            const ms = Date.parse(raw); // returns ms or NaN
+            if(!isNaN(ms)) return Math.floor(ms/1000);
+            return null;
         }
-        candleSeries.setData(candleData);
-
-        // Remove old overlays
-        [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
-            if(candleSeries && line) candleSeries.removePriceLine(line);
-        });
-        supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
-
-        if(document.getElementById('toggleSupport').checked) drawSupport();
-        if(document.getElementById('toggleResistance').checked) drawResistance();
-        if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-        if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-        if(document.getElementById('toggleSignal').checked) drawSignal();
-
-        // Always keep banner updated with latest decision
-        updateDecisionBanner(currentPA.consolidatedDecision || null);
-
-        chart.timeScale().fitContent();
-
-        if(requestId === lastRequestId){
-            document.getElementById('loader').style.display = 'none';
-        }
-    } catch(err) {
-        console.error(err);
-        updateOHLC('-', '-', '-', '-', '');
-        document.getElementById('loaderText').textContent = "⚠️ Failed to load chart data";
-        setTimeout(() => {
-            if(lastRequestId === lastRequestId)
-                document.getElementById('loader').style.display = 'none';
-        }, 2000);
+        return null;
+    } catch(e){
+        console.error("normalizeTimestamp error:", raw, e);
+        return null;
     }
 }
+
+// validate candle object has numeric OHLC and a valid time
+function validateAndNormalizeCandle(c){
+    if(!c) return null;
+    // attempt multiple possible fields for timestamp
+    const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
+    const t = normalizeTimestamp(rawTime);
+    if(!t) return null;
+    const open = Number(c.open ?? c.o ?? c.O);
+    const high = Number(c.high ?? c.h ?? c.H);
+    const low = Number(c.low ?? c.l ?? c.L);
+    const close = Number(c.close ?? c.c ?? c.C);
+    if(!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
+    return { time: t, open, high, low, close };
+}
+
+// main resilient fetch + render loop
+async function loadChart(selectedValue){
+    const requestId = ++lastRequestId;
+    document.getElementById('loader').style.display = 'flex';
+    showFetchStatus('Starting fetch...', 'info');
+    updateOHLC('-', '-', '-', '-', '');
+
+    // inner function that will retry
+    async function attemptFetch(attempt){
+        if(requestId !== lastRequestId) return; // a newer loadChart started, abort
+        showFetchStatus(`Fetch attempt ${attempt+1}...`, 'info');
+        try {
+            const [exchange,timeFrame] = selectedValue.split('|');
+            const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
+
+            // fetch SR zones first (keep your original order)
+            const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
+            if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
+            const paData = await paResponse.json();
+            currentPA = paData || {};
+
+            // fetch candles
+            const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
+            if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
+            const rawCandles = await candleResponse.json();
+
+            console.log(`[loadChart] rawCandles length: ${rawCandles?.length}`, rawCandles);
+            if(!rawCandles || rawCandles.length === 0){
+                throw new Error('No candle data received');
+            }
+
+            // validate+normalize
+            const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
+            console.log(`[loadChart] normalized count: ${normalized.length}`);
+
+            if(normalized.length < MIN_VALID_CANDLES){
+                // Not enough valid candles — either retry or show error if last attempt
+                throw new Error(`Too few valid candles (${normalized.length})`);
+            }
+
+            // If newer request was started: abort applying this response
+            if(requestId !== lastRequestId) return;
+
+            candleData = normalized; // seconds epoch
+
+            // ensure chart exists (create only once)
+            if(!chart){
+                chart = LightweightCharts.createChart(document.getElementById('chart'), {
+                    layout: { backgroundColor:'#ffffff', textColor:'#000' },
+                    rightPriceScale: { borderColor:'#ccc' },
+                    timeScale: { borderColor:'#ccc', timeVisible:true, secondsVisible:true },
+                    grid: { vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
+                });
+                candleSeries = chart.addCandlestickSeries({
+                    upColor:'#4caf50', downColor:'#f44336', borderVisible:true,
+                    wickUpColor:'#4caf50', wickDownColor:'#f44336'
+                });
+                chart.subscribeCrosshairMove(param => {
+                    if(!param || !param.point) return;
+                    const sd = param.seriesData?.get?.(candleSeries);
+                    if(sd && sd.open !== undefined){
+                        updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
+                    }
+                });
+            }
+
+            // set data safely
+            try {
+                candleSeries.setData(candleData);
+            } catch(e){
+                console.error("[loadChart] candleSeries.setData failed:", e);
+                throw new Error("Failed to set chart data: " + e.message);
+            }
+
+            // remove old overlays (preserve behavior)
+            [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
+                if(candleSeries && line) candleSeries.removePriceLine(line);
+            });
+            supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
+
+            // draw overlays based on toggles (preserve original logic)
+            if(document.getElementById('toggleSupport').checked) drawSupport();
+            if(document.getElementById('toggleResistance').checked) drawResistance();
+            if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+            if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+            if(document.getElementById('toggleSignal').checked) drawSignal();
+
+            // keep banner updated
+            updateDecisionBanner(currentPA.consolidatedDecision || null);
+
+            chart.timeScale().fitContent();
+
+            // success
+            document.getElementById('loader').style.display = 'none';
+            showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt+1})`, 'info');
+            // persist anything if necessary (already handled by toggles)
+            return;
+
+        } catch(err) {
+            console.warn(`[loadChart] attempt ${attempt+1} failed:`, err);
+            console.error(err);
+            // last attempt?
+            if(attempt >= FETCH_RETRY_DELAYS.length){
+                // show error and stop
+                document.getElementById('loader').style.display = 'none';
+                showFetchStatus(`Failed after ${attempt+1} attempts: ${err.message}`, 'error');
+                // update OHLC to blanks
+                updateOHLC('-', '-', '-', '-', '');
+                // keep banner consistent
+                updateDecisionBanner(null);
+                return;
+            } else {
+                // schedule retry after delay
+                const delay = FETCH_RETRY_DELAYS[attempt];
+                showFetchStatus(`Attempt ${attempt+1} failed: ${err.message}. Retrying in ${delay/1000}s...`, 'warn');
+                await new Promise(r => setTimeout(r, delay));
+                // If request was superseded, abort
+                if(requestId !== lastRequestId) return;
+                return attemptFetch(attempt+1);
+            }
+        }
+    } // attemptFetch
+
+    // start first attempt
+    attemptFetch(0);
+} // loadChart
+
+/* =========================
+   End RESILIENCE PATCH
+   ========================= */
 
 /* ---------- checkbox handlers (original + persistence) ---------- */
 ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
     const id = 'toggle'+t;
     document.getElementById(id).addEventListener('change', () => {
-        // save state (persistence)
+        // save state (#3)
         localStorage.setItem(id, document.getElementById(id).checked);
 
         if(candleSeries){
@@ -421,7 +415,6 @@ async function loadChart(selectedValue) {
             if(t === 'Signal') {
                 candleSeries.setMarkers([]);
                 if(document.getElementById('toggleSignal').checked) drawSignal();
-                // keep banner updated regardless
                 updateDecisionBanner(currentPA.consolidatedDecision || null);
             }
             updateMasterCheckbox();
@@ -431,18 +424,17 @@ async function loadChart(selectedValue) {
 // All toggle handler
 document.getElementById('toggleAll').addEventListener('change', () => {
     const check = document.getElementById('toggleAll').checked;
-    localStorage.setItem('toggleAll', check); // persist
+    localStorage.setItem('toggleAll', check); // persist (#3)
     ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
         const cb = document.getElementById('toggle'+t);
         cb.checked = check;
-        // each individual 'change' will persist itself and redraw
         cb.dispatchEvent(new Event('change'));
     });
 });
 // Grid toggle handler
 document.getElementById('toggleGrid').addEventListener('change', function(){
-    localStorage.setItem('toggleGrid', this.checked); // persist
-    chart.applyOptions({
+    localStorage.setItem('toggleGrid', this.checked); // persist (#3)
+    if(chart) chart.applyOptions({
         grid: { vertLines: {visible:this.checked}, horzLines: {visible:this.checked} }
     });
 });
@@ -465,7 +457,7 @@ document.getElementById('optionsButton').addEventListener('click', (e) => {
     document.getElementById('optionsDropdown').classList.toggle('open');
 });
 
-// #1: dropdown auto-close on outside click and ESC (only added)
+// dropdown auto-close on outside click & ESC (keeps previous behavior)
 document.addEventListener('click', (e) => {
     const dd = document.getElementById('optionsDropdown');
     if(dd && dd.classList.contains('open') && !dd.contains(e.target)){

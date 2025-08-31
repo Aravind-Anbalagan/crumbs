@@ -1,480 +1,685 @@
+<!-- Saved as: stock-indicators.html -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SR + Fibonacci Chart (IST) - Improved (Resilient)</title>
-<script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
-<style>
-  body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
-  #controls { position: relative; background: #fff; padding: 5px 10px; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
-  #ohlcDisplay { font-weight: bold; white-space: nowrap; z-index: 1; }
-  #symbolIntervalContainer { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; z-index: 2; }
-  #optionsDropdown { margin-left:auto; position:relative; z-index:3; }
-  #optionsButton { padding: 4px 8px; cursor: pointer; }
-  #optionsMenu { display: none; position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #ccc; padding: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); z-index: 999; min-width: 180px; white-space: nowrap; }
-  #optionsMenu label { display: flex; align-items: center; margin-bottom: 5px; font-size: 14px; }
-  #optionsMenu label:last-child { margin-bottom: 0; }
-  #optionsDropdown.open #optionsMenu { display: block; }
-  #chart { width: 100%; height: 600px; }
-  #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
-  .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
-  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  #loaderText { font-size: 16px; font-weight: bold; color: #333; }
-  #tradeDecision { margin:10px auto; padding:8px 12px; font-weight:bold; font-size:18px; text-align:center; width:fit-content; border-radius:5px; display:none; }
-  /* small status overlay added by resilience patch */
-  #fetchStatus { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.7); color: white; padding: 8px 10px; border-radius: 6px; font-size: 13px; z-index: 10000; display:none; max-width:320px; word-wrap:break-word; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Indicators Table</title>
+  <style>
+    :root {
+      --table-font-size: 14px;
+      --bg-col-name: #e3f2fd;
+      --bg-col-price: #e8f5e9;
+      --bg-col-dailysr: #fff3e0;
+      --bg-col-sr: #f3e8ff;
+      --bg-col-fibo: #e6fff7;
+      --bg-col-ma: #fffbe6;
+      --bg-col-ai: #ffeaea;
+      --bg-col-combine: #e0f7fa;
+    }
+
+    body.dark-mode {
+      background-color: #1e1e1e;
+      color: #f5f5f5;
+      --bg-col-name: #2a3b4c;
+      --bg-col-price: #2e4433;
+      --bg-col-dailysr: #4d3b26;
+      --bg-col-sr: #493d5b;
+      --bg-col-fibo: #1f4033;
+      --bg-col-ma: #464226;
+      --bg-col-ai: #4d2c2c;
+      --bg-col-combine: #264d4f;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      padding: 12px;
+      margin: 0;
+      background-color: #f9f9f9;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .column-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+
+    .column-dropdown button {
+      padding: 5px 10px;
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .column-dropdown-content {
+      display: none;
+      position: absolute;
+      background-color: white;
+      min-width: 180px;
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      z-index: 10;
+      padding: 8px;
+    }
+
+    .column-dropdown.show .column-dropdown-content {
+      display: block;
+    }
+
+    body.dark-mode .column-dropdown-content {
+      background-color: #2c2c2c;
+      color: #f5f5f5;
+      border-color: #777;
+    }
+
+    .refresh-btn,
+    .theme-toggle {
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+    }
+
+    .theme-toggle {
+      margin-left: auto;
+    }
+
+    input[type="text"],
+    select {
+      padding: 5px;
+      min-width: 140px;
+      box-sizing: border-box;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+
+    th,
+    td {
+      border: 1px solid #999;
+      padding: 6px 8px;
+      text-align: left;
+      word-break: break-word;
+      font-size: var(--table-font-size);
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background: inherit;
+      z-index: 2;
+    }
+
+    th {
+      font-weight: bold;
+      cursor: pointer;
+      position: relative;
+      padding-right: 18px;
+    }
+
+    th.sort-asc::after {
+      content: " \25B2";
+    }
+
+    th.sort-desc::after {
+      content: " \25BC";
+    }
+
+    th.col-name,
+    td.col-name {
+      background-color: var(--bg-col-name) !important;
+    }
+
+    th.col-price,
+    td.col-price {
+      background-color: var(--bg-col-price) !important;
+    }
+
+    th.col-dailysr,
+    td.col-dailysr {
+      background-color: var(--bg-col-dailysr) !important;
+    }
+
+    th.sr,
+    td.sr {
+      background-color: var(--bg-col-sr) !important;
+    }
+
+    th.fibo,
+    td.fibo {
+      background-color: var(--bg-col-fibo) !important;
+    }
+
+    th.ma,
+    td.ma {
+      background-color: var(--bg-col-ma) !important;
+    }
+
+    th.ai,
+    td.ai {
+      background-color: var(--bg-col-ai) !important;
+    }
+
+    th.combine,
+    td.combine {
+      background-color: var(--bg-col-combine) !important;
+    }
+
+    body.dark-mode table,
+    body.dark-mode th,
+    body.dark-mode td {
+      border-color: #555;
+    }
+
+    body.dark-mode th,
+    body.dark-mode td {
+      background-color: #2c2c2c;
+      color: #f5f5f5;
+    }
+
+    body.dark-mode input,
+    body.dark-mode select {
+      background-color: #2c2c2c;
+      color: #f5f5f5;
+      border: 1px solid #777;
+    }
+
+    #pagination {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .page-link {
+      cursor: pointer;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+      border-radius: 4px;
+      user-select: none;
+    }
+
+    .page-link.active {
+      font-weight: bold;
+      background: #e0e0e0;
+    }
+
+    #loader {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      font-size: 16px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #ccc;
+      border-top: 4px solid #333;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 700px) {
+      table,
+      thead,
+      tbody,
+      th,
+      td,
+      tr {
+        display: block;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tr {
+        margin-bottom: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 6px;
+        background: #fff;
+      }
+
+      td {
+        padding-left: 50%;
+        position: relative;
+        border: none;
+        border-bottom: 1px solid #ddd;
+      }
+
+      td::before {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        width: 45%;
+        font-weight: bold;
+        white-space: nowrap;
+        content: attr(data-label);
+      }
+
+      .toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+    }
+
+    h1,
+    h2 {
+      margin: 4px 0;
+    }
+
+    #errorMessage {
+      color: #b00020;
+      background: #fdecea;
+      border: 1px solid #f5c6cb;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      display: none;
+      border-radius: 4px;
+    }
+  </style>
 </head>
+
 <body>
-<div id="controls">
-  <div id="ohlcDisplay">
-    O: <span id="oVal">-</span>
-    H: <span id="hVal">-</span>
-    L: <span id="lVal">-</span>
-    C: <span id="cVal">-</span>
-  </div>
-  <div id="symbolIntervalContainer">
-    <label for="symbolIntervalSelect">Exchange / Interval / Best Days:</label>
-    <select id="symbolIntervalSelect">
-      <option value="NFO|ONE_MINUTE" data-nse="15" data-mcx="10">NFO - ONE_MINUTE (NSE:15, MCX:10)</option>
-      <option value="NFO|FIVE_MINUTE" data-nse="50" data-mcx="10" selected>NFO - FIVE_MINUTE (NSE:50, MCX:10)</option>
-      <option value="NFO|FIFTEEN_MINUTE" data-nse="100" data-mcx="30">NFO - FIFTEEN_MINUTE (NSE:100, MCX:30)</option>
-      <option value="NFO|THIRTY_MINUTE" data-nse="150" data-mcx="50">NFO - THIRTY_MINUTE (NSE:150, MCX:50)</option>
-      <option value="NFO|ONE_HOUR" data-nse="200" data-mcx="80">NFO - ONE_HOUR (NSE:200, MCX:80)</option>
-      <option value="NFO|ONE_DAY" data-nse="365" data-mcx="365">NFO - ONE_DAY (NSE:365, MCX:365)</option>
-      <option value="MCX|ONE_MINUTE" data-nse="15" data-mcx="10">MCX - ONE_MINUTE (NSE:15, MCX:10)</option>
-      <option value="MCX|FIVE_MINUTE" data-nse="50" data-mcx="10">MCX - FIVE_MINUTE (NSE:50, MCX:10)</option>
-      <option value="MCX|FIFTEEN_MINUTE" data-nse="100" data-mcx="30">MCX - FIFTEEN_MINUTE (NSE:100, MCX:30)</option>
-      <option value="MCX|THIRTY_MINUTE" data-nse="150" data-mcx="50">MCX - THIRTY_MINUTE (NSE:150, MCX:50)</option>
-      <option value="MCX|ONE_HOUR" data-nse="200" data-mcx="80">MCX - ONE_HOUR (NSE:200, MCX:80)</option>
-      <option value="MCX|ONE_DAY" data-nse="365" data-mcx="365">MCX - ONE_DAY (NSE:365, MCX:365)</option>
-    </select>
-  </div>
-  <div id="optionsDropdown">
-    <button id="refreshButton">🔄 Refresh</button>
-    <button id="optionsButton">Options ⚙️</button>
-    <div id="optionsMenu">
-      <label><input type="checkbox" id="toggleAll" checked> All</label>
-      <label><input type="checkbox" id="toggleSupport" checked> Support</label>
-      <label><input type="checkbox" id="toggleResistance" checked> Resistance</label>
-      <label><input type="checkbox" id="toggleFiboSupport" checked> Fib S</label>
-      <label><input type="checkbox" id="toggleFiboResistance" checked> Fib R</label>
-      <label><input type="checkbox" id="toggleSignal" checked> Signal</label>
-      <label><input type="checkbox" id="toggleGrid" checked> Grid</label>
+  <div class="toolbar">
+    <div class="controls">
+       <label for="timeframe">Filter:</label>
+		<div>
+		  <label><input type="radio" name="optionFilter" value="ALL" checked> All</label>
+		  <label><input type="radio" name="optionFilter" value="OPTIONS"> Options</label>
+		</div>
+      <label for="timeframe">Timeframe:</label>
+      <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
+        <option value="DAILY">Daily</option>
+        <option value="WEEKLY">Weekly</option>
+        <option value="COMBINE">Combine</option>
+        <option value="INTRADAY">Intraday</option>
+      </select>
+
+      <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
+<select id="secondaryFilter" onchange="loadTable()">
+  <option value="ALL">All</option>
+  <option value="FIRST BUY">First Buy</option>
+  <option value="FIRST SELL">First Sell</option>
+</select>
+
+      <button class="refresh-btn" onclick="resetTable()">🧹 Reset</button>
+
+      <div class="column-dropdown" id="columnDropdown">
+        <button onclick="toggleColumnDropdown()">☰ Hide Columns</button>
+        <div class="column-dropdown-content" id="columnTogglePanel"></div>
+      </div>
+
+      <label for="search">Filter:</label>
+      <input type="text" id="search" placeholder="Search..." onkeyup="filterTable()" autocomplete="off" />
+    </div>
+
+    <div style="margin-left:auto; display:flex; gap:5px; flex-wrap:wrap;">
+      <button class="refresh-btn" onclick="zoomIn()">➕ A</button>
+      <button class="refresh-btn" onclick="zoomOut()">➖ A</button>
+      <button class="refresh-btn" onclick="resetZoom()">🔄 A</button>
+      <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
   </div>
-</div>
 
-<div id="loader">
-  <div class="spinner"></div>
-  <div id="loaderText">Loading chart data...</div>
-</div>
+  <div id="errorMessage" role="alert"></div>
 
-<!-- trade banner already present in your base -->
-<div id="tradeDecision"></div>
+  <div class="table-container">
+    <table id="stocksTable">
+      <thead>
+        <tr id="tableHead"></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
 
-<div id="chart"></div>
+  <div id="pagination"></div>
 
-<!-- fetch status overlay (RESILIENCE PATCH UI) -->
-<div id="fetchStatus"></div>
+  <div id="loader">
+    <div class="spinner"></div>
+    <div style="margin-top: 12px;">Loading data...</div>
+  </div>
 
 <script>
-/* =========================
-   Your original variables and helpers (preserved)
-   ========================= */
-let chart, candleSeries;
-let supportLines=[], resistanceLines=[], fiboSupportLines=[], fiboResistanceLines=[], signalMarkers=[];
-let currentPA={}, candleData=[];
-let lastRequestId = 0;
+let tableData = [], filteredData = [], visibleKeys = [];
+let sortState = { column: null, order: null };
+let currentPage = 1, currentFontSize = 14;
+const rowsPerPage = 10;
+let columnVisibility = {};
 
-/* ---------- helpers (unchanged) ---------- */
-function toISTEpoch(utcTimestamp) {
-    return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000);
-}
-function formatToIST(epoch) {
-    return new Date(epoch*1000).toLocaleString('en-GB', {timeZone:'Asia/Kolkata', hour12:false});
-}
-function updateOHLC(o,h,l,c,dateTime){
-    document.getElementById('oVal').textContent = o;
-    document.getElementById('hVal').textContent = h;
-    document.getElementById('lVal').textContent = l;
-    document.getElementById('cVal').textContent = c;
-    if(dateTime) document.getElementById('ohlcDisplay').title = dateTime;
-    else document.getElementById('ohlcDisplay').removeAttribute('title');
-}
-function updateDecisionBanner(decision){
-    const el = document.getElementById('tradeDecision');
-    if(!el) return;
-    if(decision === 'BUY'){ el.style.display='block'; el.textContent='BUY'; el.style.background='#4caf50'; el.style.color='#fff'; }
-    else if(decision === 'SELL'){ el.style.display='block'; el.textContent='SELL'; el.style.background='#f44336'; el.style.color='#fff'; }
-    else { el.style.display='none'; el.textContent=''; }
+// --- FONT SIZE / ZOOM ---
+function updateFontSize() {
+    document.documentElement.style.setProperty('--table-font-size', `${currentFontSize}px`);
+    localStorage.setItem('tableFontSize', currentFontSize);
 }
 
-/* drawing functions preserved (unchanged) */
-function drawSupport(){ /* as before */ 
-    supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
-        price: Number(l),
-        color: '#2196f3',
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        axisLabelVisible: true,
-        title: `S: ${l}`
-    })); 
-}
-function drawResistance(){ 
-    resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
-        price: Number(l),
-        color: '#f44336',
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        axisLabelVisible: true,
-        title: `R: ${l}`
-    })); 
-}
-function drawFiboSupport(){
-    fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
-        let level = (typeof f === 'number') ? f : f.level;
-        return candleSeries.createPriceLine({
-            price: Number(level),
-            color: '#ff9800',
-            lineWidth: 1,
-            lineStyle: LightweightCharts.LineStyle.Dashed,
-            axisLabelVisible: true,
-            title: `Fib S: ${Number(level)}`
+function zoomIn() { if (currentFontSize < 24) { currentFontSize++; updateFontSize(); } }
+function zoomOut() { if (currentFontSize > 8) { currentFontSize--; updateFontSize(); } }
+function resetZoom() { currentFontSize = 14; updateFontSize(); }
+
+// --- LOAD TABLE DATA ---
+function updateSecondaryFilter() {
+    const tf = document.getElementById("timeframe").value;
+    const label = document.getElementById("secondaryFilterLabel");
+    const select = document.getElementById("secondaryFilter");
+
+    select.innerHTML = ""; // clear old options
+    if (tf === "INTRADAY") {
+        label.textContent = "Trend:";
+        ["ALL", "UP", "DOWN"].forEach(val => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = val.charAt(0) + val.slice(1).toLowerCase();
+            select.appendChild(opt);
         });
-    });
-}
-function drawFiboResistance(){
-    fiboResistanceLines = (currentPA.fibo_resistances || []).map(f => {
-        let level = (typeof f === 'number') ? f : f.level;
-        return candleSeries.createPriceLine({
-            price: Number(level),
-            color: '#9c27b0',
-            lineWidth: 1,
-            lineStyle: LightweightCharts.LineStyle.Dashed,
-            axisLabelVisible: true,
-            title: `Fib R: ${Number(level)}`
+    } else {
+        label.textContent = "Heikin/Psar:";
+        ["ALL", "FIRST BUY", "FIRST SELL"].forEach(val => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = val.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
+            select.appendChild(opt);
         });
-    });
-}
-function drawSignal(){
-    signalMarkers = [];
-    const lastTime = candleData[candleData.length - 1]?.time;
-    if(!lastTime) { updateDecisionBanner(null); return; }
-
-    let decision = currentPA.consolidatedDecision || null;
-    if(decision === 'BUY') {
-        signalMarkers.push({ time:lastTime, position:'belowBar', color:'green', shape:'arrowUp', text:'BUY' });
-    } else if(decision === 'SELL') {
-        signalMarkers.push({ time:lastTime, position:'aboveBar', color:'red', shape:'arrowDown', text:'SELL' });
     }
-    candleSeries.setMarkers(signalMarkers);
-    updateDecisionBanner(decision);
-}
-function updateMasterCheckbox(){
-    const toggles = ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'];
-    const allChecked = toggles.every(t => document.getElementById('toggle' + t).checked);
-    const noneChecked = toggles.every(t => !document.getElementById('toggle' + t).checked);
-    const toggleAll = document.getElementById('toggleAll');
-    if(allChecked) { toggleAll.checked = true; toggleAll.indeterminate = false; }
-    else if(noneChecked) { toggleAll.checked = false; toggleAll.indeterminate = false; }
-    else { toggleAll.checked = false; toggleAll.indeterminate = true; }
 }
 
-/* ---------- persistence (unchanged) ---------- */
-const PERSIST_KEYS = ['toggleAll','toggleSupport','toggleResistance','toggleFiboSupport','toggleFiboResistance','toggleSignal','toggleGrid'];
-function restoreToggleState(){
-    PERSIST_KEYS.forEach(id=>{
-        const el = document.getElementById(id);
-        const saved = localStorage.getItem(id);
-        if(saved !== null && el) el.checked = (saved === 'true');
-    });
-    updateMasterCheckbox();
-}
+async function loadTable() {
+    const timeframe = document.getElementById("timeframe").value;
+    const filter = document.getElementById("secondaryFilter").value;
 
-/* =========================
-   === RESILIENCE PATCH ===
-   New robust loadChart with parsing, validation & retry
-   (only this section is added/changed)
-   ========================= */
+    // 👇 NEW: read radio button
+    const selected = document.querySelector('input[name="optionFilter"]:checked').value;
+    const optionFlag = (selected === "OPTIONS"); // true only when Options selected
 
-const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000]; // ms
-const MIN_VALID_CANDLES = 3; // threshold to consider valid
-const fetchStatusEl = document.getElementById('fetchStatus');
+    const loader = document.getElementById("loader");
+    const errorDiv = document.getElementById("errorMessage");
 
-function showFetchStatus(msg, level='info'){ // level: info/warn/error
-    if(!fetchStatusEl) return;
-    fetchStatusEl.style.display = 'block';
-    fetchStatusEl.textContent = msg;
-    fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
-}
+    errorDiv.style.display = "none";
+    loader.style.display = "flex";
 
-// robust timestamp normalizer: accepts {timestamp, time, t}, numeric (s|ms) and ISO strings
-function normalizeTimestamp(raw){
-    if(raw == null) return null;
-    // if object (e.g. { year, month, day,... }) return null here (not supported)
     try {
-        if(typeof raw === 'number'){
-            // if clearly milliseconds (>= 1e12), convert to seconds
-            if(raw > 1e12) return Math.floor(raw/1000);
-            // if plausible seconds epoch (>= 1e9)
-            if(raw >= 1e9) return Math.floor(raw); 
-            return null;
+        let url;
+        if (timeframe === "INTRADAY") {
+            url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
+        } else {
+            url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
         }
-        if(typeof raw === 'string'){
-            // numeric string?
-            if(/^\d+$/.test(raw)){
-                const n = Number(raw);
-                if(n > 1e12) return Math.floor(n/1000);
-                if(n >= 1e9) return Math.floor(n);
-                return null;
-            }
-            // ISO / parseable date string
-            const ms = Date.parse(raw); // returns ms or NaN
-            if(!isNaN(ms)) return Math.floor(ms/1000);
-            return null;
-        }
-        return null;
-    } catch(e){
-        console.error("normalizeTimestamp error:", raw, e);
-        return null;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (!data.length) throw new Error("No stock data found for the selected filters.");
+
+        visibleKeys = Object.entries(data[0].headers)
+            .filter(([_, val]) => val[1])
+            .map(([key]) => key);
+
+        tableData = data.map(row => Object.fromEntries(visibleKeys.map(k => [k, row.headers[k][0]])));
+        filteredData = [...tableData];
+        currentPage = 1;
+
+        generateColumnToggles();
+        renderTable();
+    } catch (err) {
+        showError(err.message || "Could not load data.");
+        tableData = filteredData = [];
+        renderTable();
+    } finally {
+        loader.style.display = "none";
     }
 }
 
-// validate candle object has numeric OHLC and a valid time
-function validateAndNormalizeCandle(c){
-    if(!c) return null;
-    // attempt multiple possible fields for timestamp
-    const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
-    const t = normalizeTimestamp(rawTime);
-    if(!t) return null;
-    const open = Number(c.open ?? c.o ?? c.O);
-    const high = Number(c.high ?? c.h ?? c.H);
-    const low = Number(c.low ?? c.l ?? c.L);
-    const close = Number(c.close ?? c.c ?? c.C);
-    if(!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
-    return { time: t, open, high, low, close };
+
+
+// --- COLUMN TOGGLE PANEL ---
+function generateColumnToggles() {
+    const panel = document.getElementById("columnTogglePanel");
+    panel.innerHTML = "";
+    visibleKeys.forEach(key => {
+        if (!(key in columnVisibility)) columnVisibility[key] = true;
+
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = columnVisibility[key];
+        checkbox.onchange = () => { columnVisibility[key] = checkbox.checked; renderTable(); };
+        label.style.display = "flex";
+        label.style.alignItems = "center";
+        label.style.gap = "4px";
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(formatHeader(key)));
+        panel.appendChild(label);
+    });
 }
 
-// main resilient fetch + render loop
-async function loadChart(selectedValue){
-    const requestId = ++lastRequestId;
-    document.getElementById('loader').style.display = 'flex';
-    showFetchStatus('Starting fetch...', 'info');
-    updateOHLC('-', '-', '-', '-', '');
+// --- COLUMN CLASS HELPER ---
+function getColumnClass(key) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey === "name") return "col-name";
+    if (lowerKey === "price") return "col-price";
+    if (["daily s/r", "daily_sr", "dailysr"].includes(lowerKey)) return "col-dailysr";
+    if (lowerKey.includes("sr")) return "sr";
+    if (lowerKey.includes("fibo")) return "fibo";
+    if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
+    if (lowerKey.includes("ai")) return "ai";
+    if (lowerKey.includes("combine")) return "combine";
+    return "";
+}
 
-    // inner function that will retry
-    async function attemptFetch(attempt){
-        if(requestId !== lastRequestId) return; // a newer loadChart started, abort
-        showFetchStatus(`Fetch attempt ${attempt+1}...`, 'info');
-        try {
-            const [exchange,timeFrame] = selectedValue.split('|');
-            const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
+// --- RENDER TABLE ---
+function renderTable() {
+    const head = document.getElementById("tableHead");
+    const body = document.getElementById("tableBody");
+    head.innerHTML = body.innerHTML = "";
 
-            // fetch SR zones first (keep your original order)
-            const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
-            if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
-            const paData = await paResponse.json();
-            currentPA = paData || {};
-
-            // fetch candles
-            const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
-            if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
-            const rawCandles = await candleResponse.json();
-
-            console.log(`[loadChart] rawCandles length: ${rawCandles?.length}`, rawCandles);
-            if(!rawCandles || rawCandles.length === 0){
-                throw new Error('No candle data received');
-            }
-
-            // validate+normalize
-            const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
-            console.log(`[loadChart] normalized count: ${normalized.length}`);
-
-            if(normalized.length < MIN_VALID_CANDLES){
-                // Not enough valid candles — either retry or show error if last attempt
-                throw new Error(`Too few valid candles (${normalized.length})`);
-            }
-
-            // If newer request was started: abort applying this response
-            if(requestId !== lastRequestId) return;
-
-            candleData = normalized; // seconds epoch
-
-            // ensure chart exists (create only once)
-            if(!chart){
-                chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                    layout: { backgroundColor:'#ffffff', textColor:'#000' },
-                    rightPriceScale: { borderColor:'#ccc' },
-                    timeScale: { borderColor:'#ccc', timeVisible:true, secondsVisible:true },
-                    grid: { vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
-                });
-                candleSeries = chart.addCandlestickSeries({
-                    upColor:'#4caf50', downColor:'#f44336', borderVisible:true,
-                    wickUpColor:'#4caf50', wickDownColor:'#f44336'
-                });
-                chart.subscribeCrosshairMove(param => {
-                    if(!param || !param.point) return;
-                    const sd = param.seriesData?.get?.(candleSeries);
-                    if(sd && sd.open !== undefined){
-                        updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
-                    }
-                });
-            }
-
-            // set data safely
-            try {
-                candleSeries.setData(candleData);
-            } catch(e){
-                console.error("[loadChart] candleSeries.setData failed:", e);
-                throw new Error("Failed to set chart data: " + e.message);
-            }
-
-            // remove old overlays (preserve behavior)
-            [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
-                if(candleSeries && line) candleSeries.removePriceLine(line);
-            });
-            supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
-
-            // draw overlays based on toggles (preserve original logic)
-            if(document.getElementById('toggleSupport').checked) drawSupport();
-            if(document.getElementById('toggleResistance').checked) drawResistance();
-            if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-            if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-            if(document.getElementById('toggleSignal').checked) drawSignal();
-
-            // keep banner updated
-            updateDecisionBanner(currentPA.consolidatedDecision || null);
-
-            chart.timeScale().fitContent();
-
-            // success
-            document.getElementById('loader').style.display = 'none';
-            showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt+1})`, 'info');
-            // persist anything if necessary (already handled by toggles)
-            return;
-
-        } catch(err) {
-            console.warn(`[loadChart] attempt ${attempt+1} failed:`, err);
-            console.error(err);
-            // last attempt?
-            if(attempt >= FETCH_RETRY_DELAYS.length){
-                // show error and stop
-                document.getElementById('loader').style.display = 'none';
-                showFetchStatus(`Failed after ${attempt+1} attempts: ${err.message}`, 'error');
-                // update OHLC to blanks
-                updateOHLC('-', '-', '-', '-', '');
-                // keep banner consistent
-                updateDecisionBanner(null);
-                return;
-            } else {
-                // schedule retry after delay
-                const delay = FETCH_RETRY_DELAYS[attempt];
-                showFetchStatus(`Attempt ${attempt+1} failed: ${err.message}. Retrying in ${delay/1000}s...`, 'warn');
-                await new Promise(r => setTimeout(r, delay));
-                // If request was superseded, abort
-                if(requestId !== lastRequestId) return;
-                return attemptFetch(attempt+1);
-            }
+    // HEADERS
+    visibleKeys.forEach(key => {
+        if (!columnVisibility[key]) return;
+        const th = document.createElement("th");
+        th.textContent = formatHeader(key);
+        const className = getColumnClass(key);
+        if (className) th.classList.add(className);
+        th.onclick = () => sortTableByColumn(key);
+        if (sortState.column === key) {
+            th.classList.add(sortState.order === 'asc' ? 'sort-asc' : 'sort-desc');
         }
-    } // attemptFetch
-
-    // start first attempt
-    attemptFetch(0);
-} // loadChart
-
-/* =========================
-   End RESILIENCE PATCH
-   ========================= */
-
-/* ---------- checkbox handlers (original + persistence) ---------- */
-['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
-    const id = 'toggle'+t;
-    document.getElementById(id).addEventListener('change', () => {
-        // save state (#3)
-        localStorage.setItem(id, document.getElementById(id).checked);
-
-        if(candleSeries){
-            if(t === 'Support') {
-                supportLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleSupport').checked) drawSupport();
-            }
-            if(t === 'Resistance') {
-                resistanceLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleResistance').checked) drawResistance();
-            }
-            if(t === 'FiboSupport') {
-                fiboSupportLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-            }
-            if(t === 'FiboResistance') {
-                fiboResistanceLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-            }
-            if(t === 'Signal') {
-                candleSeries.setMarkers([]);
-                if(document.getElementById('toggleSignal').checked) drawSignal();
-                updateDecisionBanner(currentPA.consolidatedDecision || null);
-            }
-            updateMasterCheckbox();
-        }
+        head.appendChild(th);
     });
-});
-// All toggle handler
-document.getElementById('toggleAll').addEventListener('change', () => {
-    const check = document.getElementById('toggleAll').checked;
-    localStorage.setItem('toggleAll', check); // persist (#3)
-    ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
-        const cb = document.getElementById('toggle'+t);
-        cb.checked = check;
-        cb.dispatchEvent(new Event('change'));
-    });
-});
-// Grid toggle handler
-document.getElementById('toggleGrid').addEventListener('change', function(){
-    localStorage.setItem('toggleGrid', this.checked); // persist (#3)
-    if(chart) chart.applyOptions({
-        grid: { vertLines: {visible:this.checked}, horzLines: {visible:this.checked} }
-    });
-});
 
-/* ---------- initial load and events ---------- */
-// restore toggle states before first load
-restoreToggleState();
-
-// Initial load
-loadChart(document.getElementById('symbolIntervalSelect').value);
-
-// Interval change
-document.getElementById('symbolIntervalSelect').addEventListener('change', function(){
-    loadChart(this.value);
-});
-
-// Options menu toggle
-document.getElementById('optionsButton').addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.getElementById('optionsDropdown').classList.toggle('open');
-});
-
-// dropdown auto-close on outside click & ESC (keeps previous behavior)
-document.addEventListener('click', (e) => {
-    const dd = document.getElementById('optionsDropdown');
-    if(dd && dd.classList.contains('open') && !dd.contains(e.target)){
-        dd.classList.remove('open');
+    // NO DATA
+    if (!filteredData.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = visibleKeys.length || 1;
+        td.textContent = "No records found.";
+        td.style.textAlign = "center";
+        tr.appendChild(td);
+        body.appendChild(tr);
+        return;
     }
-});
-document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape'){
-        const dd = document.getElementById('optionsDropdown');
-        if(dd && dd.classList.contains('open')) dd.classList.remove('open');
-    }
+
+    // PAGE DATA
+    const start = (currentPage - 1) * rowsPerPage;
+    const end = currentPage * rowsPerPage;
+    filteredData.slice(start, end).forEach(row => {
+        const tr = document.createElement("tr");
+        visibleKeys.forEach(key => {
+            if (!columnVisibility[key]) return;
+            const td = document.createElement("td");
+            td.setAttribute("data-label", formatHeader(key));
+            td.textContent = row[key];
+            const className = getColumnClass(key);
+            if (className) td.classList.add(className);
+            tr.appendChild(td);
+        });
+        body.appendChild(tr);
+    });
+
+    renderPagination();
+}
+
+// --- PAGINATION ---
+function renderPagination() {
+    const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+    const container = document.getElementById("pagination");
+    container.innerHTML = "";
+    if (totalPages <= 1) return;
+
+    const createLink = (label, page, active = false) => {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.className = "page-link" + (active ? " active" : "");
+        btn.onclick = () => { currentPage = page; renderTable(); };
+        return btn;
+    };
+
+    if (currentPage > 1) container.append(createLink("« First", 1), createLink("Prev", currentPage - 1));
+
+    let start = Math.max(1, currentPage - 2);
+    let end = Math.min(totalPages, currentPage + 2);
+    if (currentPage <= 3) end = Math.min(5, totalPages);
+    if (currentPage >= totalPages - 2) start = Math.max(totalPages - 4, 1);
+
+    if (start > 1) { container.append(createLink(1, 1)); if (start > 2) container.append(document.createElement("span").textContent = "..."); }
+    for (let i = start; i <= end; i++) container.append(createLink(i, i, i === currentPage));
+    if (end < totalPages) { if (end < totalPages - 1) container.append(document.createElement("span").textContent = "..."); container.append(createLink(totalPages, totalPages)); }
+
+    if (currentPage < totalPages) container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
+}
+
+// --- SORT ---
+function sortTableByColumn(col) {
+    const isAsc = sortState.column === col && sortState.order === 'asc';
+    sortState = { column: col, order: isAsc ? 'desc' : 'asc' };
+    filteredData.sort((a, b) => {
+        let valA = a[col] != null ? a[col].toString().trim() : '';
+        let valB = b[col] != null ? b[col].toString().trim() : '';
+        const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ''));
+        const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ''));
+        return (!isNaN(numA) && !isNaN(numB)) ? (isAsc ? numA - numB : numB - numA) : (isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA));
+    });
+    currentPage = 1;
+    renderTable();
+}
+
+// --- FILTER ---
+function filterTable() {
+    const keyword = document.getElementById("search").value.toLowerCase();
+    filteredData = tableData.filter(row => visibleKeys.some(k => (row[k] + '').toLowerCase().includes(keyword)));
+    currentPage = 1;
+    renderTable();
+}
+
+// --- RESET TABLE ---
+function resetTable() {
+    document.getElementById("timeframe").value = "DAILY";
+    document.getElementById("heikinPsarFilter").value = "ALL";
+    document.getElementById("search").value = "";
+    document.getElementById("errorMessage").style.display = "none";
+    currentPage = 1;
+    loadTable();
+}
+
+// --- ERROR MESSAGE ---
+function showError(msg) {
+    const errDiv = document.getElementById("errorMessage");
+    errDiv.innerText = msg;
+    errDiv.style.display = "block";
+}
+
+// --- FORMAT HEADER ---
+function formatHeader(key) {
+    return key.replace(/[_\s]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// --- COLUMN DROPDOWN ---
+function toggleColumnDropdown() {
+    document.getElementById("columnDropdown").classList.toggle("show");
+}
+
+// --- THEME ---
+function toggleTheme() {
+    document.body.classList.toggle("dark-mode");
+    localStorage.setItem('theme', document.body.classList.contains("dark-mode") ? 'dark' : 'light');
+}
+
+// --- INITIAL SETTINGS ---
+document.addEventListener("DOMContentLoaded", () => {
+    const storedFont = parseInt(localStorage.getItem('tableFontSize'));
+    if (storedFont) { currentFontSize = storedFont; updateFontSize(); }
+    const theme = localStorage.getItem('theme');
+    if (theme === 'dark') document.body.classList.add("dark-mode");
+
+    // 👇 NEW: reload table when radio button changes
+    document.querySelectorAll('input[name="optionFilter"]').forEach(radio => {
+        radio.addEventListener("change", () => {
+            currentPage = 1;   // reset pagination
+            loadTable();
+        });
+    });
+
+    loadTable(); // initial load
 });
 
-//Refresh
-document.getElementById('refreshButton').addEventListener('click', () => {
-    loadChart(document.getElementById('symbolIntervalSelect').value);
-});
 </script>
+
 </body>
+
 </html>
