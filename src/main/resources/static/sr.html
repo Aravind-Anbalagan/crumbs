@@ -86,6 +86,7 @@
       text-align:center;
       width:fit-content;
       border-radius:5px;
+      display: none; /* hidden until updated by drawSignal() */
   }
 </style>
 </head>
@@ -132,6 +133,10 @@
   <div class="spinner"></div>
   <div id="loaderText">Loading chart data...</div>
 </div>
+
+<!-- #2: trade decision banner (added, hidden by default) -->
+<div id="tradeDecision"></div>
+
 <div id="chart"></div>
 <script>
 let chart, candleSeries;
@@ -160,7 +165,27 @@ function updateOHLC(o,h,l,c,dateTime){
     }
 }
 
-// Drawing functions
+// #2: update decision banner function (only added — doesn't change existing flow)
+function updateDecisionBanner(decision){
+    const el = document.getElementById('tradeDecision');
+    if(!el) return;
+    if(decision === 'BUY'){
+        el.style.display = 'block';
+        el.textContent = 'BUY';
+        el.style.background = '#4caf50';
+        el.style.color = '#fff';
+    } else if(decision === 'SELL'){
+        el.style.display = 'block';
+        el.textContent = 'SELL';
+        el.style.background = '#f44336';
+        el.style.color = '#fff';
+    } else {
+        el.style.display = 'none';
+        el.textContent = '';
+    }
+}
+
+/* ---------- drawing functions (unchanged except where we call updateDecisionBanner) ---------- */
 function drawSupport(){
     supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
         price: Number(l),
@@ -210,8 +235,12 @@ function drawFiboResistance(){
 function drawSignal(){
     signalMarkers = [];
     const lastTime = candleData[candleData.length - 1]?.time;
-    if(!lastTime) return;
-    if(currentPA.consolidatedDecision === 'BUY') {
+    if(!lastTime) { updateDecisionBanner(null); return; }
+
+    // determine decision from currentPA
+    let decision = currentPA.consolidatedDecision || null;
+
+    if(decision === 'BUY') {
         signalMarkers.push({
             time: lastTime,
             position: 'belowBar',
@@ -219,7 +248,7 @@ function drawSignal(){
             shape: 'arrowUp',
             text: 'BUY'
         });
-    } else if(currentPA.consolidatedDecision === 'SELL') {
+    } else if(decision === 'SELL') {
         signalMarkers.push({
             time: lastTime,
             position: 'aboveBar',
@@ -229,6 +258,9 @@ function drawSignal(){
         });
     }
     candleSeries.setMarkers(signalMarkers);
+
+    // #2 keep banner in sync with signals (only added)
+    updateDecisionBanner(decision);
 }
 function updateMasterCheckbox(){
     const toggles = ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'];
@@ -240,6 +272,18 @@ function updateMasterCheckbox(){
     else { toggleAll.checked = false; toggleAll.indeterminate = true; }
 }
 
+/* ---------- persistence (#3 — unchanged from your base) ---------- */
+const PERSIST_KEYS = ['toggleAll','toggleSupport','toggleResistance','toggleFiboSupport','toggleFiboResistance','toggleSignal','toggleGrid'];
+function restoreToggleState(){
+    PERSIST_KEYS.forEach(id=>{
+        const el = document.getElementById(id);
+        const saved = localStorage.getItem(id);
+        if(saved !== null) el.checked = (saved === 'true');
+    });
+    updateMasterCheckbox();
+}
+
+/* ---------- data & chart (unchanged, small addition to apply grid on first render) ---------- */
 async function loadChart(selectedValue) {
     const requestId = ++lastRequestId;
     document.getElementById('loader').style.display = 'flex';
@@ -311,6 +355,11 @@ async function loadChart(selectedValue) {
                     updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
                 }
             });
+            // Apply persisted grid state on first render
+            const showGrid = document.getElementById('toggleGrid').checked;
+            chart.applyOptions({
+                grid: { vertLines:{visible:showGrid}, horzLines:{visible:showGrid} }
+            });
         }
         candleSeries.setData(candleData);
 
@@ -325,6 +374,9 @@ async function loadChart(selectedValue) {
         if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
         if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
         if(document.getElementById('toggleSignal').checked) drawSignal();
+
+        // Always keep banner updated with latest decision
+        updateDecisionBanner(currentPA.consolidatedDecision || null);
 
         chart.timeScale().fitContent();
 
@@ -342,9 +394,13 @@ async function loadChart(selectedValue) {
     }
 }
 
-// Checkbox toggle handlers
+/* ---------- checkbox handlers (original + persistence) ---------- */
 ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
-    document.getElementById('toggle'+t).addEventListener('change', () => {
+    const id = 'toggle'+t;
+    document.getElementById(id).addEventListener('change', () => {
+        // save state (persistence)
+        localStorage.setItem(id, document.getElementById(id).checked);
+
         if(candleSeries){
             if(t === 'Support') {
                 supportLines.forEach(l => candleSeries.removePriceLine(l));
@@ -365,6 +421,8 @@ async function loadChart(selectedValue) {
             if(t === 'Signal') {
                 candleSeries.setMarkers([]);
                 if(document.getElementById('toggleSignal').checked) drawSignal();
+                // keep banner updated regardless
+                updateDecisionBanner(currentPA.consolidatedDecision || null);
             }
             updateMasterCheckbox();
         }
@@ -373,27 +431,55 @@ async function loadChart(selectedValue) {
 // All toggle handler
 document.getElementById('toggleAll').addEventListener('change', () => {
     const check = document.getElementById('toggleAll').checked;
+    localStorage.setItem('toggleAll', check); // persist
     ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
         const cb = document.getElementById('toggle'+t);
         cb.checked = check;
+        // each individual 'change' will persist itself and redraw
         cb.dispatchEvent(new Event('change'));
     });
 });
 // Grid toggle handler
 document.getElementById('toggleGrid').addEventListener('change', function(){
+    localStorage.setItem('toggleGrid', this.checked); // persist
     chart.applyOptions({
         grid: { vertLines: {visible:this.checked}, horzLines: {visible:this.checked} }
     });
 });
 
-// Initial load and event handlers
+/* ---------- initial load and events ---------- */
+// restore toggle states before first load
+restoreToggleState();
+
+// Initial load
 loadChart(document.getElementById('symbolIntervalSelect').value);
+
+// Interval change
 document.getElementById('symbolIntervalSelect').addEventListener('change', function(){
     loadChart(this.value);
 });
-document.getElementById('optionsButton').addEventListener('click', () => {
+
+// Options menu toggle
+document.getElementById('optionsButton').addEventListener('click', (e) => {
+    e.stopPropagation();
     document.getElementById('optionsDropdown').classList.toggle('open');
 });
+
+// #1: dropdown auto-close on outside click and ESC (only added)
+document.addEventListener('click', (e) => {
+    const dd = document.getElementById('optionsDropdown');
+    if(dd && dd.classList.contains('open') && !dd.contains(e.target)){
+        dd.classList.remove('open');
+    }
+});
+document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){
+        const dd = document.getElementById('optionsDropdown');
+        if(dd && dd.classList.contains('open')) dd.classList.remove('open');
+    }
+});
+
+// Refresh
 document.getElementById('refreshButton').addEventListener('click', () => {
     loadChart(document.getElementById('symbolIntervalSelect').value);
 });
