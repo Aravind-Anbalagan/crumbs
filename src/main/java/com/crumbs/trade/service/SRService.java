@@ -100,16 +100,47 @@ public class SRService {
 		return currentPrice;
 	}
 	
+	// New method to get last candle close based on market timings
+	private LocalDateTime getLastValidCandleCloseForMarket(TimeFrame tf, TimeFrame.Market market) {
+	    LocalDateTime now = LocalDateTime.now(NSE_ZONE);
+
+	    if(market == TimeFrame.Market.NSE) {
+	        return getLastValidCandleClose(tf); // use existing method for NSE
+	    } else {
+	        // For MCX:
+	        LocalTime marketOpen = LocalTime.of(9, 0);
+	        LocalTime marketClose = LocalTime.of(23, 30);
+
+	        if (tf == TimeFrame.ONE_DAY) {
+	            if (now.toLocalTime().isBefore(marketClose)) {
+	                return LocalDate.now(NSE_ZONE).minusDays(1).atTime(marketClose);
+	            } else {
+	                return LocalDate.now(NSE_ZONE).atTime(marketClose);
+	            }
+	        }
+
+	        if(now.toLocalTime().isBefore(marketOpen)) {
+	            return LocalDate.now(NSE_ZONE).minusDays(1).atTime(marketClose);
+	        }
+
+	        if(now.toLocalTime().isAfter(marketClose)) {
+	            return LocalDate.now(NSE_ZONE).atTime(marketClose);
+	        }
+
+	        int interval = tf.getCandleMinutes();
+	        LocalDateTime marketStart = LocalDate.now(NSE_ZONE).atTime(marketOpen);
+	        long minutesSinceOpen = ChronoUnit.MINUTES.between(marketStart, now);
+	        long completed = (minutesSinceOpen / interval) * interval;
+	        return marketStart.plusMinutes(completed);
+	    }
+	}
+
 	public CandleRequestDto getCandleTiming(String timeFrame, String exchange) {
 	    CandleRequestDto candle = new CandleRequestDto();
 	    TimeFrame selected = TimeFrame.valueOf(timeFrame);
-
-	    // map exchange → Market enum
 	    TimeFrame.Market market = mapExchangeToMarket(exchange);
-
 	    int bestDays = selected.getBestDays(market);
-
-	    LocalDateTime toDateTime = getLastValidCandleClose(selected);
+	    LocalDateTime toDateTime = getLastValidCandleCloseForMarket(selected, market); // Updated call here
 	    LocalDateTime fromDateTime = toDateTime.minusDays(bestDays);
 
 	    System.out.println("Exchange: " + exchange + " (Market: " + market + ")");
@@ -120,9 +151,10 @@ public class SRService {
 	    candle.setFromDate(fromDateTime.format(FORMATTER));
 	    candle.setToDate(toDateTime.format(FORMATTER));
 	    candle.setTimeFrame(timeFrame);
-	    candle.setType(exchange); // now type matches UI exchange (NFO, MCX, etc.)
+	    candle.setType(exchange);
 	    return candle;
 	}
+
 
 	private TimeFrame.Market mapExchangeToMarket(String exchange) {
 	    if ("MCX".equalsIgnoreCase(exchange)) {
