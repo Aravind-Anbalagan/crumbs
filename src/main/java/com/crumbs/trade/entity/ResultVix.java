@@ -64,6 +64,10 @@ public class ResultVix {
 	String symbol;
 	@Column(name="priceAction")
 	String priceAction;
+	@Column(name="fibo")
+	String fibo;
+	@Column(name="combine")
+	String combine;
 	
 }
 

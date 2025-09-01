@@ -520,9 +520,11 @@ public class ChartService {
 			triggerExitOrder(resultVix);
 		}
 		PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
-		if(pr!=null && pr.getConsolidatedDecision()!=null)
+		if(pr!=null)
 		{
-			resultVix.setPriceAction(pr.getConsolidatedDecision());
+			resultVix.setPriceAction(pr.getSr_signal());
+			resultVix.setFibo(pr.getFibo_signal());
+			resultVix.setCombine(pr.getConsolidatedDecision());
 		}
 		resultVixRepo.save(resultVix);
 	}
