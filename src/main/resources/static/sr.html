@@ -16,13 +16,12 @@
   #optionsMenu label { display: flex; align-items: center; margin-bottom: 5px; font-size: 14px; }
   #optionsMenu label:last-child { margin-bottom: 0; }
   #optionsDropdown.open #optionsMenu { display: block; }
-  #chart { width: 100%; height: 600px; }
+  #chart { width: 100%; height: 600px; box-sizing: border-box; }
   #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
   .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   #loaderText { font-size: 16px; font-weight: bold; color: #333; }
   #tradeDecision { margin:10px auto; padding:8px 12px; font-weight:bold; font-size:18px; text-align:center; width:fit-content; border-radius:5px; display:none; }
-  /* small status overlay added by resilience patch */
   #fetchStatus { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.7); color: white; padding: 8px 10px; border-radius: 6px; font-size: 13px; z-index: 10000; display:none; max-width:320px; word-wrap:break-word; }
 </style>
 </head>
@@ -69,343 +68,361 @@
   <div class="spinner"></div>
   <div id="loaderText">Loading chart data...</div>
 </div>
-<!-- trade banner already present in your base -->
 <div id="tradeDecision"></div>
 <div id="chart"></div>
-<!-- fetch status overlay (RESILIENCE PATCH UI) -->
 <div id="fetchStatus"></div>
 <script>
-/* =========================
-   Your original variables and helpers (preserved)
-   ========================= */
 let chart, candleSeries;
-let supportLines=[], resistanceLines=[], fiboSupportLines=[], fiboResistanceLines=[], signalMarkers=[];
-let currentPA={}, candleData=[];
+let supportLines = [], resistanceLines = [], fiboSupportLines = [], fiboResistanceLines = [], signalMarkers = [];
+let currentPA = {}, candleData = [];
 let lastRequestId = 0;
-/* ---------- helpers (unchanged) ---------- */
-function toISTEpoch(utcTimestamp) {
-    return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000);
+
+function updateOHLC(o, h, l, c, dateTime) {
+  document.getElementById('oVal').textContent = o;
+  document.getElementById('hVal').textContent = h;
+  document.getElementById('lVal').textContent = l;
+  document.getElementById('cVal').textContent = c;
+  if (dateTime) document.getElementById('ohlcDisplay').title = dateTime;
+  else document.getElementById('ohlcDisplay').removeAttribute('title');
 }
-function formatToIST(epoch) {
-    return new Date(epoch*1000).toLocaleString('en-GB', {timeZone:'Asia/Kolkata', hour12:false});
+
+function updateDecisionBanner(decision) {
+  const el = document.getElementById('tradeDecision');
+  if (!el) return;
+  if (decision === 'BUY') {
+    el.style.display = 'block';
+    el.textContent = 'BUY';
+    el.style.background = '#4caf50';
+    el.style.color = '#fff';
+  }
+  else if (decision === 'SELL') {
+    el.style.display = 'block';
+    el.textContent = 'SELL';
+    el.style.background = '#f44336';
+    el.style.color = '#fff';
+  }
+  else {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
 }
-function updateOHLC(o,h,l,c,dateTime){
-    document.getElementById('oVal').textContent = o;
-    document.getElementById('hVal').textContent = h;
-    document.getElementById('lVal').textContent = l;
-    document.getElementById('cVal').textContent = c;
-    if(dateTime) document.getElementById('ohlcDisplay').title = dateTime;
-    else document.getElementById('ohlcDisplay').removeAttribute('title');
+
+function drawSupport() {
+  supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
+    price: Number(l),
+    color: '#2196f3',
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Solid,
+    axisLabelVisible: true,
+    title: `S: ${l}`
+  }));
 }
-function updateDecisionBanner(decision){
-    const el = document.getElementById('tradeDecision');
-    if(!el) return;
-    if(decision === 'BUY'){ el.style.display='block'; el.textContent='BUY'; el.style.background='#4caf50'; el.style.color='#fff'; }
-    else if(decision === 'SELL'){ el.style.display='block'; el.textContent='SELL'; el.style.background='#f44336'; el.style.color='#fff'; }
-    else { el.style.display='none'; el.textContent=''; }
+
+function drawResistance() {
+  resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
+    price: Number(l),
+    color: '#f44336',
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Solid,
+    axisLabelVisible: true,
+    title: `R: ${l}`
+  }));
 }
-function drawSupport(){ 
-    supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
-        price: Number(l),
-        color: '#2196f3',
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        axisLabelVisible: true,
-        title: `S: ${l}`
-    })); 
-}
-function drawResistance(){ 
-    resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
-        price: Number(l),
-        color: '#f44336',
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        axisLabelVisible: true,
-        title: `R: ${l}`
-    })); 
-}
-function drawFiboSupport(){
-    fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
-        let level = (typeof f === 'number') ? f : f.level;
-        return candleSeries.createPriceLine({
-            price: Number(level),
-            color: '#ff9800',
-            lineWidth: 1,
-            lineStyle: LightweightCharts.LineStyle.Dashed,
-            axisLabelVisible: true,
-            title: `Fib S: ${Number(level)}`
-        });
+
+function drawFiboSupport() {
+  fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
+    let level = (typeof f === 'number') ? f : f.level;
+    return candleSeries.createPriceLine({
+      price: Number(level),
+      color: '#ff9800',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: `Fib S: ${Number(level)}`
     });
+  });
 }
-function drawFiboResistance(){
-    fiboResistanceLines = (currentPA.fibo_resistances || []).map(f => {
-        let level = (typeof f === 'number') ? f : f.level;
-        return candleSeries.createPriceLine({
-            price: Number(level),
-            color: '#9c27b0',
-            lineWidth: 1,
-            lineStyle: LightweightCharts.LineStyle.Dashed,
-            axisLabelVisible: true,
-            title: `Fib R: ${Number(level)}`
-        });
+
+function drawFiboResistance() {
+  fiboResistanceLines = (currentPA.fibo_resistances || []).map(f => {
+    let level = (typeof f === 'number') ? f : f.level;
+    return candleSeries.createPriceLine({
+      price: Number(level),
+      color: '#9c27b0',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: `Fib R: ${Number(level)}`
     });
+  });
 }
-function drawSignal(){
-    signalMarkers = [];
-    const lastTime = candleData[candleData.length - 1]?.time;
-    if(!lastTime) { updateDecisionBanner(null); return; }
-    let decision = currentPA.consolidatedDecision || null;
-    if(decision === 'BUY') {
-        signalMarkers.push({ time:lastTime, position:'belowBar', color:'green', shape:'arrowUp', text:'BUY' });
-    } else if(decision === 'SELL') {
-        signalMarkers.push({ time:lastTime, position:'aboveBar', color:'red', shape:'arrowDown', text:'SELL' });
-    }
-    candleSeries.setMarkers(signalMarkers);
-    updateDecisionBanner(decision);
+
+function drawSignal() {
+  signalMarkers = [];
+  const lastTime = candleData[candleData.length - 1]?.time;
+  if (!lastTime) { updateDecisionBanner(null); return; }
+  let decision = currentPA.consolidatedDecision || null;
+  if (decision === 'BUY') {
+    signalMarkers.push({ time: lastTime, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'BUY' });
+  } else if (decision === 'SELL') {
+    signalMarkers.push({ time: lastTime, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL' });
+  }
+  candleSeries.setMarkers(signalMarkers);
+  updateDecisionBanner(decision);
 }
-function updateMasterCheckbox(){
-    const toggles = ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'];
-    const allChecked = toggles.every(t => document.getElementById('toggle' + t).checked);
-    const noneChecked = toggles.every(t => !document.getElementById('toggle' + t).checked);
-    const toggleAll = document.getElementById('toggleAll');
-    if(allChecked) { toggleAll.checked = true; toggleAll.indeterminate = false; }
-    else if(noneChecked) { toggleAll.checked = false; toggleAll.indeterminate = false; }
-    else { toggleAll.checked = false; toggleAll.indeterminate = true; }
-}
-/* ---------- persistence (unchanged) ---------- */
-const PERSIST_KEYS = ['toggleAll','toggleSupport','toggleResistance','toggleFiboSupport','toggleFiboResistance','toggleSignal','toggleGrid'];
-function restoreToggleState(){
-    PERSIST_KEYS.forEach(id=>{
-        const el = document.getElementById(id);
-        const saved = localStorage.getItem(id);
-        if(saved !== null && el) el.checked = (saved === 'true');
-    });
-    updateMasterCheckbox();
-}
-/* =========================
-   === RESILIENCE PATCH ===
-   New robust loadChart with parsing, validation & retry
-   ========================= */
-const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000]; // ms
-const MIN_VALID_CANDLES = 3; // threshold to consider valid
+
+const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000];
+const MIN_VALID_CANDLES = 3;
 const fetchStatusEl = document.getElementById('fetchStatus');
-function showFetchStatus(msg, level='info'){
-    if(!fetchStatusEl) return;
-    fetchStatusEl.style.display = 'block';
-    fetchStatusEl.textContent = msg;
-    fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
+function showFetchStatus(msg, level = 'info') {
+  if (!fetchStatusEl) return;
+  fetchStatusEl.style.display = 'block';
+  fetchStatusEl.textContent = msg;
+  fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
 }
-// robust timestamp normalizer: accepts {timestamp, time, t}, numeric (s|ms) and ISO strings
-function normalizeTimestamp(raw){
-    if(raw == null) return null;
+
+function normalizeTimestamp(raw) {
+  if (raw == null) return null;
+  try {
+    if (typeof raw === 'number') {
+      if (raw > 1e12) return Math.floor(raw / 1000);
+      if (raw >= 1e9) return Math.floor(raw);
+      return null;
+    }
+    if (typeof raw === 'string') {
+      if (/^\d+$/.test(raw)) {
+        const n = Number(raw);
+        if (n > 1e12) return Math.floor(n / 1000);
+        if (n >= 1e9) return Math.floor(n);
+        return null;
+      }
+      const ms = Date.parse(raw);
+      if (!isNaN(ms)) return Math.floor(ms / 1000);
+      return null;
+    }
+    return null;
+  } catch (e) {
+    console.error("normalizeTimestamp error:", raw, e);
+    return null;
+  }
+}
+
+function validateAndNormalizeCandle(c) {
+  if (!c) return null;
+  const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
+  const t = normalizeTimestamp(rawTime);
+  if (!t) return null;
+  const open = Number(c.open ?? c.o ?? c.O);
+  const high = Number(c.high ?? c.h ?? c.H);
+  const low = Number(c.low ?? c.l ?? c.L);
+  const close = Number(c.close ?? c.c ?? c.C);
+  if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
+  return { time: t, open, high, low, close };
+}
+
+async function loadChart(selectedValue) {
+  const requestId = ++lastRequestId;
+  document.getElementById('loader').style.display = 'flex';
+  showFetchStatus('Starting fetch...', 'info');
+  updateOHLC('-', '-', '-', '-', '');
+  async function attemptFetch(attempt) {
+    if (requestId !== lastRequestId) return;
+    showFetchStatus(`Fetch attempt ${attempt + 1}...`, 'info');
     try {
-        if(typeof raw === 'number'){
-            if(raw > 1e12) return Math.floor(raw/1000);
-            if(raw >= 1e9) return Math.floor(raw); 
-            return null;
-        }
-        if(typeof raw === 'string'){
-            if(/^\d+$/.test(raw)){
-                const n = Number(raw);
-                if(n > 1e12) return Math.floor(n/1000);
-                if(n >= 1e9) return Math.floor(n);
-                return null;
+      const [exchange, timeFrame] = selectedValue.split('|');
+      const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
+      const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
+      if (!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
+      const paData = await paResponse.json();
+      currentPA = paData || {};
+      const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
+      if (!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
+      const rawCandles = await candleResponse.json();
+      if (!rawCandles || rawCandles.length === 0) {
+        throw new Error('No candle data received');
+      }
+      const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
+      if (normalized.length < MIN_VALID_CANDLES) {
+        throw new Error(`Too few valid candles (${normalized.length})`);
+      }
+      if (requestId !== lastRequestId) return;
+
+      // Shift candle times +5.5 hours for IST
+      const IST_OFFSET_SECONDS = 5.5 * 3600;
+      candleData = normalized.map(c => ({
+        time: c.time + IST_OFFSET_SECONDS,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
+
+      if (!chart) {
+        chart = LightweightCharts.createChart(document.getElementById('chart'), {
+          layout: {
+            backgroundColor: '#ffffff',
+            textColor: '#000',
+            padding: { top: 0, bottom: 0, left: 0, right: 0 }
+          },
+          rightPriceScale: {
+            borderVisible: false,
+            scaleMargins: {
+              top: 0.1,
+              bottom: 0.1,
+            },
+          },
+          leftPriceScale: {
+            visible: false,
+          },
+          timeScale: {
+            borderColor: '#ccc',
+            timeVisible: true,
+            secondsVisible: true,
+            timeFormatter: (time) => {
+              const date = new Date(time * 1000);
+              const pad = (n) => n.toString().padStart(2, '0');
+              return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
             }
-            const ms = Date.parse(raw);
-            if(!isNaN(ms)) return Math.floor(ms/1000);
-            return null;
+          },
+          grid: {
+            vertLines: { color: '#eee', visible: true },
+            horzLines: { color: '#eee', visible: true }
+          }
+        });
+        candleSeries = chart.addCandlestickSeries({
+          upColor: '#4caf50', downColor: '#f44336', borderVisible: true,
+          wickUpColor: '#4caf50', wickDownColor: '#f44336'
+        });
+        chart.subscribeCrosshairMove(param => {
+          if (!param || !param.point) return;
+          const sd = param.seriesData?.get?.(candleSeries);
+          if (sd && sd.open !== undefined) {
+            updateOHLC(sd.open, sd.high, sd.low, sd.close, new Date((sd.time - IST_OFFSET_SECONDS) * 1000).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }));
+          }
+        });
+      }
+      candleSeries.setData(candleData);
+
+      [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
+        if (candleSeries && line) candleSeries.removePriceLine(line);
+      });
+      supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
+
+      if (document.getElementById('toggleSupport').checked) drawSupport();
+      if (document.getElementById('toggleResistance').checked) drawResistance();
+      if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+      if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+      if (document.getElementById('toggleSignal').checked) drawSignal();
+      updateDecisionBanner(currentPA.consolidatedDecision || null);
+
+      chart.timeScale().fitContent();
+      setTimeout(() => {
+        const visibleRange = chart.timeScale().getVisibleRange();
+        if (visibleRange) {
+          const visibleBars = visibleRange.to - visibleRange.from + 1;
+          const position = Math.max(0, candleData.length - 1 - Math.floor(visibleBars / 2));
+          chart.timeScale().scrollToPosition(position, false);
+        } else {
+          chart.timeScale().scrollToPosition(candleData.length - 15, false);
         }
-        return null;
-    } catch(e){
-        console.error("normalizeTimestamp error:", raw, e);
-        return null;
+      }, 200);
+
+      document.getElementById('loader').style.display = 'none';
+      showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt + 1})`, 'info');
+      return;
+    } catch (err) {
+      if (attempt >= FETCH_RETRY_DELAYS.length) {
+        document.getElementById('loader').style.display = 'none';
+        showFetchStatus(`Failed after ${attempt + 1} attempts: ${err.message}`, 'error');
+        updateOHLC('-', '-', '-', '-', '');
+        updateDecisionBanner(null);
+        return;
+      } else {
+        const delay = FETCH_RETRY_DELAYS[attempt];
+        showFetchStatus(`Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay / 1000}s...`, 'warn');
+        await new Promise(r => setTimeout(r, delay));
+        if (requestId !== lastRequestId) return;
+        return attemptFetch(attempt + 1);
+      }
     }
+  }
+  attemptFetch(0);
 }
-// validate candle object has numeric OHLC and a valid time
-function validateAndNormalizeCandle(c){
-    if(!c) return null;
-    const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
-    const t = normalizeTimestamp(rawTime);
-    if(!t) return null;
-    const open = Number(c.open ?? c.o ?? c.O);
-    const high = Number(c.high ?? c.h ?? c.H);
-    const low = Number(c.low ?? c.l ?? c.L);
-    const close = Number(c.close ?? c.c ?? c.C);
-    if(!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
-    return { time: t, open, high, low, close };
-}
-// main resilient fetch + render loop
-async function loadChart(selectedValue){
-    const requestId = ++lastRequestId;
-    document.getElementById('loader').style.display = 'flex';
-    showFetchStatus('Starting fetch...', 'info');
-    updateOHLC('-', '-', '-', '-', '');
-    async function attemptFetch(attempt){
-        if(requestId !== lastRequestId) return;
-        showFetchStatus(`Fetch attempt ${attempt+1}...`, 'info');
-        try {
-            const [exchange,timeFrame] = selectedValue.split('|');
-            const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
-            const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
-            if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
-            const paData = await paResponse.json();
-            currentPA = paData || {};
-            const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
-            if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
-            const rawCandles = await candleResponse.json();
-            if(!rawCandles || rawCandles.length === 0){
-                throw new Error('No candle data received');
-            }
-            const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
-            if(normalized.length < MIN_VALID_CANDLES){
-                throw new Error(`Too few valid candles (${normalized.length})`);
-            }
-            if(requestId !== lastRequestId) return;
-            // Shift candle times from UTC to IST by adding 5.5 hours (19800 seconds)
-            const IST_OFFSET_SECONDS = 5.5 * 3600; 
-            candleData = normalized.map(c => ({
-                time: c.time + IST_OFFSET_SECONDS,
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close,
-            }));
-            if(!chart){
-                chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                    layout: { backgroundColor:'#ffffff', textColor:'#000' },
-                    rightPriceScale: { borderColor:'#ccc' },
-                    timeScale: { 
-                        borderColor:'#ccc', 
-                        timeVisible:true, 
-                        secondsVisible:true,
-                        timeFormatter: (time) => {
-                            const date = new Date(time * 1000);
-                            const pad = (n) => n.toString().padStart(2, '0');
-                            // Using UTC methods because time now represents IST epoch seconds
-                            return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
-                        }
-                    },
-                    grid: { vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
-                });
-                candleSeries = chart.addCandlestickSeries({
-                    upColor:'#4caf50', downColor:'#f44336', borderVisible:true,
-                    wickUpColor:'#4caf50', wickDownColor:'#f44336'
-                });
-                chart.subscribeCrosshairMove(param => {
-                    if(!param || !param.point) return;
-                    const sd = param.seriesData?.get?.(candleSeries);
-                    if(sd && sd.open !== undefined){
-                        updateOHLC(sd.open, sd.high, sd.low, sd.close, formatToIST(sd.time));
-                    }
-                });
-            }
-            try {
-                candleSeries.setData(candleData);
-            } catch(e){
-                throw new Error("Failed to set chart data: " + e.message);
-            }
-            [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
-                if(candleSeries && line) candleSeries.removePriceLine(line);
-            });
-            supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
-            if(document.getElementById('toggleSupport').checked) drawSupport();
-            if(document.getElementById('toggleResistance').checked) drawResistance();
-            if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-            if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-            if(document.getElementById('toggleSignal').checked) drawSignal();
-            updateDecisionBanner(currentPA.consolidatedDecision || null);
-            chart.timeScale().fitContent();
-            document.getElementById('loader').style.display = 'none';
-            showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt+1})`, 'info');
-            return;
-        } catch(err) {
-            if(attempt >= FETCH_RETRY_DELAYS.length){
-                document.getElementById('loader').style.display = 'none';
-                showFetchStatus(`Failed after ${attempt+1} attempts: ${err.message}`, 'error');
-                updateOHLC('-', '-', '-', '-', '');
-                updateDecisionBanner(null);
-                return;
-            } else {
-                const delay = FETCH_RETRY_DELAYS[attempt];
-                showFetchStatus(`Attempt ${attempt+1} failed: ${err.message}. Retrying in ${delay/1000}s...`, 'warn');
-                await new Promise(r => setTimeout(r, delay));
-                if(requestId !== lastRequestId) return;
-                return attemptFetch(attempt+1);
-            }
-        }
+
+['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'].forEach(t => {
+  const id = 'toggle' + t;
+  document.getElementById(id).addEventListener('change', () => {
+    localStorage.setItem(id, document.getElementById(id).checked);
+    if (candleSeries) {
+      if (t === 'Support') {
+        supportLines.forEach(l => candleSeries.removePriceLine(l));
+        if (document.getElementById('toggleSupport').checked) drawSupport();
+      }
+      if (t === 'Resistance') {
+        resistanceLines.forEach(l => candleSeries.removePriceLine(l));
+        if (document.getElementById('toggleResistance').checked) drawResistance();
+      }
+      if (t === 'FiboSupport') {
+        fiboSupportLines.forEach(l => candleSeries.removePriceLine(l));
+        if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+      }
+      if (t === 'FiboResistance') {
+        fiboResistanceLines.forEach(l => candleSeries.removePriceLine(l));
+        if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+      }
+      if (t === 'Signal') {
+        candleSeries.setMarkers([]);
+        if (document.getElementById('toggleSignal').checked) drawSignal();
+        updateDecisionBanner(currentPA.consolidatedDecision || null);
+      }
     }
-    attemptFetch(0);
-}
-/* ---------- checkbox handlers (original + persistence) ---------- */
-['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
-    const id = 'toggle'+t;
-    document.getElementById(id).addEventListener('change', () => {
-        localStorage.setItem(id, document.getElementById(id).checked);
-        if(candleSeries){
-            if(t === 'Support') {
-                supportLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleSupport').checked) drawSupport();
-            }
-            if(t === 'Resistance') {
-                resistanceLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleResistance').checked) drawResistance();
-            }
-            if(t === 'FiboSupport') {
-                fiboSupportLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-            }
-            if(t === 'FiboResistance') {
-                fiboResistanceLines.forEach(l => candleSeries.removePriceLine(l));
-                if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-            }
-            if(t === 'Signal') {
-                candleSeries.setMarkers([]);
-                if(document.getElementById('toggleSignal').checked) drawSignal();
-                updateDecisionBanner(currentPA.consolidatedDecision || null);
-            }
-            updateMasterCheckbox();
-        }
-    });
+  });
 });
 document.getElementById('toggleAll').addEventListener('change', () => {
-    const check = document.getElementById('toggleAll').checked;
-    localStorage.setItem('toggleAll', check);
-    ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
-        const cb = document.getElementById('toggle'+t);
-        cb.checked = check;
-        cb.dispatchEvent(new Event('change'));
-    });
+  const check = document.getElementById('toggleAll').checked;
+  localStorage.setItem('toggleAll', check);
+  ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'].forEach(t => {
+    const cb = document.getElementById('toggle' + t);
+    cb.checked = check;
+    cb.dispatchEvent(new Event('change'));
+  });
 });
-document.getElementById('toggleGrid').addEventListener('change', function(){
-    localStorage.setItem('toggleGrid', this.checked);
-    if(chart) chart.applyOptions({
-        grid: { vertLines: {visible:this.checked}, horzLines: {visible:this.checked} }
-    });
+document.getElementById('toggleGrid').addEventListener('change', function () {
+  localStorage.setItem('toggleGrid', this.checked);
+  if (chart) chart.applyOptions({
+    grid: { vertLines: { visible: this.checked }, horzLines: { visible: this.checked } }
+  });
 });
-/* ---------- initial load and events ---------- */
+function restoreToggleState() {
+  ['toggleAll', 'toggleSupport', 'toggleResistance', 'toggleFiboSupport', 'toggleFiboResistance', 'toggleSignal', 'toggleGrid'].forEach(id => {
+    const el = document.getElementById(id);
+    const saved = localStorage.getItem(id);
+    if (saved !== null && el) el.checked = (saved === 'true');
+  });
+}
 restoreToggleState();
 loadChart(document.getElementById('symbolIntervalSelect').value);
-document.getElementById('symbolIntervalSelect').addEventListener('change', function(){
-    loadChart(this.value);
+document.getElementById('symbolIntervalSelect').addEventListener('change', function () {
+  loadChart(this.value);
 });
 document.getElementById('optionsButton').addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.getElementById('optionsDropdown').classList.toggle('open');
+  e.stopPropagation();
+  document.getElementById('optionsDropdown').classList.toggle('open');
 });
 document.addEventListener('click', (e) => {
-    const dd = document.getElementById('optionsDropdown');
-    if(dd && dd.classList.contains('open') && !dd.contains(e.target)){
-        dd.classList.remove('open');
-    }
+  const dd = document.getElementById('optionsDropdown');
+  if (dd && dd.classList.contains('open') && !dd.contains(e.target)) {
+    dd.classList.remove('open');
+  }
 });
 document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape'){
-        const dd = document.getElementById('optionsDropdown');
-        if(dd && dd.classList.contains('open')) dd.classList.remove('open');
-    }
+  if (e.key === 'Escape') {
+    const dd = document.getElementById('optionsDropdown');
+    if (dd && dd.classList.contains('open')) dd.classList.remove('open');
+  }
 });
 document.getElementById('refreshButton').addEventListener('click', () => {
-    loadChart(document.getElementById('symbolIntervalSelect').value);
+  loadChart(document.getElementById('symbolIntervalSelect').value);
 });
 </script>
 </body>
