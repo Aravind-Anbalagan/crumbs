@@ -49,6 +49,8 @@ public class OrdersController {
         dto.setToken(order.getToken());
         dto.setSymbol(order.getSymbol());
         dto.setPr(order.getPriceAction());
+        dto.setFibo(order.getFibo());
+        dto.setCombine(order.getCombine());
         return dto;
     }
 }

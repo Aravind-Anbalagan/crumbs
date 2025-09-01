@@ -687,7 +687,7 @@ public class ChartService {
 				currentPrice = vix.getClose();
 			}
 
-			if (currentPrice != null) {
+			if (currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) != 0) {
 				String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType());
 				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 						: Constants.TRANSACTION_TYPE_BUY;

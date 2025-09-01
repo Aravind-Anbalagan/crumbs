@@ -15,6 +15,8 @@ public class OrdersDTO {
 	    private String comment;
 	    private String type;
 	    private String pr;
+	    private String fibo;
+	    private String combine;
 	    private String result;
 	    private String timestamp;
 	    private String entryTime;
