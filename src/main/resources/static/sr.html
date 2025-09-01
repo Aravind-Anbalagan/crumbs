@@ -65,20 +65,15 @@
     </div>
   </div>
 </div>
-
 <div id="loader">
   <div class="spinner"></div>
   <div id="loaderText">Loading chart data...</div>
 </div>
-
 <!-- trade banner already present in your base -->
 <div id="tradeDecision"></div>
-
 <div id="chart"></div>
-
 <!-- fetch status overlay (RESILIENCE PATCH UI) -->
 <div id="fetchStatus"></div>
-
 <script>
 /* =========================
    Your original variables and helpers (preserved)
@@ -87,7 +82,6 @@ let chart, candleSeries;
 let supportLines=[], resistanceLines=[], fiboSupportLines=[], fiboResistanceLines=[], signalMarkers=[];
 let currentPA={}, candleData=[];
 let lastRequestId = 0;
-
 /* ---------- helpers (unchanged) ---------- */
 function toISTEpoch(utcTimestamp) {
     return Math.floor((new Date(utcTimestamp).getTime() + 5.5*60*60*1000)/1000);
@@ -110,9 +104,7 @@ function updateDecisionBanner(decision){
     else if(decision === 'SELL'){ el.style.display='block'; el.textContent='SELL'; el.style.background='#f44336'; el.style.color='#fff'; }
     else { el.style.display='none'; el.textContent=''; }
 }
-
-/* drawing functions preserved (unchanged) */
-function drawSupport(){ /* as before */ 
+function drawSupport(){ 
     supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
         price: Number(l),
         color: '#2196f3',
@@ -162,7 +154,6 @@ function drawSignal(){
     signalMarkers = [];
     const lastTime = candleData[candleData.length - 1]?.time;
     if(!lastTime) { updateDecisionBanner(null); return; }
-
     let decision = currentPA.consolidatedDecision || null;
     if(decision === 'BUY') {
         signalMarkers.push({ time:lastTime, position:'belowBar', color:'green', shape:'arrowUp', text:'BUY' });
@@ -181,7 +172,6 @@ function updateMasterCheckbox(){
     else if(noneChecked) { toggleAll.checked = false; toggleAll.indeterminate = false; }
     else { toggleAll.checked = false; toggleAll.indeterminate = true; }
 }
-
 /* ---------- persistence (unchanged) ---------- */
 const PERSIST_KEYS = ['toggleAll','toggleSupport','toggleResistance','toggleFiboSupport','toggleFiboResistance','toggleSignal','toggleGrid'];
 function restoreToggleState(){
@@ -192,46 +182,36 @@ function restoreToggleState(){
     });
     updateMasterCheckbox();
 }
-
 /* =========================
    === RESILIENCE PATCH ===
    New robust loadChart with parsing, validation & retry
-   (only this section is added/changed)
    ========================= */
-
 const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000]; // ms
 const MIN_VALID_CANDLES = 3; // threshold to consider valid
 const fetchStatusEl = document.getElementById('fetchStatus');
-
-function showFetchStatus(msg, level='info'){ // level: info/warn/error
+function showFetchStatus(msg, level='info'){
     if(!fetchStatusEl) return;
     fetchStatusEl.style.display = 'block';
     fetchStatusEl.textContent = msg;
     fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
 }
-
 // robust timestamp normalizer: accepts {timestamp, time, t}, numeric (s|ms) and ISO strings
 function normalizeTimestamp(raw){
     if(raw == null) return null;
-    // if object (e.g. { year, month, day,... }) return null here (not supported)
     try {
         if(typeof raw === 'number'){
-            // if clearly milliseconds (>= 1e12), convert to seconds
             if(raw > 1e12) return Math.floor(raw/1000);
-            // if plausible seconds epoch (>= 1e9)
             if(raw >= 1e9) return Math.floor(raw); 
             return null;
         }
         if(typeof raw === 'string'){
-            // numeric string?
             if(/^\d+$/.test(raw)){
                 const n = Number(raw);
                 if(n > 1e12) return Math.floor(n/1000);
                 if(n >= 1e9) return Math.floor(n);
                 return null;
             }
-            // ISO / parseable date string
-            const ms = Date.parse(raw); // returns ms or NaN
+            const ms = Date.parse(raw);
             if(!isNaN(ms)) return Math.floor(ms/1000);
             return null;
         }
@@ -241,11 +221,9 @@ function normalizeTimestamp(raw){
         return null;
     }
 }
-
 // validate candle object has numeric OHLC and a valid time
 function validateAndNormalizeCandle(c){
     if(!c) return null;
-    // attempt multiple possible fields for timestamp
     const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
     const t = normalizeTimestamp(rawTime);
     if(!t) return null;
@@ -256,58 +234,57 @@ function validateAndNormalizeCandle(c){
     if(!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
     return { time: t, open, high, low, close };
 }
-
 // main resilient fetch + render loop
 async function loadChart(selectedValue){
     const requestId = ++lastRequestId;
     document.getElementById('loader').style.display = 'flex';
     showFetchStatus('Starting fetch...', 'info');
     updateOHLC('-', '-', '-', '-', '');
-
-    // inner function that will retry
     async function attemptFetch(attempt){
-        if(requestId !== lastRequestId) return; // a newer loadChart started, abort
+        if(requestId !== lastRequestId) return;
         showFetchStatus(`Fetch attempt ${attempt+1}...`, 'info');
         try {
             const [exchange,timeFrame] = selectedValue.split('|');
             const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
-
-            // fetch SR zones first (keep your original order)
             const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
             if(!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
             const paData = await paResponse.json();
             currentPA = paData || {};
-
-            // fetch candles
             const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
             if(!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
             const rawCandles = await candleResponse.json();
-
-            console.log(`[loadChart] rawCandles length: ${rawCandles?.length}`, rawCandles);
             if(!rawCandles || rawCandles.length === 0){
                 throw new Error('No candle data received');
             }
-
-            // validate+normalize
             const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
-            console.log(`[loadChart] normalized count: ${normalized.length}`);
-
             if(normalized.length < MIN_VALID_CANDLES){
-                // Not enough valid candles — either retry or show error if last attempt
                 throw new Error(`Too few valid candles (${normalized.length})`);
             }
-
-            // If newer request was started: abort applying this response
             if(requestId !== lastRequestId) return;
-
-            candleData = normalized; // seconds epoch
-
-            // ensure chart exists (create only once)
+            // Shift candle times from UTC to IST by adding 5.5 hours (19800 seconds)
+            const IST_OFFSET_SECONDS = 5.5 * 3600; 
+            candleData = normalized.map(c => ({
+                time: c.time + IST_OFFSET_SECONDS,
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+            }));
             if(!chart){
                 chart = LightweightCharts.createChart(document.getElementById('chart'), {
                     layout: { backgroundColor:'#ffffff', textColor:'#000' },
                     rightPriceScale: { borderColor:'#ccc' },
-                    timeScale: { borderColor:'#ccc', timeVisible:true, secondsVisible:true },
+                    timeScale: { 
+                        borderColor:'#ccc', 
+                        timeVisible:true, 
+                        secondsVisible:true,
+                        timeFormatter: (time) => {
+                            const date = new Date(time * 1000);
+                            const pad = (n) => n.toString().padStart(2, '0');
+                            // Using UTC methods because time now represents IST epoch seconds
+                            return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+                        }
+                    },
                     grid: { vertLines:{color:'#eee',visible:true}, horzLines:{color:'#eee',visible:true} }
                 });
                 candleSeries = chart.addCandlestickSeries({
@@ -322,79 +299,48 @@ async function loadChart(selectedValue){
                     }
                 });
             }
-
-            // set data safely
             try {
                 candleSeries.setData(candleData);
             } catch(e){
-                console.error("[loadChart] candleSeries.setData failed:", e);
                 throw new Error("Failed to set chart data: " + e.message);
             }
-
-            // remove old overlays (preserve behavior)
             [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
                 if(candleSeries && line) candleSeries.removePriceLine(line);
             });
             supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
-
-            // draw overlays based on toggles (preserve original logic)
             if(document.getElementById('toggleSupport').checked) drawSupport();
             if(document.getElementById('toggleResistance').checked) drawResistance();
             if(document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
             if(document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
             if(document.getElementById('toggleSignal').checked) drawSignal();
-
-            // keep banner updated
             updateDecisionBanner(currentPA.consolidatedDecision || null);
-
             chart.timeScale().fitContent();
-
-            // success
             document.getElementById('loader').style.display = 'none';
             showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt+1})`, 'info');
-            // persist anything if necessary (already handled by toggles)
             return;
-
         } catch(err) {
-            console.warn(`[loadChart] attempt ${attempt+1} failed:`, err);
-            console.error(err);
-            // last attempt?
             if(attempt >= FETCH_RETRY_DELAYS.length){
-                // show error and stop
                 document.getElementById('loader').style.display = 'none';
                 showFetchStatus(`Failed after ${attempt+1} attempts: ${err.message}`, 'error');
-                // update OHLC to blanks
                 updateOHLC('-', '-', '-', '-', '');
-                // keep banner consistent
                 updateDecisionBanner(null);
                 return;
             } else {
-                // schedule retry after delay
                 const delay = FETCH_RETRY_DELAYS[attempt];
                 showFetchStatus(`Attempt ${attempt+1} failed: ${err.message}. Retrying in ${delay/1000}s...`, 'warn');
                 await new Promise(r => setTimeout(r, delay));
-                // If request was superseded, abort
                 if(requestId !== lastRequestId) return;
                 return attemptFetch(attempt+1);
             }
         }
-    } // attemptFetch
-
-    // start first attempt
+    }
     attemptFetch(0);
-} // loadChart
-
-/* =========================
-   End RESILIENCE PATCH
-   ========================= */
-
+}
 /* ---------- checkbox handlers (original + persistence) ---------- */
 ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
     const id = 'toggle'+t;
     document.getElementById(id).addEventListener('change', () => {
-        // save state (#3)
         localStorage.setItem(id, document.getElementById(id).checked);
-
         if(candleSeries){
             if(t === 'Support') {
                 supportLines.forEach(l => candleSeries.removePriceLine(l));
@@ -421,43 +367,31 @@ async function loadChart(selectedValue){
         }
     });
 });
-// All toggle handler
 document.getElementById('toggleAll').addEventListener('change', () => {
     const check = document.getElementById('toggleAll').checked;
-    localStorage.setItem('toggleAll', check); // persist (#3)
+    localStorage.setItem('toggleAll', check);
     ['Support','Resistance','FiboSupport','FiboResistance','Signal'].forEach(t => {
         const cb = document.getElementById('toggle'+t);
         cb.checked = check;
         cb.dispatchEvent(new Event('change'));
     });
 });
-// Grid toggle handler
 document.getElementById('toggleGrid').addEventListener('change', function(){
-    localStorage.setItem('toggleGrid', this.checked); // persist (#3)
+    localStorage.setItem('toggleGrid', this.checked);
     if(chart) chart.applyOptions({
         grid: { vertLines: {visible:this.checked}, horzLines: {visible:this.checked} }
     });
 });
-
 /* ---------- initial load and events ---------- */
-// restore toggle states before first load
 restoreToggleState();
-
-// Initial load
 loadChart(document.getElementById('symbolIntervalSelect').value);
-
-// Interval change
 document.getElementById('symbolIntervalSelect').addEventListener('change', function(){
     loadChart(this.value);
 });
-
-// Options menu toggle
 document.getElementById('optionsButton').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('optionsDropdown').classList.toggle('open');
 });
-
-// dropdown auto-close on outside click & ESC (keeps previous behavior)
 document.addEventListener('click', (e) => {
     const dd = document.getElementById('optionsDropdown');
     if(dd && dd.classList.contains('open') && !dd.contains(e.target)){
@@ -470,8 +404,6 @@ document.addEventListener('keydown', (e) => {
         if(dd && dd.classList.contains('open')) dd.classList.remove('open');
     }
 });
-
-// Refresh
 document.getElementById('refreshButton').addEventListener('click', () => {
     loadChart(document.getElementById('symbolIntervalSelect').value);
 });
