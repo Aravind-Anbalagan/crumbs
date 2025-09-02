@@ -1,47 +1,46 @@
-# .github/workflows/fly-vm-scheduler.yml
-name: Fly VM Scheduler (Machines API)
+name: Fly VM Scheduler
 
 on:
   schedule:
-    # Stop at 11:30 PM IST → 18:00 UTC
-    - cron: "30 18 * * 1-5"
-    # Start at 8:00 AM IST → 02:30 UTC
+    # Start at 8:00 AM IST (02:30 UTC), Mon-Fri
     - cron: "30 2 * * 1-5"
-
-  workflow_dispatch: # 👈 allows manual run from GitHub UI
+    # Stop at 11:30 PM IST (18:00 UTC), Mon-Fri
+    - cron: "0 18 * * 1-5"
+  workflow_dispatch:
 
 jobs:
   control-vm:
     runs-on: ubuntu-latest
     steps:
-      - name: Stop VM (Night Schedule)
-        if: github.event_name == 'schedule' && github.event.schedule == '30 18 * * 1-5'
+      - name: Decide action
+        id: action
         run: |
-          echo "Stopping Fly.io VM..."
-          curl -X POST "https://api.machines.dev/v1/apps/crumbs/machines/080169ea13d328/stop" \
-          -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
-          -H "Content-Type: application/json"
+          current_hour=$(date -u +%H:%M)
+          echo "Current UTC time: $current_hour"
 
-      - name: Start VM (Morning Schedule)
-        if: github.event_name == 'schedule' && github.event.schedule == '30 2 * * 1-5'
+          # 02:30 UTC = 8:00 IST -> Start
+          # 18:00 UTC = 23:30 IST -> Stop
+          if [ "$current_hour" == "02:30" ]; then
+            echo "action=start" >> $GITHUB_OUTPUT
+          elif [ "$current_hour" == "18:00" ]; then
+            echo "action=stop" >> $GITHUB_OUTPUT
+          else
+            echo "No matching schedule"
+            exit 1
+          fi
+
+      - name: Start Fly.io VM
+        if: steps.action.outputs.action == 'start'
         run: |
           echo "Starting Fly.io VM..."
           curl -X POST "https://api.machines.dev/v1/apps/crumbs/machines/080169ea13d328/start" \
           -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
           -H "Content-Type: application/json"
 
-      - name: Manual Stop VM
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'stop'
+      - name: Stop Fly.io VM
+        if: steps.action.outputs.action == 'stop'
         run: |
-          echo "Stopping Fly.io VM (manual trigger)..."
+          echo "Stopping Fly.io VM..."
           curl -X POST "https://api.machines.dev/v1/apps/crumbs/machines/080169ea13d328/stop" \
-          -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
-          -H "Content-Type: application/json"
-
-      - name: Manual Start VM
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'start'
-        run: |
-          echo "Starting Fly.io VM (manual trigger)..."
-          curl -X POST "https://api.machines.dev/v1/apps/crumbs/machines/080169ea13d328/start" \
           -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
           -H "Content-Type: application/json"
