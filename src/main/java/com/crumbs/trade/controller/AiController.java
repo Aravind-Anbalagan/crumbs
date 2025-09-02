@@ -3,9 +3,7 @@ package com.crumbs.trade.controller;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import com.crumbs.trade.service.AiService;
-
 import jakarta.annotation.PostConstruct;
 
 
