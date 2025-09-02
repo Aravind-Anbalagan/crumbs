@@ -461,7 +461,7 @@ public class ChartService {
 			throws AddressException, MessagingException, IOException {
 		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
 		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", vix.getName());
-		//PR Update
+		//PR Updates
 		PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
 		if(pr!=null)
 		{
