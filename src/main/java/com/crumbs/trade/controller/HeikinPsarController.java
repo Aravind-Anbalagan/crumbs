@@ -52,7 +52,7 @@ public class HeikinPsarController {
 
 
 	// For 9:10:05 AM to 9:55:05 AM AM:
-	@Scheduled(cron = "5 10-55/5 9 * * MON-FRI", zone = "IST")
+	@Scheduled(cron = "5 10-55/5 9 * * MON-FRI", zone = "Asia/Kolkata")
 	public void scheduledTask1() throws SmartAPIException, AddressException, MessagingException, IOException {
 		//logger.info("First");
 		// commonExecution_1();
@@ -60,7 +60,7 @@ public class HeikinPsarController {
 	}
 
 	// For 10:00:05 AM to 2:55:05 PM
-	@Scheduled(cron = "5 0/5 10-14 * * MON-FRI", zone = "IST")
+	@Scheduled(cron = "5 0/5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
 	public void scheduledTask2() throws SmartAPIException, AddressException, MessagingException, IOException {
 		// Your task logic here
 		//logger.info("Second");
@@ -69,7 +69,7 @@ public class HeikinPsarController {
 	}
 
 	// For 3:00:05 PM to 3:15:05 PM
-	@Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = "IST")
+	@Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = "Asia/Kolkata")
 	public void scheduledTask3() throws SmartAPIException, AddressException, MessagingException, IOException {
 		// Your task logic here
 		//logger.info("Third");
@@ -80,8 +80,8 @@ public class HeikinPsarController {
 	// 16:00 → 22:55
 	// 23:00, 23:05, 23:10, 23:15
 	// @Scheduled(fixedRate = 10000)
-	@Scheduled(cron = "5 0/5 16-22 * * MON-FRI", zone = "IST")
-	@Scheduled(cron = "5 0-15/5 23 * * MON-FRI", zone = "IST")
+	@Scheduled(cron = "5 0/5 16-22 * * MON-FRI", zone = "Asia/Kolkata")
+	@Scheduled(cron = "5 0-15/5 23 * * MON-FRI", zone = "Asia/Kolkata")
 	public void scheduledTask4() throws SmartAPIException, AddressException, MessagingException, IOException {
 		//logger.info("Crude");
 		commonExecution_3();
@@ -171,5 +171,17 @@ public class HeikinPsarController {
 	@GetMapping("/getCandleList")
 	public List<Vix> getCandleData() {
 		return vixRepo.findByName("CRUDEOIL");
+	}
+	
+	//Exit for Nifty
+	@Scheduled(cron = "0 20 15 ? * MON-FRI", zone = "Asia/Kolkata")
+	public void nfoExit() throws AddressException, MessagingException, IOException {
+		chartService.monitorSignal("NIFTY", "NFO", false, 0);
+	}
+
+	// Exit for Crude
+	@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = "Asia/Kolkata")
+	public void mcxExit() throws AddressException, MessagingException, IOException {
+		chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
 	}
 }
