@@ -494,7 +494,7 @@ public class ChartService {
 			}
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())
-				&& type.equalsIgnoreCase(resultVix.getCombine())) {
+				&& !type.equalsIgnoreCase(resultVix.getCombine())) {
 
 			if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
