@@ -461,18 +461,21 @@ public class ChartService {
 			throws AddressException, MessagingException, IOException {
 		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
 		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", vix.getName());
-		//PR Updates
-		PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
-		if(pr!=null)
-		{
-			resultVix.setPriceAction(pr.getSr_signal());
-			resultVix.setFibo(pr.getFibo_signal());
-			resultVix.setCombine(pr.getConsolidatedDecision());
-		}
+		
 		//if (resultVix == null && type.equalsIgnoreCase(resultVix.getCombine()) ) {
 		if (resultVix == null ) {
 			// Entry
 			resultVix = new ResultVix();
+			
+			//PR Updates
+			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+			if(pr!=null)
+			{
+				resultVix.setPriceAction(pr.getSr_signal());
+				resultVix.setFibo(pr.getFibo_signal());
+				resultVix.setCombine(pr.getConsolidatedDecision());
+			}
+			
 			resultVix.setName(vix.getName());
 			if (testFlag) {
 				resultVix.setEntryTime(formatDateTime(vix.getTimestamp()));
@@ -496,7 +499,14 @@ public class ChartService {
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (!type.equalsIgnoreCase(resultVix.getCombine()) && !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine()))) {
-			
+			//PR Updates
+			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+			if(pr!=null)
+			{
+				resultVix.setPriceAction(pr.getSr_signal());
+				resultVix.setFibo(pr.getFibo_signal());
+				resultVix.setCombine(pr.getConsolidatedDecision());
+			}
 			if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
 						resultVix.getType()));
