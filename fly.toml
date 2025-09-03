@@ -7,7 +7,7 @@ primary_region = "sin"
   PORT = "8080"
   
 [vm]
-  memory = 2048 # or 1024 (MB)
+  memory = 1024 # or 1024 (MB)
   
 [[services]]
   internal_port = 8080
