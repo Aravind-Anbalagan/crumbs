@@ -469,7 +469,8 @@ public class ChartService {
 			resultVix.setFibo(pr.getFibo_signal());
 			resultVix.setCombine(pr.getConsolidatedDecision());
 		}
-		if (resultVix == null && type.equalsIgnoreCase(resultVix.getCombine()) ) {
+		//if (resultVix == null && type.equalsIgnoreCase(resultVix.getCombine()) ) {
+		if (resultVix == null ) {
 			// Entry
 			resultVix = new ResultVix();
 			resultVix.setName(vix.getName());
@@ -493,9 +494,9 @@ public class ChartService {
 
 			}
 
-		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())
-				&& (!type.equalsIgnoreCase(resultVix.getCombine()) && !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine()))) {
-
+		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
+				//&& (!type.equalsIgnoreCase(resultVix.getCombine()) && !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine()))) {
+			
 			if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
 						resultVix.getType()));
