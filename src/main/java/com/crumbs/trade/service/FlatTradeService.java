@@ -68,10 +68,10 @@ public class FlatTradeService {
 
 		String key = getTokenForFlatTrade();	
 		//Token token= new Token();
-		token.setExch_seg("MCX");
+		token.setExch_seg(token.getExch_seg());
 		token.setSymbol(Utility.normalizeToken(token.getSymbol()));
-		token.setTransactionType("S");
-		token.setQuantity(100);
+		token.setTransactionType(token.getTransactionType());
+		token.setQuantity(token.getQuantity());
 		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
 		APIResponse apiResponse=callFlatTrade(setJDataForOrder(token), key, url);
 		
