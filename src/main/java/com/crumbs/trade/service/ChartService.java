@@ -461,7 +461,7 @@ public class ChartService {
 			throws AddressException, MessagingException, IOException {
 		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
 		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", vix.getName());
-		
+		boolean tradeFlag = false;
 		//if (resultVix == null && type.equalsIgnoreCase(resultVix.getCombine()) ) {
 		if (resultVix == null ) {
 			// Entry
@@ -488,7 +488,13 @@ public class ChartService {
 			resultVix.setTimestamp(vix.getTimestamp());
 			resultVix.setType(type);
 			// Place Order - ENTRY
-			Token token = triggerEntryOrder(strategy, type, resultVix);
+            //Determine Trading Signal
+			if(type.equalsIgnoreCase(resultVix.getCombine()))
+			{
+				tradeFlag =true;
+				logger.info("Set Entry Trade Flag to True");
+			}
+			Token token = triggerEntryOrder(strategy, type, resultVix, tradeFlag);
 			if (token != null) {
 				resultVix.setLotSize(token.getQuantity());
 				resultVix.setToken(token.getToken());
@@ -537,18 +543,24 @@ public class ChartService {
 			resultVix.setPoints(calculatePoints(resultVix));
 			resultVix.setActive(null);
 			// Place Order  - EXIT
-			triggerExitOrder(resultVix);
+			//Determine Trading Signal
+			if (!type.equalsIgnoreCase(resultVix.getCombine())
+					&& !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine())) {
+				tradeFlag =true;
+				logger.info("Set Exit Trade Flag to True");
+			}
+			triggerExitOrder(resultVix,tradeFlag);
 		}
 		resultVixRepo.save(resultVix);
 	}
 
-	public Token triggerExitOrder(ResultVix resultVix) {
+	public Token triggerExitOrder(ResultVix resultVix, boolean tradeFlag) {
 		StrategyDTO strategyModified = new StrategyDTO();
 		strategyModified.setName(resultVix.getName().equalsIgnoreCase("NIFTY") == true ? "NIFTY" : resultVix.getName());
 		strategyModified.setTradingsymbol(resultVix.getSymbol());
 		String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 				: Constants.TRANSACTION_TYPE_BUY;
-		return placeOrder(strategyModified, transactionType,"S");
+		return placeOrder(strategyModified, transactionType,"S", tradeFlag);
 
 	}
 
@@ -607,13 +619,13 @@ public class ChartService {
 		return false;
 	}
 
-	public Token triggerEntryOrder(Strategy strategy, String type, ResultVix resultVix)
+	public Token triggerEntryOrder(Strategy strategy, String type, ResultVix resultVix, boolean tradeFlag)
 			throws AddressException, MessagingException, IOException {
 		// Get Name and Trading Symbol
 		StrategyDTO strategyModified = taskService.getStrategyDetails(strategy.getName(), strategy.getExchange());
 		strategyModified = getNameAndTradingSymbol(strategyModified, type);
 		// Place an Order and SL
-		return placeOrder(strategyModified, type,"B");
+		return placeOrder(strategyModified, type,"B", tradeFlag);
 	}
 
 	public StrategyDTO getNameAndTradingSymbol(StrategyDTO strategy, String type)
@@ -641,7 +653,7 @@ public class ChartService {
 		return Math.round(number / (float) base) * base;
 	}
 
-	public Token placeOrder(StrategyDTO strategy, String transactionType, String flatTradeType) {
+	public Token placeOrder(StrategyDTO strategy, String transactionType, String flatTradeType, boolean tradeFlag) {
 		SmartConnect smartconnect = angelOne.signIn();
 		Token token = new Token();
 
@@ -660,7 +672,10 @@ public class ChartService {
 			// orderService.PlaceOrder(smartconnect, token, null);
 			
 			//Place trade in Flat Trade
-			//placeOrderInFlatTrade(token,flatTradeType);
+			if(tradeFlag)
+			{
+				placeOrderInFlatTrade(token,flatTradeType);
+			}		
 		}
 		return token;
 	}
@@ -706,7 +721,7 @@ public class ChartService {
 						: Constants.TRANSACTION_TYPE_BUY;
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
                     //Place Order - EXIT
-					Token token = placeOrder(setValues(resultVix), transactionType,"S");
+					Token token = placeOrder(setValues(resultVix), transactionType,"S", true);
 					closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
 
 				}

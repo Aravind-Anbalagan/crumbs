@@ -96,8 +96,8 @@ public class FlatTradeService {
 		jdata.setTsym(token.getSymbol());
 		jdata.setQty(String.valueOf(token.getQuantity()));
 		//jdata.setMkt_protection("5");
-		//jdata.setPrc("0");
-		//jdata.setDscqty("0");
+		jdata.setPrc("0");
+		jdata.setDscqty("0");
 		jdata.setPrd("I"); //Intraday
 		jdata.setTrantype(token.getTransactionType());
 		jdata.setPrctyp("MKT");
