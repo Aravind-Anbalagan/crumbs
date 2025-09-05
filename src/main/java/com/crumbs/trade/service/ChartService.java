@@ -702,6 +702,7 @@ public class ChartService {
 		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", name);
 		Strategy strategy = getTokenDetails(name, type);
 		BigDecimal currentPrice = new BigDecimal("0");
+		boolean tradeFlag = false;
 		if (resultVix != null) {
 			// Get Current Price of Executed Order
 			SmartConnect smartconnect = angelOne.signIn();
@@ -720,8 +721,13 @@ public class ChartService {
 				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 						: Constants.TRANSACTION_TYPE_BUY;
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
+					if(resultVix.getType().equalsIgnoreCase(resultVix.getCombine()))
+					{
+						tradeFlag = true;
+						logger.info("Set SL Trade Flag to True");
+					}
                     //Place Order - EXIT
-					Token token = placeOrder(setValues(resultVix), transactionType,"S", true);
+					Token token = placeOrder(setValues(resultVix), transactionType,"S", tradeFlag);
 					closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
 
 				}
