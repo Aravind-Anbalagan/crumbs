@@ -22,6 +22,7 @@ import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.ChartService;
 import com.crumbs.trade.service.OIDataService;
 import com.crumbs.trade.service.OIService;
+import com.crumbs.trade.service.SRService;
 import com.crumbs.trade.service.TaskService;
 import com.crumbs.trade.service.ChartService.CandleRange;
 
@@ -49,7 +50,9 @@ public class HeikinPsarController {
 	
 	@Autowired
 	OIService oiService;
-
+	
+	@Autowired
+	SRService srService;
 
 	// For 9:10:05 AM to 9:55:05 AM AM:
 	@Scheduled(cron = "5 10-55/5 9 * * MON-FRI", zone = "Asia/Kolkata")
@@ -112,6 +115,7 @@ public class HeikinPsarController {
 		if (strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
 			chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate);
 			chartService.monitorSignal("NIFTY", "NFO", false, 0);
+			srService.getSignals("NIFTY", "NFO");
 		}
 		//NIFTY OI
 		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
@@ -131,6 +135,7 @@ public class HeikinPsarController {
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
 			chartService.readChartData("FIVE_MINUTE", "MCX", false, "CRUDEOIL", fromDate, toDate);
 			chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
+			srService.getSignals("CRUDEOIL", "MCX");
 		}
 		//OI
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {

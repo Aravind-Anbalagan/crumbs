@@ -11,12 +11,17 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CandleRequestDto;
 import com.crumbs.trade.dto.PriceActionResult;
+import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.entity.Candle;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.PricesIndex;
+import com.crumbs.trade.entity.Signals;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.PricesIndexRepo;
+import com.crumbs.trade.repo.SignalsRepo;
+
+import jakarta.transaction.Transactional;
 
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
@@ -41,6 +46,12 @@ public class SRService {
 	
 	@Autowired
 	PriceActionService priceActionService;
+	
+	@Autowired
+	TaskService taskService;
+	
+	@Autowired
+	SignalsRepo signalRepo;
 	
 	private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
 	private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -219,5 +230,36 @@ public class SRService {
 		logger.error("Unable to get price action for {} ", name);
 		return null;
 
+	}
+	
+	@Transactional
+	public Signals getSignals(String name, String type) {
+		//PR Updates
+		Strategy strategy = getTokenDetails(name, type);
+		Signals signal = new Signals();
+		PriceActionResult pr= getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+		if(pr!=null)
+		{
+			String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
+			signal.setPriceAction(pr.getSr_signal());
+			signal.setFibo(pr.getFibo_signal());
+			signal.setFinals(pr.getConsolidatedDecision());
+			signal.setName(name);
+			signal.setCreatedAt(currentDate);
+			signalRepo.save(signal);
+		}
+		return signal;	
+	}
+	
+	/*
+	 * Get Token Details
+	 */
+	public Strategy getTokenDetails(String name, String exchange) {
+		StrategyDTO strategyModified = taskService.getStrategyDetails(name, exchange);
+		Strategy strategy = taskService.getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
+		if (strategy != null) {
+			return strategy;
+		}
+		return null;
 	}
 }
