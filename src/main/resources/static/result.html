@@ -181,7 +181,7 @@
       const table = document.getElementById("data-table");
 
       try {
-        const response = await fetch("http://localhost:8080/api/getDetailsResults");
+        const response = await fetch("/api/getDetailsResults");
         if (!response.ok) throw new Error("Network error");
 
         stockData = await response.json();
