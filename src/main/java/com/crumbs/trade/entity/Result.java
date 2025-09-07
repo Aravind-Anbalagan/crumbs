@@ -31,9 +31,8 @@ public class Result {
 	String tradingSymbol;
 	@Column(name="exchange")
 	String exchange;
-	@CreatedDate
 	@Column(name="createdDate")
-	Date  createdDate;
+	String createdDate;
 	@LastModifiedDate
 	@Column(name="modifiedDate")
 	Date  modifiedDate;

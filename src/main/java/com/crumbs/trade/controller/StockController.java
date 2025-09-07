@@ -23,9 +23,11 @@ import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.DynamicIndicatorDTO;
 import com.crumbs.trade.entity.Indicator;
+import com.crumbs.trade.entity.Result;
 import com.crumbs.trade.exception.NoIndicatorDataException;
 import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.service.ResultService;
 import com.crumbs.trade.service.TaskService;
 import com.crumbs.trade.service.TimeLookup;
 import com.crumbs.trade.utility.AppConstant;
@@ -47,6 +49,9 @@ public class StockController {
 
 	@Autowired
 	StrategyRepo strategyRepo;
+	
+	@Autowired
+	ResultService resultService;
 
 	@GetMapping("/getStocks/{indexName}/{symbol}")
 	public String indicator(@PathVariable("indexName") String indexName, @PathVariable("symbol") String symbol)
@@ -259,6 +264,11 @@ public class StockController {
 
 	    return Collections.emptyList();
 	}
+	
+	@GetMapping("/getDetailsResults")
+	public List<Result> getResultList() {
+		return resultService.getAllResults();
 
+	}
 
 }

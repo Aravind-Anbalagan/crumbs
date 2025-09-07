@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Result</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9fafb;
+      margin: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+    input, select, button {
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+    }
+    button.reset-btn {
+      background: #f87171;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button.reset-btn:hover {
+      background: #dc2626;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      display: none;
+    }
+    thead {
+      background: #374151;
+      color: #fff;
+      cursor: pointer;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: center;
+      font-size: 14px;
+    }
+    tbody tr:nth-child(even) {
+      background: #f3f4f6;
+    }
+    .badge {
+      padding: 5px 10px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .up { background: #d1fae5; color: #065f46; }     /* Green for UP */
+    .down { background: #fee2e2; color: #991b1b; }   /* Red for DOWN */
+    .comment { font-style: italic; color: #6b7280; }
+    .loader {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #374151;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 50px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+      margin-top: 15px;
+      flex-wrap: wrap;
+    }
+    .pagination button {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      background: #fff;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .pagination button.active {
+      background: #374151;
+      color: #fff;
+      font-weight: bold;
+    }
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr {
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+      }
+      td {
+        text-align: right;
+        padding-left: 50%;
+        position: relative;
+      }
+      td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 15px;
+        width: 45%;
+        text-align: left;
+        font-weight: bold;
+        color: #374151;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h2>Stock Result</h2>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input type="text" id="searchBox" placeholder="Search by Name...">
+    <select id="typeFilter">
+      <option value="ALL">All</option>
+      <option value="UP">UP</option>
+      <option value="DOWN">DOWN</option>
+    </select>
+    <button id="resetBtn" class="reset-btn">Reset</button>
+  </div>
+
+  <!-- Loader -->
+  <div id="loader" class="loader"></div>
+
+  <!-- Table -->
+  <table id="data-table">
+    <thead>
+      <tr>
+        <th data-key="name">Name</th>
+        <th data-key="exchange">Exchange</th>
+        <th data-key="entryTime">Entry Time</th>
+        <th data-key="exitTime">Exit Time</th>
+        <th data-key="type">Type</th>
+        <th data-key="executedltp">Executed LTP</th>
+        <th data-key="currentltp">Current LTP</th>
+        <th data-key="sl">SL</th>
+        <th data-key="comment">Comment</th>
+      </tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div id="pagination" class="pagination"></div>
+
+  <script>
+    let stockData = [];
+    let currentSort = { key: null, asc: true };
+    let currentPage = 1;
+    const rowsPerPage = 10;
+
+    async function loadData() {
+      const loader = document.getElementById("loader");
+      const table = document.getElementById("data-table");
+
+      try {
+        const response = await fetch("http://localhost:8080/api/getDetailsResults");
+        if (!response.ok) throw new Error("Network error");
+
+        stockData = await response.json();
+        renderTable();
+
+        loader.style.display = "none";
+        table.style.display = "table";
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        loader.style.display = "none";
+        document.body.insertAdjacentHTML("beforeend", "<p style='color:red;text-align:center;'>Failed to load data.</p>");
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("table-body");
+      const searchVal = document.getElementById("searchBox").value.toLowerCase();
+      const typeVal = document.getElementById("typeFilter").value;
+
+      tbody.innerHTML = "";
+
+      let filtered = stockData.filter(item => {
+        const displayType = (item.type || "").toUpperCase(); // API already gives UP/DOWN
+        const matchesSearch = item.name?.toLowerCase().includes(searchVal);
+        const matchesType = typeVal === "ALL" || displayType === typeVal;
+        return matchesSearch && matchesType;
+      });
+
+      // Apply sorting
+      if (currentSort.key) {
+        filtered.sort((a, b) => {
+          let valA = a[currentSort.key] ?? "";
+          let valB = b[currentSort.key] ?? "";
+
+          if (!isNaN(valA) && !isNaN(valB)) {
+            valA = parseFloat(valA);
+            valB = parseFloat(valB);
+          } else {
+            valA = valA.toString().toLowerCase();
+            valB = valB.toString().toLowerCase();
+          }
+
+          if (valA < valB) return currentSort.asc ? -1 : 1;
+          if (valA > valB) return currentSort.asc ? 1 : -1;
+          return 0;
+        });
+      }
+
+      // Pagination logic
+      const totalPages = Math.ceil(filtered.length / rowsPerPage);
+      if (currentPage > totalPages) currentPage = totalPages || 1;
+      const start = (currentPage - 1) * rowsPerPage;
+      const paginated = filtered.slice(start, start + rowsPerPage);
+
+      if (paginated.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#6b7280;">No records found</td></tr>`;
+      } else {
+        paginated.forEach(item => {
+          const displayType = (item.type || "").toUpperCase();
+          const badgeClass = displayType === "UP" ? "up" :
+                             displayType === "DOWN" ? "down" : "";
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td data-label="Name">${item.name || ""}</td>
+            <td data-label="Exchange">${item.exchange || ""}</td>
+            <td data-label="Entry Time">${formatDate(item.entryTime)}</td>
+            <td data-label="Exit Time">${formatDate(item.exitTime)}</td>
+            <td data-label="Type">
+              <span class="badge ${badgeClass}">${displayType}</span>
+            </td>
+            <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
+            <td data-label="Current LTP">${item.currentltp ?? ""}</td>
+            <td data-label="SL">${item.sl ?? ""}</td>
+            <td data-label="Comment" class="comment">${item.comment || ""}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+
+      renderPagination(totalPages);
+    }
+
+    function renderPagination(totalPages) {
+      const pagination = document.getElementById("pagination");
+      pagination.innerHTML = "";
+
+      if (totalPages <= 1) return;
+
+      const prev = document.createElement("button");
+      prev.textContent = "Prev";
+      prev.disabled = currentPage === 1;
+      prev.onclick = () => { currentPage--; renderTable(); };
+      pagination.appendChild(prev);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement("button");
+        btn.textContent = i;
+        if (i === currentPage) btn.classList.add("active");
+        btn.onclick = () => { currentPage = i; renderTable(); };
+        pagination.appendChild(btn);
+      }
+
+      const next = document.createElement("button");
+      next.textContent = "Next";
+      next.disabled = currentPage === totalPages;
+      next.onclick = () => { currentPage++; renderTable(); };
+      pagination.appendChild(next);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      return isNaN(d.getTime()) ? dateStr : d.toLocaleString();
+    }
+
+    // Reset functionality
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      document.getElementById("searchBox").value = "";
+      document.getElementById("typeFilter").value = "ALL";
+      currentPage = 1;
+      currentSort = { key: null, asc: true };
+      renderTable();
+    });
+
+    // Event Listeners
+    document.getElementById("searchBox").addEventListener("input", () => { currentPage = 1; renderTable(); });
+    document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; renderTable(); });
+
+    document.querySelectorAll("thead th").forEach(th => {
+      th.addEventListener("click", () => {
+        const key = th.getAttribute("data-key");
+        if (currentSort.key === key) {
+          currentSort.asc = !currentSort.asc;
+        } else {
+          currentSort.key = key;
+          currentSort.asc = true;
+        }
+        renderTable();
+      });
+    });
+
+    window.onload = loadData;
+  </script>
+</body>
+</html>

@@ -48,7 +48,7 @@ public class ResultService {
 		if (result == null) {
 			result = new Result();
 			result.setName(stock.getName());
-			result.setTimestamp(dateTimeIST);
+			result.setEntryTime(dateTimeIST);
 			result.setToken(stock.getToken());
 			result.setTradingSymbol(stock.getTradingSymbol());
 			result.setExchange(stock.getExchange());
@@ -202,5 +202,8 @@ public class ResultService {
 		// sendEmail.sendmail("HEIHINACHI & PSAR " + " : " +" BUY", "BUY",0);
 	}
 	
+	public List<Result> getAllResults() {
+		return resultRepo.findAll();
+	}
 	
 }
