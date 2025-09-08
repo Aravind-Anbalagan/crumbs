@@ -492,7 +492,7 @@ public class ChartService {
 			if(type.equalsIgnoreCase(resultVix.getCombine()))
 			{
 				tradeFlag =true;
-				logger.info("Set Entry Trade Flag to True");
+				logger.info("Entry trade: Signal={}, Final={}", type, resultVix.getCombine());
 			}
 			Token token = triggerEntryOrder(strategy, type, resultVix, tradeFlag);
 			if (token != null) {
@@ -544,10 +544,14 @@ public class ChartService {
 			resultVix.setActive(null);
 			// Place Order  - EXIT
 			//Determine Trading Signal
-			if (!type.equalsIgnoreCase(resultVix.getCombine())
-					&& !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine())) {
-				tradeFlag =true;
-				logger.info("Set Exit Trade Flag to True");
+			String combine = resultVix.getCombine();
+
+			if (!combine.equalsIgnoreCase(type)    // not same as current trade
+			        && !"NO_TRADE".equalsIgnoreCase(combine)) {  // not NO_TRADE
+			    tradeFlag = true;
+			    logger.info("Exit trade: Signal={}, Final={}", type, combine);
+			} else {
+			    logger.info("No action: Signal={}, Final={}", type, combine);
 			}
 			triggerExitOrder(resultVix,tradeFlag);
 		}
@@ -724,7 +728,7 @@ public class ChartService {
 					if(resultVix.getType().equalsIgnoreCase(resultVix.getCombine()))
 					{
 						tradeFlag = true;
-						logger.info("Set SL Trade Flag to True");
+						logger.info("SL Trade: Signal={}, Final={}",resultVix.getType(),resultVix.getCombine());
 					}
                     //Place Order - EXIT
 					Token token = placeOrder(setValues(resultVix), transactionType,"S", tradeFlag);
