@@ -2,9 +2,9 @@ name: Fly VM Scheduler
 
 on:
   schedule:
-    # Start at 9:00 AM IST (03:30 UTC), every day
+    # Start at 9:00 AM IST (03:30 UTC),every day
     - cron: "30 3 * * 0-6"
-    # Stop at 2:00 AM IST (20:30 UTC, previous day), every day
+    # Stop at 2:00 AM IST (20:30 UTC, previous day),every day
     - cron: "30 20 * * 0-6"
   workflow_dispatch:
     inputs:
