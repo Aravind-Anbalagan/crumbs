@@ -2169,14 +2169,14 @@ public class TaskService {
 	// Helper methods
 	private boolean isUpSignal(Indicator stock) {
 	    return "UP".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
-	        && "UP".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
-	        && "UP".equalsIgnoreCase(stock.getCprflag());
+	        //&& "UP".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
+	        || "UP".equalsIgnoreCase(stock.getCprflag());
 	}
 
 	private boolean isDownSignal(Indicator stock) {
 	    return "DOWN".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
-	        && "DOWN".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
-	        && "DOWN".equalsIgnoreCase(stock.getCprflag());
+	        //&& "DOWN".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
+	        || "DOWN".equalsIgnoreCase(stock.getCprflag());
 	}
 
 
