@@ -408,51 +408,80 @@ public class ChartService {
 				}
 			}
 			// Exit trade at martket close
-			exitFromTrade(vix.getTimestamp(), name, vix, strategy, currentPrice);
+			//exitFromTrade(vix.getTimestamp(), name, vix, strategy, currentPrice);
 		}
 	}
 	
-	public void exitFromTrade(String timeStamp, String name, Vix vix, Strategy strategy, BigDecimal currentPrice)
+	public void exitFromTrade(String name, String type)
 			throws AddressException, MessagingException, IOException {
-		int hour = 0;
-		int min = 0;
-		if ("NIFTY".equalsIgnoreCase(name)) {
-			hour = 15;
-			min = 20;
-		} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
-			hour = 23;
-			min = 20;
+		SmartConnect smartconnect = angelOne.signIn();
+		Strategy strategy = getTokenDetails(name, type);
+		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
+				strategy.getSymbol(), strategy.getToken());
+		
+		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", name);
+		
+		if(resultVix!=null)
+		{
+			String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
+			int hour = 0;
+			int min = 0;
+			if ("NIFTY".equalsIgnoreCase(name)) {
+				hour = 15;
+				min = 20;
+			} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+				hour = 23;
+				min = 20;
+			}
+			if (isToday(currentDate) && IsExit(currentDate, hour, min)) {
+				triggerExitOrder(resultVix,true);
+				logger.info("Last trade: {}", name);
+				resultVix.setActive(null);
+				resultVixRepo.save(resultVix);
+			}
 		}
-		if (isToday(timeStamp) && IsExit(timeStamp, hour, min)) {
-
-			makeEntry(vix, strategy, " ", false, currentPrice);
-			logger.info("Order Exited for {}", name);
-		}
+		
 
 	}
 
 	public static boolean isToday(String timestamp) {
-		ZonedDateTime zdt = ZonedDateTime.parse(timestamp); // parse ISO format
-		LocalDate givenDate = zdt.toLocalDate(); // extract date part
-		LocalDate today = LocalDate.now(zdt.getZone()); // today in same timezone
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+
+		// Parse to LocalDateTime
+		LocalDateTime ldt = LocalDateTime.parse(timestamp, formatter);
+
+		// Assume system default timezone (or specify if known)
+		ZoneId zone = ZoneId.systemDefault();
+
+		// Convert to ZonedDateTime
+		ZonedDateTime zdt = ldt.atZone(zone);
+
+		// Extract date
+		LocalDate givenDate = zdt.toLocalDate();
+		LocalDate today = LocalDate.now(zone);
+
 		return givenDate.equals(today);
 	}
+	
 	public boolean IsExit(String input, int hour, int min) {
-		String pattern = "yyyy-MM-dd HH:mm";
-		// Parse the string to OffsetDateTime (handles date, time, and timezone)
-		OffsetDateTime offsetDateTime = OffsetDateTime.parse(input);
+		  // Your input format
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        
+        // Parse to LocalDateTime
+        LocalDateTime ldt = LocalDateTime.parse(input, formatter);
+        
+        // Convert to system default zone (you can change if needed)
+        ZoneId zone = ZoneId.systemDefault();
+        ZonedDateTime zdt = ldt.atZone(zone);
+        
+        // Extract LocalTime
+        LocalTime localTime = zdt.toLocalTime();
 
-		// Convert to LocalTime in the system's default time zone
-		LocalTime localTime = offsetDateTime.atZoneSameInstant(ZoneId.systemDefault()).toLocalTime();
+        // Comparison time
+        LocalTime comparisonTime = LocalTime.of(hour, min);
 
-		LocalTime comparisonTime = LocalTime.of(hour, min); // 15:25 is 3:25 PM
-		// Parse the string to LocalDateTime
-
-		if (localTime.isAfter(comparisonTime)) {
-			return true;
-		} else {
-			return false;
-		}
+        // Compare
+        return localTime.isAfter(comparisonTime);
 	}
 
 	@SuppressWarnings("null")

@@ -181,12 +181,12 @@ public class HeikinPsarController {
 	//Exit for Nifty
 	@Scheduled(cron = "0 20 15 ? * MON-FRI", zone = "Asia/Kolkata")
 	public void nfoExit() throws AddressException, MessagingException, IOException {
-		chartService.monitorSignal("NIFTY", "NFO", false, 0);
+		chartService.exitFromTrade("NIFTY", "NFO");
 	}
 
 	// Exit for Crude
 	@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = "Asia/Kolkata")
 	public void mcxExit() throws AddressException, MessagingException, IOException {
-		chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
+		chartService.exitFromTrade("CRUDEOIL", "MCX");
 	}
 }
