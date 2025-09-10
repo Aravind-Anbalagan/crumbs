@@ -45,10 +45,17 @@ public class SRController {
 	public PriceActionResult detectZones(
 			@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
 			@RequestParam(name = "name") String name,
-			@RequestParam(name = "exchange") String exchange) {
+			@RequestParam(name = "exchange") String exchange,
+			@RequestParam(name = "useToday", required = false, defaultValue = "false") boolean useToday) {
 		
 
 		return srService.getPriceAction(timeFrame,name,exchange);
+	}
+	
+	@GetMapping("/getChart")
+	public String getChartDetails() {
+		
+		return srService.getChartDetails();
 	}
 	
 	@GetMapping("/getCandleList")

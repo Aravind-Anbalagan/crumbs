@@ -132,19 +132,19 @@ public class StockController {
 		dto.addHeader("price", ind.getCurrentPrice(), true);
 
 		if ("DAILY".equalsIgnoreCase(flag)) {
-			dto.addHeader("daily_rsi", ind.getDailyRSI(), true);
-			dto.addHeader("daily_ma20", ind.getMovingavg20Flag(), true);
+			dto.addHeader("RSI", ind.getDailyRSI(), true);
+			dto.addHeader("20-MA", ind.getMovingavg20Flag(), true);
 			dto.addHeader("daily_ma50", ind.getMovingavg50Flag(), true);
 			dto.addHeader("daily_ma200", ind.getMovingavg200Flag(), true);
 			dto.addHeader("daily_volume", ind.getVolumeFlag(), true);
 			dto.addHeader("daily_pivot", ind.getPivotFlag(), true);
-			dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
+			//dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
 			dto.addHeader("daily_srsignal", ind.getDaily_sr_signal(), true);
-			dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
+			//dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
 			dto.addHeader("daily_srReason", ind.getDaily_sr_reason(), true);
-			dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
+			//dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
 			dto.addHeader("daily_fibosignal", ind.getDaily_fibo_signal(), true);
-			dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
+			//dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
 			dto.addHeader("daily_fiboReason", ind.getDaily_fibo_reason(), true);
 			dto.addHeader("daily_AISignal", ind.getDaily_aiSignal(), true);
 			dto.addHeader("daily_AIReason", ind.getDaily_aiReason(), true);
@@ -158,13 +158,13 @@ public class StockController {
 			dto.addHeader("weekly_ma200", ind.getMovingavg200Flag(), true);
 			dto.addHeader("weekly_volume", ind.getVolumeFlag(), true);
 			dto.addHeader("weekly_pivot", ind.getPivotFlag(), true);
-			dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
+			//dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
 			dto.addHeader("weekly_srsignal", ind.getWeekly_sr_signal(), true);
-			dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
+			//dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
 			dto.addHeader("weekly_srReason", ind.getWeekly_sr_reason(), true);
-			dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
+			//dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
 			dto.addHeader("weekly_fibosignal", ind.getWeekly_fibo_signal(), true);
-			dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(), true);
+			//dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(), true);
 			dto.addHeader("weekly_fiboReason", ind.getWeekly_fibo_reason(), true);
 			dto.addHeader("weekly_AISignal", ind.getWeekly_aiSignal(), true);
 			dto.addHeader("weekly_AIReason", ind.getWeekly_aiReason(), true);
@@ -181,12 +181,12 @@ public class StockController {
 			dto.addHeader("weekly_AISignal", ind.getWeekly_aiSignal(), true);
 
 			dto.addHeader("combineSignal", ind.getCombineSignal(), true);
-			dto.addHeader("combineConfidence", ind.getCombineConfidence(), true);
+			//dto.addHeader("combineConfidence", ind.getCombineConfidence(), true);
 			// dto.addHeader("combineReasonSummary", ind.getCombineReasonSummary() , true);
 			// dto.addHeader("combineDetailedReason", ind.getCombineDetailedReason(), true);
-			dto.addHeader("combineBuyVotes", ind.getCombineBuyVotes(), true);
-			dto.addHeader("combineSellVotes", ind.getCombineSellVotes(), true);
-			dto.addHeader("combineHoldVotes", ind.getCombineHoldVotes(), true);
+			//dto.addHeader("combineBuyVotes", ind.getCombineBuyVotes(), true);
+			//dto.addHeader("combineSellVotes", ind.getCombineSellVotes(), true);
+			//dto.addHeader("combineHoldVotes", ind.getCombineHoldVotes(), true);
 
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {

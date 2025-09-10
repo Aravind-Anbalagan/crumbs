@@ -1,5 +1,6 @@
 package com.crumbs.trade.dto;
 
+import com.crumbs.trade.entity.PricesIndex;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -65,7 +66,7 @@ public class PriceActionResult {
     private String final_signal;
     private String final_reason;
     private String final_confidence;
-
+    private List<PricesIndex> priceList;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public void serializeListsToJson() {

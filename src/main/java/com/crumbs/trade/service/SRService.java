@@ -13,13 +13,16 @@ import com.crumbs.trade.dto.CandleRequestDto;
 import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.entity.Candle;
+import com.crumbs.trade.entity.Chart;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.Signals;
 import com.crumbs.trade.entity.Strategy;
+import com.crumbs.trade.repo.ChartRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.SignalsRepo;
+import com.google.gson.Gson;
 
 import jakarta.transaction.Transactional;
 
@@ -52,6 +55,9 @@ public class SRService {
 	
 	@Autowired
 	SignalsRepo signalRepo;
+	
+	@Autowired
+	ChartRepo chartRepo;
 	
 	private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
 	private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -146,35 +152,6 @@ public class SRService {
 	    }
 	}
 
-	public CandleRequestDto getCandleTiming(String timeFrame, String exchange) {
-	    CandleRequestDto candle = new CandleRequestDto();
-	    TimeFrame selected = TimeFrame.valueOf(timeFrame);
-	    TimeFrame.Market market = mapExchangeToMarket(exchange);
-	    int bestDays = selected.getBestDays(market);
-	    LocalDateTime toDateTime = getLastValidCandleCloseForMarket(selected, market); // Updated call here
-	    LocalDateTime fromDateTime = toDateTime.minusDays(bestDays);
-
-	    System.out.println("Exchange: " + exchange + " (Market: " + market + ")");
-	    System.out.println("Timeframe: " + selected);
-	    System.out.println("From: " + fromDateTime.format(FORMATTER));
-	    System.out.println("To:   " + toDateTime.format(FORMATTER));
-
-	    candle.setFromDate(fromDateTime.format(FORMATTER));
-	    candle.setToDate(toDateTime.format(FORMATTER));
-	    candle.setTimeFrame(timeFrame);
-	    candle.setType(exchange);
-	    return candle;
-	}
-
-
-	private TimeFrame.Market mapExchangeToMarket(String exchange) {
-	    if ("MCX".equalsIgnoreCase(exchange)) {
-	        return TimeFrame.Market.MCX;
-	    }
-	    // Default to NSE if not MCX
-	    return TimeFrame.Market.NSE;
-	}
-	
 	private static LocalDateTime getLastValidCandleClose(TimeFrame tf) {
         LocalDateTime now = LocalDateTime.now(NSE_ZONE);
 
@@ -212,6 +189,39 @@ public class SRService {
         return marketStart.plusMinutes(completed);
     }
 	
+	
+	public CandleRequestDto getCandleTiming(String timeFrame, String exchange) {
+	    CandleRequestDto candle = new CandleRequestDto();
+	    TimeFrame selected = TimeFrame.valueOf(timeFrame);
+	    TimeFrame.Market market = mapExchangeToMarket(exchange);
+	    int bestDays = selected.getBestDays(market);
+	    
+	    LocalDateTime toDateTime = getLastValidCandleCloseForMarket(selected, market); // Updated call here
+	    LocalDateTime fromDateTime = toDateTime.minusDays(bestDays);
+
+	    System.out.println("Exchange: " + exchange + " (Market: " + market + ")");
+	    System.out.println("Timeframe: " + selected);
+	    System.out.println("From: " + fromDateTime.format(FORMATTER));
+	    System.out.println("To:   " + toDateTime.format(FORMATTER));
+
+	    candle.setFromDate(fromDateTime.format(FORMATTER));
+	    candle.setToDate(toDateTime.format(FORMATTER));
+	    candle.setTimeFrame(timeFrame);
+	    candle.setType(exchange);
+	    return candle;
+	}
+
+
+	private TimeFrame.Market mapExchangeToMarket(String exchange) {
+	    if ("MCX".equalsIgnoreCase(exchange)) {
+	        return TimeFrame.Market.MCX;
+	    }
+	    // Default to NSE if not MCX
+	    return TimeFrame.Market.NSE;
+	}
+	
+	
+	
 	public PriceActionResult getPriceAction(String timeFrame, String name, String exchange) {
 		// Mock OHLCV candles
 		pricesIndexRepo.deleteAll();
@@ -225,10 +235,27 @@ public class SRService {
 			BigDecimal currentPrice = getCurrentPriceForIndex(strategy);
 
 			PriceActionResult pa = priceActionService.analyze(currentPrice, candles, timeFrame);
+			
+			if (pa != null) {
+				saveJson(pa);
+			}
 			return pa;
 		}
 		logger.error("Unable to get price action for {} ", name);
 		return null;
+
+	}
+	
+	@Transactional
+	public void saveJson(PriceActionResult pa) {
+		Gson gson = new Gson();
+		Optional<Chart> chartOptional = chartRepo.findById(1L);
+		if (chartOptional.isPresent()) {
+			Chart chart = chartOptional.get();
+			String jsonString = gson.toJson(pa);
+			chart.setJson(jsonString);
+			chartRepo.save(chart);
+		}
 
 	}
 	
@@ -261,5 +288,15 @@ public class SRService {
 			return strategy;
 		}
 		return null;
+	}
+	
+	public String getChartDetails() {
+		Optional<Chart> chartOptional = chartRepo.findById(1L);
+		if (chartOptional.isPresent()) {
+			Chart chart = chartOptional.get();
+			return chart.getJson();
+		}
+		return null;
+
 	}
 }

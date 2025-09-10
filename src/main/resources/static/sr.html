@@ -23,6 +23,8 @@
   #loaderText { font-size: 16px; font-weight: bold; color: #333; }
   #tradeDecision { margin:10px auto; padding:8px 12px; font-weight:bold; font-size:18px; text-align:center; width:fit-content; border-radius:5px; display:none; }
   #fetchStatus { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.7); color: white; padding: 8px 10px; border-radius: 6px; font-size: 13px; z-index: 10000; display:none; max-width:320px; word-wrap:break-word; }
+  #liveContainer { margin-top: 6px; font-size: 14px; }
+  #liveContainer label { cursor: pointer; user-select: none; }
 </style>
 </head>
 <body>
@@ -49,6 +51,9 @@
       <option value="MCX|ONE_HOUR" data-nse="200" data-mcx="80">MCX - ONE_HOUR (NSE:200, MCX:80)</option>
       <option value="MCX|ONE_DAY" data-nse="365" data-mcx="365">MCX - ONE_DAY (NSE:365, MCX:365)</option>
     </select>
+    <div id="liveContainer">
+      <label><input type="checkbox" id="liveCheckbox" disabled> Live</label>
+    </div>
   </div>
   <div id="optionsDropdown">
     <button id="refreshButton">🔄 Refresh</button>
@@ -76,6 +81,11 @@ let chart, candleSeries;
 let supportLines = [], resistanceLines = [], fiboSupportLines = [], fiboResistanceLines = [], signalMarkers = [];
 let currentPA = {}, candleData = [];
 let lastRequestId = 0;
+let liveIntervalId = null;
+let liveFetchRunning = false;  // flag to prevent overlapping fetches
+const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000];
+const MIN_VALID_CANDLES = 3;
+const fetchStatusEl = document.getElementById('fetchStatus');
 
 function updateOHLC(o, h, l, c, dateTime) {
   document.getElementById('oVal').textContent = o;
@@ -171,9 +181,6 @@ function drawSignal() {
   updateDecisionBanner(decision);
 }
 
-const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000];
-const MIN_VALID_CANDLES = 3;
-const fetchStatusEl = document.getElementById('fetchStatus');
 function showFetchStatus(msg, level = 'info') {
   if (!fetchStatusEl) return;
   fetchStatusEl.style.display = 'block';
@@ -225,13 +232,17 @@ async function loadChart(selectedValue) {
   document.getElementById('loader').style.display = 'flex';
   showFetchStatus('Starting fetch...', 'info');
   updateOHLC('-', '-', '-', '-', '');
+  stopLiveFetching();
   async function attemptFetch(attempt) {
     if (requestId !== lastRequestId) return;
     showFetchStatus(`Fetch attempt ${attempt + 1}...`, 'info');
     try {
       const [exchange, timeFrame] = selectedValue.split('|');
+      const isLive = document.getElementById('liveCheckbox').checked;
       const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
-      const paResponse = await fetch(`/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}`);
+      const useToday = isLive ? 'true' : 'false';
+      const paUrl = `/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}&useToday=${useToday}`;
+      const paResponse = await fetch(paUrl);
       if (!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
       const paData = await paResponse.json();
       currentPA = paData || {};
@@ -246,8 +257,6 @@ async function loadChart(selectedValue) {
         throw new Error(`Too few valid candles (${normalized.length})`);
       }
       if (requestId !== lastRequestId) return;
-
-      // Shift candle times +5.5 hours for IST
       const IST_OFFSET_SECONDS = 5.5 * 3600;
       candleData = normalized.map(c => ({
         time: c.time + IST_OFFSET_SECONDS,
@@ -256,7 +265,6 @@ async function loadChart(selectedValue) {
         low: c.low,
         close: c.close,
       }));
-
       if (!chart) {
         chart = LightweightCharts.createChart(document.getElementById('chart'), {
           layout: {
@@ -302,19 +310,16 @@ async function loadChart(selectedValue) {
         });
       }
       candleSeries.setData(candleData);
-
       [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
         if (candleSeries && line) candleSeries.removePriceLine(line);
       });
       supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
-
       if (document.getElementById('toggleSupport').checked) drawSupport();
       if (document.getElementById('toggleResistance').checked) drawResistance();
       if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
       if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
       if (document.getElementById('toggleSignal').checked) drawSignal();
       updateDecisionBanner(currentPA.consolidatedDecision || null);
-
       chart.timeScale().fitContent();
       setTimeout(() => {
         const visibleRange = chart.timeScale().getVisibleRange();
@@ -326,9 +331,11 @@ async function loadChart(selectedValue) {
           chart.timeScale().scrollToPosition(candleData.length - 15, false);
         }
       }, 200);
-
       document.getElementById('loader').style.display = 'none';
       showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt + 1})`, 'info');
+      const liveCheckbox = document.getElementById('liveCheckbox');
+      const isOneMinute = selectedValue.includes('ONE_MINUTE');
+      if (liveCheckbox.checked && isOneMinute) startLiveFetching();
       return;
     } catch (err) {
       if (attempt >= FETCH_RETRY_DELAYS.length) {
@@ -347,6 +354,111 @@ async function loadChart(selectedValue) {
     }
   }
   attemptFetch(0);
+}
+
+function updateCandleDataIncremental(newCandlesRaw) {
+  console.log('Incremental candle update called with', newCandlesRaw.length, 'candles');
+  const IST_OFFSET_SECONDS = 5.5 * 3600;
+  const newCandles = newCandlesRaw.map(validateAndNormalizeCandle).filter(c => c !== null).map(c => ({
+    time: c.time + IST_OFFSET_SECONDS,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+  }));
+  if (newCandles.length === 0) return;
+
+  const existingIndexMap = new Map(candleData.map((c, idx) => [c.time, idx]));
+  let updated = false;
+  newCandles.forEach(newCandle => {
+    const idx = existingIndexMap.get(newCandle.time);
+    if (idx !== undefined) {
+      candleData[idx] = newCandle;
+      updated = true;
+    } else if (newCandle.time > (candleData[candleData.length - 1]?.time || 0)) {
+      candleData.push(newCandle);
+      updated = true;
+    }
+  });
+  if (updated) {
+    // Create a new array copy to ensure chart redraw
+    candleData = [...candleData];
+    candleSeries.setData(candleData);
+    chart.timeScale().fitContent();
+    // Optionally scroll to most recent position to keep view updated
+    chart.timeScale().scrollToPosition(candleData.length - 1, false);
+    console.log('Chart updated with incremental candles');
+  } else {
+    console.log('No candle data change detected; chart not updated');
+  }
+}
+
+async function startLiveFetching() {
+  if (liveIntervalId) return;
+  async function fetchLiveData() {
+    if (liveFetchRunning) {
+      console.log('Live fetch skipped due to ongoing fetch');
+      return;
+    }
+    liveFetchRunning = true;
+    try {
+      const sel = document.getElementById('symbolIntervalSelect').value;
+      const [exchange, timeFrame] = sel.split('|');
+      console.log('Live fetch triggered for interval:', timeFrame);
+      if (timeFrame === 'ONE_MINUTE') {
+        const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
+        const IST_OFFSET_SECONDS = 5.5 * 3600;
+        const lastCandleTimeUTC = candleData.length > 0 ? candleData[candleData.length - 1].time - IST_OFFSET_SECONDS : 0;
+        let candleUrl = `/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`;
+        if (lastCandleTimeUTC > 0) {
+          candleUrl += `&fromTime=${lastCandleTimeUTC}`;
+        }
+        console.log('Fetching incremental candles from:', candleUrl);
+        const candleResponse = await fetch(candleUrl);
+        if (!candleResponse.ok) throw new Error(`Live candles fetch failed: ${candleResponse.status}`);
+        const newCandlesRaw = await candleResponse.json();
+        if (newCandlesRaw && newCandlesRaw.length > 0) {
+          updateCandleDataIncremental(newCandlesRaw);
+        } else {
+          console.log('No new candle data returned');
+        }
+      }
+      
+      const liveUrl = '/sr/zones?timeFrame=FIVE_MINUTE&exchange=MCX&name=CRUDEOIL&useToday=true';
+      console.log('Fetching zones from:', liveUrl);
+      const response = await fetch(liveUrl);
+      if (!response.ok) throw new Error(`Live zones fetch failed: ${response.status}`);
+      const liveData = await response.json();
+      currentPA = liveData || {};
+      
+      [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
+        if (candleSeries && line) candleSeries.removePriceLine(line);
+      });
+      supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = [];
+      if (document.getElementById('toggleSupport').checked) drawSupport();
+      if (document.getElementById('toggleResistance').checked) drawResistance();
+      if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+      if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+      if (document.getElementById('toggleSignal').checked) drawSignal();
+      updateDecisionBanner(currentPA.consolidatedDecision || null);
+      showFetchStatus('Live data updated', 'info');
+    } catch (err) {
+      showFetchStatus(`Live data fetch error: ${err.message}`, 'warn');
+      console.error('Live fetch error:', err);
+    } finally {
+      liveFetchRunning = false;
+    }
+  }
+  fetchLiveData();
+  liveIntervalId = setInterval(fetchLiveData, 30000);
+}
+
+function stopLiveFetching() {
+  if (liveIntervalId) {
+    clearInterval(liveIntervalId);
+    liveIntervalId = null;
+    showFetchStatus('Live fetching stopped', 'info');
+  }
 }
 
 ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'].forEach(t => {
@@ -378,6 +490,7 @@ async function loadChart(selectedValue) {
     }
   });
 });
+
 document.getElementById('toggleAll').addEventListener('change', () => {
   const check = document.getElementById('toggleAll').checked;
   localStorage.setItem('toggleAll', check);
@@ -387,12 +500,56 @@ document.getElementById('toggleAll').addEventListener('change', () => {
     cb.dispatchEvent(new Event('change'));
   });
 });
+
 document.getElementById('toggleGrid').addEventListener('change', function () {
   localStorage.setItem('toggleGrid', this.checked);
   if (chart) chart.applyOptions({
     grid: { vertLines: { visible: this.checked }, horzLines: { visible: this.checked } }
   });
 });
+
+document.getElementById('symbolIntervalSelect').addEventListener('change', function () {
+  loadChart(this.value);
+  const liveCheckbox = document.getElementById('liveCheckbox');
+  const isOneMinute = this.value.includes('ONE_MINUTE');
+  liveCheckbox.disabled = !isOneMinute;
+  if (!isOneMinute) {
+    liveCheckbox.checked = false;
+    stopLiveFetching();
+  }
+});
+
+document.getElementById('liveCheckbox').addEventListener('change', function () {
+  if (this.checked) {
+    startLiveFetching();
+  } else {
+    stopLiveFetching();
+  }
+});
+
+document.getElementById('optionsButton').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('optionsDropdown').classList.toggle('open');
+});
+
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('optionsDropdown');
+  if (dd && dd.classList.contains('open') && !dd.contains(e.target)) {
+    dd.classList.remove('open');
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const dd = document.getElementById('optionsDropdown');
+    if (dd && dd.classList.contains('open')) dd.classList.remove('open');
+  }
+});
+
+document.getElementById('refreshButton').addEventListener('click', () => {
+  loadChart(document.getElementById('symbolIntervalSelect').value);
+});
+
 function restoreToggleState() {
   ['toggleAll', 'toggleSupport', 'toggleResistance', 'toggleFiboSupport', 'toggleFiboResistance', 'toggleSignal', 'toggleGrid'].forEach(id => {
     const el = document.getElementById(id);
@@ -400,30 +557,15 @@ function restoreToggleState() {
     if (saved !== null && el) el.checked = (saved === 'true');
   });
 }
+
+(function initLiveCheckboxState() {
+  const sel = document.getElementById('symbolIntervalSelect').value;
+  const liveCheckbox = document.getElementById('liveCheckbox');
+  liveCheckbox.disabled = !sel.includes('ONE_MINUTE');
+})();
+
 restoreToggleState();
 loadChart(document.getElementById('symbolIntervalSelect').value);
-document.getElementById('symbolIntervalSelect').addEventListener('change', function () {
-  loadChart(this.value);
-});
-document.getElementById('optionsButton').addEventListener('click', (e) => {
-  e.stopPropagation();
-  document.getElementById('optionsDropdown').classList.toggle('open');
-});
-document.addEventListener('click', (e) => {
-  const dd = document.getElementById('optionsDropdown');
-  if (dd && dd.classList.contains('open') && !dd.contains(e.target)) {
-    dd.classList.remove('open');
-  }
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const dd = document.getElementById('optionsDropdown');
-    if (dd && dd.classList.contains('open')) dd.classList.remove('open');
-  }
-});
-document.getElementById('refreshButton').addEventListener('click', () => {
-  loadChart(document.getElementById('symbolIntervalSelect').value);
-});
 </script>
 </body>
 </html>
