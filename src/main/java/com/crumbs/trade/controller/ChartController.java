@@ -9,13 +9,16 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.crumbs.trade.dto.CandleDTO;
 import com.crumbs.trade.dto.ChartDataDTO;
 import com.crumbs.trade.dto.FibonacciLevel;
+import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SignalDTO;
+import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.service.SRService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -114,14 +117,20 @@ public class ChartController {
     }
     
     @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ChartDataDTO getChartData() {
-        List<CandleDTO> candles = List.of(
+    public ChartDataDTO getChartData(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
+			@RequestParam(name = "name") String name) {
+    	
+    	//Get the Exchange value
+    	String exchange = srService.getExchange(name);
+    	PriceActionResult priceActionResult = srService.getPriceAction(timeFrame,name,exchange);
+    
+    	List<CandleDTO> candles = List.of(
             createCandle(1694343300L, "19550", "19575", "19540", "19565", "1500"),
             createCandle(1694343360L, "19565", "19580", "19555", "19570", "2200"),
             createCandle(1694343460L, "19565", "19580", "19555", "19570", "3200"),
             createCandle(1694343560L, "19565", "19580", "19555", "19570", "5200")
         );
-
+    	candles = srService.getcandleList();
         List<BigDecimal> priceActionSupport = List.of(
             new BigDecimal("19540"),
             new BigDecimal("19555")

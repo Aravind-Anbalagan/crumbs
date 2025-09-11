@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.dto.CandleDTO;
 import com.crumbs.trade.dto.CandleRequestDto;
 import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.StrategyDTO;
@@ -298,5 +299,44 @@ public class SRService {
 		}
 		return null;
 
+	}
+	
+	public String getExchange(String input) {
+		return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "MCX";
+	}
+	
+	public List<CandleDTO> getcandleList()
+	{
+		List<CandleDTO> candles = new ArrayList<>();
+		List<PricesIndex> priceList = pricesIndexRepo.findAll();
+
+		ZoneId istZone = ZoneId.of("Asia/Kolkata");
+		LocalDate todayIST = LocalDate.now(istZone);
+
+		for (PricesIndex p : priceList) {
+		    // Parse UTC timestamp
+		    Instant instant = Instant.parse(p.getTimestamp());
+
+		    // Convert to IST
+		    ZonedDateTime istTime = instant.atZone(istZone);
+		    
+		    // Only include today's candles
+		    if (!istTime.toLocalDate().isEqual(todayIST)) {
+		        continue;
+		    }
+
+		    CandleDTO candle = new CandleDTO();
+		    candle.setTime(istTime.toEpochSecond()); // IST epoch seconds
+		    candle.setOpen(p.getOpen());
+		    candle.setHigh(p.getHigh());
+		    candle.setLow(p.getLow());
+		    candle.setClose(p.getClose());
+		    candle.setVolume(p.getVolume() != null ? p.getVolume() : BigDecimal.ZERO);
+
+		    candles.add(candle);
+		}
+
+
+		return candles;
 	}
 }

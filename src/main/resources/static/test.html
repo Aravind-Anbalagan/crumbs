@@ -403,38 +403,41 @@
     }
   }
 
-  async function fetchData(firstLoad = false) {
-    if (firstLoad) {
-      loaderEl.style.display = 'flex';
-      chartEl.style.display = 'none';
-      errorEl.style.display = 'none';
-    }
+ async function fetchData(timeFrame = 'ONE_MINUTE', name = 'CRUDEOIL') {
+    const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
     try {
-      const resp = await fetch('/api/data');
-      if(!resp.ok) throw new Error('Failed to fetch data');
-      const data = await resp.json();
-      loaderEl.style.display = 'none';
-      errorEl.style.display = 'none';
-      chartEl.style.display = 'block';
-      if(chart) {
-        chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-      }
-      return data;
-    } catch(e) {
-      loaderEl.style.display = 'none';
-      chartEl.style.display = 'none';
-      errorEl.textContent = e.message;
-      errorEl.style.display = 'block';
-      return null;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+        const data = await resp.json();
+        return data;
+    } catch (e) {
+        throw e;
     }
-  }
+}
 
-  async function refresh(firstLoad = false) {
-    const data = await fetchData(firstLoad);
-    if(!data) return;
-    if(!chart) initChart();
-    updateChart(data);
-  }
+async function refresh(firstLoad = false) {
+    if (firstLoad) {
+        loaderEl.style.display = 'flex';
+        chartEl.style.display = 'none';
+        errorEl.style.display = 'none';
+    }
+
+    try {
+        const data = await fetchData();
+        if (!chart) initChart(); // chart is created only after data received
+        updateChart(data);
+
+        loaderEl.style.display = 'none';
+        errorEl.style.display = 'none';
+        chartEl.style.display = 'block';
+    } catch (e) {
+        loaderEl.style.display = 'none';
+        chartEl.style.display = 'none';
+        errorEl.textContent = e.message;
+        errorEl.style.display = 'block';
+    }
+}
+
 
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
