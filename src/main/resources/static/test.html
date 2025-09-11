@@ -77,6 +77,7 @@
     #settingsMenu input[type="checkbox"] {
       margin-right: 8px;
     }
+    /* Reset button styling */
     #resetButton {
       display: block;
       width: 100%;
@@ -150,6 +151,7 @@
   let lastSignals = [];
   let lastData = null;
   let isFirstLoad = true;
+  let refreshInterval = null;
 
   function saveVisibility() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -391,9 +393,12 @@
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
 
-      // ✅ Fix: force chart resize after showing
+      // Force redraw after loader hides
       setTimeout(() => {
-        if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+        if (chart) {
+          chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+          chart.timeScale().fitContent();
+        }
       }, 50);
 
     } catch (e) {
@@ -408,9 +413,22 @@
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
   });
 
+  // Handle visibility (stop/start polling)
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+    } else {
+      refresh(false); // immediate fetch when back
+      refreshInterval = setInterval(() => refresh(false), 30000);
+    }
+  });
+
   loadVisibility();
   refresh(true);
-  setInterval(() => refresh(false), 30000);
+  refreshInterval = setInterval(() => refresh(false), 30000);
 </script>
 </body>
 </html>
