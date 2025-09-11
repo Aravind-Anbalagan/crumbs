@@ -253,11 +253,7 @@
 
   toggleSignalsCheckbox.addEventListener('change', () => {
     saveVisibility();
-    if (toggleSignalsCheckbox.checked) {
-      candleSeries.setMarkers(lastSignals);
-    } else {
-      candleSeries.setMarkers([]);
-    }
+    candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   });
 
   toggleGridCheckbox.addEventListener('change', () => {
@@ -271,7 +267,6 @@
     });
   });
 
-  // Reset button logic
   resetButton.addEventListener('click', () => {
     setDefaults();
     saveVisibility();
@@ -337,38 +332,21 @@
     lastData = data;
 
     if (isFirstLoad) {
-      candleSeries.setData(data.candles.map(c => ({
-        time: c.time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close
-      })));
-
+      candleSeries.setData(data.candles);
       volumeSeries.setData(data.candles.map(c => ({
         time: c.time,
         value: c.volume,
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       })));
-
       lastCandles = data.candles.slice();
     } else {
-      const newCandles = data.candles.slice(lastCandles.length);
-      newCandles.forEach(c => candleSeries.update({
-        time: c.time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close
-      }));
-
       let lastCandle = data.candles[data.candles.length - 1];
+      candleSeries.update(lastCandle);
       volumeSeries.update({
         time: lastCandle.time,
         value: lastCandle.volume,
         color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       });
-
       lastCandles = data.candles.slice();
     }
 
@@ -383,61 +361,43 @@
         text: signal.type.toUpperCase()
       }));
     }
-    if (toggleSignalsCheckbox.checked) {
-      candleSeries.setMarkers(lastSignals);
-    } else {
-      candleSeries.setMarkers([]);
-    }
+    candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
 
     if (isFirstLoad) {
       chart.timeScale().fitContent();
-      setTimeout(() => {
-        const visibleRange = chart.timeScale().getVisibleRange();
-        if (visibleRange) {
-          const barsVisible = visibleRange.to - visibleRange.from;
-          const scrollPos = (data.candles.length -1) - Math.floor(barsVisible / 2);
-          chart.timeScale().scrollToPosition(scrollPos, false);
-        }
-        isFirstLoad = false;
-      }, 0);
+      isFirstLoad = false;
     }
   }
 
- async function fetchData(timeFrame = 'ONE_MINUTE', name = 'CRUDEOIL') {
+  async function fetchData(timeFrame = 'ONE_MINUTE', name = 'CRUDEOIL') {
     const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
-    try {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-        const data = await resp.json();
-        return data;
-    } catch (e) {
-        throw e;
-    }
-}
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    return resp.json();
+  }
 
-async function refresh(firstLoad = false) {
+  async function refresh(firstLoad = false) {
     if (firstLoad) {
-        loaderEl.style.display = 'flex';
-        chartEl.style.display = 'none';
-        errorEl.style.display = 'none';
+      loaderEl.style.display = 'flex';
+      chartEl.style.display = 'none';
+      errorEl.style.display = 'none';
     }
 
     try {
-        const data = await fetchData();
-        if (!chart) initChart(); // chart is created only after data received
-        updateChart(data);
+      const data = await fetchData();
+      if (!chart) initChart();
+      updateChart(data);
 
-        loaderEl.style.display = 'none';
-        errorEl.style.display = 'none';
-        chartEl.style.display = 'block';
+      loaderEl.style.display = 'none';
+      errorEl.style.display = 'none';
+      chartEl.style.display = 'block';
     } catch (e) {
-        loaderEl.style.display = 'none';
-        chartEl.style.display = 'none';
-        errorEl.textContent = e.message;
-        errorEl.style.display = 'block';
+      loaderEl.style.display = 'none';
+      chartEl.style.display = 'none';
+      errorEl.textContent = e.message;
+      errorEl.style.display = 'block';
     }
-}
-
+  }
 
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);

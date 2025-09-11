@@ -316,17 +316,15 @@ public class SRService {
 		for (PricesIndex p : priceList) {
 		    // Parse UTC timestamp
 		    Instant instant = Instant.parse(p.getTimestamp());
-
-		    // Convert to IST
 		    ZonedDateTime istTime = instant.atZone(istZone);
-		    
+
 		    // Only include today's candles
 		    if (!istTime.toLocalDate().isEqual(todayIST)) {
 		        continue;
 		    }
 
 		    CandleDTO candle = new CandleDTO();
-		    candle.setTime(istTime.toEpochSecond()); // IST epoch seconds
+		    candle.setTime(istTime.toEpochSecond());
 		    candle.setOpen(p.getOpen());
 		    candle.setHigh(p.getHigh());
 		    candle.setLow(p.getLow());
@@ -335,6 +333,12 @@ public class SRService {
 
 		    candles.add(candle);
 		}
+
+		// ✅ Keep only the last 20 candles
+		if (candles.size() > 20) {
+		    candles = candles.subList(candles.size() - 20, candles.size());
+		}
+
 
 
 		return candles;

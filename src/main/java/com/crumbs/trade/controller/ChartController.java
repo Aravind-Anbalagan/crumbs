@@ -131,10 +131,7 @@ public class ChartController {
             createCandle(1694343560L, "19565", "19580", "19555", "19570", "5200")
         );
     	candles = srService.getcandleList();
-        List<BigDecimal> priceActionSupport = List.of(
-            new BigDecimal("19540"),
-            new BigDecimal("19555")
-        );
+        List<BigDecimal> priceActionSupport = priceActionResult.getSr_nearestSupports();
 
         List<BigDecimal> priceActionResistance = List.of(
             new BigDecimal("19575"),
@@ -158,10 +155,10 @@ public class ChartController {
 
         ChartDataDTO dto = new ChartDataDTO();
         dto.setCandles(candles);
-        dto.setPriceActionSupport(priceActionSupport);
-        dto.setPriceActionResistance(priceActionResistance);
-        dto.setFiboSupport(fiboSupport);
-        dto.setFiboResistance(fiboResistance);
+        dto.setPriceActionSupport(priceActionResult.getSr_nearestSupports());
+        dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
+        dto.setFiboSupport(priceActionResult.getFibo_supports());
+        dto.setFiboResistance(priceActionResult.getFibo_resistances());
         dto.setSignals(signals);
 
         return dto;
