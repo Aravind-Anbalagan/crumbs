@@ -99,7 +99,6 @@
     <div id="chart"></div>
     <div id="loader"><div class="spinner"></div></div>
     <div id="error"></div>
-
     <div id="settingsDropdown">
       <button id="settingsButton">Settings ▼</button>
       <div id="settingsMenu">
@@ -109,27 +108,25 @@
         <label><input type="checkbox" id="toggleFiboResistance" /> Fibonacci Resistance</label>
         <label><input type="checkbox" id="toggleSignals" /> Signals</label>
         <label><input type="checkbox" id="toggleGrid" /> Grid</label>
+        <label><input type="checkbox" id="toggleLive" /> Live</label>
         <button id="resetButton">Reset Defaults</button>
       </div>
     </div>
   </div>
-
 <script>
   const STORAGE_KEY = 'chartComponentVisibilityLiveToggle';
-
   const chartEl = document.getElementById('chart');
   const loaderEl = document.getElementById('loader');
   const errorEl = document.getElementById('error');
-
   const settingsButton = document.getElementById('settingsButton');
   const settingsMenu = document.getElementById('settingsMenu');
-
   const togglePASupportCheckbox = document.getElementById('togglePASupport');
   const togglePAResistanceCheckbox = document.getElementById('togglePAResistance');
   const toggleFiboSupportCheckbox = document.getElementById('toggleFiboSupport');
   const toggleFiboResistanceCheckbox = document.getElementById('toggleFiboResistance');
   const toggleSignalsCheckbox = document.getElementById('toggleSignals');
   const toggleGridCheckbox = document.getElementById('toggleGrid');
+  const toggleLiveCheckbox = document.getElementById('toggleLive');
   const resetButton = document.getElementById('resetButton');
 
   settingsButton.addEventListener('click', () => {
@@ -146,7 +143,6 @@
   let priceActionResistanceLines = [];
   let fiboSupportLines = [];
   let fiboResistanceLines = [];
-
   let lastCandles = [];
   let lastSignals = [];
   let lastData = null;
@@ -160,7 +156,8 @@
       fiboSupport: toggleFiboSupportCheckbox.checked,
       fiboResistance: toggleFiboResistanceCheckbox.checked,
       signals: toggleSignalsCheckbox.checked,
-      grid: toggleGridCheckbox.checked
+      grid: toggleGridCheckbox.checked,
+      live: toggleLiveCheckbox.checked
     }));
   }
 
@@ -175,6 +172,7 @@
         toggleFiboResistanceCheckbox.checked = settings.fiboResistance !== false;
         toggleSignalsCheckbox.checked = settings.signals !== false;
         toggleGridCheckbox.checked = settings.grid !== false;
+        toggleLiveCheckbox.checked = settings.live !== false;
       } catch {
         setDefaults();
       }
@@ -190,6 +188,7 @@
     toggleFiboResistanceCheckbox.checked = true;
     toggleSignalsCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
+    toggleLiveCheckbox.checked = true;
   }
 
   function clearLines(lines) {
@@ -199,12 +198,10 @@
 
   function redrawLines() {
     if (!lastData) return;
-
     priceActionSupportLines = clearLines(priceActionSupportLines);
     priceActionResistanceLines = clearLines(priceActionResistanceLines);
     fiboSupportLines = clearLines(fiboSupportLines);
     fiboResistanceLines = clearLines(fiboResistanceLines);
-
     if (togglePASupportCheckbox.checked && lastData.priceActionSupport) {
       priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({
         price: Number(price),
@@ -251,12 +248,10 @@
   togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
-
   toggleSignalsCheckbox.addEventListener('change', () => {
     saveVisibility();
     candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   });
-
   toggleGridCheckbox.addEventListener('change', () => {
     saveVisibility();
     if (!chart) return;
@@ -266,6 +261,11 @@
         horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
       }
     });
+  });
+
+  toggleLiveCheckbox.addEventListener('change', () => {
+    saveVisibility();
+    updateLiveStatus();
   });
 
   resetButton.addEventListener('click', () => {
@@ -281,6 +281,7 @@
       });
       candleSeries.setMarkers(lastSignals);
     }
+    updateLiveStatus();
   });
 
   function initChart() {
@@ -303,7 +304,6 @@
         horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
       }
     });
-
     candleSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -311,13 +311,11 @@
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
     });
-
     chart.applyOptions({
       priceScales: {
         volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.98, bottom: 0 } }
       },
     });
-
     volumeSeries = chart.addHistogramSeries({
       color: 'rgba(38, 166, 154, 0.07)',
       priceFormat: { type: 'volume' },
@@ -331,7 +329,6 @@
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
-
     if (isFirstLoad) {
       candleSeries.setData(data.candles);
       volumeSeries.setData(data.candles.map(c => ({
@@ -350,9 +347,7 @@
       });
       lastCandles = data.candles.slice();
     }
-
     redrawLines();
-
     if (Array.isArray(data.signals)) {
       lastSignals = data.signals.map(signal => ({
         time: signal.time,
@@ -363,7 +358,6 @@
       }));
     }
     candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-
     if (isFirstLoad) {
       chart.timeScale().fitContent();
       isFirstLoad = false;
@@ -383,16 +377,13 @@
       chartEl.style.display = 'none';
       errorEl.style.display = 'none';
     }
-
     try {
       const data = await fetchData();
       if (!chart) initChart();
       updateChart(data);
-
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
-
       // Force redraw after loader hides
       setTimeout(() => {
         if (chart) {
@@ -400,12 +391,25 @@
           chart.timeScale().fitContent();
         }
       }, 50);
-
     } catch (e) {
       loaderEl.style.display = 'none';
       chartEl.style.display = 'none';
       errorEl.textContent = e.message;
       errorEl.style.display = 'block';
+    }
+  }
+
+  function updateLiveStatus() {
+    if (toggleLiveCheckbox.checked) {
+      refresh(false);
+      if (!refreshInterval) {
+        refreshInterval = setInterval(() => refresh(false), 30000);
+      }
+    } else {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
     }
   }
 
@@ -421,14 +425,16 @@
         refreshInterval = null;
       }
     } else {
-      refresh(false); // immediate fetch when back
-      refreshInterval = setInterval(() => refresh(false), 30000);
+      if (toggleLiveCheckbox.checked) {
+        refresh(false); // immediate fetch when back
+        refreshInterval = setInterval(() => refresh(false), 30000);
+      }
     }
   });
 
   loadVisibility();
   refresh(true);
-  refreshInterval = setInterval(() => refresh(false), 30000);
+  updateLiveStatus();
 </script>
 </body>
 </html>
