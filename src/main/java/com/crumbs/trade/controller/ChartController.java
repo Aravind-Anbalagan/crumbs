@@ -159,7 +159,7 @@ public class ChartController {
         dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
         dto.setFiboSupport(priceActionResult.getFibo_supports());
         dto.setFiboResistance(priceActionResult.getFibo_resistances());
-        dto.setSignals(signals);
+        //dto.setSignals(signals);
 
         return dto;
     }

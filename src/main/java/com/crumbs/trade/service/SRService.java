@@ -335,8 +335,8 @@ public class SRService {
 		}
 
 		// ✅ Keep only the last 20 candles
-		if (candles.size() > 20) {
-		    candles = candles.subList(candles.size() - 20, candles.size());
+		if (candles.size() > 50) {
+		    candles = candles.subList(candles.size() - 50, candles.size());
 		}
 
 

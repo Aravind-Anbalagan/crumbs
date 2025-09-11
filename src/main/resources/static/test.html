@@ -77,7 +77,6 @@
     #settingsMenu input[type="checkbox"] {
       margin-right: 8px;
     }
-    /* Reset button styling */
     #resetButton {
       display: block;
       width: 100%;
@@ -391,6 +390,12 @@
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
+
+      // ✅ Fix: force chart resize after showing
+      setTimeout(() => {
+        if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+      }, 50);
+
     } catch (e) {
       loaderEl.style.display = 'none';
       chartEl.style.display = 'none';
