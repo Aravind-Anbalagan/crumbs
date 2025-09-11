@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @AllArgsConstructor
@@ -38,7 +39,7 @@ public class PriceActionResult {
     private String consolidatedDecision;
     // === Fibonacci-Based ===
     private boolean fibo_triggered;
-
+    private List<PricesIndex> candleList;
     private List<FibonacciLevel> fibo_supports;
     private List<FibonacciLevel> fibo_resistances;
     private String fibo_supportsJson;

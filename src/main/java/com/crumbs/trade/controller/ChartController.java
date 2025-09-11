@@ -1,16 +1,33 @@
 package com.crumbs.trade.controller;
 
+import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.crumbs.trade.dto.CandleDTO;
+import com.crumbs.trade.dto.ChartDataDTO;
+import com.crumbs.trade.dto.FibonacciLevel;
+import com.crumbs.trade.dto.SignalDTO;
+import com.crumbs.trade.service.SRService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api")
 public class ChartController {
 
+	private final ObjectMapper objectMapper = new ObjectMapper();
+
+	@Autowired
+	SRService srService;
+	
     @GetMapping("/stock-data")
     public ResponseEntity<?> getStockData() {
         try {
@@ -94,5 +111,68 @@ public class ChartController {
         LocalDateTime localDateTime = LocalDateTime.parse(isoDateTime);
         ZoneId zoneId = ZoneId.of("Asia/Kolkata");
         return localDateTime.atZone(zoneId).toEpochSecond();
+    }
+    
+    @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ChartDataDTO getChartData() {
+        List<CandleDTO> candles = List.of(
+            createCandle(1694343300L, "19550", "19575", "19540", "19565", "1500"),
+            createCandle(1694343360L, "19565", "19580", "19555", "19570", "2200"),
+            createCandle(1694343460L, "19565", "19580", "19555", "19570", "3200"),
+            createCandle(1694343560L, "19565", "19580", "19555", "19570", "5200")
+        );
+
+        List<BigDecimal> priceActionSupport = List.of(
+            new BigDecimal("19540"),
+            new BigDecimal("19555")
+        );
+
+        List<BigDecimal> priceActionResistance = List.of(
+            new BigDecimal("19575"),
+            new BigDecimal("19600")
+        );
+
+        List<FibonacciLevel> fiboSupport = List.of(
+            new FibonacciLevel(new BigDecimal("19530"), "Fibo 38.2%"),
+            new FibonacciLevel(new BigDecimal("19545"), "Fibo 50%")
+        );
+
+        List<FibonacciLevel> fiboResistance = List.of(
+            new FibonacciLevel(new BigDecimal("19585"), "Fibo 61.8%"),
+            new FibonacciLevel(new BigDecimal("19610"), "Fibo 78.6%")
+        );
+
+        List<SignalDTO> signals = List.of(
+            createSignal(1694343360L, "buy"),
+            createSignal(1694343420L, "sell")
+        );
+
+        ChartDataDTO dto = new ChartDataDTO();
+        dto.setCandles(candles);
+        dto.setPriceActionSupport(priceActionSupport);
+        dto.setPriceActionResistance(priceActionResistance);
+        dto.setFiboSupport(fiboSupport);
+        dto.setFiboResistance(fiboResistance);
+        dto.setSignals(signals);
+
+        return dto;
+    }
+
+    private CandleDTO createCandle(long time, String open, String high, String low, String close, String volume) {
+        CandleDTO candle = new CandleDTO();
+        candle.setTime(time);
+        candle.setOpen(new BigDecimal(open));
+        candle.setHigh(new BigDecimal(high));
+        candle.setLow(new BigDecimal(low));
+        candle.setClose(new BigDecimal(close));
+        candle.setVolume(new BigDecimal(volume));
+        return candle;
+    }
+
+    private SignalDTO createSignal(long time, String type) {
+        SignalDTO signal = new SignalDTO();
+        signal.setTime(time);
+        signal.setType(type);
+        return signal;
     }
 }

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chart with Live Visibility Toggle</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    html, body, #container {
+      margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
+      font-family: Arial, sans-serif;
+    }
+    #chart {
+      width: 100%; height: 100%;
+      display: none;
+    }
+    #loader {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.9);
+      z-index: 10;
+    }
+    .spinner {
+      border: 8px solid #eee;
+      border-top: 8px solid #2196f3;
+      border-radius: 50%;
+      width: 60px; height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #error {
+      position: absolute;
+      top: 40%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fee;
+      color: #900;
+      padding: 20px 30px;
+      border-radius: 8px;
+      font-weight: bold;
+      display: none;
+      z-index: 20;
+      max-width: 80vw;
+      text-align: center;
+    }
+    #settingsDropdown {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 30;
+    }
+    #settingsButton {
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #settingsMenu {
+      display: none;
+      position: absolute;
+      top: 32px;
+      left: 0;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      padding: 10px;
+      min-width: 200px;
+    }
+    #settingsMenu label {
+      display: flex;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #settingsMenu label:last-child {
+      margin-bottom: 8px;
+    }
+    #settingsMenu input[type="checkbox"] {
+      margin-right: 8px;
+    }
+    /* Reset button styling */
+    #resetButton {
+      display: block;
+      width: 100%;
+      padding: 6px;
+      font-size: 13px;
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+    }
+    #resetButton:hover {
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="chart"></div>
+    <div id="loader"><div class="spinner"></div></div>
+    <div id="error"></div>
+
+    <div id="settingsDropdown">
+      <button id="settingsButton">Settings ▼</button>
+      <div id="settingsMenu">
+        <label><input type="checkbox" id="togglePASupport" /> Price Action Support</label>
+        <label><input type="checkbox" id="togglePAResistance" /> Price Action Resistance</label>
+        <label><input type="checkbox" id="toggleFiboSupport" /> Fibonacci Support</label>
+        <label><input type="checkbox" id="toggleFiboResistance" /> Fibonacci Resistance</label>
+        <label><input type="checkbox" id="toggleSignals" /> Signals</label>
+        <label><input type="checkbox" id="toggleGrid" /> Grid</label>
+        <button id="resetButton">Reset Defaults</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const STORAGE_KEY = 'chartComponentVisibilityLiveToggle';
+
+  const chartEl = document.getElementById('chart');
+  const loaderEl = document.getElementById('loader');
+  const errorEl = document.getElementById('error');
+
+  const settingsButton = document.getElementById('settingsButton');
+  const settingsMenu = document.getElementById('settingsMenu');
+
+  const togglePASupportCheckbox = document.getElementById('togglePASupport');
+  const togglePAResistanceCheckbox = document.getElementById('togglePAResistance');
+  const toggleFiboSupportCheckbox = document.getElementById('toggleFiboSupport');
+  const toggleFiboResistanceCheckbox = document.getElementById('toggleFiboResistance');
+  const toggleSignalsCheckbox = document.getElementById('toggleSignals');
+  const toggleGridCheckbox = document.getElementById('toggleGrid');
+  const resetButton = document.getElementById('resetButton');
+
+  settingsButton.addEventListener('click', () => {
+    settingsMenu.style.display = settingsMenu.style.display === 'block' ? 'none' : 'block';
+  });
+  document.addEventListener('click', e => {
+    if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
+      settingsMenu.style.display = 'none';
+    }
+  });
+
+  let chart, candleSeries, volumeSeries;
+  let priceActionSupportLines = [];
+  let priceActionResistanceLines = [];
+  let fiboSupportLines = [];
+  let fiboResistanceLines = [];
+
+  let lastCandles = [];
+  let lastSignals = [];
+  let lastData = null;
+  let isFirstLoad = true;
+
+  function saveVisibility() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      paSupport: togglePASupportCheckbox.checked,
+      paResistance: togglePAResistanceCheckbox.checked,
+      fiboSupport: toggleFiboSupportCheckbox.checked,
+      fiboResistance: toggleFiboResistanceCheckbox.checked,
+      signals: toggleSignalsCheckbox.checked,
+      grid: toggleGridCheckbox.checked
+    }));
+  }
+
+  function loadVisibility() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+        togglePASupportCheckbox.checked = settings.paSupport !== false;
+        togglePAResistanceCheckbox.checked = settings.paResistance !== false;
+        toggleFiboSupportCheckbox.checked = settings.fiboSupport !== false;
+        toggleFiboResistanceCheckbox.checked = settings.fiboResistance !== false;
+        toggleSignalsCheckbox.checked = settings.signals !== false;
+        toggleGridCheckbox.checked = settings.grid !== false;
+      } catch {
+        setDefaults();
+      }
+    } else {
+      setDefaults();
+    }
+  }
+
+  function setDefaults() {
+    togglePASupportCheckbox.checked = true;
+    togglePAResistanceCheckbox.checked = true;
+    toggleFiboSupportCheckbox.checked = true;
+    toggleFiboResistanceCheckbox.checked = true;
+    toggleSignalsCheckbox.checked = true;
+    toggleGridCheckbox.checked = true;
+  }
+
+  function clearLines(lines) {
+    lines.forEach(line => candleSeries.removePriceLine(line));
+    return [];
+  }
+
+  function redrawLines() {
+    if (!lastData) return;
+
+    priceActionSupportLines = clearLines(priceActionSupportLines);
+    priceActionResistanceLines = clearLines(priceActionResistanceLines);
+    fiboSupportLines = clearLines(fiboSupportLines);
+    fiboResistanceLines = clearLines(fiboResistanceLines);
+
+    if (togglePASupportCheckbox.checked && lastData.priceActionSupport) {
+      priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({
+        price: Number(price),
+        color: 'green',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Price Action Support'
+      }));
+    }
+    if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance) {
+      priceActionResistanceLines = lastData.priceActionResistance.map(price => candleSeries.createPriceLine({
+        price: Number(price),
+        color: 'red',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Price Action Resistance'
+      }));
+    }
+    if (toggleFiboSupportCheckbox.checked && lastData.fiboSupport) {
+      fiboSupportLines = lastData.fiboSupport.map(levelObj => candleSeries.createPriceLine({
+        price: Number(levelObj.level),
+        color: 'blue',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: levelObj.label || 'Fibo Support'
+      }));
+    }
+    if (toggleFiboResistanceCheckbox.checked && lastData.fiboResistance) {
+      fiboResistanceLines = lastData.fiboResistance.map(levelObj => candleSeries.createPriceLine({
+        price: Number(levelObj.level),
+        color: 'orange',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: levelObj.label || 'Fibo Resistance'
+      }));
+    }
+  }
+
+  togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  toggleFiboResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+
+  toggleSignalsCheckbox.addEventListener('change', () => {
+    saveVisibility();
+    if (toggleSignalsCheckbox.checked) {
+      candleSeries.setMarkers(lastSignals);
+    } else {
+      candleSeries.setMarkers([]);
+    }
+  });
+
+  toggleGridCheckbox.addEventListener('change', () => {
+    saveVisibility();
+    if (!chart) return;
+    chart.applyOptions({
+      grid: {
+        vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
+        horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
+      }
+    });
+  });
+
+  // Reset button logic
+  resetButton.addEventListener('click', () => {
+    setDefaults();
+    saveVisibility();
+    redrawLines();
+    if (chart) {
+      chart.applyOptions({
+        grid: {
+          vertLines: { visible: true, color: '#eee' },
+          horzLines: { visible: true, color: '#eee' }
+        }
+      });
+      candleSeries.setMarkers(lastSignals);
+    }
+  });
+
+  function initChart() {
+    if (chart) return;
+    chart = LightweightCharts.createChart(chartEl, {
+      width: chartEl.clientWidth,
+      height: chartEl.clientHeight,
+      layout: { backgroundColor: '#fff', textColor: '#000' },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+      timeScale: {
+        timeVisible: true,
+        rightOffset: 30,
+        barSpacing: 6,
+        minBarSpacing: 3,
+        borderColor: '#d1d4dc',
+        borderVisible: true
+      },
+      grid: {
+        vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
+        horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
+      }
+    });
+
+    candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+
+    chart.applyOptions({
+      priceScales: {
+        volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.98, bottom: 0 } }
+      },
+    });
+
+    volumeSeries = chart.addHistogramSeries({
+      color: 'rgba(38, 166, 154, 0.07)',
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+      scaleMargins: { top: 0.98, bottom: 0 },
+      overlay: true,
+      lineWidth: 1,
+    });
+  }
+
+  function updateChart(data) {
+    if (!data || !data.candles || !data.candles.length) return;
+    lastData = data;
+
+    if (isFirstLoad) {
+      candleSeries.setData(data.candles.map(c => ({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close
+      })));
+
+      volumeSeries.setData(data.candles.map(c => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
+      })));
+
+      lastCandles = data.candles.slice();
+    } else {
+      const newCandles = data.candles.slice(lastCandles.length);
+      newCandles.forEach(c => candleSeries.update({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close
+      }));
+
+      let lastCandle = data.candles[data.candles.length - 1];
+      volumeSeries.update({
+        time: lastCandle.time,
+        value: lastCandle.volume,
+        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
+      });
+
+      lastCandles = data.candles.slice();
+    }
+
+    redrawLines();
+
+    if (Array.isArray(data.signals)) {
+      lastSignals = data.signals.map(signal => ({
+        time: signal.time,
+        position: 'aboveBar',
+        color: signal.type === 'buy' ? 'green' : 'red',
+        shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+        text: signal.type.toUpperCase()
+      }));
+    }
+    if (toggleSignalsCheckbox.checked) {
+      candleSeries.setMarkers(lastSignals);
+    } else {
+      candleSeries.setMarkers([]);
+    }
+
+    if (isFirstLoad) {
+      chart.timeScale().fitContent();
+      setTimeout(() => {
+        const visibleRange = chart.timeScale().getVisibleRange();
+        if (visibleRange) {
+          const barsVisible = visibleRange.to - visibleRange.from;
+          const scrollPos = (data.candles.length -1) - Math.floor(barsVisible / 2);
+          chart.timeScale().scrollToPosition(scrollPos, false);
+        }
+        isFirstLoad = false;
+      }, 0);
+    }
+  }
+
+  async function fetchData(firstLoad = false) {
+    if (firstLoad) {
+      loaderEl.style.display = 'flex';
+      chartEl.style.display = 'none';
+      errorEl.style.display = 'none';
+    }
+    try {
+      const resp = await fetch('/api/data');
+      if(!resp.ok) throw new Error('Failed to fetch data');
+      const data = await resp.json();
+      loaderEl.style.display = 'none';
+      errorEl.style.display = 'none';
+      chartEl.style.display = 'block';
+      if(chart) {
+        chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+      }
+      return data;
+    } catch(e) {
+      loaderEl.style.display = 'none';
+      chartEl.style.display = 'none';
+      errorEl.textContent = e.message;
+      errorEl.style.display = 'block';
+      return null;
+    }
+  }
+
+  async function refresh(firstLoad = false) {
+    const data = await fetchData(firstLoad);
+    if(!data) return;
+    if(!chart) initChart();
+    updateChart(data);
+  }
+
+  window.addEventListener('resize', () => {
+    if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+  });
+
+  loadVisibility();
+  refresh(true);
+  setInterval(() => refresh(false), 30000);
+</script>
+</body>
+</html>
