@@ -92,6 +92,22 @@
     #resetButton:hover {
       background: #e0e0e0;
     }
+    /* Fit button styling */
+    #fitButton {
+      display: block;
+      width: 100%;
+      padding: 6px;
+      font-size: 13px;
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      margin-top: 4px;
+    }
+    #fitButton:hover {
+      background: #bbdefb;
+    }
   </style>
 </head>
 <body>
@@ -110,6 +126,7 @@
         <label><input type="checkbox" id="toggleGrid" /> Grid</label>
         <label><input type="checkbox" id="toggleLive" /> Live</label>
         <button id="resetButton">Reset Defaults</button>
+        <button id="fitButton">Fit Chart</button>
       </div>
     </div>
   </div>
@@ -128,6 +145,7 @@
   const toggleGridCheckbox = document.getElementById('toggleGrid');
   const toggleLiveCheckbox = document.getElementById('toggleLive');
   const resetButton = document.getElementById('resetButton');
+  const fitButton = document.getElementById('fitButton');
 
   settingsButton.addEventListener('click', () => {
     settingsMenu.style.display = settingsMenu.style.display === 'block' ? 'none' : 'block';
@@ -284,6 +302,10 @@
     updateLiveStatus();
   });
 
+  fitButton.addEventListener('click', () => {
+    if (chart) chart.timeScale().fitContent();
+  });
+
   function initChart() {
     if (chart) return;
     chart = LightweightCharts.createChart(chartEl, {
@@ -337,6 +359,8 @@
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       })));
       lastCandles = data.candles.slice();
+      chart.timeScale().fitContent(); // Only initial load fits chart
+      isFirstLoad = false;
     } else {
       let lastCandle = data.candles[data.candles.length - 1];
       candleSeries.update(lastCandle);
@@ -346,6 +370,7 @@
         color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       });
       lastCandles = data.candles.slice();
+      // Do NOT call fitContent here, so zoom/scroll is preserved!
     }
     redrawLines();
     if (Array.isArray(data.signals)) {
@@ -358,13 +383,9 @@
       }));
     }
     candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-    if (isFirstLoad) {
-      chart.timeScale().fitContent();
-      isFirstLoad = false;
-    }
   }
 
-  async function fetchData(timeFrame = 'ONE_MINUTE', name = 'CRUDEOIL') {
+  async function fetchData(timeFrame = 'ONE_MINUTE', name = 'NIFTY') {
     const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
@@ -384,11 +405,10 @@
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
-      // Force redraw after loader hides
+      // Only resize here, DO NOT fitContent after initial
       setTimeout(() => {
         if (chart) {
           chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-          chart.timeScale().fitContent();
         }
       }, 50);
     } catch (e) {
@@ -415,9 +435,9 @@
 
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+    // Do not call fitContent here
   });
 
-  // Handle visibility (stop/start polling)
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       if (refreshInterval) {
