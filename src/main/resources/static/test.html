@@ -127,9 +127,8 @@
         <option value="ONE_MINUTE">1 Min</option>
         <option value="FIVE_MINUTE" selected>5 Min</option>
         <option value="FIFTEEN_MINUTE">15 Min</option>
-        <option value="ONE_HOUR">1 Hour</option>
-        <option value="ONE_DAY">1 Day</option>
       </select>
+      <button id="refreshButton" style="padding: 6px 12px; font-size: 14px; cursor: pointer;">Refresh</button>
     </div>
     <div id="chart"></div>
     <div id="loader"><div class="spinner"></div></div>
@@ -496,6 +495,39 @@
       }
     }
   });
+  
+  const refreshButton = document.getElementById('refreshButton');
+refreshButton.addEventListener('click', () => {
+  // Clear any existing refresh interval
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+  
+  // Reset first load to true for complete reinitialization
+  isFirstLoad = true;
+  
+  // Hide error and loader UI, then call refresh
+  errorEl.style.display = 'none';
+  loaderEl.style.display = 'flex';
+  chartEl.style.display = 'none';
+  
+  // Clear existing chart references so it will fully reinit on refresh
+  chart = null;
+  candleSeries = null;
+  volumeSeries = null;
+  
+  // Reinitiate data fetch and chart setup
+  refresh(true).then(() => {
+    // Restart live refresh if toggle is on
+    if (toggleLiveCheckbox.checked) {
+      refreshInterval = setInterval(() => refresh(false), 30000);
+    }
+  }).catch(() => {
+    // On error, refresh function handles UI state
+  });
+});
+
 
   loadVisibility();
   refresh(true);
