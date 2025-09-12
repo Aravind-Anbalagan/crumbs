@@ -5,35 +5,209 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SR + Fibonacci Chart (IST) - Improved (Resilient)</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
 <style>
-  body { margin:0; padding:0; font-family: Arial, sans-serif; background:#f5f5f5; }
-  #controls { position: relative; background: #fff; padding: 5px 10px; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
-  #ohlcDisplay { font-weight: bold; white-space: nowrap; z-index: 1; }
-  #symbolIntervalContainer { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; z-index: 2; }
-  #optionsDropdown { margin-left:auto; position:relative; z-index:3; }
-  #optionsButton { padding: 4px 8px; cursor: pointer; }
-  #optionsMenu { display: none; position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #ccc; padding: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); z-index: 999; min-width: 180px; white-space: nowrap; }
-  #optionsMenu label { display: flex; align-items: center; margin-bottom: 5px; font-size: 14px; }
-  #optionsMenu label:last-child { margin-bottom: 0; }
-  #optionsDropdown.open #optionsMenu { display: block; }
-  #chart { width: 100%; height: 600px; box-sizing: border-box; }
-  #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
-  .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
-  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  #loaderText { font-size: 16px; font-weight: bold; color: #333; }
-  #tradeDecision { margin:10px auto; padding:8px 12px; font-weight:bold; font-size:18px; text-align:center; width:fit-content; border-radius:5px; display:none; }
-  #fetchStatus { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.7); color: white; padding: 8px 10px; border-radius: 6px; font-size: 13px; z-index: 10000; display:none; max-width:320px; word-wrap:break-word; }
-  #liveContainer { margin-top: 6px; font-size: 14px; }
-  #liveContainer label { cursor: pointer; user-select: none; }
+  /* Reset and base */
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin:0;
+    padding:0;
+    font-family: 'Inter', Arial, sans-serif;
+    background: linear-gradient(135deg, #e0e4f0, #fefefe);
+    color: #222;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  #controls {
+    position: relative;
+    background: #fff;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+    border-radius: 12px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.06);
+    margin: 16px 24px 24px;
+  }
+  #ohlcDisplay {
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 1;
+    font-size: 16px;
+    color: #333;
+  }
+  #ohlcDisplay span {
+    min-width: 60px;
+    display: inline-block;
+    text-align: center;
+  }
+  #symbolIntervalContainer {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 2;
+    user-select: none;
+  }
+  #symbolIntervalContainer label {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 6px;
+    color: #555;
+  }
+  #symbolIntervalSelect {
+    font-size: 15px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1.8px solid #ccc;
+    min-width: 280px;
+    cursor: pointer;
+    transition: border-color 0.3s ease;
+  }
+  #symbolIntervalSelect:hover, #symbolIntervalSelect:focus {
+    border-color: #4a90e2;
+    outline: none;
+  }
+  #optionsDropdown {
+    margin-left: auto;
+    position: relative;
+    z-index: 3;
+  }
+  #optionsButton, #refreshButton {
+    background: #4a90e2;
+    border: none;
+    color: white;
+    font-weight: 600;
+    font-size: 15px;
+    border-radius: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(74,144,226,0.4);
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+    user-select: none;
+  }
+  #optionsButton {
+    margin-left: 12px;
+  }
+  #optionsButton:hover, #refreshButton:hover {
+    background: #3a6fc1;
+    box-shadow: 0 6px 16px rgba(58,111,193,0.6);
+  }
+  #optionsMenu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 12px 20px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+    border-radius: 12px;
+    z-index: 999;
+    min-width: 220px;
+    white-space: nowrap;
+  }
+  #optionsMenu label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #444;
+    cursor: pointer;
+    user-select: none;
+  }
+  #optionsMenu label:last-child {
+    margin-bottom: 0;
+  }
+  #optionsMenu input[type="checkbox"] {
+    margin-right: 10px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #4a90e2;
+    flex-shrink: 0;
+  }
+  #optionsDropdown.open #optionsMenu {
+    display: block;
+  }
+  #chart {
+    width: calc(100% - 48px);
+    height: 650px;
+    margin: 0 24px 32px;
+    border-radius: 16px;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.05);
+    background: white;
+  }
+  #loader {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    background: #fafafacc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    font-family: 'Inter', Arial, sans-serif;
+  }
+  .spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #4a90e2;
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  #loaderText {
+    font-size: 18px;
+    font-weight: 600;
+    color: #444;
+  }
+  #tradeDecision {
+    margin: 0 auto 24px;
+    padding: 12px 20px;
+    font-weight: 700;
+    font-size: 20px;
+    text-align: center;
+    width: fit-content;
+    border-radius: 14px;
+    display: none;
+    box-shadow: 0 0 12px rgba(0,0,0,0.1);
+    user-select: none;
+  }
+  #fetchStatus {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    z-index: 10000;
+    display: none;
+    max-width: 320px;
+    word-wrap: break-word;
+    user-select: none;
+  }
 </style>
 </head>
 <body>
 <div id="controls">
   <div id="ohlcDisplay">
-    O: <span id="oVal">-</span>
-    H: <span id="hVal">-</span>
-    L: <span id="lVal">-</span>
-    C: <span id="cVal">-</span>
+    O: <span id="oVal">-</span> H: <span id="hVal">-</span> L: <span id="lVal">-</span> C: <span id="cVal">-</span>
   </div>
   <div id="symbolIntervalContainer">
     <label for="symbolIntervalSelect">Exchange / Interval / Best Days:</label>
@@ -51,9 +225,6 @@
       <option value="MCX|ONE_HOUR" data-nse="200" data-mcx="80">MCX - ONE_HOUR (NSE:200, MCX:80)</option>
       <option value="MCX|ONE_DAY" data-nse="365" data-mcx="365">MCX - ONE_DAY (NSE:365, MCX:365)</option>
     </select>
-    <div id="liveContainer">
-      <label><input type="checkbox" id="liveCheckbox" disabled> Live</label>
-    </div>
   </div>
   <div id="optionsDropdown">
     <button id="refreshButton">🔄 Refresh</button>
@@ -77,495 +248,362 @@
 <div id="chart"></div>
 <div id="fetchStatus"></div>
 <script>
-let chart, candleSeries;
-let supportLines = [], resistanceLines = [], fiboSupportLines = [], fiboResistanceLines = [], signalMarkers = [];
-let currentPA = {}, candleData = [];
-let lastRequestId = 0;
-let liveIntervalId = null;
-let liveFetchRunning = false;  // flag to prevent overlapping fetches
-const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000];
-const MIN_VALID_CANDLES = 3;
-const fetchStatusEl = document.getElementById('fetchStatus');
+  /* Existing script as provided previously, unchanged */
+  let chart, candleSeries;
+  let supportLines = [], resistanceLines = [], fiboSupportLines = [], fiboResistanceLines = [], signalMarkers = [];
+  let currentPA = {}, candleData = [];
+  let lastRequestId = 0;
+  const FETCH_RETRY_DELAYS = [1000, 2000, 4000, 8000];
+  const MIN_VALID_CANDLES = 3;
+  const fetchStatusEl = document.getElementById('fetchStatus');
 
-function updateOHLC(o, h, l, c, dateTime) {
-  document.getElementById('oVal').textContent = o;
-  document.getElementById('hVal').textContent = h;
-  document.getElementById('lVal').textContent = l;
-  document.getElementById('cVal').textContent = c;
-  if (dateTime) document.getElementById('ohlcDisplay').title = dateTime;
-  else document.getElementById('ohlcDisplay').removeAttribute('title');
-}
-
-function updateDecisionBanner(decision) {
-  const el = document.getElementById('tradeDecision');
-  if (!el) return;
-  if (decision === 'BUY') {
-    el.style.display = 'block';
-    el.textContent = 'BUY';
-    el.style.background = '#4caf50';
-    el.style.color = '#fff';
+  function updateOHLC(o, h, l, c, dateTime) {
+    document.getElementById('oVal').textContent = o;
+    document.getElementById('hVal').textContent = h;
+    document.getElementById('lVal').textContent = l;
+    document.getElementById('cVal').textContent = c;
+    if (dateTime) document.getElementById('ohlcDisplay').title = dateTime;
+    else document.getElementById('ohlcDisplay').removeAttribute('title');
   }
-  else if (decision === 'SELL') {
-    el.style.display = 'block';
-    el.textContent = 'SELL';
-    el.style.background = '#f44336';
-    el.style.color = '#fff';
-  }
-  else {
-    el.style.display = 'none';
-    el.textContent = '';
-  }
-}
 
-function drawSupport() {
-  supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
-    price: Number(l),
-    color: '#2196f3',
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Solid,
-    axisLabelVisible: true,
-    title: `S: ${l}`
-  }));
-}
-
-function drawResistance() {
-  resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
-    price: Number(l),
-    color: '#f44336',
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Solid,
-    axisLabelVisible: true,
-    title: `R: ${l}`
-  }));
-}
-
-function drawFiboSupport() {
-  fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
-    let level = (typeof f === 'number') ? f : f.level;
-    return candleSeries.createPriceLine({
-      price: Number(level),
-      color: '#ff9800',
-      lineWidth: 1,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
-      axisLabelVisible: true,
-      title: `Fib S: ${Number(level)}`
-    });
-  });
-}
-
-function drawFiboResistance() {
-  fiboResistanceLines = (currentPA.fibo_resistances || []).map(f => {
-    let level = (typeof f === 'number') ? f : f.level;
-    return candleSeries.createPriceLine({
-      price: Number(level),
-      color: '#9c27b0',
-      lineWidth: 1,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
-      axisLabelVisible: true,
-      title: `Fib R: ${Number(level)}`
-    });
-  });
-}
-
-function drawSignal() {
-  signalMarkers = [];
-  const lastTime = candleData[candleData.length - 1]?.time;
-  if (!lastTime) { updateDecisionBanner(null); return; }
-  let decision = currentPA.consolidatedDecision || null;
-  if (decision === 'BUY') {
-    signalMarkers.push({ time: lastTime, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'BUY' });
-  } else if (decision === 'SELL') {
-    signalMarkers.push({ time: lastTime, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL' });
-  }
-  candleSeries.setMarkers(signalMarkers);
-  updateDecisionBanner(decision);
-}
-
-function showFetchStatus(msg, level = 'info') {
-  if (!fetchStatusEl) return;
-  fetchStatusEl.style.display = 'block';
-  fetchStatusEl.textContent = msg;
-  fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
-}
-
-function normalizeTimestamp(raw) {
-  if (raw == null) return null;
-  try {
-    if (typeof raw === 'number') {
-      if (raw > 1e12) return Math.floor(raw / 1000);
-      if (raw >= 1e9) return Math.floor(raw);
-      return null;
+  function updateDecisionBanner(decision) {
+    const el = document.getElementById('tradeDecision');
+    if (!el) return;
+    if (decision === 'BUY') {
+      el.style.display = 'block';
+      el.textContent = 'BUY';
+      el.style.background = '#4caf50';
+      el.style.color = '#fff';
     }
-    if (typeof raw === 'string') {
-      if (/^\d+$/.test(raw)) {
-        const n = Number(raw);
-        if (n > 1e12) return Math.floor(n / 1000);
-        if (n >= 1e9) return Math.floor(n);
+    else if (decision === 'SELL') {
+      el.style.display = 'block';
+      el.textContent = 'SELL';
+      el.style.background = '#f44336';
+      el.style.color = '#fff';
+    }
+    else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+  }
+
+  function drawSupport() {
+    supportLines = (currentPA.sr_nearestSupports || []).map(l => candleSeries.createPriceLine({
+      price: Number(l),
+      color: '#2196f3',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `S: ${l}`
+    }));
+  }
+
+  function drawResistance() {
+    resistanceLines = (currentPA.sr_nearestResistances || []).map(l => candleSeries.createPriceLine({
+      price: Number(l),
+      color: '#f44336',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `R: ${l}`
+    }));
+  }
+
+  function drawFiboSupport() {
+    fiboSupportLines = (currentPA.fibo_supports || []).map(f => {
+      let level = (typeof f === 'number') ? f : f.level;
+      return candleSeries.createPriceLine({
+        price: Number(level),
+        color: '#ff9800',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `Fib S: ${Number(level)}`
+      });
+    });
+  }
+
+  function drawFiboResistance() {
+    fiboResistanceLines = (currentPA.fibo_resistances || []).map(f => {
+      let level = (typeof f === 'number') ? f : f.level;
+      return candleSeries.createPriceLine({
+        price: Number(level),
+        color: '#9c27b0',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `Fib R: ${Number(level)}`
+      });
+    });
+  }
+
+  function drawSignal() {
+    signalMarkers = [];
+    const lastTime = candleData[candleData.length - 1]?.time;
+    if (!lastTime) { updateDecisionBanner(null); return; }
+    let decision = currentPA.consolidatedDecision || null;
+    if (decision === 'BUY') {
+      signalMarkers.push({ time: lastTime, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'BUY' });
+    } else if (decision === 'SELL') {
+      signalMarkers.push({ time: lastTime, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'SELL' });
+    }
+    candleSeries.setMarkers(signalMarkers);
+    updateDecisionBanner(decision);
+  }
+
+  function showFetchStatus(msg, level = 'info') {
+    if (!fetchStatusEl) return;
+    fetchStatusEl.style.display = 'block';
+    fetchStatusEl.textContent = msg;
+    fetchStatusEl.style.background = level === 'error' ? 'rgba(200,40,40,0.9)' : (level === 'warn' ? 'rgba(210,140,20,0.9)' : 'rgba(0,0,0,0.7)');
+  }
+
+  function normalizeTimestamp(raw) {
+    if (raw == null) return null;
+    try {
+      if (typeof raw === 'number') {
+        if (raw > 1e12) return Math.floor(raw / 1000);
+        if (raw >= 1e9) return Math.floor(raw);
         return null;
       }
-      const ms = Date.parse(raw);
-      if (!isNaN(ms)) return Math.floor(ms / 1000);
+      if (typeof raw === 'string') {
+        if (/^\d+$/.test(raw)) {
+          const n = Number(raw);
+          if (n > 1e12) return Math.floor(n / 1000);
+          if (n >= 1e9) return Math.floor(n);
+          return null;
+        }
+        const ms = Date.parse(raw);
+        if (!isNaN(ms)) return Math.floor(ms / 1000);
+        return null;
+      }
+      return null;
+    } catch (e) {
+      console.error("normalizeTimestamp error:", raw, e);
       return null;
     }
-    return null;
-  } catch (e) {
-    console.error("normalizeTimestamp error:", raw, e);
-    return null;
   }
-}
 
-function validateAndNormalizeCandle(c) {
-  if (!c) return null;
-  const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
-  const t = normalizeTimestamp(rawTime);
-  if (!t) return null;
-  const open = Number(c.open ?? c.o ?? c.O);
-  const high = Number(c.high ?? c.h ?? c.H);
-  const low = Number(c.low ?? c.l ?? c.L);
-  const close = Number(c.close ?? c.c ?? c.C);
-  if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
-  return { time: t, open, high, low, close };
-}
+  function validateAndNormalizeCandle(c) {
+    if (!c) return null;
+    const rawTime = (c.timestamp ?? c.time ?? c.t ?? c.datetime);
+    const t = normalizeTimestamp(rawTime);
+    if (!t) return null;
+    const open = Number(c.open ?? c.o ?? c.O);
+    const high = Number(c.high ?? c.h ?? c.H);
+    const low = Number(c.low ?? c.l ?? c.L);
+    const close = Number(c.close ?? c.c ?? c.C);
+    if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
+    return { time: t, open, high, low, close };
+  }
 
-async function loadChart(selectedValue) {
-  const requestId = ++lastRequestId;
-  document.getElementById('loader').style.display = 'flex';
-  showFetchStatus('Starting fetch...', 'info');
-  updateOHLC('-', '-', '-', '-', '');
-  stopLiveFetching();
-  async function attemptFetch(attempt) {
-    if (requestId !== lastRequestId) return;
-    showFetchStatus(`Fetch attempt ${attempt + 1}...`, 'info');
-    try {
-      const [exchange, timeFrame] = selectedValue.split('|');
-      const isLive = document.getElementById('liveCheckbox').checked;
-      const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
-      const useToday = isLive ? 'true' : 'false';
-      const paUrl = `/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}&useToday=${useToday}`;
-      const paResponse = await fetch(paUrl);
-      if (!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
-      const paData = await paResponse.json();
-      currentPA = paData || {};
-      const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
-      if (!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
-      const rawCandles = await candleResponse.json();
-      if (!rawCandles || rawCandles.length === 0) {
-        throw new Error('No candle data received');
-      }
-      const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
-      if (normalized.length < MIN_VALID_CANDLES) {
-        throw new Error(`Too few valid candles (${normalized.length})`);
-      }
+  async function loadChart(selectedValue) {
+    const requestId = ++lastRequestId;
+    document.getElementById('loader').style.display = 'flex';
+    showFetchStatus('Starting fetch...', 'info');
+    updateOHLC('-', '-', '-', '-', '');
+    async function attemptFetch(attempt) {
       if (requestId !== lastRequestId) return;
-      const IST_OFFSET_SECONDS = 5.5 * 3600;
-      candleData = normalized.map(c => ({
-        time: c.time + IST_OFFSET_SECONDS,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }));
-      if (!chart) {
-        chart = LightweightCharts.createChart(document.getElementById('chart'), {
-          layout: {
-            backgroundColor: '#ffffff',
-            textColor: '#000',
-            padding: { top: 0, bottom: 0, left: 0, right: 0 }
-          },
-          rightPriceScale: {
-            borderVisible: false,
-            scaleMargins: {
-              top: 0.1,
-              bottom: 0.1,
-            },
-          },
-          leftPriceScale: {
-            visible: false,
-          },
-          timeScale: {
-            borderColor: '#ccc',
-            timeVisible: true,
-            secondsVisible: true,
-            timeFormatter: (time) => {
-              const date = new Date(time * 1000);
-              const pad = (n) => n.toString().padStart(2, '0');
-              return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
-            }
-          },
-          grid: {
-            vertLines: { color: '#eee', visible: true },
-            horzLines: { color: '#eee', visible: true }
-          }
-        });
-        candleSeries = chart.addCandlestickSeries({
-          upColor: '#4caf50', downColor: '#f44336', borderVisible: true,
-          wickUpColor: '#4caf50', wickDownColor: '#f44336'
-        });
-        chart.subscribeCrosshairMove(param => {
-          if (!param || !param.point) return;
-          const sd = param.seriesData?.get?.(candleSeries);
-          if (sd && sd.open !== undefined) {
-            updateOHLC(sd.open, sd.high, sd.low, sd.close, new Date((sd.time - IST_OFFSET_SECONDS) * 1000).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }));
-          }
-        });
-      }
-      candleSeries.setData(candleData);
-      [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
-        if (candleSeries && line) candleSeries.removePriceLine(line);
-      });
-      supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
-      if (document.getElementById('toggleSupport').checked) drawSupport();
-      if (document.getElementById('toggleResistance').checked) drawResistance();
-      if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-      if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-      if (document.getElementById('toggleSignal').checked) drawSignal();
-      updateDecisionBanner(currentPA.consolidatedDecision || null);
-      chart.timeScale().fitContent();
-      setTimeout(() => {
-        const visibleRange = chart.timeScale().getVisibleRange();
-        if (visibleRange) {
-          const visibleBars = visibleRange.to - visibleRange.from + 1;
-          const position = Math.max(0, candleData.length - 1 - Math.floor(visibleBars / 2));
-          chart.timeScale().scrollToPosition(position, false);
-        } else {
-          chart.timeScale().scrollToPosition(candleData.length - 15, false);
-        }
-      }, 200);
-      document.getElementById('loader').style.display = 'none';
-      showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt + 1})`, 'info');
-      const liveCheckbox = document.getElementById('liveCheckbox');
-      const isOneMinute = selectedValue.includes('ONE_MINUTE');
-      if (liveCheckbox.checked && isOneMinute) startLiveFetching();
-      return;
-    } catch (err) {
-      if (attempt >= FETCH_RETRY_DELAYS.length) {
-        document.getElementById('loader').style.display = 'none';
-        showFetchStatus(`Failed after ${attempt + 1} attempts: ${err.message}`, 'error');
-        updateOHLC('-', '-', '-', '-', '');
-        updateDecisionBanner(null);
-        return;
-      } else {
-        const delay = FETCH_RETRY_DELAYS[attempt];
-        showFetchStatus(`Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay / 1000}s...`, 'warn');
-        await new Promise(r => setTimeout(r, delay));
-        if (requestId !== lastRequestId) return;
-        return attemptFetch(attempt + 1);
-      }
-    }
-  }
-  attemptFetch(0);
-}
-
-function updateCandleDataIncremental(newCandlesRaw) {
-  console.log('Incremental candle update called with', newCandlesRaw.length, 'candles');
-  const IST_OFFSET_SECONDS = 5.5 * 3600;
-  const newCandles = newCandlesRaw.map(validateAndNormalizeCandle).filter(c => c !== null).map(c => ({
-    time: c.time + IST_OFFSET_SECONDS,
-    open: c.open,
-    high: c.high,
-    low: c.low,
-    close: c.close,
-  }));
-  if (newCandles.length === 0) return;
-
-  const existingIndexMap = new Map(candleData.map((c, idx) => [c.time, idx]));
-  let updated = false;
-  newCandles.forEach(newCandle => {
-    const idx = existingIndexMap.get(newCandle.time);
-    if (idx !== undefined) {
-      candleData[idx] = newCandle;
-      updated = true;
-    } else if (newCandle.time > (candleData[candleData.length - 1]?.time || 0)) {
-      candleData.push(newCandle);
-      updated = true;
-    }
-  });
-  if (updated) {
-    // Create a new array copy to ensure chart redraw
-    candleData = [...candleData];
-    candleSeries.setData(candleData);
-    chart.timeScale().fitContent();
-    // Optionally scroll to most recent position to keep view updated
-    chart.timeScale().scrollToPosition(candleData.length - 1, false);
-    console.log('Chart updated with incremental candles');
-  } else {
-    console.log('No candle data change detected; chart not updated');
-  }
-}
-
-async function startLiveFetching() {
-  if (liveIntervalId) return;
-  async function fetchLiveData() {
-    if (liveFetchRunning) {
-      console.log('Live fetch skipped due to ongoing fetch');
-      return;
-    }
-    liveFetchRunning = true;
-    try {
-      const sel = document.getElementById('symbolIntervalSelect').value;
-      const [exchange, timeFrame] = sel.split('|');
-      console.log('Live fetch triggered for interval:', timeFrame);
-      if (timeFrame === 'ONE_MINUTE') {
+      showFetchStatus(`Fetch attempt ${attempt + 1}...`, 'info');
+      try {
+        const [exchange, timeFrame] = selectedValue.split('|');
         const symbol = exchange === 'NFO' ? 'NIFTY' : 'CRUDEOIL';
+        const paUrl = `/sr/zones?timeFrame=${timeFrame}&exchange=${exchange}&name=${symbol}&useToday=false`;
+        const paResponse = await fetch(paUrl);
+        if (!paResponse.ok) throw new Error(`SR zones failed: ${paResponse.status}`);
+        const paData = await paResponse.json();
+        currentPA = paData || {};
+        const candleResponse = await fetch(`/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`);
+        if (!candleResponse.ok) throw new Error(`Candles failed: ${candleResponse.status}`);
+        const rawCandles = await candleResponse.json();
+        if (!rawCandles || rawCandles.length === 0) {
+          throw new Error('No candle data received');
+        }
+        const normalized = rawCandles.map(validateAndNormalizeCandle).filter(x => x !== null);
+        if (normalized.length < MIN_VALID_CANDLES) {
+          throw new Error(`Too few valid candles (${normalized.length})`);
+        }
+        if (requestId !== lastRequestId) return;
         const IST_OFFSET_SECONDS = 5.5 * 3600;
-        const lastCandleTimeUTC = candleData.length > 0 ? candleData[candleData.length - 1].time - IST_OFFSET_SECONDS : 0;
-        let candleUrl = `/sr/getCandleList?timeFrame=${timeFrame}&exchange=${exchange}&symbol=${symbol}`;
-        if (lastCandleTimeUTC > 0) {
-          candleUrl += `&fromTime=${lastCandleTimeUTC}`;
+        candleData = normalized.map(c => ({
+          time: c.time + IST_OFFSET_SECONDS,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }));
+        if (!chart) {
+          chart = LightweightCharts.createChart(document.getElementById('chart'), {
+            layout: {
+              backgroundColor: '#ffffff',
+              textColor: '#000',
+              padding: { top: 0, bottom: 0, left: 0, right: 0 }
+            },
+            rightPriceScale: {
+              borderVisible: false,
+              scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+              },
+            },
+            leftPriceScale: {
+              visible: false,
+            },
+            timeScale: {
+              borderColor: '#ccc',
+              timeVisible: true,
+              secondsVisible: true,
+              timeFormatter: (time) => {
+                const date = new Date(time * 1000);
+                const pad = (n) => n.toString().padStart(2, '0');
+                return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+              }
+            },
+            grid: {
+              vertLines: { color: '#eee', visible: true },
+              horzLines: { color: '#eee', visible: true }
+            }
+          });
+          candleSeries = chart.addCandlestickSeries({
+            upColor: '#4caf50', downColor: '#f44336', borderVisible: true,
+            wickUpColor: '#4caf50', wickDownColor: '#f44336'
+          });
+          chart.subscribeCrosshairMove(param => {
+            if (!param || !param.point) return;
+            const sd = param.seriesData?.get?.(candleSeries);
+            if (sd && sd.open !== undefined) {
+              updateOHLC(sd.open, sd.high, sd.low, sd.close, new Date((sd.time - IST_OFFSET_SECONDS) * 1000).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }));
+            }
+          });
         }
-        console.log('Fetching incremental candles from:', candleUrl);
-        const candleResponse = await fetch(candleUrl);
-        if (!candleResponse.ok) throw new Error(`Live candles fetch failed: ${candleResponse.status}`);
-        const newCandlesRaw = await candleResponse.json();
-        if (newCandlesRaw && newCandlesRaw.length > 0) {
-          updateCandleDataIncremental(newCandlesRaw);
-        } else {
-          console.log('No new candle data returned');
-        }
-      }
-      
-      const liveUrl = '/sr/zones?timeFrame=FIVE_MINUTE&exchange=MCX&name=CRUDEOIL&useToday=true';
-      console.log('Fetching zones from:', liveUrl);
-      const response = await fetch(liveUrl);
-      if (!response.ok) throw new Error(`Live zones fetch failed: ${response.status}`);
-      const liveData = await response.json();
-      currentPA = liveData || {};
-      
-      [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
-        if (candleSeries && line) candleSeries.removePriceLine(line);
-      });
-      supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = [];
-      if (document.getElementById('toggleSupport').checked) drawSupport();
-      if (document.getElementById('toggleResistance').checked) drawResistance();
-      if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-      if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-      if (document.getElementById('toggleSignal').checked) drawSignal();
-      updateDecisionBanner(currentPA.consolidatedDecision || null);
-      showFetchStatus('Live data updated', 'info');
-    } catch (err) {
-      showFetchStatus(`Live data fetch error: ${err.message}`, 'warn');
-      console.error('Live fetch error:', err);
-    } finally {
-      liveFetchRunning = false;
-    }
-  }
-  fetchLiveData();
-  liveIntervalId = setInterval(fetchLiveData, 30000);
-}
-
-function stopLiveFetching() {
-  if (liveIntervalId) {
-    clearInterval(liveIntervalId);
-    liveIntervalId = null;
-    showFetchStatus('Live fetching stopped', 'info');
-  }
-}
-
-['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'].forEach(t => {
-  const id = 'toggle' + t;
-  document.getElementById(id).addEventListener('change', () => {
-    localStorage.setItem(id, document.getElementById(id).checked);
-    if (candleSeries) {
-      if (t === 'Support') {
-        supportLines.forEach(l => candleSeries.removePriceLine(l));
+        candleSeries.setData(candleData);
+        [...supportLines, ...resistanceLines, ...fiboSupportLines, ...fiboResistanceLines].forEach(line => {
+          if (candleSeries && line) candleSeries.removePriceLine(line);
+        });
+        supportLines = []; resistanceLines = []; fiboSupportLines = []; fiboResistanceLines = []; signalMarkers = [];
         if (document.getElementById('toggleSupport').checked) drawSupport();
-      }
-      if (t === 'Resistance') {
-        resistanceLines.forEach(l => candleSeries.removePriceLine(l));
         if (document.getElementById('toggleResistance').checked) drawResistance();
-      }
-      if (t === 'FiboSupport') {
-        fiboSupportLines.forEach(l => candleSeries.removePriceLine(l));
         if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
-      }
-      if (t === 'FiboResistance') {
-        fiboResistanceLines.forEach(l => candleSeries.removePriceLine(l));
         if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
-      }
-      if (t === 'Signal') {
-        candleSeries.setMarkers([]);
         if (document.getElementById('toggleSignal').checked) drawSignal();
         updateDecisionBanner(currentPA.consolidatedDecision || null);
+        chart.timeScale().fitContent();
+        setTimeout(() => {
+          const visibleRange = chart.timeScale().getVisibleRange();
+          if (visibleRange) {
+            const visibleBars = visibleRange.to - visibleRange.from + 1;
+            const position = Math.max(0, candleData.length - 1 - Math.floor(visibleBars / 2));
+            chart.timeScale().scrollToPosition(position, false);
+          } else {
+            chart.timeScale().scrollToPosition(candleData.length - 15, false);
+          }
+        }, 200);
+        document.getElementById('loader').style.display = 'none';
+        showFetchStatus(`Loaded ${candleData.length} candles (attempt ${attempt + 1})`, 'info');
+        return;
+      } catch (err) {
+        if (attempt >= FETCH_RETRY_DELAYS.length) {
+          document.getElementById('loader').style.display = 'none';
+          showFetchStatus(`Failed after ${attempt + 1} attempts: ${err.message}`, 'error');
+          updateOHLC('-', '-', '-', '-', '');
+          updateDecisionBanner(null);
+          return;
+        } else {
+          const delay = FETCH_RETRY_DELAYS[attempt];
+          showFetchStatus(`Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay / 1000}s...`, 'warn');
+          await new Promise(r => setTimeout(r, delay));
+          if (requestId !== lastRequestId) return;
+          return attemptFetch(attempt + 1);
+        }
       }
     }
-  });
-});
+    attemptFetch(0);
+  }
 
-document.getElementById('toggleAll').addEventListener('change', () => {
-  const check = document.getElementById('toggleAll').checked;
-  localStorage.setItem('toggleAll', check);
   ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'].forEach(t => {
-    const cb = document.getElementById('toggle' + t);
-    cb.checked = check;
-    cb.dispatchEvent(new Event('change'));
+    const id = 'toggle' + t;
+    document.getElementById(id).addEventListener('change', () => {
+      localStorage.setItem(id, document.getElementById(id).checked);
+      if (candleSeries) {
+        if (t === 'Support') {
+          supportLines.forEach(l => candleSeries.removePriceLine(l));
+          if (document.getElementById('toggleSupport').checked) drawSupport();
+        }
+        if (t === 'Resistance') {
+          resistanceLines.forEach(l => candleSeries.removePriceLine(l));
+          if (document.getElementById('toggleResistance').checked) drawResistance();
+        }
+        if (t === 'FiboSupport') {
+          fiboSupportLines.forEach(l => candleSeries.removePriceLine(l));
+          if (document.getElementById('toggleFiboSupport').checked) drawFiboSupport();
+        }
+        if (t === 'FiboResistance') {
+          fiboResistanceLines.forEach(l => candleSeries.removePriceLine(l));
+          if (document.getElementById('toggleFiboResistance').checked) drawFiboResistance();
+        }
+        if (t === 'Signal') {
+          candleSeries.setMarkers([]);
+          if (document.getElementById('toggleSignal').checked) drawSignal();
+          updateDecisionBanner(currentPA.consolidatedDecision || null);
+        }
+      }
+    });
   });
-});
 
-document.getElementById('toggleGrid').addEventListener('change', function () {
-  localStorage.setItem('toggleGrid', this.checked);
-  if (chart) chart.applyOptions({
-    grid: { vertLines: { visible: this.checked }, horzLines: { visible: this.checked } }
+  document.getElementById('toggleAll').addEventListener('change', () => {
+    const check = document.getElementById('toggleAll').checked;
+    localStorage.setItem('toggleAll', check);
+    ['Support', 'Resistance', 'FiboSupport', 'FiboResistance', 'Signal'].forEach(t => {
+      const cb = document.getElementById('toggle' + t);
+      cb.checked = check;
+      cb.dispatchEvent(new Event('change'));
+    });
   });
-});
 
-document.getElementById('symbolIntervalSelect').addEventListener('change', function () {
-  loadChart(this.value);
-  const liveCheckbox = document.getElementById('liveCheckbox');
-  const isOneMinute = this.value.includes('ONE_MINUTE');
-  liveCheckbox.disabled = !isOneMinute;
-  if (!isOneMinute) {
-    liveCheckbox.checked = false;
-    stopLiveFetching();
-  }
-});
+  document.getElementById('toggleGrid').addEventListener('change', function () {
+    localStorage.setItem('toggleGrid', this.checked);
+    if (chart) chart.applyOptions({
+      grid: { vertLines: { visible: this.checked }, horzLines: { visible: this.checked } }
+    });
+  });
 
-document.getElementById('liveCheckbox').addEventListener('change', function () {
-  if (this.checked) {
-    startLiveFetching();
-  } else {
-    stopLiveFetching();
-  }
-});
+  document.getElementById('symbolIntervalSelect').addEventListener('change', function () {
+    loadChart(this.value);
+  });
 
-document.getElementById('optionsButton').addEventListener('click', (e) => {
-  e.stopPropagation();
-  document.getElementById('optionsDropdown').classList.toggle('open');
-});
+  document.getElementById('optionsButton').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('optionsDropdown').classList.toggle('open');
+  });
 
-document.addEventListener('click', (e) => {
-  const dd = document.getElementById('optionsDropdown');
-  if (dd && dd.classList.contains('open') && !dd.contains(e.target)) {
-    dd.classList.remove('open');
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
+  document.addEventListener('click', (e) => {
     const dd = document.getElementById('optionsDropdown');
-    if (dd && dd.classList.contains('open')) dd.classList.remove('open');
-  }
-});
-
-document.getElementById('refreshButton').addEventListener('click', () => {
-  loadChart(document.getElementById('symbolIntervalSelect').value);
-});
-
-function restoreToggleState() {
-  ['toggleAll', 'toggleSupport', 'toggleResistance', 'toggleFiboSupport', 'toggleFiboResistance', 'toggleSignal', 'toggleGrid'].forEach(id => {
-    const el = document.getElementById(id);
-    const saved = localStorage.getItem(id);
-    if (saved !== null && el) el.checked = (saved === 'true');
+    if (dd && dd.classList.contains('open') && !dd.contains(e.target)) {
+      dd.classList.remove('open');
+    }
   });
-}
 
-(function initLiveCheckboxState() {
-  const sel = document.getElementById('symbolIntervalSelect').value;
-  const liveCheckbox = document.getElementById('liveCheckbox');
-  liveCheckbox.disabled = !sel.includes('ONE_MINUTE');
-})();
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const dd = document.getElementById('optionsDropdown');
+      if (dd && dd.classList.contains('open')) dd.classList.remove('open');
+    }
+  });
 
-restoreToggleState();
-loadChart(document.getElementById('symbolIntervalSelect').value);
+  document.getElementById('refreshButton').addEventListener('click', () => {
+    loadChart(document.getElementById('symbolIntervalSelect').value);
+  });
+
+  function restoreToggleState() {
+    ['toggleAll', 'toggleSupport', 'toggleResistance', 'toggleFiboSupport', 'toggleFiboResistance', 'toggleSignal', 'toggleGrid'].forEach(id => {
+      const el = document.getElementById(id);
+      const saved = localStorage.getItem(id);
+      if (saved !== null && el) el.checked = (saved === 'true');
+    });
+  }
+
+  restoreToggleState();
+  loadChart(document.getElementById('symbolIntervalSelect').value);
 </script>
 </body>
 </html>
