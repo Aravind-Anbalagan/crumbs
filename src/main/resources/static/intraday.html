@@ -5,131 +5,227 @@
   <title>Chart with Live Visibility Toggle, Symbol & TimeFrame</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
+
     html, body, #container {
       margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
-      font-family: Arial, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+        Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background-color: #f9fafb;
+      color: #333;
     }
+
     #chart {
-      width: 100%; height: 100%;
+      width: 100%;
+      height: 100%;
       display: none;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
     }
+
     #loader {
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(255,255,255,0.9);
+      background: rgba(255,255,255,0.95);
       z-index: 10;
+      border-radius: 12px;
     }
+
     .spinner {
-      border: 8px solid #eee;
-      border-top: 8px solid #2196f3;
+      border: 6px solid #e0e0e0;
+      border-top: 6px solid #007BFF;
       border-radius: 50%;
-      width: 60px; height: 60px;
+      width: 48px; height: 48px;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     #error {
       position: absolute;
       top: 40%; left: 50%;
       transform: translate(-50%, -50%);
-      background: #fee;
-      color: #900;
+      background: #ffe6e6;
+      color: #cc0000;
       padding: 20px 30px;
-      border-radius: 8px;
-      font-weight: bold;
+      border-radius: 12px;
+      font-weight: 600;
       display: none;
       z-index: 20;
       max-width: 80vw;
       text-align: center;
+      font-size: 16px;
+      box-shadow: 0 4px 12px rgba(204,0,0,0.3);
     }
+
     #toolbar {
-      position: absolute;
-      top: 10px;
-      left: 170px;
-      z-index: 31;
-      background:rgba(255,255,255,0.98);
-      border-radius:5px;
-      padding:8px 16px;
-      box-shadow: 0 1px 8px rgba(0,0,0,0.09);
-      display:flex;
-      gap:18px;
-      align-items:center;
+  position: absolute;
+  top: 16px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 31;
+  background: #ffffffcc;
+  border-radius: 10px;
+  padding: 12px 20px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  font-size: 14px;
+  user-select: none;
+  width: auto;
+  max-width: 90vw;
+}
+
+#toolbar .center-group {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+
+    #toolbar label {
+  margin-right: 8px;
+  font-weight: 500;
+  color: #444;
+  line-height: 1.2;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+#toolbar select {
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  min-width: 100px;
+  height: 28px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  font-weight: 500;
+  color: #444;
+}
+
+
+    #toolbar select:hover, #toolbar button:hover,
+    #toolbar select:focus, #toolbar button:focus {
+      outline: none;
+      border-color: #007BFF;
+      box-shadow: 0 0 6px rgba(0, 123, 255, 0.5);
     }
-    #toolbar select, #toolbar label {
-      font-size:14px;
-      margin-right:9px;
+
+    #refreshButton, #settingsButton {
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      font-weight: 600;
+      min-width: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      user-select: none;
     }
+
+    #refreshButton:hover, #settingsButton:hover {
+      background-color: #0056b3;
+    }
+
     #settingsDropdown {
       position: absolute;
       top: 10px;
       left: 10px;
       z-index: 30;
+      user-select: none;
     }
-    #settingsButton {
-      padding: 6px 12px;
-      font-size: 14px;
-      cursor: pointer;
-    }
+
     #settingsMenu {
       display: none;
       position: absolute;
-      top: 32px;
+      top: 36px;
       left: 0;
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      padding: 10px;
-      min-width: 200px;
+      background: #ffffff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 14px 20px;
+      min-width: 240px;
+      font-size: 13px;
+      color: #333;
+      transition: opacity 0.3s ease;
     }
+
     #settingsMenu label {
       display: flex;
       align-items: center;
-      margin-bottom: 6px;
-      font-size: 13px;
+      margin-bottom: 10px;
       cursor: pointer;
+      user-select: none;
     }
+
     #settingsMenu label:last-child {
-      margin-bottom: 8px;
+      margin-bottom: 14px;
     }
+
     #settingsMenu input[type="checkbox"] {
-      margin-right: 8px;
+      margin-right: 10px;
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
     }
+
     #resetButton, #fitButton {
       display: block;
       width: 100%;
-      padding: 6px;
-      font-size: 13px;
-      background: #f5f5f5;
+      padding: 8px 0;
+      font-size: 14px;
+      background: #f4f6f8;
       border: 1px solid #ccc;
-      border-radius: 4px;
+      border-radius: 10px;
       cursor: pointer;
-      text-align: center;
-      margin-top: 4px;
+      font-weight: 600;
+      color: #444;
+      margin-top: 8px;
+      transition: background 0.25s ease;
+      user-select: none;
     }
+
     #fitButton {
-      background: #e3f2fd;
-      border: 1px solid #90caf9;
+      background: #007BFF;
+      color: white;
+      border-color: #0056b3;
     }
-    #resetButton:hover { background: #e0e0e0; }
-    #fitButton:hover { background: #bbdefb; }
+
+    #resetButton:hover {
+      background: #e0e0e0;
+    }
+
+    #fitButton:hover {
+      background: #0056b3;
+    }
   </style>
 </head>
 <body>
   <div id="container">
     <div id="toolbar">
-      <label for="symbolDropdown">Name:</label>
-      <select id="symbolDropdown">
-        <option value="NIFTY" selected>NIFTY</option>
-        <option value="CRUDEOIL">CRUDEOIL</option>
-      </select>
-      <label for="timeframeDropdown">TimeFrame:</label>
-      <select id="timeframeDropdown">
-        <option value="ONE_MINUTE">1 Min</option>
-        <option value="FIVE_MINUTE" selected>5 Min</option>
-        <option value="FIFTEEN_MINUTE">15 Min</option>
-      </select>
-      <button id="refreshButton" style="padding: 6px 12px; font-size: 14px; cursor: pointer;">Refresh</button>
-    </div>
+  <div class="center-group">
+    <label for="symbolDropdown">Name:</label>
+    <select id="symbolDropdown">
+      <option value="NIFTY" selected>NIFTY</option>
+      <option value="CRUDEOIL">CRUDEOIL</option>
+    </select>
+    <label for="timeframeDropdown">TimeFrame:</label>
+    <select id="timeframeDropdown">
+      <option value="ONE_MINUTE">1 Min</option>
+      <option value="FIVE_MINUTE" selected>5 Min</option>
+      <option value="FIFTEEN_MINUTE">15 Min</option>
+    </select>
+  </div>
+  <button id="refreshButton">Refresh</button>
+</div>
+
     <div id="chart"></div>
     <div id="loader"><div class="spinner"></div></div>
     <div id="error"></div>
@@ -166,10 +262,8 @@
   const fitButton = document.getElementById('fitButton');
   const symbolDropdown = document.getElementById('symbolDropdown');
   const timeframeDropdown = document.getElementById('timeframeDropdown');
-
   let selectedSymbol = symbolDropdown.value;
   let selectedTimeFrame = timeframeDropdown.value;
-
   symbolDropdown.addEventListener('change', () => {
     selectedSymbol = symbolDropdown.value;
     isFirstLoad = true;
@@ -179,10 +273,9 @@
   timeframeDropdown.addEventListener('change', () => {
     selectedTimeFrame = timeframeDropdown.value;
     isFirstLoad = true;
-    refresh(true); // Immediate API call
+    refresh(true);
     saveVisibility();
   });
-
   settingsButton.addEventListener('click', () => {
     settingsMenu.style.display = settingsMenu.style.display === 'block' ? 'none' : 'block';
   });
@@ -191,7 +284,6 @@
       settingsMenu.style.display = 'none';
     }
   });
-
   let chart, candleSeries, volumeSeries;
   let priceActionSupportLines = [];
   let priceActionResistanceLines = [];
@@ -202,7 +294,6 @@
   let lastData = null;
   let isFirstLoad = true;
   let refreshInterval = null;
-
   function saveVisibility() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       paSupport: togglePASupportCheckbox.checked,
@@ -216,7 +307,6 @@
       timeframe: selectedTimeFrame
     }));
   }
-
   function loadVisibility() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -229,7 +319,6 @@
         toggleSignalsCheckbox.checked = settings.signals !== false;
         toggleGridCheckbox.checked = settings.grid !== false;
         toggleLiveCheckbox.checked = settings.live !== false;
-        // Restore dropdowns with defaults if not set
         symbolDropdown.value = settings.symbol || "NIFTY";
         selectedSymbol = settings.symbol || "NIFTY";
         timeframeDropdown.value = settings.timeframe || "FIVE_MINUTE";
@@ -241,7 +330,6 @@
       setDefaults();
     }
   }
-
   function setDefaults() {
     togglePASupportCheckbox.checked = true;
     togglePAResistanceCheckbox.checked = true;
@@ -255,12 +343,10 @@
     timeframeDropdown.value = "FIVE_MINUTE";
     selectedTimeFrame = "FIVE_MINUTE";
   }
-
   function clearLines(lines) {
     lines.forEach(line => candleSeries.removePriceLine(line));
     return [];
   }
-
   function redrawLines() {
     if (!lastData) return;
     priceActionSupportLines = clearLines(priceActionSupportLines);
@@ -308,7 +394,6 @@
       }));
     }
   }
-
   togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
@@ -327,12 +412,10 @@
       }
     });
   });
-
   toggleLiveCheckbox.addEventListener('change', () => {
     saveVisibility();
     updateLiveStatus();
   });
-
   resetButton.addEventListener('click', () => {
     setDefaults();
     saveVisibility();
@@ -348,11 +431,9 @@
     }
     updateLiveStatus();
   });
-
   fitButton.addEventListener('click', () => {
     if (chart) chart.timeScale().fitContent();
   });
-
   function initChart() {
     if (chart) return;
     chart = LightweightCharts.createChart(chartEl, {
@@ -394,7 +475,6 @@
       lineWidth: 1,
     });
   }
-
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
@@ -430,14 +510,12 @@
     }
     candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   }
-
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
     const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
     return resp.json();
   }
-
   async function refresh(firstLoad = false) {
     if (firstLoad) {
       loaderEl.style.display = 'flex';
@@ -463,7 +541,6 @@
       errorEl.style.display = 'block';
     }
   }
-
   function updateLiveStatus() {
     if (toggleLiveCheckbox.checked) {
       refresh(false);
@@ -477,11 +554,9 @@
       }
     }
   }
-
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
   });
-
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       if (refreshInterval) {
@@ -495,40 +570,33 @@
       }
     }
   });
-  
   const refreshButton = document.getElementById('refreshButton');
-refreshButton.addEventListener('click', () => {
-  // Clear any existing refresh interval
-  if (refreshInterval) {
-    clearInterval(refreshInterval);
-    refreshInterval = null;
-  }
-  
-  // Reset first load to true for complete reinitialization
-  isFirstLoad = true;
-  
-  // Hide error and loader UI, then call refresh
-  errorEl.style.display = 'none';
-  loaderEl.style.display = 'flex';
-  chartEl.style.display = 'none';
-  
-  // Clear existing chart references so it will fully reinit on refresh
-  chart = null;
-  candleSeries = null;
-  volumeSeries = null;
-  
-  // Reinitiate data fetch and chart setup
-  refresh(true).then(() => {
-    // Restart live refresh if toggle is on
-    if (toggleLiveCheckbox.checked) {
-      refreshInterval = setInterval(() => refresh(false), 30000);
+  refreshButton.addEventListener('click', () => {
+    // Clear any existing refresh interval
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
     }
-  }).catch(() => {
-    // On error, refresh function handles UI state
+    // Reset first load to true for complete reinitialization
+    isFirstLoad = true;
+    // Hide error and loader UI, then call refresh
+    errorEl.style.display = 'none';
+    loaderEl.style.display = 'flex';
+    chartEl.style.display = 'none';
+    // Clear existing chart references so it will fully reinit on refresh
+    chart = null;
+    candleSeries = null;
+    volumeSeries = null;
+    // Reinitiate data fetch and chart setup
+    refresh(true).then(() => {
+      // Restart live refresh if toggle is on
+      if (toggleLiveCheckbox.checked) {
+        refreshInterval = setInterval(() => refresh(false), 30000);
+      }
+    }).catch(() => {
+      // On error, refresh function handles UI state
+    });
   });
-});
-
-
   loadVisibility();
   refresh(true);
   updateLiveStatus();
