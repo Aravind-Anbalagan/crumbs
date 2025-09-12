@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Chart with Live Visibility Toggle</title>
+  <title>Chart with Live Visibility Toggle, Symbol & TimeFrame</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     html, body, #container {
@@ -41,6 +41,23 @@
       max-width: 80vw;
       text-align: center;
     }
+    #toolbar {
+      position: absolute;
+      top: 10px;
+      left: 170px;
+      z-index: 31;
+      background:rgba(255,255,255,0.98);
+      border-radius:5px;
+      padding:8px 16px;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.09);
+      display:flex;
+      gap:18px;
+      align-items:center;
+    }
+    #toolbar select, #toolbar label {
+      font-size:14px;
+      margin-right:9px;
+    }
     #settingsDropdown {
       position: absolute;
       top: 10px;
@@ -77,8 +94,7 @@
     #settingsMenu input[type="checkbox"] {
       margin-right: 8px;
     }
-    /* Reset button styling */
-    #resetButton {
+    #resetButton, #fitButton {
       display: block;
       width: 100%;
       padding: 6px;
@@ -88,30 +104,33 @@
       border-radius: 4px;
       cursor: pointer;
       text-align: center;
-    }
-    #resetButton:hover {
-      background: #e0e0e0;
-    }
-    /* Fit button styling */
-    #fitButton {
-      display: block;
-      width: 100%;
-      padding: 6px;
-      font-size: 13px;
-      background: #e3f2fd;
-      border: 1px solid #90caf9;
-      border-radius: 4px;
-      cursor: pointer;
-      text-align: center;
       margin-top: 4px;
     }
-    #fitButton:hover {
-      background: #bbdefb;
+    #fitButton {
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
     }
+    #resetButton:hover { background: #e0e0e0; }
+    #fitButton:hover { background: #bbdefb; }
   </style>
 </head>
 <body>
   <div id="container">
+    <div id="toolbar">
+      <label for="symbolDropdown">Name:</label>
+      <select id="symbolDropdown">
+        <option value="NIFTY" selected>NIFTY</option>
+        <option value="CRUDEOIL">CRUDEOIL</option>
+      </select>
+      <label for="timeframeDropdown">TimeFrame:</label>
+      <select id="timeframeDropdown">
+        <option value="ONE_MINUTE">1 Min</option>
+        <option value="FIVE_MINUTE" selected>5 Min</option>
+        <option value="FIFTEEN_MINUTE">15 Min</option>
+        <option value="ONE_HOUR">1 Hour</option>
+        <option value="ONE_DAY">1 Day</option>
+      </select>
+    </div>
     <div id="chart"></div>
     <div id="loader"><div class="spinner"></div></div>
     <div id="error"></div>
@@ -146,6 +165,24 @@
   const toggleLiveCheckbox = document.getElementById('toggleLive');
   const resetButton = document.getElementById('resetButton');
   const fitButton = document.getElementById('fitButton');
+  const symbolDropdown = document.getElementById('symbolDropdown');
+  const timeframeDropdown = document.getElementById('timeframeDropdown');
+
+  let selectedSymbol = symbolDropdown.value;
+  let selectedTimeFrame = timeframeDropdown.value;
+
+  symbolDropdown.addEventListener('change', () => {
+    selectedSymbol = symbolDropdown.value;
+    isFirstLoad = true;
+    refresh(true);
+    saveVisibility();
+  });
+  timeframeDropdown.addEventListener('change', () => {
+    selectedTimeFrame = timeframeDropdown.value;
+    isFirstLoad = true;
+    refresh(true); // Immediate API call
+    saveVisibility();
+  });
 
   settingsButton.addEventListener('click', () => {
     settingsMenu.style.display = settingsMenu.style.display === 'block' ? 'none' : 'block';
@@ -175,7 +212,9 @@
       fiboResistance: toggleFiboResistanceCheckbox.checked,
       signals: toggleSignalsCheckbox.checked,
       grid: toggleGridCheckbox.checked,
-      live: toggleLiveCheckbox.checked
+      live: toggleLiveCheckbox.checked,
+      symbol: selectedSymbol,
+      timeframe: selectedTimeFrame
     }));
   }
 
@@ -191,6 +230,11 @@
         toggleSignalsCheckbox.checked = settings.signals !== false;
         toggleGridCheckbox.checked = settings.grid !== false;
         toggleLiveCheckbox.checked = settings.live !== false;
+        // Restore dropdowns with defaults if not set
+        symbolDropdown.value = settings.symbol || "NIFTY";
+        selectedSymbol = settings.symbol || "NIFTY";
+        timeframeDropdown.value = settings.timeframe || "FIVE_MINUTE";
+        selectedTimeFrame = settings.timeframe || "FIVE_MINUTE";
       } catch {
         setDefaults();
       }
@@ -207,6 +251,10 @@
     toggleSignalsCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
+    symbolDropdown.value = "NIFTY";
+    selectedSymbol = "NIFTY";
+    timeframeDropdown.value = "FIVE_MINUTE";
+    selectedTimeFrame = "FIVE_MINUTE";
   }
 
   function clearLines(lines) {
@@ -359,7 +407,7 @@
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       })));
       lastCandles = data.candles.slice();
-      chart.timeScale().fitContent(); // Only initial load fits chart
+      chart.timeScale().fitContent();
       isFirstLoad = false;
     } else {
       let lastCandle = data.candles[data.candles.length - 1];
@@ -370,7 +418,6 @@
         color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       });
       lastCandles = data.candles.slice();
-      // Do NOT call fitContent here, so zoom/scroll is preserved!
     }
     redrawLines();
     if (Array.isArray(data.signals)) {
@@ -385,7 +432,7 @@
     candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   }
 
-  async function fetchData(timeFrame = 'ONE_MINUTE', name = 'NIFTY') {
+  async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
     const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
@@ -399,13 +446,12 @@
       errorEl.style.display = 'none';
     }
     try {
-      const data = await fetchData();
+      const data = await fetchData(selectedTimeFrame, selectedSymbol);
       if (!chart) initChart();
       updateChart(data);
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
-      // Only resize here, DO NOT fitContent after initial
       setTimeout(() => {
         if (chart) {
           chart.resize(chartEl.clientWidth, chartEl.clientHeight);
@@ -435,7 +481,6 @@
 
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-    // Do not call fitContent here
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -446,7 +491,7 @@
       }
     } else {
       if (toggleLiveCheckbox.checked) {
-        refresh(false); // immediate fetch when back
+        refresh(false);
         refreshInterval = setInterval(() => refresh(false), 30000);
       }
     }
