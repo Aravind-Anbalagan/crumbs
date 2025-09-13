@@ -34,9 +34,7 @@
       width: 48px; height: 48px;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     #error {
       position: absolute;
       top: 40%; left: 50%;
@@ -70,20 +68,8 @@
       width: auto;
       max-width: 90vw;
     }
-    #toolbar .center-group {
-      display: flex;
-      gap: 20px;
-      align-items: center;
-    }
-    #toolbar label {
-      margin-right: 8px;
-      font-weight: 500;
-      color: #444;
-      line-height: 1.2;
-      height: 24px;
-      display: flex;
-      align-items: center;
-    }
+    #toolbar .center-group { display: flex; gap: 20px; align-items: center; }
+    #toolbar label { margin-right: 8px; font-weight: 500; color: #444; line-height: 1.2; height: 24px; display: flex; align-items: center; }
     #toolbar select {
       font-size: 13px;
       padding: 3px 10px;
@@ -114,21 +100,12 @@
       gap: 6px;
       user-select: none;
     }
-    #refreshButton:hover, #settingsButton:hover {
-      background-color: #0056b3;
-    }
-    #settingsDropdown {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 30;
-      user-select: none;
-    }
+    #refreshButton:hover, #settingsButton:hover { background-color: #0056b3; }
+    #settingsDropdown { position: absolute; top: 10px; left: 10px; z-index: 30; user-select: none; }
     #settingsMenu {
       display: none;
       position: absolute;
-      top: 36px;
-      left: 0;
+      top: 36px; left: 0;
       background: #ffffff;
       border: 1px solid #ddd;
       border-radius: 10px;
@@ -139,9 +116,7 @@
       color: #333;
       transition: opacity 0.3s ease;
     }
-    #settingsMenu.visible {
-      display: block;
-    }
+    #settingsMenu.visible { display: block; }
     #settingsMenu label {
       display: flex;
       align-items: center;
@@ -149,15 +124,8 @@
       cursor: pointer;
       user-select: none;
     }
-    #settingsMenu label:last-child {
-      margin-bottom: 14px;
-    }
-    #settingsMenu input[type="checkbox"] {
-      margin-right: 10px;
-      cursor: pointer;
-      width: 18px;
-      height: 18px;
-    }
+    #settingsMenu label:last-child { margin-bottom: 14px; }
+    #settingsMenu input[type="checkbox"] { margin-right: 10px; cursor: pointer; width: 18px; height: 18px; }
     #resetButton, #fitButton {
       display: block;
       width: 100%;
@@ -178,20 +146,14 @@
       color: white;
       border-color: #0056b3;
     }
-    #resetButton:hover {
-      background: #e0e0e0;
-    }
-    #fitButton:hover {
-      background: #0056b3;
-    }
+    #resetButton:hover { background: #e0e0e0; }
+    #fitButton:hover { background: #0056b3; }
   </style>
 </head>
 <body>
   <div id="container">
     <div id="toolbar">
       <div class="center-group">
-        <!-- Removed symbol dropdown since symbol comes from URL param -->
-        <!-- Kept only timeframe selector -->
         <label for="timeframeDropdown">TimeFrame:</label>
         <select id="timeframeDropdown">
           <option value="ONE_MINUTE">1 Min</option>
@@ -237,7 +199,6 @@
   const fitButton = document.getElementById('fitButton');
   const timeframeDropdown = document.getElementById('timeframeDropdown');
 
-  let selectedSymbol = null;  // Symbol is from URL parameter
   let selectedTimeFrame = timeframeDropdown.value;
   let chart, candleSeries, volumeSeries;
   let priceActionSupportLines = [];
@@ -250,9 +211,22 @@
   let isFirstLoad = true;
   let refreshInterval = null;
 
-  function getQueryParam(param) {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get(param);
+  function getAllApiParamsFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const apiParts = [];
+    for (const [key, value] of params.entries()) {
+      apiParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    }
+    return apiParts.join('&');
+  }
+
+  async function fetchData() {
+    const apiParams = getAllApiParamsFromUrl();
+    if (!apiParams) throw new Error('No parameters in URL!');
+    const apiUrl = `/api/data?${apiParams}`;
+    const resp = await fetch(apiUrl, { headers: { accept: 'application/json' } });
+    if (!resp.ok) throw new Error(`API error: ${resp.statusText}`);
+    return resp.json();
   }
 
   function saveVisibility() {
@@ -267,12 +241,8 @@
       timeframe: selectedTimeFrame
     }));
   }
-
   function loadVisibility() {
     const saved = localStorage.getItem(STORAGE_KEY);
-    let urlSymbol = getQueryParam('stock');
-    selectedSymbol = urlSymbol || null;
-
     if (saved) {
       try {
         const settings = JSON.parse(saved);
@@ -283,7 +253,6 @@
         toggleSignalsCheckbox.checked = settings.signals !== false;
         toggleGridCheckbox.checked = settings.grid !== false;
         toggleLiveCheckbox.checked = settings.live !== false;
-
         timeframeDropdown.value = settings.timeframe || "FIVE_MINUTE";
         selectedTimeFrame = settings.timeframe || "FIVE_MINUTE";
       } catch {
@@ -293,7 +262,6 @@
       setDefaults();
     }
   }
-
   function setDefaults() {
     togglePASupportCheckbox.checked = true;
     togglePAResistanceCheckbox.checked = true;
@@ -305,12 +273,10 @@
     timeframeDropdown.value = "FIVE_MINUTE";
     selectedTimeFrame = "FIVE_MINUTE";
   }
-
   function clearLines(lines) {
     lines.forEach(line => candleSeries.removePriceLine(line));
     return [];
   }
-
   function redrawLines() {
     if (!lastData) return;
     priceActionSupportLines = clearLines(priceActionSupportLines);
@@ -325,7 +291,7 @@
         lineStyle: LightweightCharts.LineStyle.Dashed,
         axisLabelVisible: true,
         title: 'Price Action Support'
-      }));
+      }));  
     }
     if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance) {
       priceActionResistanceLines = lastData.priceActionResistance.map(price => candleSeries.createPriceLine({
@@ -358,7 +324,6 @@
       }));
     }
   }
-
   togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
@@ -414,7 +379,6 @@
       chart = null;
     }
   }
-
   timeframeDropdown.addEventListener('change', () => {
     selectedTimeFrame = timeframeDropdown.value;
     clearChart();
@@ -422,7 +386,6 @@
     refresh(true);
     saveVisibility();
   });
-
   function initChart() {
     if (chart) return;
     chart = LightweightCharts.createChart(chartEl, {
@@ -464,7 +427,6 @@
       lineWidth: 1,
     });
   }
-
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
@@ -500,17 +462,6 @@
     }
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   }
-
-  async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
-    if (!name) {
-      throw new Error('Stock symbol missing in URL parameter');
-    }
-    const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-    return resp.json();
-  }
-
   async function refresh(firstLoad = false) {
     if (firstLoad) {
       loaderEl.style.display = 'flex';
@@ -518,7 +469,7 @@
       errorEl.style.display = 'none';
     }
     try {
-      const data = await fetchData(selectedTimeFrame, selectedSymbol);
+      const data = await fetchData();
       if (!chart) initChart();
       updateChart(data);
       loaderEl.style.display = 'none';
@@ -536,7 +487,6 @@
       errorEl.style.display = 'block';
     }
   }
-
   function updateLiveStatus() {
     if (toggleLiveCheckbox.checked) {
       refresh(false);
@@ -550,7 +500,6 @@
       }
     }
   }
-
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
   });
@@ -567,8 +516,6 @@
       }
     }
   });
-
-  const refreshButton = document.getElementById('refreshButton');
   refreshButton.addEventListener('click', () => {
     if (refreshInterval) {
       clearInterval(refreshInterval);
@@ -585,15 +532,21 @@
       }
     }).catch(() => {});
   });
-
   settingsButton.addEventListener('click', () => {
     settingsMenu.classList.toggle('visible');
   });
-
   document.addEventListener('click', e => {
     if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
       settingsMenu.classList.remove('visible');
     }
+  });
+
+  timeframeDropdown.addEventListener('change', () => {
+    selectedTimeFrame = timeframeDropdown.value;
+    clearChart();
+    isFirstLoad = true;
+    refresh(true);
+    saveVisibility();
   });
 
   loadVisibility();

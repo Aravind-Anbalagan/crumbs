@@ -130,7 +130,8 @@ public class StockController {
 	private void addCommonHeaders(DynamicIndicatorDTO dto, Indicator ind, String flag) {
 		dto.addHeader("name", ind.getName(), true);
 		dto.addHeader("price", ind.getCurrentPrice(), true);
-
+		dto.addHeader("exchange", ind.getExchange(), true);
+		dto.addHeader("symbol", ind.getTradingSymbol(), true);
 		if ("DAILY".equalsIgnoreCase(flag)) {
 			dto.addHeader("RSI", ind.getDailyRSI(), true);
 			dto.addHeader("20-MA", ind.getMovingavg20Flag(), true);

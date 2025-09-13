@@ -291,42 +291,31 @@ public class SRService {
 		return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "NSE";
 	}
 	
-	public List<CandleDTO> getcandleList()
-	{
-		List<CandleDTO> candles = new ArrayList<>();
-		List<PricesIndex> priceList = pricesIndexRepo.findAll();
+	public List<CandleDTO> getcandleList() {
+	    List<CandleDTO> candles = new ArrayList<>();
+	    List<PricesIndex> priceList = pricesIndexRepo.findAll();
 
-		ZoneId istZone = ZoneId.of("Asia/Kolkata");
-		LocalDate todayIST = LocalDate.now(istZone);
+	    ZoneId istZone = ZoneId.of("Asia/Kolkata");
 
-		for (PricesIndex p : priceList) {
-		    // Parse UTC timestamp
-		    Instant instant = Instant.parse(p.getTimestamp());
-		    ZonedDateTime istTime = instant.atZone(istZone);
+	    for (PricesIndex p : priceList) {
+	        // Parse UTC timestamp
+	        Instant instant = Instant.parse(p.getTimestamp());
+	        ZonedDateTime istTime = instant.atZone(istZone);
 
-		    // Only include today's candles
-		    if (!istTime.toLocalDate().isEqual(todayIST)) {
-		        continue;
-		    }
+	        // ✅ No date filter, include all candles
+	        CandleDTO candle = new CandleDTO();
+	        candle.setTime(istTime.toEpochSecond());
+	        candle.setOpen(p.getOpen());
+	        candle.setHigh(p.getHigh());
+	        candle.setLow(p.getLow());
+	        candle.setClose(p.getClose());
+	        candle.setVolume(p.getVolume() != null ? p.getVolume() : BigDecimal.ZERO);
 
-		    CandleDTO candle = new CandleDTO();
-		    candle.setTime(istTime.toEpochSecond());
-		    candle.setOpen(p.getOpen());
-		    candle.setHigh(p.getHigh());
-		    candle.setLow(p.getLow());
-		    candle.setClose(p.getClose());
-		    candle.setVolume(p.getVolume() != null ? p.getVolume() : BigDecimal.ZERO);
+	        candles.add(candle);
+	    }
 
-		    candles.add(candle);
-		}
-
-		// ✅ Keep only the last 20 candles
-		if (candles.size() > 50) {
-		    candles = candles.subList(candles.size() - 50, candles.size());
-		}
-
-
-
-		return candles;
+	    return candles;
 	}
+
+
 }

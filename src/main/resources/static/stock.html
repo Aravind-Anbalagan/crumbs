@@ -492,10 +492,11 @@ function renderTable() {
             const className = getColumnClass(key);
             if (className) td.classList.add(className);
             if (key === "chart") {
-                const stockName = row['name'] || row[visibleKeys.find(k => k.toLowerCase() === 'name')] || 'unknown';
-                const encodedName = encodeURIComponent(stockName);
+                const stockName = row['name'] || '';
+                const exchange = row['exchange'] || '';
+                const symbol = row['symbol'] || '';
                 const link = document.createElement("a");
-                link.href = `/chart.html?stock=${encodedName}`;
+                link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(stockName)}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
                 link.className = "chart-link";
                 link.textContent = "View Chart";
                 link.style.color = '#00a8ff';
