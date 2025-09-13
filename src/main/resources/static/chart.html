@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chart with Live Visibility Toggle and TimeFrame</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
+    html, body, #container {
+      margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+        Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background-color: #f9fafb;
+      color: #333;
+    }
+    #chart {
+      width: 100%;
+      height: 100%;
+      display: none;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    }
+    #loader {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.95);
+      z-index: 10;
+      border-radius: 12px;
+    }
+    .spinner {
+      border: 6px solid #e0e0e0;
+      border-top: 6px solid #007BFF;
+      border-radius: 50%;
+      width: 48px; height: 48px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #error {
+      position: absolute;
+      top: 40%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #ffe6e6;
+      color: #cc0000;
+      padding: 20px 30px;
+      border-radius: 12px;
+      font-weight: 600;
+      display: none;
+      z-index: 20;
+      max-width: 80vw;
+      text-align: center;
+      font-size: 16px;
+      box-shadow: 0 4px 12px rgba(204,0,0,0.3);
+    }
+    #toolbar {
+      position: absolute;
+      top: 16px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 31;
+      background: #ffffffcc;
+      border-radius: 10px;
+      padding: 12px 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      font-size: 14px;
+      user-select: none;
+      width: auto;
+      max-width: 90vw;
+    }
+    #toolbar .center-group {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    #toolbar label {
+      margin-right: 8px;
+      font-weight: 500;
+      color: #444;
+      line-height: 1.2;
+      height: 24px;
+      display: flex;
+      align-items: center;
+    }
+    #toolbar select {
+      font-size: 13px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      min-width: 100px;
+      height: 28px;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: box-shadow 0.3s ease, border-color 0.3s ease;
+      font-weight: 500;
+      color: #444;
+    }
+    #toolbar select:hover, #toolbar button:hover,
+    #toolbar select:focus, #toolbar button:focus {
+      outline: none;
+      border-color: #007BFF;
+      box-shadow: 0 0 6px rgba(0, 123, 255, 0.5);
+    }
+    #refreshButton, #settingsButton {
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      font-weight: 600;
+      min-width: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      user-select: none;
+    }
+    #refreshButton:hover, #settingsButton:hover {
+      background-color: #0056b3;
+    }
+    #settingsDropdown {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 30;
+      user-select: none;
+    }
+    #settingsMenu {
+      display: none;
+      position: absolute;
+      top: 36px;
+      left: 0;
+      background: #ffffff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 14px 20px;
+      min-width: 240px;
+      font-size: 13px;
+      color: #333;
+      transition: opacity 0.3s ease;
+    }
+    #settingsMenu.visible {
+      display: block;
+    }
+    #settingsMenu label {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+    #settingsMenu label:last-child {
+      margin-bottom: 14px;
+    }
+    #settingsMenu input[type="checkbox"] {
+      margin-right: 10px;
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
+    }
+    #resetButton, #fitButton {
+      display: block;
+      width: 100%;
+      padding: 8px 0;
+      font-size: 14px;
+      background: #f4f6f8;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #444;
+      margin-top: 8px;
+      transition: background 0.25s ease;
+      user-select: none;
+    }
+    #fitButton {
+      background: #007BFF;
+      color: white;
+      border-color: #0056b3;
+    }
+    #resetButton:hover {
+      background: #e0e0e0;
+    }
+    #fitButton:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="toolbar">
+      <div class="center-group">
+        <!-- Removed symbol dropdown since symbol comes from URL param -->
+        <!-- Kept only timeframe selector -->
+        <label for="timeframeDropdown">TimeFrame:</label>
+        <select id="timeframeDropdown">
+          <option value="ONE_MINUTE">1 Min</option>
+          <option value="FIVE_MINUTE" selected>5 Min</option>
+          <option value="FIFTEEN_MINUTE">15 Min</option>
+        </select>
+      </div>
+      <button id="refreshButton">Refresh</button>
+    </div>
+    <div id="chart"></div>
+    <div id="loader"><div class="spinner"></div></div>
+    <div id="error"></div>
+    <div id="settingsDropdown">
+      <button id="settingsButton">Settings ▼</button>
+      <div id="settingsMenu">
+        <label><input type="checkbox" id="togglePASupport" /> Price Action Support</label>
+        <label><input type="checkbox" id="togglePAResistance" /> Price Action Resistance</label>
+        <label><input type="checkbox" id="toggleFiboSupport" /> Fibonacci Support</label>
+        <label><input type="checkbox" id="toggleFiboResistance" /> Fibonacci Resistance</label>
+        <label><input type="checkbox" id="toggleSignals" /> Signals</label>
+        <label><input type="checkbox" id="toggleGrid" /> Grid</label>
+        <label><input type="checkbox" id="toggleLive" /> Live</label>
+        <button id="resetButton">Reset Defaults</button>
+        <button id="fitButton">Fit Chart</button>
+      </div>
+    </div>
+  </div>
+<script>
+  const STORAGE_KEY = 'chartComponentVisibilityLiveToggle';
+  const chartEl = document.getElementById('chart');
+  const loaderEl = document.getElementById('loader');
+  const errorEl = document.getElementById('error');
+  const settingsButton = document.getElementById('settingsButton');
+  const settingsMenu = document.getElementById('settingsMenu');
+  const togglePASupportCheckbox = document.getElementById('togglePASupport');
+  const togglePAResistanceCheckbox = document.getElementById('togglePAResistance');
+  const toggleFiboSupportCheckbox = document.getElementById('toggleFiboSupport');
+  const toggleFiboResistanceCheckbox = document.getElementById('toggleFiboResistance');
+  const toggleSignalsCheckbox = document.getElementById('toggleSignals');
+  const toggleGridCheckbox = document.getElementById('toggleGrid');
+  const toggleLiveCheckbox = document.getElementById('toggleLive');
+  const resetButton = document.getElementById('resetButton');
+  const fitButton = document.getElementById('fitButton');
+  const timeframeDropdown = document.getElementById('timeframeDropdown');
+
+  let selectedSymbol = null;  // Symbol is from URL parameter
+  let selectedTimeFrame = timeframeDropdown.value;
+  let chart, candleSeries, volumeSeries;
+  let priceActionSupportLines = [];
+  let priceActionResistanceLines = [];
+  let fiboSupportLines = [];
+  let fiboResistanceLines = [];
+  let lastCandles = [];
+  let lastSignals = [];
+  let lastData = null;
+  let isFirstLoad = true;
+  let refreshInterval = null;
+
+  function getQueryParam(param) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(param);
+  }
+
+  function saveVisibility() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      paSupport: togglePASupportCheckbox.checked,
+      paResistance: togglePAResistanceCheckbox.checked,
+      fiboSupport: toggleFiboSupportCheckbox.checked,
+      fiboResistance: toggleFiboResistanceCheckbox.checked,
+      signals: toggleSignalsCheckbox.checked,
+      grid: toggleGridCheckbox.checked,
+      live: toggleLiveCheckbox.checked,
+      timeframe: selectedTimeFrame
+    }));
+  }
+
+  function loadVisibility() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    let urlSymbol = getQueryParam('stock');
+    selectedSymbol = urlSymbol || null;
+
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+        togglePASupportCheckbox.checked = settings.paSupport !== false;
+        togglePAResistanceCheckbox.checked = settings.paResistance !== false;
+        toggleFiboSupportCheckbox.checked = settings.fiboSupport !== false;
+        toggleFiboResistanceCheckbox.checked = settings.fiboResistance !== false;
+        toggleSignalsCheckbox.checked = settings.signals !== false;
+        toggleGridCheckbox.checked = settings.grid !== false;
+        toggleLiveCheckbox.checked = settings.live !== false;
+
+        timeframeDropdown.value = settings.timeframe || "FIVE_MINUTE";
+        selectedTimeFrame = settings.timeframe || "FIVE_MINUTE";
+      } catch {
+        setDefaults();
+      }
+    } else {
+      setDefaults();
+    }
+  }
+
+  function setDefaults() {
+    togglePASupportCheckbox.checked = true;
+    togglePAResistanceCheckbox.checked = true;
+    toggleFiboSupportCheckbox.checked = true;
+    toggleFiboResistanceCheckbox.checked = true;
+    toggleSignalsCheckbox.checked = true;
+    toggleGridCheckbox.checked = true;
+    toggleLiveCheckbox.checked = true;
+    timeframeDropdown.value = "FIVE_MINUTE";
+    selectedTimeFrame = "FIVE_MINUTE";
+  }
+
+  function clearLines(lines) {
+    lines.forEach(line => candleSeries.removePriceLine(line));
+    return [];
+  }
+
+  function redrawLines() {
+    if (!lastData) return;
+    priceActionSupportLines = clearLines(priceActionSupportLines);
+    priceActionResistanceLines = clearLines(priceActionResistanceLines);
+    fiboSupportLines = clearLines(fiboSupportLines);
+    fiboResistanceLines = clearLines(fiboResistanceLines);
+    if (togglePASupportCheckbox.checked && lastData.priceActionSupport) {
+      priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({
+        price: Number(price),
+        color: 'green',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Price Action Support'
+      }));
+    }
+    if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance) {
+      priceActionResistanceLines = lastData.priceActionResistance.map(price => candleSeries.createPriceLine({
+        price: Number(price),
+        color: 'red',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Price Action Resistance'
+      }));
+    }
+    if (toggleFiboSupportCheckbox.checked && lastData.fiboSupport) {
+      fiboSupportLines = lastData.fiboSupport.map(levelObj => candleSeries.createPriceLine({
+        price: Number(levelObj.level),
+        color: 'blue',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: levelObj.label || 'Fibo Support'
+      }));
+    }
+    if (toggleFiboResistanceCheckbox.checked && lastData.fiboResistance) {
+      fiboResistanceLines = lastData.fiboResistance.map(levelObj => candleSeries.createPriceLine({
+        price: Number(levelObj.level),
+        color: 'orange',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: levelObj.label || 'Fibo Resistance'
+      }));
+    }
+  }
+
+  togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  toggleFiboResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  toggleSignalsCheckbox.addEventListener('change', () => {
+    saveVisibility();
+    if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+  });
+  toggleGridCheckbox.addEventListener('change', () => {
+    saveVisibility();
+    if (!chart) return;
+    chart.applyOptions({
+      grid: {
+        vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
+        horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
+      }
+    });
+  });
+  toggleLiveCheckbox.addEventListener('change', () => {
+    saveVisibility();
+    updateLiveStatus();
+  });
+  resetButton.addEventListener('click', () => {
+    setDefaults();
+    saveVisibility();
+    redrawLines();
+    if (chart) {
+      chart.applyOptions({
+        grid: {
+          vertLines: { visible: true, color: '#eee' },
+          horzLines: { visible: true, color: '#eee' }
+        }
+      });
+      if (candleSeries) candleSeries.setMarkers(lastSignals);
+    }
+    updateLiveStatus();
+  });
+  fitButton.addEventListener('click', () => {
+    if (chart) chart.timeScale().fitContent();
+  });
+
+  function clearChart() {
+    if (chart) {
+      if (candleSeries) {
+        chart.removeSeries(candleSeries);
+        candleSeries = null;
+      }
+      if (volumeSeries) {
+        chart.removeSeries(volumeSeries);
+        volumeSeries = null;
+      }
+      chart.remove();
+      chart = null;
+    }
+  }
+
+  timeframeDropdown.addEventListener('change', () => {
+    selectedTimeFrame = timeframeDropdown.value;
+    clearChart();
+    isFirstLoad = true;
+    refresh(true);
+    saveVisibility();
+  });
+
+  function initChart() {
+    if (chart) return;
+    chart = LightweightCharts.createChart(chartEl, {
+      width: chartEl.clientWidth,
+      height: chartEl.clientHeight,
+      layout: { backgroundColor: '#fff', textColor: '#000' },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+      timeScale: {
+        timeVisible: true,
+        rightOffset: 30,
+        barSpacing: 6,
+        minBarSpacing: 3,
+        borderColor: '#d1d4dc',
+        borderVisible: true
+      },
+      grid: {
+        vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
+        horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
+      }
+    });
+    candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+    chart.applyOptions({
+      priceScales: {
+        volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.98, bottom: 0 } }
+      },
+    });
+    volumeSeries = chart.addHistogramSeries({
+      color: 'rgba(38, 166, 154, 0.07)',
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+      scaleMargins: { top: 0.98, bottom: 0 },
+      overlay: true,
+      lineWidth: 1,
+    });
+  }
+
+  function updateChart(data) {
+    if (!data || !data.candles || !data.candles.length) return;
+    lastData = data;
+    if (isFirstLoad) {
+      candleSeries.setData(data.candles);
+      volumeSeries.setData(data.candles.map(c => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
+      })));
+      lastCandles = data.candles.slice();
+      chart.timeScale().fitContent();
+      isFirstLoad = false;
+    } else {
+      let lastCandle = data.candles[data.candles.length - 1];
+      candleSeries.update(lastCandle);
+      volumeSeries.update({
+        time: lastCandle.time,
+        value: lastCandle.volume,
+        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
+      });
+      lastCandles = data.candles.slice();
+    }
+    redrawLines();
+    if (Array.isArray(data.signals)) {
+      lastSignals = data.signals.map(signal => ({
+        time: signal.time,
+        position: 'aboveBar',
+        color: signal.type === 'buy' ? 'green' : 'red',
+        shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+        text: signal.type.toUpperCase()
+      }));
+    }
+    if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+  }
+
+  async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
+    if (!name) {
+      throw new Error('Stock symbol missing in URL parameter');
+    }
+    const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    return resp.json();
+  }
+
+  async function refresh(firstLoad = false) {
+    if (firstLoad) {
+      loaderEl.style.display = 'flex';
+      chartEl.style.display = 'none';
+      errorEl.style.display = 'none';
+    }
+    try {
+      const data = await fetchData(selectedTimeFrame, selectedSymbol);
+      if (!chart) initChart();
+      updateChart(data);
+      loaderEl.style.display = 'none';
+      errorEl.style.display = 'none';
+      chartEl.style.display = 'block';
+      setTimeout(() => {
+        if (chart) {
+          chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+        }
+      }, 50);
+    } catch (e) {
+      loaderEl.style.display = 'none';
+      chartEl.style.display = 'none';
+      errorEl.textContent = e.message;
+      errorEl.style.display = 'block';
+    }
+  }
+
+  function updateLiveStatus() {
+    if (toggleLiveCheckbox.checked) {
+      refresh(false);
+      if (!refreshInterval) {
+        refreshInterval = setInterval(() => refresh(false), 30000);
+      }
+    } else {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+    }
+  }
+
+  window.addEventListener('resize', () => {
+    if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+    } else {
+      if (toggleLiveCheckbox.checked) {
+        refresh(false);
+        refreshInterval = setInterval(() => refresh(false), 30000);
+      }
+    }
+  });
+
+  const refreshButton = document.getElementById('refreshButton');
+  refreshButton.addEventListener('click', () => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+    }
+    isFirstLoad = true;
+    errorEl.style.display = 'none';
+    loaderEl.style.display = 'flex';
+    chartEl.style.display = 'none';
+    clearChart();
+    refresh(true).then(() => {
+      if (toggleLiveCheckbox.checked) {
+        refreshInterval = setInterval(() => refresh(false), 30000);
+      }
+    }).catch(() => {});
+  });
+
+  settingsButton.addEventListener('click', () => {
+    settingsMenu.classList.toggle('visible');
+  });
+
+  document.addEventListener('click', e => {
+    if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
+      settingsMenu.classList.remove('visible');
+    }
+  });
+
+  loadVisibility();
+  refresh(true);
+  updateLiveStatus();
+</script>
+</body>
+</html>

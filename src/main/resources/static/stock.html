@@ -1,7 +1,5 @@
-<!-- Saved as: stock-indicators.html -->
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,7 +16,6 @@
       --bg-col-ai: #ffeaea;
       --bg-col-combine: #e0f7fa;
     }
-
     body.dark-mode {
       background-color: #1e1e1e;
       color: #f5f5f5;
@@ -31,14 +28,12 @@
       --bg-col-ai: #4d2c2c;
       --bg-col-combine: #264d4f;
     }
-
     body {
       font-family: Arial, sans-serif;
       padding: 12px;
       margin: 0;
       background-color: #f9f9f9;
     }
-
     .toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -46,19 +41,16 @@
       gap: 8px;
       margin-bottom: 8px;
     }
-
     .controls {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
       align-items: center;
     }
-
     .column-dropdown {
       position: relative;
       display: inline-block;
     }
-
     .column-dropdown button {
       padding: 5px 10px;
       border: 1px solid #ccc;
@@ -66,7 +58,6 @@
       border-radius: 4px;
       cursor: pointer;
     }
-
     .column-dropdown-content {
       display: none;
       position: absolute;
@@ -79,17 +70,14 @@
       z-index: 10;
       padding: 8px;
     }
-
     .column-dropdown.show .column-dropdown-content {
       display: block;
     }
-
     body.dark-mode .column-dropdown-content {
       background-color: #2c2c2c;
       color: #f5f5f5;
       border-color: #777;
     }
-
     .refresh-btn,
     .theme-toggle {
       padding: 5px 10px;
@@ -98,11 +86,9 @@
       border: 1px solid #ccc;
       background: #f9f9f9;
     }
-
     .theme-toggle {
       margin-left: auto;
     }
-
     input[type="text"],
     select {
       padding: 5px;
@@ -111,7 +97,6 @@
       border-radius: 4px;
       border: 1px solid #ccc;
     }
-
     .table-container {
       width: 100%;
       overflow-x: auto;
@@ -119,13 +104,11 @@
       border-radius: 6px;
       margin-top: 8px;
     }
-
     table {
       width: 100%;
       border-collapse: collapse;
       table-layout: auto;
     }
-
     th,
     td {
       border: 1px solid #999;
@@ -134,88 +117,72 @@
       word-break: break-word;
       font-size: var(--table-font-size);
     }
-
     thead th {
       position: sticky;
       top: 0;
       background: inherit;
       z-index: 2;
     }
-
     th {
       font-weight: bold;
       cursor: pointer;
       position: relative;
       padding-right: 18px;
     }
-
     th.sort-asc::after {
       content: " \25B2";
     }
-
     th.sort-desc::after {
       content: " \25BC";
     }
-
     th.col-name,
     td.col-name {
       background-color: var(--bg-col-name) !important;
     }
-
     th.col-price,
     td.col-price {
       background-color: var(--bg-col-price) !important;
     }
-
     th.col-dailysr,
     td.col-dailysr {
       background-color: var(--bg-col-dailysr) !important;
     }
-
     th.sr,
     td.sr {
       background-color: var(--bg-col-sr) !important;
     }
-
     th.fibo,
     td.fibo {
       background-color: var(--bg-col-fibo) !important;
     }
-
     th.ma,
     td.ma {
       background-color: var(--bg-col-ma) !important;
     }
-
     th.ai,
     td.ai {
       background-color: var(--bg-col-ai) !important;
     }
-
     th.combine,
     td.combine {
       background-color: var(--bg-col-combine) !important;
     }
-
     body.dark-mode table,
     body.dark-mode th,
     body.dark-mode td {
       border-color: #555;
     }
-
     body.dark-mode th,
     body.dark-mode td {
       background-color: #2c2c2c;
       color: #f5f5f5;
     }
-
     body.dark-mode input,
     body.dark-mode select {
       background-color: #2c2c2c;
       color: #f5f5f5;
       border: 1px solid #777;
     }
-
     #pagination {
       margin-top: 10px;
       display: flex;
@@ -224,7 +191,6 @@
       justify-content: center;
       align-items: center;
     }
-
     .page-link {
       cursor: pointer;
       padding: 4px 8px;
@@ -233,12 +199,10 @@
       border-radius: 4px;
       user-select: none;
     }
-
     .page-link.active {
       font-weight: bold;
       background: #e0e0e0;
     }
-
     #loader {
       display: none;
       position: fixed;
@@ -254,7 +218,6 @@
       flex-direction: column;
       font-size: 16px;
     }
-
     .spinner {
       width: 40px;
       height: 40px;
@@ -263,17 +226,14 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-
     @keyframes spin {
       0% {
         transform: rotate(0deg);
       }
-
       100% {
         transform: rotate(360deg);
       }
     }
-
     @media (max-width: 700px) {
       table,
       thead,
@@ -283,11 +243,9 @@
       tr {
         display: block;
       }
-
       thead {
         display: none;
       }
-
       tr {
         margin-bottom: 1rem;
         border: 1px solid #ccc;
@@ -295,14 +253,12 @@
         padding: 6px;
         background: #fff;
       }
-
       td {
         padding-left: 50%;
         position: relative;
         border: none;
         border-bottom: 1px solid #ddd;
       }
-
       td::before {
         position: absolute;
         top: 6px;
@@ -312,19 +268,16 @@
         white-space: nowrap;
         content: attr(data-label);
       }
-
       .toolbar {
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
       }
     }
-
     h1,
     h2 {
       margin: 4px 0;
     }
-
     #errorMessage {
       color: #b00020;
       background: #fdecea;
@@ -336,7 +289,6 @@
     }
   </style>
 </head>
-
 <body>
   <div class="toolbar">
     <div class="controls">
@@ -352,25 +304,20 @@
         <option value="COMBINE">Combine</option>
         <option value="INTRADAY">Intraday</option>
       </select>
-
       <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
-<select id="secondaryFilter" onchange="loadTable()">
-  <option value="ALL">All</option>
-  <option value="FIRST BUY">First Buy</option>
-  <option value="FIRST SELL">First Sell</option>
-</select>
-
+      <select id="secondaryFilter" onchange="loadTable()">
+        <option value="ALL">All</option>
+        <option value="FIRST BUY">First Buy</option>
+        <option value="FIRST SELL">First Sell</option>
+      </select>
       <button class="refresh-btn" onclick="resetTable()">🧹 Reset</button>
-
       <div class="column-dropdown" id="columnDropdown">
         <button onclick="toggleColumnDropdown()">☰ Hide Columns</button>
         <div class="column-dropdown-content" id="columnTogglePanel"></div>
       </div>
-
       <label for="search">Filter:</label>
       <input type="text" id="search" placeholder="Search..." onkeyup="filterTable()" autocomplete="off" />
     </div>
-
     <div style="margin-left:auto; display:flex; gap:5px; flex-wrap:wrap;">
       <button class="refresh-btn" onclick="zoomIn()">➕ A</button>
       <button class="refresh-btn" onclick="zoomOut()">➖ A</button>
@@ -378,9 +325,7 @@
       <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
   </div>
-
   <div id="errorMessage" role="alert"></div>
-
   <div class="table-container">
     <table id="stocksTable">
       <thead>
@@ -389,37 +334,30 @@
       <tbody id="tableBody"></tbody>
     </table>
   </div>
-
   <div id="pagination"></div>
-
   <div id="loader">
     <div class="spinner"></div>
     <div style="margin-top: 12px;">Loading data...</div>
   </div>
-
 <script>
 let tableData = [], filteredData = [], visibleKeys = [];
 let sortState = { column: null, order: null };
 let currentPage = 1, currentFontSize = 14;
 const rowsPerPage = 10;
 let columnVisibility = {};
-
 // --- FONT SIZE / ZOOM ---
 function updateFontSize() {
     document.documentElement.style.setProperty('--table-font-size', `${currentFontSize}px`);
     localStorage.setItem('tableFontSize', currentFontSize);
 }
-
 function zoomIn() { if (currentFontSize < 24) { currentFontSize++; updateFontSize(); } }
 function zoomOut() { if (currentFontSize > 8) { currentFontSize--; updateFontSize(); } }
 function resetZoom() { currentFontSize = 14; updateFontSize(); }
-
 // --- LOAD TABLE DATA ---
 function updateSecondaryFilter() {
     const tf = document.getElementById("timeframe").value;
     const label = document.getElementById("secondaryFilterLabel");
     const select = document.getElementById("secondaryFilter");
-
     select.innerHTML = ""; // clear old options
     if (tf === "INTRADAY") {
         label.textContent = "Trend:";
@@ -439,21 +377,15 @@ function updateSecondaryFilter() {
         });
     }
 }
-
 async function loadTable() {
     const timeframe = document.getElementById("timeframe").value;
     const filter = document.getElementById("secondaryFilter").value;
-
-    // 👇 NEW: read radio button
     const selected = document.querySelector('input[name="optionFilter"]:checked').value;
-    const optionFlag = (selected === "OPTIONS"); // true only when Options selected
-
+    const optionFlag = (selected === "OPTIONS");
     const loader = document.getElementById("loader");
     const errorDiv = document.getElementById("errorMessage");
-
     errorDiv.style.display = "none";
     loader.style.display = "flex";
-
     try {
         let url;
         if (timeframe === "INTRADAY") {
@@ -461,20 +393,21 @@ async function loadTable() {
         } else {
             url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
         }
-
         const res = await fetch(url);
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         if (!data.length) throw new Error("No stock data found for the selected filters.");
-
         visibleKeys = Object.entries(data[0].headers)
             .filter(([_, val]) => val[1])
             .map(([key]) => key);
-
-        tableData = data.map(row => Object.fromEntries(visibleKeys.map(k => [k, row.headers[k][0]])));
+        // Add chart column key manually if not present
+        if (!visibleKeys.includes('chart')) {
+            visibleKeys.push('chart');
+            columnVisibility['chart'] = true;
+        }
+        tableData = data.map(row => Object.fromEntries(visibleKeys.map(k => [k, row.headers[k] ? row.headers[k][0] : ''])));
         filteredData = [...tableData];
         currentPage = 1;
-
         generateColumnToggles();
         renderTable();
     } catch (err) {
@@ -485,16 +418,12 @@ async function loadTable() {
         loader.style.display = "none";
     }
 }
-
-
-
 // --- COLUMN TOGGLE PANEL ---
 function generateColumnToggles() {
     const panel = document.getElementById("columnTogglePanel");
     panel.innerHTML = "";
     visibleKeys.forEach(key => {
         if (!(key in columnVisibility)) columnVisibility[key] = true;
-
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
@@ -508,7 +437,6 @@ function generateColumnToggles() {
         panel.appendChild(label);
     });
 }
-
 // --- COLUMN CLASS HELPER ---
 function getColumnClass(key) {
     const lowerKey = key.toLowerCase();
@@ -520,15 +448,14 @@ function getColumnClass(key) {
     if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
     if (lowerKey.includes("ai")) return "ai";
     if (lowerKey.includes("combine")) return "combine";
+    if (lowerKey === "chart") return "";  // no special class for chart column
     return "";
 }
-
 // --- RENDER TABLE ---
 function renderTable() {
     const head = document.getElementById("tableHead");
     const body = document.getElementById("tableBody");
     head.innerHTML = body.innerHTML = "";
-
     // HEADERS
     visibleKeys.forEach(key => {
         if (!columnVisibility[key]) return;
@@ -542,19 +469,17 @@ function renderTable() {
         }
         head.appendChild(th);
     });
-
     // NO DATA
     if (!filteredData.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = visibleKeys.length || 1;
+        td.colSpan = visibleKeys.filter(k => columnVisibility[k]).length || 1;
         td.textContent = "No records found.";
         td.style.textAlign = "center";
         tr.appendChild(td);
         body.appendChild(tr);
         return;
     }
-
     // PAGE DATA
     const start = (currentPage - 1) * rowsPerPage;
     const end = currentPage * rowsPerPage;
@@ -564,24 +489,34 @@ function renderTable() {
             if (!columnVisibility[key]) return;
             const td = document.createElement("td");
             td.setAttribute("data-label", formatHeader(key));
-            td.textContent = row[key];
             const className = getColumnClass(key);
             if (className) td.classList.add(className);
+            if (key === "chart") {
+                const stockName = row['name'] || row[visibleKeys.find(k => k.toLowerCase() === 'name')] || 'unknown';
+                const encodedName = encodeURIComponent(stockName);
+                const link = document.createElement("a");
+                link.href = `/chart.html?stock=${encodedName}`;
+                link.className = "chart-link";
+                link.textContent = "View Chart";
+                link.style.color = '#00a8ff';
+                link.style.fontWeight = '600';
+                link.style.cursor = 'pointer';
+                td.appendChild(link);
+            } else {
+                td.textContent = row[key];
+            }
             tr.appendChild(td);
         });
         body.appendChild(tr);
     });
-
     renderPagination();
 }
-
 // --- PAGINATION ---
 function renderPagination() {
     const totalPages = Math.ceil(filteredData.length / rowsPerPage);
     const container = document.getElementById("pagination");
     container.innerHTML = "";
     if (totalPages <= 1) return;
-
     const createLink = (label, page, active = false) => {
         const btn = document.createElement("button");
         btn.textContent = label;
@@ -589,21 +524,32 @@ function renderPagination() {
         btn.onclick = () => { currentPage = page; renderTable(); };
         return btn;
     };
-
     if (currentPage > 1) container.append(createLink("« First", 1), createLink("Prev", currentPage - 1));
-
     let start = Math.max(1, currentPage - 2);
     let end = Math.min(totalPages, currentPage + 2);
     if (currentPage <= 3) end = Math.min(5, totalPages);
     if (currentPage >= totalPages - 2) start = Math.max(totalPages - 4, 1);
-
-    if (start > 1) { container.append(createLink(1, 1)); if (start > 2) container.append(document.createElement("span").textContent = "..."); }
+    if (start > 1) {
+        container.append(createLink(1, 1));
+        if (start > 2) {
+            const span = document.createElement("span");
+            span.textContent = "...";
+            span.style.margin = "0 4px";
+            container.appendChild(span);
+        }
+    }
     for (let i = start; i <= end; i++) container.append(createLink(i, i, i === currentPage));
-    if (end < totalPages) { if (end < totalPages - 1) container.append(document.createElement("span").textContent = "..."); container.append(createLink(totalPages, totalPages)); }
-
+    if (end < totalPages) {
+        if (end < totalPages - 1) {
+            const span = document.createElement("span");
+            span.textContent = "...";
+            span.style.margin = "0 4px";
+            container.appendChild(span);
+        }
+        container.append(createLink(totalPages, totalPages));
+    }
     if (currentPage < totalPages) container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
 }
-
 // --- SORT ---
 function sortTableByColumn(col) {
     const isAsc = sortState.column === col && sortState.order === 'asc';
@@ -618,7 +564,6 @@ function sortTableByColumn(col) {
     currentPage = 1;
     renderTable();
 }
-
 // --- FILTER ---
 function filterTable() {
     const keyword = document.getElementById("search").value.toLowerCase();
@@ -626,60 +571,61 @@ function filterTable() {
     currentPage = 1;
     renderTable();
 }
-
 // --- RESET TABLE ---
 function resetTable() {
     document.getElementById("timeframe").value = "DAILY";
-    document.getElementById("heikinPsarFilter").value = "ALL";
+    document.getElementById("secondaryFilter").value = "ALL";
     document.getElementById("search").value = "";
     document.getElementById("errorMessage").style.display = "none";
     currentPage = 1;
     loadTable();
 }
-
 // --- ERROR MESSAGE ---
 function showError(msg) {
     const errDiv = document.getElementById("errorMessage");
     errDiv.innerText = msg;
     errDiv.style.display = "block";
 }
-
 // --- FORMAT HEADER ---
 function formatHeader(key) {
     return key.replace(/[_\s]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
-
 // --- COLUMN DROPDOWN ---
 function toggleColumnDropdown() {
     document.getElementById("columnDropdown").classList.toggle("show");
 }
-
 // --- THEME ---
 function toggleTheme() {
     document.body.classList.toggle("dark-mode");
     localStorage.setItem('theme', document.body.classList.contains("dark-mode") ? 'dark' : 'light');
 }
-
 // --- INITIAL SETTINGS ---
 document.addEventListener("DOMContentLoaded", () => {
     const storedFont = parseInt(localStorage.getItem('tableFontSize'));
     if (storedFont) { currentFontSize = storedFont; updateFontSize(); }
     const theme = localStorage.getItem('theme');
     if (theme === 'dark') document.body.classList.add("dark-mode");
-
-    // 👇 NEW: reload table when radio button changes
     document.querySelectorAll('input[name="optionFilter"]').forEach(radio => {
         radio.addEventListener("change", () => {
-            currentPage = 1;   // reset pagination
+            currentPage = 1;
             loadTable();
         });
     });
-
-    loadTable(); // initial load
+    loadTable();
 });
-
+// --- CHART LINK CLICK HANDLER ---
+document.addEventListener('click', function(event) {
+    const target = event.target;
+    if (target.classList.contains('chart-link')) {
+        event.preventDefault();
+        const url = target.href;
+        if (window.parent && window.parent !== window) {
+            window.parent.document.getElementById('contentFrame').src = url;
+        } else {
+            window.location.href = url;
+        }
+    }
+});
 </script>
-
 </body>
-
 </html>

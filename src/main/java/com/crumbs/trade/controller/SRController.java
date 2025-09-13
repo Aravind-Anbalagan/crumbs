@@ -49,7 +49,7 @@ public class SRController {
 			@RequestParam(name = "useToday", required = false, defaultValue = "false") boolean useToday) {
 		
 
-		return srService.getPriceAction(timeFrame,name,exchange);
+		return srService.getPriceAction(timeFrame,name,exchange,null);
 	}
 	
 	@GetMapping("/getChart")

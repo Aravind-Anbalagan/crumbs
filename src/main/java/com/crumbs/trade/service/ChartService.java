@@ -98,7 +98,7 @@ public class ChartService {
 	/*
 	 * Get JsonDetail
 	 */
-	public JSONArray getJsonDetails(Strategy strategy, String type, boolean testflag, String fromDate, String toDate,
+	public JSONArray getJsonDetails(Indexes indexes, String type, boolean testflag, String fromDate, String toDate,
 			String timeFrame) {
 		try {
 			SmartConnect smartConnect = angelOne.signIn();
@@ -114,8 +114,8 @@ public class ChartService {
 			// BigDecimal(String.valueOf(jsonObject.get("ltp")));
 			JSONArray responseArray = new JSONArray();
 			JSONObject requestObejct = new JSONObject();
-			requestObejct.put("exchange", strategy.getExchange());
-			requestObejct.put("symboltoken", strategy.getToken());
+			requestObejct.put("exchange", indexes.getExchange());
+			requestObejct.put("symboltoken", indexes.getToken());
 			requestObejct.put("interval", timeFrame);
 			requestObejct.put("fromdate", fromDate);
 			requestObejct.put("todate", toDate);
@@ -124,7 +124,7 @@ public class ChartService {
 			// logger.info("fromdate " + fromDate + "todate ", toDate);
 			return responseArray;
 		} catch (Exception ex) {
-			logger.error("Error occured in getJsonDetails() {} ", strategy.getName());
+			logger.error("Error occured in getJsonDetails() {} ", indexes.getName());
 		}
 		return null;
 
@@ -203,12 +203,12 @@ public class ChartService {
 	// 2.HeikinAchi + psar store
 	// 3. Monitor the signal
 	public String readChartData(String timeFrame, String type, boolean testflag, String name, String fromDate,
-			String toDate) throws SmartAPIException {
+			String toDate,String symbol) throws SmartAPIException {
 		try {
-
+			Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
 			Strategy strategy = getTokenDetails(name, type);
 			if (strategy.getName() != null) {
-				readCandle(strategy, type, testflag, timeFrame, name, fromDate, toDate,"HEIKIN_PSAR");
+				readCandle(indexes, type, testflag, timeFrame, name, fromDate, toDate,"HEIKIN_PSAR");
 				List<Candlestick> heikinAshiList = heikinAshiIndicator
 						.calculateHeikinAshiCandles(getValuesAsList(name));
 				if (heikinAshiList != null && !heikinAshiList.isEmpty()) {
@@ -275,11 +275,11 @@ public class ChartService {
 		return null;
 	}
 
-	public void readCandle(Strategy strategy, String type, boolean testflag, String timeFrame, String name,
+	public void readCandle(Indexes indexes, String type, boolean testflag, String timeFrame, String name,
 			String fromDate, String toDate, String tableName) {
-		if (strategy != null) {
+		if (indexes != null) {
 
-			JSONArray responseArray = getJsonDetails(strategy, type, testflag, fromDate, toDate, timeFrame);
+			JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
 			if (responseArray != null) {
 				responseArray.forEach(item -> {
 
@@ -288,11 +288,11 @@ public class ChartService {
 					if (ohlc != null) {
 						if("HEIKIN_PSAR".equalsIgnoreCase(tableName))
 						{
-							saveCandleData(ohlc, name, strategy);
+							saveCandleData(ohlc, name);
 						}
 						else
 						{
-							saveCandleData_Index(ohlc, tableName, strategy);
+							saveCandleData_Index(ohlc, tableName,indexes.getExchange());
 						}
 
 					}
@@ -304,7 +304,7 @@ public class ChartService {
 	/*
 	 * Save Candle Data
 	 */
-	public void saveCandleData(OHLC ohlc, String name, Strategy strategy) {
+	public void saveCandleData(OHLC ohlc, String name) {
 		Vix vix = new Vix();
 		vix.setTimestamp(ohlc.getTimestamp());
 		vix.setClose(ohlc.getClose());
@@ -318,7 +318,7 @@ public class ChartService {
 		// getTrendLine(strategy, vix);
 		vixRepo.save(vix);
 	}
-	public void saveCandleData_Index(OHLC ohlc, String name, Strategy strategy) {
+	public void saveCandleData_Index(OHLC ohlc, String name,String exchange) {
 		PricesIndex vix = new PricesIndex();
 		vix.setTimestamp(formatTime(ohlc.getTimestamp()));
 		vix.setClose(ohlc.getClose());
@@ -330,7 +330,7 @@ public class ChartService {
 		vix.setRange(ohlc.getRange());
 		vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
 		// getTrendLine(strategy, vix);
-		vix.setExchange(strategy.getExchange());
+		vix.setExchange(exchange);
 		pricesIndexRepo.save(vix);
 	}
 	
@@ -497,7 +497,7 @@ public class ChartService {
 			resultVix = new ResultVix();
 			
 			//PR Updates
-			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
 			if(pr!=null)
 			{
 				resultVix.setPriceAction(pr.getSr_signal());
@@ -535,7 +535,7 @@ public class ChartService {
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (!type.equalsIgnoreCase(resultVix.getCombine()) && !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine()))) {
 			//PR Updates
-			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
 			if(pr!=null)
 			{
 				resultVix.setPriceAction(pr.getSr_signal());

@@ -97,22 +97,21 @@ public class SRService {
 
 	
 	public List<PricesIndex> getCandleData(CandleRequestDto candleRequestDto,
-			String name, String exchange)
+			String name, String symbol)
 	{
-		Strategy strategy = chartService.getTokenDetails(name, exchange);
-		BigDecimal currentPrice = getCurrentPriceForIndex(strategy);
-		if (strategy.getName() != null) {
-			chartService.readCandle(strategy, candleRequestDto.getType() , false, candleRequestDto.getTimeFrame(), candleRequestDto.getName(),
+		Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
+		if (indexes != null) {
+			chartService.readCandle(indexes, candleRequestDto.getType() , false, candleRequestDto.getTimeFrame(), candleRequestDto.getName(),
 					candleRequestDto.getFromDate(), candleRequestDto.getToDate(),name);
 			return pricesIndexRepo.findAll();
 		}
 		return null;
 	}
 	
-	public BigDecimal getCurrentPriceForIndex(Strategy strategy)
+	public BigDecimal getCurrentPriceForIndex(String name, String symbol)
 	{
 		SmartConnect smartConnect = angelOne.signIn();
-		Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), strategy.getTradingsymbol());
+		Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
 		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartConnect, indexes.getExchange(),
 				indexes.getSymbol(), indexes.getToken());
 		return currentPrice;
@@ -223,23 +222,22 @@ public class SRService {
 	
 	
 	
-	public PriceActionResult getPriceAction(String timeFrame, String name, String exchange) {
+	public PriceActionResult getPriceAction(String timeFrame, String name, String exchange, String symbol) {
 		// Mock OHLCV candles
 		pricesIndexRepo.deleteAll();
 
-		CandleRequestDto candle = getCandleTiming(timeFrame, exchange);
+		
+		 //Step : 1 Time Period of the given stock/index
+		CandleRequestDto candle = getCandleTiming(timeFrame,exchange);
 
-		List<PricesIndex> candles = getCandleData(candle, name, exchange);
+		//Step 2 : Read candle data
+		List<PricesIndex> candles = getCandleData(candle, name, symbol);
 
 		if (candles != null && !candles.isEmpty()) {
-			Strategy strategy = chartService.getTokenDetails(name, exchange);
-			BigDecimal currentPrice = getCurrentPriceForIndex(strategy);
-
+			
+			BigDecimal currentPrice = getCurrentPriceForIndex(name,symbol);
 			PriceActionResult pa = priceActionService.analyze(currentPrice, candles, timeFrame);
 			
-			if (pa != null) {
-				saveJson(pa);
-			}
 			return pa;
 		}
 		logger.error("Unable to get price action for {} ", name);
@@ -247,25 +245,13 @@ public class SRService {
 
 	}
 	
-	@Transactional
-	public void saveJson(PriceActionResult pa) {
-		Gson gson = new Gson();
-		Optional<Chart> chartOptional = chartRepo.findById(1L);
-		if (chartOptional.isPresent()) {
-			Chart chart = chartOptional.get();
-			String jsonString = gson.toJson(pa);
-			chart.setJson(jsonString);
-			chartRepo.save(chart);
-		}
-
-	}
 	
 	@Transactional
 	public Signals getSignals(String name, String type) {
 		//PR Updates
 		Strategy strategy = getTokenDetails(name, type);
 		Signals signal = new Signals();
-		PriceActionResult pr= getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange());
+		PriceActionResult pr= getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(), strategy.getTradingsymbol());
 		if(pr!=null)
 		{
 			String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
@@ -302,7 +288,7 @@ public class SRService {
 	}
 	
 	public String getExchange(String input) {
-		return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "MCX";
+		return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "NSE";
 	}
 	
 	public List<CandleDTO> getcandleList()

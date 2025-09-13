@@ -118,11 +118,12 @@ public class ChartController {
     
     @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChartDataDTO getChartData(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
-			@RequestParam(name = "name") String name) {
+			@RequestParam(name = "name") String name,
+			@RequestParam(name = "exchange") String exchange,
+			@RequestParam(name = "symbol") String symbol) {
     	
-    	//Get the Exchange value
-    	String exchange = srService.getExchange(name);
-    	PriceActionResult priceActionResult = srService.getPriceAction(timeFrame,name,exchange);
+    
+    	PriceActionResult priceActionResult = srService.getPriceAction(timeFrame,name,exchange,symbol);
     
     	List<CandleDTO> candles = List.of(
             createCandle(1694343300L, "19550", "19575", "19540", "19565", "1500"),
@@ -133,21 +134,7 @@ public class ChartController {
     	candles = srService.getcandleList();
         List<BigDecimal> priceActionSupport = priceActionResult.getSr_nearestSupports();
 
-        List<BigDecimal> priceActionResistance = List.of(
-            new BigDecimal("19575"),
-            new BigDecimal("19600")
-        );
-
-        List<FibonacciLevel> fiboSupport = List.of(
-            new FibonacciLevel(new BigDecimal("19530"), "Fibo 38.2%"),
-            new FibonacciLevel(new BigDecimal("19545"), "Fibo 50%")
-        );
-
-        List<FibonacciLevel> fiboResistance = List.of(
-            new FibonacciLevel(new BigDecimal("19585"), "Fibo 61.8%"),
-            new FibonacciLevel(new BigDecimal("19610"), "Fibo 78.6%")
-        );
-
+       
         List<SignalDTO> signals = List.of(
             createSignal(1694343360L, "buy"),
             createSignal(1694343420L, "sell")

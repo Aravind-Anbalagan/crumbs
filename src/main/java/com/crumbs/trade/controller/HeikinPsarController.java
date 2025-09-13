@@ -108,12 +108,12 @@ public class HeikinPsarController {
 		vixRepo.deleteAll();// Must delete
 		// VIX
 		if (strategyRepo.findByName("VIX").getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "NSE", false, "VIX", fromDate, toDate);
+			chartService.readChartData("FIVE_MINUTE", "NSE", false, "VIX", fromDate, toDate,strategyRepo.findByName("VIX").getTradingsymbol());
 		}
 
 		// NIFTY
 		if (strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate);
+			chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,strategyRepo.findByName("NIFTY").getTradingsymbol());
 			chartService.monitorSignal("NIFTY", "NFO", false, 0);
 			srService.getSignals("NIFTY", "NFO");
 		}
@@ -133,7 +133,7 @@ public class HeikinPsarController {
 		
         //FUT
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "MCX", false, "CRUDEOIL", fromDate, toDate);
+			chartService.readChartData("FIVE_MINUTE", "MCX", false, "CRUDEOIL", fromDate, toDate,strategyRepo.findByName("CRUDEOIL").getTradingsymbol());
 			chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
 			srService.getSignals("CRUDEOIL", "MCX");
 		}
