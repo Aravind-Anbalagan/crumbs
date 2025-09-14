@@ -507,7 +507,7 @@
   }
 
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
-    const url = `/api/data?timeFrame=${timeFrame}&name=${name}`;
+    const url = `/api/intraday?timeFrame=${timeFrame}&name=${name}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
     return resp.json();

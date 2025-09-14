@@ -288,7 +288,7 @@ public class SRService {
 	}
 	
 	public String getExchange(String input) {
-		return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "NSE";
+		return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "MCX";
 	}
 	
 	public List<CandleDTO> getcandleList() {

@@ -19,6 +19,7 @@ import com.crumbs.trade.dto.FibonacciLevel;
 import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SignalDTO;
 import com.crumbs.trade.entity.PricesIndex;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.SRService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -30,6 +31,9 @@ public class ChartController {
 
 	@Autowired
 	SRService srService;
+	
+	@Autowired
+	StrategyRepo strategyRepo;
 	
     @GetMapping("/stock-data")
     public ResponseEntity<?> getStockData() {
@@ -150,6 +154,41 @@ public class ChartController {
 
         return dto;
     }
+    
+    @GetMapping(value = "/intraday", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ChartDataDTO getChartData(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
+			@RequestParam(name = "name") String name) {
+    	
+        String symbol = strategyRepo.findByName(name).getTradingsymbol();
+        String exchange = srService.getExchange(name);
+    	PriceActionResult priceActionResult = srService.getPriceAction(timeFrame,name,exchange,symbol);
+    
+    	List<CandleDTO> candles = List.of(
+            createCandle(1694343300L, "19550", "19575", "19540", "19565", "1500"),
+            createCandle(1694343360L, "19565", "19580", "19555", "19570", "2200"),
+            createCandle(1694343460L, "19565", "19580", "19555", "19570", "3200"),
+            createCandle(1694343560L, "19565", "19580", "19555", "19570", "5200")
+        );
+    	candles = srService.getcandleList();
+        List<BigDecimal> priceActionSupport = priceActionResult.getSr_nearestSupports();
+
+       
+        List<SignalDTO> signals = List.of(
+            createSignal(1694343360L, "buy"),
+            createSignal(1694343420L, "sell")
+        );
+
+        ChartDataDTO dto = new ChartDataDTO();
+        dto.setCandles(candles);
+        dto.setPriceActionSupport(priceActionResult.getSr_nearestSupports());
+        dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
+        dto.setFiboSupport(priceActionResult.getFibo_supports());
+        dto.setFiboResistance(priceActionResult.getFibo_resistances());
+        //dto.setSignals(signals);
+
+        return dto;
+    }
+    
 
     private CandleDTO createCandle(long time, String open, String high, String low, String close, String volume) {
         CandleDTO candle = new CandleDTO();

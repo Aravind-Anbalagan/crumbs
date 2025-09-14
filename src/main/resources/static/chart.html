@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Chart with Live Visibility Toggle and TimeFrame</title>
+  <title>Trading Chart with TimeFrame and Component Toggles</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
     html, body, #container {
       margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-        Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
       background-color: #f9fafb;
       color: #333;
     }
@@ -157,8 +157,9 @@
         <label for="timeframeDropdown">TimeFrame:</label>
         <select id="timeframeDropdown">
           <option value="ONE_MINUTE">1 Min</option>
-          <option value="FIVE_MINUTE" selected>5 Min</option>
+          <option value="FIVE_MINUTE">5 Min</option>
           <option value="FIFTEEN_MINUTE">15 Min</option>
+          <option value="ONE_DAY">1 Day</option>
         </select>
       </div>
       <button id="refreshButton">Refresh</button>
@@ -199,7 +200,33 @@
   const fitButton = document.getElementById('fitButton');
   const timeframeDropdown = document.getElementById('timeframeDropdown');
 
-  let selectedTimeFrame = timeframeDropdown.value;
+  // Load selectedTimeFrame prioritizing URL param first (if valid),
+  // ignore localStorage on initial load if URL param present
+  const urlParams = new URLSearchParams(window.location.search);
+  let selectedTimeFrame = null;
+  const urlTimeFrame = urlParams.get('timeFrame');
+  if (urlTimeFrame && Array.from(timeframeDropdown.options).some(opt => opt.value === urlTimeFrame)) {
+    selectedTimeFrame = urlTimeFrame;
+    timeframeDropdown.value = urlTimeFrame;
+  } else {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+        if (settings.timeframe && Array.from(timeframeDropdown.options).some(opt => opt.value === settings.timeframe)) {
+          selectedTimeFrame = settings.timeframe;
+          timeframeDropdown.value = settings.timeframe;
+        } else {
+          selectedTimeFrame = timeframeDropdown.value;
+        }
+      } catch {
+        selectedTimeFrame = timeframeDropdown.value;
+      }
+    } else {
+      selectedTimeFrame = timeframeDropdown.value;
+    }
+  }
+
   let chart, candleSeries, volumeSeries;
   let priceActionSupportLines = [];
   let priceActionResistanceLines = [];
@@ -211,19 +238,10 @@
   let isFirstLoad = true;
   let refreshInterval = null;
 
-  function getAllApiParamsFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    const apiParts = [];
-    for (const [key, value] of params.entries()) {
-      apiParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
-    }
-    return apiParts.join('&');
-  }
-
   async function fetchData() {
-    const apiParams = getAllApiParamsFromUrl();
-    if (!apiParams) throw new Error('No parameters in URL!');
-    const apiUrl = `/api/data?${apiParams}`;
+    const params = new URLSearchParams(window.location.search);
+    params.set('timeFrame', selectedTimeFrame);
+    const apiUrl = `/api/data?${params.toString()}`;
     const resp = await fetch(apiUrl, { headers: { accept: 'application/json' } });
     if (!resp.ok) throw new Error(`API error: ${resp.statusText}`);
     return resp.json();
@@ -241,6 +259,7 @@
       timeframe: selectedTimeFrame
     }));
   }
+
   function loadVisibility() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -253,8 +272,8 @@
         toggleSignalsCheckbox.checked = settings.signals !== false;
         toggleGridCheckbox.checked = settings.grid !== false;
         toggleLiveCheckbox.checked = settings.live !== false;
-        timeframeDropdown.value = settings.timeframe || "FIVE_MINUTE";
-        selectedTimeFrame = settings.timeframe || "FIVE_MINUTE";
+        timeframeDropdown.value = settings.timeframe || selectedTimeFrame;
+        selectedTimeFrame = settings.timeframe || selectedTimeFrame;
       } catch {
         setDefaults();
       }
@@ -270,13 +289,14 @@
     toggleSignalsCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
-    timeframeDropdown.value = "FIVE_MINUTE";
-    selectedTimeFrame = "FIVE_MINUTE";
+    timeframeDropdown.value = selectedTimeFrame;
   }
+
   function clearLines(lines) {
     lines.forEach(line => candleSeries.removePriceLine(line));
     return [];
   }
+
   function redrawLines() {
     if (!lastData) return;
     priceActionSupportLines = clearLines(priceActionSupportLines);
@@ -291,7 +311,7 @@
         lineStyle: LightweightCharts.LineStyle.Dashed,
         axisLabelVisible: true,
         title: 'Price Action Support'
-      }));  
+      }));
     }
     if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance) {
       priceActionResistanceLines = lastData.priceActionResistance.map(price => candleSeries.createPriceLine({
@@ -324,6 +344,7 @@
       }));
     }
   }
+
   togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
@@ -379,13 +400,17 @@
       chart = null;
     }
   }
+
   timeframeDropdown.addEventListener('change', () => {
     selectedTimeFrame = timeframeDropdown.value;
+    urlParams.set('timeFrame', selectedTimeFrame);
+    history.replaceState(null, '', `${window.location.pathname}?${urlParams.toString()}`);
     clearChart();
     isFirstLoad = true;
     refresh(true);
     saveVisibility();
   });
+
   function initChart() {
     if (chart) return;
     chart = LightweightCharts.createChart(chartEl, {
@@ -427,6 +452,7 @@
       lineWidth: 1,
     });
   }
+
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
@@ -462,6 +488,7 @@
     }
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   }
+
   async function refresh(firstLoad = false) {
     if (firstLoad) {
       loaderEl.style.display = 'flex';
@@ -487,6 +514,7 @@
       errorEl.style.display = 'block';
     }
   }
+
   function updateLiveStatus() {
     if (toggleLiveCheckbox.checked) {
       refresh(false);
@@ -500,23 +528,22 @@
       }
     }
   }
+
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
   });
+
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
-      }
-    } else {
-      if (toggleLiveCheckbox.checked) {
-        refresh(false);
-        refreshInterval = setInterval(() => refresh(false), 30000);
-      }
+    if (document.hidden && refreshInterval) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+    } else if (toggleLiveCheckbox.checked) {
+      refresh(false);
+      refreshInterval = setInterval(() => refresh(false), 30000);
     }
   });
-  refreshButton.addEventListener('click', () => {
+
+  document.getElementById('refreshButton').addEventListener('click', () => {
     if (refreshInterval) {
       clearInterval(refreshInterval);
       refreshInterval = null;
@@ -532,23 +559,18 @@
       }
     }).catch(() => {});
   });
+
   settingsButton.addEventListener('click', () => {
     settingsMenu.classList.toggle('visible');
   });
+
   document.addEventListener('click', e => {
     if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
       settingsMenu.classList.remove('visible');
     }
   });
 
-  timeframeDropdown.addEventListener('change', () => {
-    selectedTimeFrame = timeframeDropdown.value;
-    clearChart();
-    isFirstLoad = true;
-    refresh(true);
-    saveVisibility();
-  });
-
+  // Initialize
   loadVisibility();
   refresh(true);
   updateLiveStatus();
