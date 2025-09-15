@@ -52,11 +52,6 @@ public class SRController {
 		return srService.getPriceAction(timeFrame,name,exchange,null);
 	}
 	
-	@GetMapping("/getChart")
-	public String getChartDetails() {
-		
-		return srService.getChartDetails();
-	}
 	
 	@GetMapping("/getCandleList")
 	public List<PricesIndex> getCandleData() {
