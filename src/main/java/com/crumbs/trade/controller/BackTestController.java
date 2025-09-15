@@ -48,7 +48,7 @@ public class BackTestController {
 		resultVixRepo.deleteAll();
 		//List<String> times = generateTimes(fromDate, toDate);
 		String result = null;
-		result = chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate);
+		result = chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,null);
 		if (!"No Data Found".equalsIgnoreCase(result)) {
 			for (int i = vixRepo.findAll().size() - 3; i > 0; i--) {
 				
