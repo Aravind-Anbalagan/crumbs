@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Trading Chart with TimeFrame and Component Toggles</title>
+  <title>Trading Chart with Component Toggles</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
@@ -70,24 +70,6 @@
     }
     #toolbar .center-group { display: flex; gap: 20px; align-items: center; }
     #toolbar label { margin-right: 8px; font-weight: 500; color: #444; line-height: 1.2; height: 24px; display: flex; align-items: center; }
-    #toolbar select {
-      font-size: 13px;
-      padding: 3px 10px;
-      border-radius: 6px;
-      min-width: 100px;
-      height: 28px;
-      line-height: 1.2;
-      cursor: pointer;
-      transition: box-shadow 0.3s ease, border-color 0.3s ease;
-      font-weight: 500;
-      color: #444;
-    }
-    #toolbar select:hover, #toolbar button:hover,
-    #toolbar select:focus, #toolbar button:focus {
-      outline: none;
-      border-color: #007BFF;
-      box-shadow: 0 0 6px rgba(0, 123, 255, 0.5);
-    }
     #refreshButton, #settingsButton {
       background-color: #007BFF;
       color: white;
@@ -154,15 +136,9 @@
   <div id="container">
     <div id="toolbar">
       <div class="center-group">
-        <label for="timeframeDropdown">TimeFrame:</label>
-        <select id="timeframeDropdown">
-          <option value="ONE_MINUTE">1 Min</option>
-          <option value="FIVE_MINUTE">5 Min</option>
-          <option value="FIFTEEN_MINUTE">15 Min</option>
-          <option value="ONE_DAY">1 Day</option>
-        </select>
+        <!-- NO timeframe dropdown here -->
+        <button id="refreshButton">Refresh</button>
       </div>
-      <button id="refreshButton">Refresh</button>
     </div>
     <div id="chart"></div>
     <div id="loader"><div class="spinner"></div></div>
@@ -198,34 +174,9 @@
   const toggleLiveCheckbox = document.getElementById('toggleLive');
   const resetButton = document.getElementById('resetButton');
   const fitButton = document.getElementById('fitButton');
-  const timeframeDropdown = document.getElementById('timeframeDropdown');
 
-  // Load selectedTimeFrame prioritizing URL param first (if valid),
-  // ignore localStorage on initial load if URL param present
-  const urlParams = new URLSearchParams(window.location.search);
-  let selectedTimeFrame = null;
-  const urlTimeFrame = urlParams.get('timeFrame');
-  if (urlTimeFrame && Array.from(timeframeDropdown.options).some(opt => opt.value === urlTimeFrame)) {
-    selectedTimeFrame = urlTimeFrame;
-    timeframeDropdown.value = urlTimeFrame;
-  } else {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const settings = JSON.parse(saved);
-        if (settings.timeframe && Array.from(timeframeDropdown.options).some(opt => opt.value === settings.timeframe)) {
-          selectedTimeFrame = settings.timeframe;
-          timeframeDropdown.value = settings.timeframe;
-        } else {
-          selectedTimeFrame = timeframeDropdown.value;
-        }
-      } catch {
-        selectedTimeFrame = timeframeDropdown.value;
-      }
-    } else {
-      selectedTimeFrame = timeframeDropdown.value;
-    }
-  }
+  // Set timeframe from parent (window.timeFrame should be set externally)
+  let selectedTimeFrame = window.timeFrame || 'ONE_DAY';
 
   let chart, candleSeries, volumeSeries;
   let priceActionSupportLines = [];
@@ -239,13 +190,12 @@
   let refreshInterval = null;
 
   async function fetchData() {
-    const params = new URLSearchParams(window.location.search);
-    params.set('timeFrame', selectedTimeFrame);
-    const apiUrl = `/api/data?${params.toString()}`;
-    const resp = await fetch(apiUrl, { headers: { accept: 'application/json' } });
-    if (!resp.ok) throw new Error(`API error: ${resp.statusText}`);
-    return resp.json();
-  }
+  const apiUrl = `/api/data${window.location.search}`;
+  const resp = await fetch(apiUrl, { headers: { accept: 'application/json' } });
+  if (!resp.ok) throw new Error(`API error: ${resp.statusText}`);
+  return resp.json();
+}
+
 
   function saveVisibility() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -255,11 +205,10 @@
       fiboResistance: toggleFiboResistanceCheckbox.checked,
       signals: toggleSignalsCheckbox.checked,
       grid: toggleGridCheckbox.checked,
-      live: toggleLiveCheckbox.checked,
-      timeframe: selectedTimeFrame
+      live: toggleLiveCheckbox.checked
+      // NOTE: No timeframe persistence here
     }));
   }
-
   function loadVisibility() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -272,8 +221,6 @@
         toggleSignalsCheckbox.checked = settings.signals !== false;
         toggleGridCheckbox.checked = settings.grid !== false;
         toggleLiveCheckbox.checked = settings.live !== false;
-        timeframeDropdown.value = settings.timeframe || selectedTimeFrame;
-        selectedTimeFrame = settings.timeframe || selectedTimeFrame;
       } catch {
         setDefaults();
       }
@@ -289,14 +236,11 @@
     toggleSignalsCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
-    timeframeDropdown.value = selectedTimeFrame;
   }
-
   function clearLines(lines) {
     lines.forEach(line => candleSeries.removePriceLine(line));
     return [];
   }
-
   function redrawLines() {
     if (!lastData) return;
     priceActionSupportLines = clearLines(priceActionSupportLines);
@@ -344,7 +288,6 @@
       }));
     }
   }
-
   togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
@@ -385,7 +328,6 @@
   fitButton.addEventListener('click', () => {
     if (chart) chart.timeScale().fitContent();
   });
-
   function clearChart() {
     if (chart) {
       if (candleSeries) {
@@ -400,17 +342,6 @@
       chart = null;
     }
   }
-
-  timeframeDropdown.addEventListener('change', () => {
-    selectedTimeFrame = timeframeDropdown.value;
-    urlParams.set('timeFrame', selectedTimeFrame);
-    history.replaceState(null, '', `${window.location.pathname}?${urlParams.toString()}`);
-    clearChart();
-    isFirstLoad = true;
-    refresh(true);
-    saveVisibility();
-  });
-
   function initChart() {
     if (chart) return;
     chart = LightweightCharts.createChart(chartEl, {
@@ -452,7 +383,6 @@
       lineWidth: 1,
     });
   }
-
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
@@ -488,7 +418,6 @@
     }
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   }
-
   async function refresh(firstLoad = false) {
     if (firstLoad) {
       loaderEl.style.display = 'flex';
@@ -514,7 +443,6 @@
       errorEl.style.display = 'block';
     }
   }
-
   function updateLiveStatus() {
     if (toggleLiveCheckbox.checked) {
       refresh(false);
@@ -528,11 +456,9 @@
       }
     }
   }
-
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
   });
-
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && refreshInterval) {
       clearInterval(refreshInterval);
@@ -542,7 +468,6 @@
       refreshInterval = setInterval(() => refresh(false), 30000);
     }
   });
-
   document.getElementById('refreshButton').addEventListener('click', () => {
     if (refreshInterval) {
       clearInterval(refreshInterval);
@@ -559,17 +484,14 @@
       }
     }).catch(() => {});
   });
-
   settingsButton.addEventListener('click', () => {
     settingsMenu.classList.toggle('visible');
   });
-
   document.addEventListener('click', e => {
     if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
       settingsMenu.classList.remove('visible');
     }
   });
-
   // Initialize
   loadVisibility();
   refresh(true);
