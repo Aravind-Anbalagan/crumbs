@@ -250,12 +250,17 @@ public class SRService {
 	public Signals getSignals(String name, String type) {
 	    Strategy strategy = getTokenDetails(name, type);
 	    Signals signal = new Signals();
-	    PriceActionResult pr = getPriceAction("FIVE_MINUTE", strategy.getName(),
-	                                          strategy.getExchange(), strategy.getTradingsymbol());
+
+	    PriceActionResult pr = getPriceAction(
+	            "FIVE_MINUTE",
+	            strategy.getName(),
+	            strategy.getExchange(),
+	            strategy.getTradingsymbol()
+	    );
 
 	    if (pr != null) {
-	        String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
-	                                .format(Calendar.getInstance().getTime());
+	        String currentDate = LocalDateTime.now()
+	                .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
 
 	        BigDecimal currentPrice = pr.getCurrentPrice();
 	        BigDecimal buffer = currentPrice.multiply(BigDecimal.valueOf(0.003)); // 0.3% tolerance
@@ -263,7 +268,7 @@ public class SRService {
 	        // --- Collect supports ---
 	        List<BigDecimal> supports = new ArrayList<>();
 	        if (pr.getSr_nearestSupports() != null) {
-	            pr.getSr_nearestSupports().forEach(s -> supports.add(s));
+	            supports.addAll(pr.getSr_nearestSupports());
 	        }
 	        if (pr.getFibo_supports() != null) {
 	            pr.getFibo_supports().forEach(f -> supports.add(f.getLevel()));
@@ -272,48 +277,55 @@ public class SRService {
 	        // --- Collect resistances ---
 	        List<BigDecimal> resistances = new ArrayList<>();
 	        if (pr.getSr_nearestResistances() != null) {
-	            pr.getSr_nearestResistances().forEach(r -> resistances.add(r));
+	            resistances.addAll(pr.getSr_nearestResistances());
 	        }
 	        if (pr.getFibo_resistances() != null) {
 	            pr.getFibo_resistances().forEach(f -> resistances.add(f.getLevel()));
 	        }
 
-	        // --- Find nearest support ---
+	        // --- Find nearest support (must be below or equal to currentPrice) ---
 	        BigDecimal nearestSupport = supports.stream()
-	                .min((a, b) -> a.subtract(currentPrice).abs().compareTo(b.subtract(currentPrice).abs()))
+	                .filter(s -> s.compareTo(currentPrice) <= 0)
+	                .max(Comparator.naturalOrder())
 	                .orElse(null);
 
-	        // --- Find nearest resistance ---
+	        // --- Find nearest resistance (must be above or equal to currentPrice) ---
 	        BigDecimal nearestResistance = resistances.stream()
-	                .min((a, b) -> a.subtract(currentPrice).abs().compareTo(b.subtract(currentPrice).abs()))
+	                .filter(r -> r.compareTo(currentPrice) >= 0)
+	                .min(Comparator.naturalOrder())
 	                .orElse(null);
 
-	        String finalSignal = "HOLD"; // default
+	        // --- Default signal ---
+	        String finalSignal = "HOLD";
 
-	        if (nearestSupport != null) {
-	            BigDecimal diffSupport = currentPrice.subtract(nearestSupport).abs();
-	            if (diffSupport.compareTo(buffer) <= 0 && currentPrice.compareTo(nearestSupport) >= 0) {
-	                finalSignal = "BUY";
-	            }
+	        // --- Check conditions ---
+	        boolean nearSupport = nearestSupport != null &&
+	                currentPrice.subtract(nearestSupport).compareTo(buffer) <= 0;
+
+	        boolean nearResistance = nearestResistance != null &&
+	                nearestResistance.subtract(currentPrice).compareTo(buffer) <= 0;
+
+	        if (nearSupport && nearResistance) {
+	            finalSignal = "HOLD"; // stuck in range, avoid false signals
+	        } else if (nearSupport) {
+	            finalSignal = "BUY";
+	        } else if (nearResistance) {
+	            finalSignal = "SELL";
 	        }
 
-	        if (nearestResistance != null) {
-	            BigDecimal diffResistance = currentPrice.subtract(nearestResistance).abs();
-	            if (diffResistance.compareTo(buffer) <= 0 && currentPrice.compareTo(nearestResistance) <= 0) {
-	                finalSignal = "SELL";
-	            }
-	        }
-
-	        signal.setPriceAction(pr.getSr_signal()); // optional: keep for debugging
-	        signal.setFibo(pr.getFibo_signal());      // optional: keep for debugging
+	        // --- Build Signal object ---
+	        signal.setPriceAction(pr.getSr_signal()); // optional: debugging
+	        signal.setFibo(pr.getFibo_signal());      // optional: debugging
 	        signal.setFinals(finalSignal);
 	        signal.setName(name);
 	        signal.setCreatedAt(currentDate);
 
 	        signalRepo.save(signal);
 	    }
+
 	    return signal;
 	}
+
 
 
 	
