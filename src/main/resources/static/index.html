@@ -107,14 +107,16 @@
       text-align: center;
       position: relative;
     }
-    .login-modal input[type="text"] {
-      width: 80%;
-      margin: 12px 0 20px 0;
-      padding: 10px;
-      border-radius: 5px;
-      border: 1px solid #c3c7cb;
-      font-size: 1rem;
-    }
+    .login-modal input[type="password"] {
+  width: 100%;
+  max-width: 400px;
+  padding: 12px 16px;
+  font-size: 1.1rem;
+  border-radius: 6px;
+  border: 1px solid #c3c7cb;
+  box-sizing: border-box;
+}
+
     .login-modal button {
       padding: 10px 24px;
       background: #00a8ff;
@@ -148,7 +150,7 @@
   <div id="loginPopup">
     <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
       <h2 id="loginTitle">Enter Login Code</h2>
-      <input id="loginCodeInput" type="text" maxlength="15" autocomplete="off" placeholder="Static code" aria-label="Login Code" />
+      <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Static code" aria-label="Login Code" />
       <button id="loginBtn" type="button">Login</button>
       <div class="error" id="loginError">Invalid code. Try again.</div>
     </div>
