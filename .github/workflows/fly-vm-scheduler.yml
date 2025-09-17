@@ -25,7 +25,7 @@ jobs:
       - name: Start Fly.io VM
         run: |
           echo "Starting Fly.io VM..."
-          curl -s -X POST "https://api.machines.dev/v1/apps/crumbs/machines/78156d1c5ede38/start" \
+          curl -s -X POST "https://api.machines.dev/v1/apps/crumbs/machines/81107ef9746418/start" \
           -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
           -H "Content-Type: application/json"
           echo "Start request sent."
@@ -37,7 +37,7 @@ jobs:
       - name: Stop Fly.io VM
         run: |
           echo "Stopping Fly.io VM..."
-          curl -s -X POST "https://api.machines.dev/v1/apps/crumbs/machines/78156d1c5ede38/stop" \
+          curl -s -X POST "https://api.machines.dev/v1/apps/crumbs/machines/81107ef9746418/stop" \
           -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
           -H "Content-Type: application/json"
           echo "Stop request sent."
