@@ -57,6 +57,8 @@
       position: relative;
       width: 100%;
       height: calc(100vh - 50px);
+      pointer-events: none;
+      opacity: 0.5;
     }
     #contentFrame {
       width: 100%;
@@ -82,9 +84,75 @@
       0% { transform: translate(-50%, -50%) rotate(0deg);}
       100% { transform: translate(-50%, -50%) rotate(360deg);}
     }
+    /* Login Popup Overlay Styles */
+    #loginPopup {
+      display: flex;
+      position: fixed;
+      z-index: 2000;
+      left: 0;
+      top: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(30,39,46,0.82);
+      align-items: center;
+      justify-content: center;
+    }
+    .login-modal {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      padding: 28px 32px;
+      min-width: 320px;
+      max-width: 90%;
+      text-align: center;
+      position: relative;
+    }
+    .login-modal input[type="text"] {
+      width: 80%;
+      margin: 12px 0 20px 0;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #c3c7cb;
+      font-size: 1rem;
+    }
+    .login-modal button {
+      padding: 10px 24px;
+      background: #00a8ff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+    .login-modal .error {
+      color: #e84118;
+      margin-top: 10px;
+      margin-bottom: 5px;
+      font-size: .95rem;
+      display: none;
+    }
+    /* Enable content when authenticated */
+    .authenticated #iframeContainer,
+    .authenticated nav {
+      pointer-events: auto;
+      opacity: 1;
+    }
+    .authenticated #loginPopup {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
+  <div id="loginPopup">
+    <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <h2 id="loginTitle">Enter Login Code</h2>
+      <input id="loginCodeInput" type="text" maxlength="15" autocomplete="off" placeholder="Static code" aria-label="Login Code" />
+      <button id="loginBtn" type="button">Login</button>
+      <div class="error" id="loginError">Invalid code. Try again.</div>
+    </div>
+  </div>
   <nav aria-label="Main navigation">
     <ul class="menu">
       <li class="menu-item" data-url="stock.html"><button class="menu-link" type="button">Stocks</button></li>
@@ -96,23 +164,49 @@
       <li class="menu-item" data-url="log.html"><button class="menu-link" type="button">Log</button></li>
     </ul>
   </nav>
-
   <div id="iframeContainer">
     <div id="spinner" role="status" aria-label="Loading"></div>
     <iframe id="contentFrame" src="stock.html" title="Main Content"></iframe>
   </div>
-
   <script>
+    // SET YOUR STATIC CODE HERE
+    const STATIC_LOGIN_CODE = "trade2025"; // Change this as needed
+
+    // DOM Elements
+    const loginPopup = document.getElementById('loginPopup');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginCodeInput = document.getElementById('loginCodeInput');
+    const loginError = document.getElementById('loginError');
+    const body = document.body;
+
+    // Authentication check and unlock
+    loginBtn.onclick = function() {
+      const inputCode = loginCodeInput.value.trim();
+      if(inputCode === STATIC_LOGIN_CODE) {
+        body.classList.add('authenticated');
+        loginPopup.style.display = 'none';
+        loginError.style.display = 'none';
+      } else {
+        loginError.style.display = 'block';
+        loginCodeInput.value = '';
+        loginCodeInput.focus();
+      }
+    };
+
+    // Keyboard Enter triggers Login
+    loginCodeInput.addEventListener('keyup', function(e) {
+      if(e.key === 'Enter') loginBtn.click();
+    });
+
+    // Spinner and Nav Menu Script (as before)
     const spinner = document.getElementById('spinner');
     const iframe = document.getElementById('contentFrame');
     const menuItems = document.querySelectorAll('.menu-item');
-
     function loadPage(url) {
       spinner.style.display = 'block';
       iframe.src = url;
       highlightMenuByUrl(url);
     }
-
     function highlightMenuByUrl(url) {
       menuItems.forEach(item => {
         if (item.dataset.url === url) {
@@ -122,21 +216,16 @@
         }
       });
     }
-
     menuItems.forEach(item => {
       item.querySelector('.menu-link').addEventListener('click', () => {
         loadPage(item.dataset.url);
       });
     });
-
     iframe.addEventListener('load', () => {
       spinner.style.display = 'none';
-      // Remove query params if any
       const url = iframe.contentWindow.location.pathname.split("/").pop().split('?');
       highlightMenuByUrl(url);
     });
-
-    // Initial highlight
     highlightMenuByUrl('stock.html');
   </script>
 </body>
