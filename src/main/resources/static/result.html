@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Stock Result</title>
   <style>
     body {
@@ -68,7 +68,39 @@
     }
     .up { background: #d1fae5; color: #065f46; }     /* Green for UP */
     .down { background: #fee2e2; color: #991b1b; }   /* Red for DOWN */
-    .comment { font-style: italic; color: #6b7280; }
+    .comment {
+      font-style: italic;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    /* Return percentage styles */
+    .return-positive {
+      color: #065f46; /* dark green */
+      font-weight: bold;
+    }
+    .return-negative {
+      color: #991b1b; /* dark red */
+      font-weight: bold;
+    }
+    /* Status badges */
+    .status-active {
+      background-color: #d1fae5;
+      color: #065f46;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .status-sl-hit {
+      background-color: #fee2e2;
+      color: #991b1b;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 13px;
+      white-space: nowrap;
+    }
     .loader {
       border: 6px solid #f3f3f3;
       border-top: 6px solid #374151;
@@ -119,6 +151,7 @@
         text-align: right;
         padding-left: 50%;
         position: relative;
+        white-space: normal;
       }
       td::before {
         content: attr(data-label);
@@ -134,10 +167,9 @@
 </head>
 <body>
   <h2>Stock Result</h2>
-
   <!-- Controls -->
   <div class="controls">
-    <input type="text" id="searchBox" placeholder="Search by Name...">
+    <input type="text" id="searchBox" placeholder="Search by Name..." />
     <select id="typeFilter">
       <option value="ALL">All</option>
       <option value="UP">UP</option>
@@ -145,10 +177,8 @@
     </select>
     <button id="resetBtn" class="reset-btn">Reset</button>
   </div>
-
   <!-- Loader -->
   <div id="loader" class="loader"></div>
-
   <!-- Table -->
   <table id="data-table">
     <thead>
@@ -156,20 +186,18 @@
         <th data-key="name">Name</th>
         <th data-key="exchange">Exchange</th>
         <th data-key="entryTime">Entry Time</th>
-        <th data-key="exitTime">Exit Time</th>
         <th data-key="type">Type</th>
         <th data-key="executedltp">Executed LTP</th>
         <th data-key="currentltp">Current LTP</th>
         <th data-key="sl">SL</th>
-        <th data-key="comment">Comment</th>
+        <th data-key="comment">Return</th>
+        <th data-key="result">Status</th>
       </tr>
     </thead>
     <tbody id="table-body"></tbody>
   </table>
-
   <!-- Pagination -->
   <div id="pagination" class="pagination"></div>
-
   <script>
     let stockData = [];
     let currentSort = { key: null, asc: true };
@@ -179,20 +207,22 @@
     async function loadData() {
       const loader = document.getElementById("loader");
       const table = document.getElementById("data-table");
-
+      loader.style.display = "block";
+      table.style.display = "none";
       try {
         const response = await fetch("/api/getDetailsResults");
         if (!response.ok) throw new Error("Network error");
-
         stockData = await response.json();
         renderTable();
-
         loader.style.display = "none";
         table.style.display = "table";
       } catch (error) {
         console.error("Error fetching data:", error);
         loader.style.display = "none";
-        document.body.insertAdjacentHTML("beforeend", "<p style='color:red;text-align:center;'>Failed to load data.</p>");
+        document.body.insertAdjacentHTML(
+          "beforeend",
+          "<p style='color:red;text-align:center;'>Failed to load data.</p>"
+        );
       }
     }
 
@@ -200,11 +230,10 @@
       const tbody = document.getElementById("table-body");
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
-
       tbody.innerHTML = "";
 
       let filtered = stockData.filter(item => {
-        const displayType = (item.type || "").toUpperCase(); // API already gives UP/DOWN
+        const displayType = (item.type || "").toUpperCase();
         const matchesSearch = item.name?.toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         return matchesSearch && matchesType;
@@ -215,7 +244,6 @@
         filtered.sort((a, b) => {
           let valA = a[currentSort.key] ?? "";
           let valB = b[currentSort.key] ?? "";
-
           if (!isNaN(valA) && !isNaN(valB)) {
             valA = parseFloat(valA);
             valB = parseFloat(valB);
@@ -223,7 +251,6 @@
             valA = valA.toString().toLowerCase();
             valB = valB.toString().toLowerCase();
           }
-
           if (valA < valB) return currentSort.asc ? -1 : 1;
           if (valA > valB) return currentSort.asc ? 1 : -1;
           return 0;
@@ -237,25 +264,45 @@
       const paginated = filtered.slice(start, start + rowsPerPage);
 
       if (paginated.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#6b7280;">No records found</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#6b7280;">No records found</td></tr>`;
       } else {
         paginated.forEach(item => {
           const displayType = (item.type || "").toUpperCase();
           const badgeClass = displayType === "UP" ? "up" :
                              displayType === "DOWN" ? "down" : "";
+
+          // Format return with coloring
+          let returnPercentClass = "";
+          let returnText = item.comment || "";
+          const returnMatch = returnText.match(/Return:\s*(-?[\d.]+)%/);
+          if (returnMatch) {
+            const value = parseFloat(returnMatch[1]);
+            returnPercentClass = value >= 0 ? "return-positive" : "return-negative";
+            returnText = `Return: ${value.toFixed(2)}%`;
+          }
+
+          // Format status with badge
+          let statusClass = "";
+          let statusText = item.result || "";
+          if (statusText.toUpperCase() === "ACTIVE") {
+            statusClass = "status-active";
+          } else if (statusText.toUpperCase() === "SL HIT") {
+            statusClass = "status-sl-hit";
+          }
+
           const row = document.createElement("tr");
           row.innerHTML = `
             <td data-label="Name">${item.name || ""}</td>
             <td data-label="Exchange">${item.exchange || ""}</td>
             <td data-label="Entry Time">${formatDate(item.entryTime)}</td>
-            <td data-label="Exit Time">${formatDate(item.exitTime)}</td>
             <td data-label="Type">
               <span class="badge ${badgeClass}">${displayType}</span>
             </td>
             <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
             <td data-label="Current LTP">${item.currentltp ?? ""}</td>
             <td data-label="SL">${item.sl ?? ""}</td>
-            <td data-label="Comment" class="comment">${item.comment || ""}</td>
+            <td data-label="Return" class="${returnPercentClass}">${returnText}</td>
+            <td data-label="Status" class="${statusClass}">${statusText}</td>
           `;
           tbody.appendChild(row);
         });
@@ -267,7 +314,6 @@
     function renderPagination(totalPages) {
       const pagination = document.getElementById("pagination");
       pagination.innerHTML = "";
-
       if (totalPages <= 1) return;
 
       const prev = document.createElement("button");
@@ -306,10 +352,11 @@
       renderTable();
     });
 
-    // Event Listeners
+    // Event listeners for search and filter
     document.getElementById("searchBox").addEventListener("input", () => { currentPage = 1; renderTable(); });
     document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; renderTable(); });
 
+    // Sorting event listeners on table headers
     document.querySelectorAll("thead th").forEach(th => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-key");

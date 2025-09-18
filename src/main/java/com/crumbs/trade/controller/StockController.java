@@ -26,6 +26,7 @@ import com.crumbs.trade.entity.Indicator;
 import com.crumbs.trade.entity.Result;
 import com.crumbs.trade.exception.NoIndicatorDataException;
 import com.crumbs.trade.repo.IndicatorRepo;
+import com.crumbs.trade.repo.ResultRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.ResultService;
 import com.crumbs.trade.service.TaskService;
@@ -52,6 +53,9 @@ public class StockController {
 	
 	@Autowired
 	ResultService resultService;
+	
+	@Autowired
+	ResultRepo resultRepo;
 
 	@GetMapping("/getStocks/{indexName}/{symbol}")
 	public String indicator(@PathVariable("indexName") String indexName, @PathVariable("symbol") String symbol)
@@ -95,6 +99,7 @@ public class StockController {
 	public String getResult() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			taskService.getResult();
+			resultService.getAllResults();
 			return "Completed";
 		}
 		return "STOCK Strategy Disabled";
@@ -268,7 +273,7 @@ public class StockController {
 	
 	@GetMapping("/getDetailsResults")
 	public List<Result> getResultList() {
-		return resultService.getAllResults();
+		return resultRepo.findAll();
 
 	}
 

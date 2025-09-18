@@ -1,8 +1,10 @@
 package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
@@ -38,6 +40,9 @@ public class ResultService {
 	
 	@Autowired
 	ResultRepo resultRepo;
+	
+	@Autowired
+	SRService srService;
 	
 	@Transactional
 	public void saveNiftyResult(Indicator stock) {
@@ -203,7 +208,34 @@ public class ResultService {
 	}
 	
 	public List<Result> getAllResults() {
-		return resultRepo.findAll();
+	    List<Result> resultList = resultRepo.findAll();
+	    resultList.forEach(result -> {
+	        BigDecimal currentPrice = srService.getCurrentPriceForIndex(result.getName(), result.getTradingSymbol());
+	        result.setCurrentltp(currentPrice);
+
+	        // Calculate return percentage if executedltp is available
+	        if (result.getExecutedltp() != null && currentPrice != null) {
+	            BigDecimal returnPercent = currentPrice.subtract(result.getExecutedltp())
+	                    .divide(result.getExecutedltp(), 4, RoundingMode.HALF_UP)
+	                    .multiply(BigDecimal.valueOf(100));
+	            result.setComment("Return: " + returnPercent + "%");
+	        }
+
+	        // Check if SL is hit
+	        if (result.getSl() != null && currentPrice != null) {
+	            boolean slHit = false;
+	            if ("UP".equalsIgnoreCase(result.getType())) {
+	                slHit = currentPrice.compareTo(result.getSl()) <= 0;
+	            } else if ("DOWN".equalsIgnoreCase(result.getType())) {
+	                slHit = currentPrice.compareTo(result.getSl()) >= 0;
+	            }
+	            result.setResult(slHit ? "SL HIT" : "ACTIVE");
+	        }
+
+	        resultRepo.save(result);
+	    });
+	    return resultList;
 	}
+
 	
 }
