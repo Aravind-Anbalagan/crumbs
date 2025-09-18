@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crumbs</title>
   <style>
     html { box-sizing: border-box; }
@@ -108,15 +108,14 @@
       position: relative;
     }
     .login-modal input[type="password"] {
-  width: 100%;
-  max-width: 400px;
-  padding: 12px 16px;
-  font-size: 1.1rem;
-  border-radius: 6px;
-  border: 1px solid #c3c7cb;
-  box-sizing: border-box;
-}
-
+      width: 100%;
+      max-width: 400px;
+      padding: 12px 16px;
+      font-size: 1.1rem;
+      border-radius: 6px;
+      border: 1px solid #c3c7cb;
+      box-sizing: border-box;
+    }
     .login-modal button {
       padding: 10px 24px;
       background: #00a8ff;
@@ -150,7 +149,7 @@
   <div id="loginPopup">
     <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
       <h2 id="loginTitle">Enter Login Code</h2>
-      <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Static code" aria-label="Login Code" />
+      <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Login code" aria-label="Login Code" />
       <button id="loginBtn" type="button">Login</button>
       <div class="error" id="loginError">Invalid code. Try again.</div>
     </div>
@@ -171,20 +170,28 @@
     <iframe id="contentFrame" src="stock.html" title="Main Content"></iframe>
   </div>
   <script>
-    // SET YOUR STATIC CODE HERE
-    const STATIC_LOGIN_CODE = "trade2025"; // Change this as needed
-
-    // DOM Elements
     const loginPopup = document.getElementById('loginPopup');
     const loginBtn = document.getElementById('loginBtn');
     const loginCodeInput = document.getElementById('loginCodeInput');
     const loginError = document.getElementById('loginError');
     const body = document.body;
 
-    // Authentication check and unlock
-    loginBtn.onclick = function() {
+    async function fetchSecretCode() {
+      try {
+        const response = await fetch('/key/1'); // Replace with actual API URL
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+        return data.secret;
+      } catch (error) {
+        console.error('Error fetching secret:', error);
+        return null;
+      }
+    }
+
+    loginBtn.onclick = async function() {
       const inputCode = loginCodeInput.value.trim();
-      if(inputCode === STATIC_LOGIN_CODE) {
+      const apiSecret = await fetchSecretCode();
+      if (apiSecret && inputCode === apiSecret) {
         body.classList.add('authenticated');
         loginPopup.style.display = 'none';
         loginError.style.display = 'none';
@@ -195,20 +202,20 @@
       }
     };
 
-    // Keyboard Enter triggers Login
-    loginCodeInput.addEventListener('keyup', function(e) {
-      if(e.key === 'Enter') loginBtn.click();
+    loginCodeInput.addEventListener('keyup', function (e) {
+      if (e.key === 'Enter') loginBtn.click();
     });
 
-    // Spinner and Nav Menu Script (as before)
     const spinner = document.getElementById('spinner');
     const iframe = document.getElementById('contentFrame');
     const menuItems = document.querySelectorAll('.menu-item');
+
     function loadPage(url) {
       spinner.style.display = 'block';
       iframe.src = url;
       highlightMenuByUrl(url);
     }
+
     function highlightMenuByUrl(url) {
       menuItems.forEach(item => {
         if (item.dataset.url === url) {
@@ -218,16 +225,19 @@
         }
       });
     }
+
     menuItems.forEach(item => {
       item.querySelector('.menu-link').addEventListener('click', () => {
         loadPage(item.dataset.url);
       });
     });
+
     iframe.addEventListener('load', () => {
       spinner.style.display = 'none';
-      const url = iframe.contentWindow.location.pathname.split("/").pop().split('?');
+      const url = iframe.contentWindow.location.pathname.split("/").pop().split('?')[0];
       highlightMenuByUrl(url);
     });
+
     highlightMenuByUrl('stock.html');
   </script>
 </body>

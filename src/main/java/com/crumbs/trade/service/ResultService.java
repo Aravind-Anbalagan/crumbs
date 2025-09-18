@@ -237,5 +237,9 @@ public class ResultService {
 	    return resultList;
 	}
 
+	public boolean updateActive(Long id, String active) {
+        int updatedRows = resultRepo.updateActiveById(id, active);
+        return updatedRows > 0;
+    }
 	
 }

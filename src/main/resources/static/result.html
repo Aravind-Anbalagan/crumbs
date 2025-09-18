@@ -183,6 +183,7 @@
   <table id="data-table">
     <thead>
       <tr>
+        <th data-key="name">Trade</th>
         <th data-key="name">Name</th>
         <th data-key="exchange">Exchange</th>
         <th data-key="entryTime">Entry Time</th>
@@ -292,6 +293,7 @@
 
           const row = document.createElement("tr");
           row.innerHTML = `
+            <td data-label="Traded">${item.active || "N"}</td>
             <td data-label="Name">${item.name || ""}</td>
             <td data-label="Exchange">${item.exchange || ""}</td>
             <td data-label="Entry Time">${formatDate(item.entryTime)}</td>

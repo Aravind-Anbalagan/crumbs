@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.crumbs.trade.entity.Result;
 
@@ -24,4 +25,9 @@ public interface ResultRepo  extends JpaRepository<Result, Long> {
 	@Modifying
 	@Query("delete from Result r")
 	void deleteAll();
+	
+	@Modifying
+	@Transactional
+	@Query("UPDATE Result r SET r.active = :active WHERE r.id = :id")
+	int updateActiveById(Long id, String active);
 }
