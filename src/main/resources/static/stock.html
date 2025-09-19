@@ -5,208 +5,475 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stock Indicators Table with Dynamic Numeric Range Filters</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
     :root {
-      --table-font-size: 14px;
-      --bg-col-name: #e3f2fd;
-      --bg-col-price: #e8f5e9;
-      --bg-col-dailysr: #fff3e0;
-      --bg-col-sr: #f3e8ff;
-      --bg-col-fibo: #e6fff7;
-      --bg-col-ma: #fffbe6;
-      --bg-col-ai: #ffeaea;
-      --bg-col-combine: #e0f7fa;
+  /* Base colors */
+  --primary-color: #000000;       /* Black */
+  --primary-hover: #222222;       /* Dark grey */
+  
+  --success-color: #4b4b4b;       /* Medium grey as success */
+  --warning-color: #7a7a7a;       /* Grey for warnings */
+  --danger-color: #999999;        /* Light grey for danger */
+  --info-color: #6e6e6e;          /* Grey for info */
+  
+  /* Background colors */
+  --bg-primary: #ffffff;          /* White */
+  --bg-secondary: #f0f0f0;        /* Very light grey */
+  --bg-tertiary: #dcdcdc;         /* Light grey */
+  
+  /* Text colors */
+  --text-primary: #000000;        /* Black */
+  --text-secondary: #4d4d4d;      /* Dark grey */
+  --text-muted: #7a7a7a;          /* Medium grey */
+  
+  /* Borders and shadows */
+  --border-primary: #d0d0d0;      /* Light grey */
+  --border-secondary: #bbbbbb;    /* Slightly darker grey */
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  
+  /* Column backgrounds with grey shades (linear gradients subtly different) */
+  --bg-col-name: linear-gradient(135deg, #e0e0e0 0%, #cfcfcf 100%);
+  --bg-col-price: linear-gradient(135deg, #f9f9f9 0%, #e5e5e5 100%);
+  --bg-col-dailysr: linear-gradient(135deg, #d9d9d9 0%, #c4c4c4 100%);
+  --bg-col-sr: linear-gradient(135deg, #cccccc 0%, #b6b6b6 100%);
+  --bg-col-fibo: linear-gradient(135deg, #e9e9e9 0%, #d9d9d9 100%);
+  --bg-col-ma: linear-gradient(135deg, #f6f6f6 0%, #e0e0e0 100%);
+  --bg-col-ai: linear-gradient(135deg, #d0d0d0 0%, #bfbfbf 100%);
+  --bg-col-combine: linear-gradient(135deg, #ededed 0%, #dcdcdc 100%);
+}
+
+body.dark-mode {
+  /* Backgrounds */
+  --bg-primary: #111111;          /* Almost black */
+  --bg-secondary: #222222;        /* Dark grey */
+  --bg-tertiary: #333333;         /* Medium dark grey */
+  
+  /* Text */
+  --text-primary: #f0f0f0;        /* Light grey / almost white */
+  --text-secondary: #cccccc;
+  --text-muted: #999999;
+  
+  /* Borders */
+  --border-primary: #444444;
+  --border-secondary: #555555;
+
+  /* Column backgrounds also in grey scale */
+  --bg-col-name: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%);
+  --bg-col-price: linear-gradient(135deg, #1f1f1f 0%, #141414 100%);
+  --bg-col-dailysr: linear-gradient(135deg, #383838 0%, #2e2e2e 100%);
+  --bg-col-sr: linear-gradient(135deg, #444444 0%, #3a3a3a 100%);
+  --bg-col-fibo: linear-gradient(135deg, #262626 0%, #1c1c1c 100%);
+  --bg-col-ma: linear-gradient(135deg, #383838 0%, #2e2e2e 100%);
+  --bg-col-ai: linear-gradient(135deg, #5a5a5a 0%, #4a4a4a 100%);
+  --bg-col-combine: linear-gradient(135deg, #222222 0%, #111111 100%);
+}
+
+    
+    * {
+      box-sizing: border-box;
     }
-    body.dark-mode {
-      background-color: #1e1e1e;
-      color: #f5f5f5;
-      --bg-col-name: #2a3b4c;
-      --bg-col-price: #2e4433;
-      --bg-col-dailysr: #4d3b26;
-      --bg-col-sr: #493d5b;
-      --bg-col-fibo: #1f4033;
-      --bg-col-ma: #464226;
-      --bg-col-ai: #4d2c2c;
-      --bg-col-combine: #264d4f;
-    }
+    
     body {
-      font-family: Arial, sans-serif;
-      padding: 12px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 24px;
       margin: 0;
-      background-color: #f9f9f9;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      line-height: 1.5;
+      transition: all 0.3s ease;
     }
+    
     .toolbar {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-primary);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.3s ease;
+    }
+    
+    .toolbar:hover {
+      box-shadow: var(--shadow-md);
+    }
+    
+    .toolbar-row {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 16px;
+      margin-bottom: 16px;
     }
+    
+    .toolbar-row:last-child {
+      margin-bottom: 0;
+    }
+    
     .controls {
       display: flex;
-      gap: 6px;
+      gap: 16px;
       flex-wrap: wrap;
       align-items: center;
     }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .control-group label {
+      font-weight: 500;
+      color: var(--text-secondary);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    
+    .radio-group {
+      display: flex;
+      gap: 12px;
+      background: var(--bg-tertiary);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border-primary);
+    }
+    
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+      font-size: 13px;
+    }
+    
+    .radio-group input[type="radio"] {
+      margin: 0;
+      accent-color: var(--primary-color);
+    }
+    
+    .radio-group label:hover {
+      background: var(--bg-primary);
+    }
+    
     .column-dropdown {
       position: relative;
       display: inline-block;
     }
-    .column-dropdown button {
-      padding: 5px 10px;
-      border: 1px solid #ccc;
-      background: #f9f9f9;
-      border-radius: 4px;
+    
+    .btn {
+      padding: 10px 16px;
+      border: 1px solid var(--border-primary);
+      background: var(--bg-primary);
+      border-radius: 10px;
       cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-primary);
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
     }
+    
+    .btn:hover {
+      background: var(--bg-tertiary);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .btn-primary {
+      background: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      border-color: var(--primary-hover);
+    }
+    
     .column-dropdown-content {
       display: none;
       position: absolute;
-      background-color: white;
-      min-width: 180px;
-      max-height: 250px;
+      background: var(--bg-primary);
+      min-width: 200px;
+      max-height: 300px;
       overflow-y: auto;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
       z-index: 10;
-      padding: 8px;
-    }
-    .column-dropdown.show .column-dropdown-content {
-      display: block;
-    }
-    body.dark-mode .column-dropdown-content {
-      background-color: #2c2c2c;
-      color: #f5f5f5;
-      border-color: #777;
-    }
-    .refresh-btn,
-    .theme-toggle {
-      padding: 5px 10px;
-      cursor: pointer;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #f9f9f9;
-    }
-    .theme-toggle {
-      margin-left: auto;
-    }
-    input[type="text"],
-    select {
-      padding: 5px;
-      min-width: 140px;
-      box-sizing: border-box;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-    }
-    .table-container {
-      max-width: 100vw; /* constrain container to viewport width */
-      overflow-x: auto;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      padding: 16px;
+      box-shadow: var(--shadow-lg);
+      top: 100%;
+      left: 0;
       margin-top: 8px;
     }
-    /* Fixed table layout for consistent column widths */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed; /* Ensures columns respect width */
+    
+    .column-dropdown.show .column-dropdown-content {
+      display: block;
+      animation: dropdownFadeIn 0.2s ease;
     }
-    /* Allow text to wrap instead of overflow */
+    
+    @keyframes dropdownFadeIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .column-dropdown-content label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      font-size: 14px;
+    }
+    
+    .column-dropdown-content label:hover {
+      background: var(--bg-tertiary);
+      padding-left: 8px;
+    }
+    
+    .column-dropdown-content input[type="checkbox"] {
+      accent-color: var(--primary-color);
+      width: 16px;
+      height: 16px;
+    }
+    
+    input[type="text"],
+    select {
+      padding: 10px 16px;
+      min-width: 160px;
+      border-radius: 10px;
+      border: 1px solid var(--border-primary);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    
+    input[type="text"]:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
+    }
+    
+    .table-container {
+  width: 100%;
+  max-width: 100vw;
+  padding: 0 12px;
+  overflow-x: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+}
+
+    
+    .table-container:hover {
+      box-shadow: var(--shadow-md);
+    }
+    
+    table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto; /* Change from fixed to auto */
+}
+    
     th,
     td {
-      border: 1px solid #999;
-      padding: 6px 8px;
+      border: none;
+      border-bottom: 1px solid var(--border-primary);
+      padding: 16px 20px;
       text-align: left;
       font-size: var(--table-font-size);
-      word-break: break-word; /* Wrap long text */
-      white-space: normal; /* Allow wrapping */
+      word-break: break-word;
+      white-space: normal;
+      transition: all 0.2s ease;
     }
+    
     thead th {
       position: sticky;
       top: 0;
-      background: inherit;
+      background: var(--bg-tertiary);
       z-index: 2;
       vertical-align: bottom;
+      font-weight: 600;
+      color: var(--text-primary);
+      border-bottom: 2px solid var(--border-secondary);
     }
+    
     th {
-      font-weight: bold;
       cursor: pointer;
       position: relative;
-      padding-right: 18px;
+      padding-right: 32px;
+      user-select: none;
     }
+    
+    th:hover {
+      background: var(--bg-secondary);
+    }
+    
     th.sort-asc::after {
-      content: " \25B2";
+      content: " ↑";
+      color: var(--primary-color);
+      font-weight: bold;
     }
+    
     th.sort-desc::after {
-      content: " \25BC";
+      content: " ↓";
+      color: var(--primary-color);
+      font-weight: bold;
     }
-    th.col-name,
-    td.col-name {
-      background-color: var(--bg-col-name) !important;
+    
+    tbody tr {
+      transition: all 0.2s ease;
     }
+    
+    tbody tr:hover {
+      background: var(--bg-tertiary);
+      transform: scale(1.001);
+    }
+    
+    tbody tr:nth-child(even) {
+      background: var(--bg-secondary);
+    }
+    
+    tbody tr:nth-child(even):hover {
+      background: var(--bg-tertiary);
+    }
+    
+    td.col-name, th.col-name {
+  max-width: 180px;
+  white-space: normal; /* allow wrapping */
+  overflow-wrap: break-word;
+}
+    
     th.col-price,
     td.col-price {
-      background-color: var(--bg-col-price) !important;
+      background: var(--bg-col-price) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
+    
     th.col-dailysr,
     td.col-dailysr {
-      background-color: var(--bg-col-dailysr) !important;
+      background: var(--bg-col-dailysr) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
+    
     th.sr,
     td.sr {
-      background-color: var(--bg-col-sr) !important;
+      background: var(--bg-col-sr) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
+    
     th.fibo,
     td.fibo {
-      background-color: var(--bg-col-fibo) !important;
+      background: var(--bg-col-fibo) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
+    
     th.ma,
     td.ma {
-      background-color: var(--bg-col-ma) !important;
+      background: var(--bg-col-ma) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
+    
     th.ai,
     td.ai {
-      background-color: var(--bg-col-ai) !important;
+      background: var(--bg-col-ai) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
+    
     th.combine,
     td.combine {
-      background-color: var(--bg-col-combine) !important;
+      background: var(--bg-col-combine) !important;
+      color: var(--text-primary);
+      font-weight: 600;
     }
-    body.dark-mode table,
-    body.dark-mode th,
-    body.dark-mode td {
-      border-color: #555;
+    
+    .chart-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--primary-color) !important;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: rgba(37, 99, 235, 0.1);
+      transition: all 0.2s ease;
+      font-size: 13px;
     }
-    body.dark-mode th,
-    body.dark-mode td {
-      background-color: #2c2c2c;
-      color: #f5f5f5;
+    
+    .chart-link:hover {
+      background: var(--primary-color);
+      color: white !important;
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
     }
-    body.dark-mode input,
-    body.dark-mode select {
-      background-color: #2c2c2c;
-      color: #f5f5f5;
-      border: 1px solid #777;
+    
+    .chart-link::after {
+      content: "📊";
+      font-size: 12px;
     }
+    
     #pagination {
-      margin-top: 10px;
+      margin-top: 24px;
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: 8px;
       justify-content: center;
       align-items: center;
     }
+    
     .page-link {
       cursor: pointer;
-      padding: 4px 8px;
-      border: 1px solid #ccc;
-      background: #f9f9f9;
-      border-radius: 4px;
+      padding: 10px 16px;
+      border: 1px solid var(--border-primary);
+      background: var(--bg-primary);
+      border-radius: 10px;
       user-select: none;
+      font-weight: 500;
+      color: var(--text-primary);
+      transition: all 0.2s ease;
+      min-width: 44px;
+      text-align: center;
     }
+    
+    .page-link:hover {
+      background: var(--bg-tertiary);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+    
     .page-link.active {
-      font-weight: bold;
-      background: #e0e0e0;
+      background: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+      box-shadow: var(--shadow-sm);
     }
+    
     #loader {
       display: none;
       position: fixed;
@@ -214,128 +481,271 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(255, 255, 255, 0.7);
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(8px);
       z-index: 1000;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-direction: column;
       font-size: 16px;
+      color: white;
     }
+    
     .spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid #ccc;
-      border-top: 4px solid #333;
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255, 255, 255, 0.2);
+      border-top: 4px solid var(--primary-color);
       border-radius: 50%;
       animation: spin 1s linear infinite;
+      margin-bottom: 16px;
     }
+    
     @keyframes spin {
-      0% {
-        transform: rotate(0deg);
-      }
-      100% {
-        transform: rotate(360deg);
-      }
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
+    
+    .toolbar-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .zoom-controls {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-tertiary);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border-primary);
+    }
+    
+    .zoom-btn {
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-secondary);
+      transition: all 0.2s ease;
+      min-width: 40px;
+    }
+    
+    .zoom-btn:hover {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    
+    .theme-toggle {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-primary);
+      padding: 10px 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+    }
+    
+    .theme-toggle:hover {
+      background: var(--primary-color);
+      color: white;
+      transform: scale(1.05);
+    }
+    
+    #errorMessage {
+      color: var(--danger-color);
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: none;
+      border-radius: 12px;
+      font-weight: 500;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    /* Mobile Responsiveness */
     @media (max-width: 700px) {
-      table,
-      thead,
-      tbody,
-      th,
-      td,
-      tr {
+      body {
+        padding: 16px;
+      }
+      
+      .toolbar {
+        padding: 16px;
+      }
+      
+      .toolbar-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+      
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+      
+      .control-group {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+      }
+      
+      .toolbar-actions {
+        margin-left: 0;
+        justify-content: center;
+      }
+      
+      table, thead, tbody, th, td, tr {
         display: block;
       }
+      
       thead {
         display: none;
       }
+      
       tr {
-        margin-bottom: 1rem;
-        border: 1px solid #ccc;
-        border-radius: 6px;
-        padding: 6px;
-        background: #fff;
+        margin-bottom: 16px;
+        border: 1px solid var(--border-primary);
+        border-radius: 12px;
+        padding: 16px;
+        background: var(--bg-primary);
+        box-shadow: var(--shadow-sm);
       }
+      
       td {
         padding-left: 50%;
         position: relative;
         border: none;
-        border-bottom: 1px solid #ddd;
+        border-bottom: 1px solid var(--border-primary);
+        padding-top: 12px;
+        padding-bottom: 12px;
       }
+      
+      td:last-child {
+        border-bottom: none;
+      }
+      
       td::before {
         position: absolute;
-        top: 6px;
-        left: 6px;
+        top: 12px;
+        left: 16px;
         width: 45%;
-        font-weight: bold;
+        font-weight: 600;
         white-space: nowrap;
         content: attr(data-label);
-      }
-      .toolbar {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
+        color: var(--text-secondary);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
       }
     }
-    h1,
-    h2 {
-      margin: 4px 0;
+    
+    h1, h2 {
+      margin: 8px 0;
+      font-weight: 700;
+      color: var(--text-primary);
     }
-    #errorMessage {
-      color: #b00020;
-      background: #fdecea;
-      border: 1px solid #f5c6cb;
-      padding: 8px 12px;
-      margin-bottom: 10px;
-      display: none;
+    
+    /* Scrollbar Styling */
+    .table-container::-webkit-scrollbar,
+    .column-dropdown-content::-webkit-scrollbar {
+      height: 8px;
+      width: 8px;
+    }
+    
+    .table-container::-webkit-scrollbar-track,
+    .column-dropdown-content::-webkit-scrollbar-track {
+      background: var(--bg-tertiary);
       border-radius: 4px;
+    }
+    
+    .table-container::-webkit-scrollbar-thumb,
+    .column-dropdown-content::-webkit-scrollbar-thumb {
+      background: var(--border-secondary);
+      border-radius: 4px;
+    }
+    
+    .table-container::-webkit-scrollbar-thumb:hover,
+    .column-dropdown-content::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
     }
   </style>
 </head>
 <body>
   <div class="toolbar">
-    <div class="controls">
-      <label for="timeframe">Filter:</label>
-      <div>
-        <label><input type="radio" name="optionFilter" value="ALL" checked /> All</label>
-        <label><input type="radio" name="optionFilter" value="OPTIONS" /> Options</label>
+    <div class="toolbar-row">
+      <div class="controls">
+        <div class="control-group">
+          <label>Filter:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="optionFilter" value="ALL" checked /> All</label>
+            <label><input type="radio" name="optionFilter" value="OPTIONS" /> Options</label>
+          </div>
+        </div>
+        
+        <div class="control-group">
+          <label for="timeframe">Timeframe:</label>
+          <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
+            <option value="DAILY">Daily</option>
+            <option value="WEEKLY">Weekly</option>
+            <option value="COMBINE">Combine</option>
+            <option value="INTRADAY">Intraday</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
+          <select id="secondaryFilter" onchange="loadTable()">
+            <option value="ALL">All</option>
+            <option value="FIRST BUY">First Buy</option>
+            <option value="FIRST SELL">First Sell</option>
+          </select>
+        </div>
+        
+        <button class="btn" onclick="resetTable()">🧹 Reset</button>
+        
+        <div class="column-dropdown" id="columnDropdown">
+          <button class="btn" onclick="toggleColumnDropdown()">☰ Columns</button>
+          <div class="column-dropdown-content" id="columnTogglePanel"></div>
+        </div>
+        
+        <div class="control-group">
+          <label for="search">Search:</label>
+          <input
+            type="text"
+            id="search"
+            placeholder="Filter stocks..."
+            onkeyup="filterTable()"
+            autocomplete="off"
+          />
+        </div>
       </div>
-      <label for="timeframe">Timeframe:</label>
-      <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
-        <option value="DAILY">Daily</option>
-        <option value="WEEKLY">Weekly</option>
-        <option value="COMBINE">Combine</option>
-        <option value="INTRADAY">Intraday</option>
-      </select>
-      <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
-      <select id="secondaryFilter" onchange="loadTable()">
-        <option value="ALL">All</option>
-        <option value="FIRST BUY">First Buy</option>
-        <option value="FIRST SELL">First Sell</option>
-      </select>
-      <button class="refresh-btn" onclick="resetTable()">🧹 Reset</button>
-      <div class="column-dropdown" id="columnDropdown">
-        <button onclick="toggleColumnDropdown()">☰ Hide Columns</button>
-        <div class="column-dropdown-content" id="columnTogglePanel"></div>
+      
+      <div class="toolbar-actions">
+        <div class="zoom-controls">
+          <button class="zoom-btn" onclick="zoomIn()" title="Increase font size">A+</button>
+          <button class="zoom-btn" onclick="zoomOut()" title="Decrease font size">A-</button>
+          <button class="zoom-btn" onclick="resetZoom()" title="Reset font size">A</button>
+        </div>
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
       </div>
-      <label for="search">Filter:</label>
-      <input
-        type="text"
-        id="search"
-        placeholder="Search..."
-        onkeyup="filterTable()"
-        autocomplete="off"
-      />
-    </div>
-    <div style="margin-left:auto; display:flex; gap:5px; flex-wrap:wrap;">
-      <button class="refresh-btn" onclick="zoomIn()">➕ A</button>
-      <button class="refresh-btn" onclick="zoomOut()">➖ A</button>
-      <button class="refresh-btn" onclick="resetZoom()">🔄 A</button>
-      <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
   </div>
+  
   <div id="errorMessage" role="alert"></div>
+  
   <div class="table-container">
     <table id="stocksTable">
       <thead>
@@ -344,11 +754,14 @@
       <tbody id="tableBody"></tbody>
     </table>
   </div>
+  
   <div id="pagination"></div>
+  
   <div id="loader">
     <div class="spinner"></div>
-    <div style="margin-top: 12px;">Loading data...</div>
+    <div>Loading stock data...</div>
   </div>
+  
   <script>
     let tableData = [],
       filteredData = [],
@@ -358,6 +771,7 @@
       currentFontSize = 14;
     const rowsPerPage = 10;
     let columnVisibility = {};
+    
     // Columns considered numeric for range filtering (keys normalized uppercase)
     const numericColsForRange = new Set([
       "PRICE",
@@ -374,8 +788,10 @@
       "200MA",
       // Add other numeric keys as needed
     ]);
+    
     // Store dynamic ranges per column
     const dynamicRanges = {};
+    
     // --- FONT SIZE / ZOOM ---
     function updateFontSize() {
       document.documentElement.style.setProperty(
@@ -384,28 +800,33 @@
       );
       localStorage.setItem("tableFontSize", currentFontSize);
     }
+    
     function zoomIn() {
       if (currentFontSize < 24) {
         currentFontSize++;
         updateFontSize();
       }
     }
+    
     function zoomOut() {
       if (currentFontSize > 8) {
         currentFontSize--;
         updateFontSize();
       }
     }
+    
     function resetZoom() {
       currentFontSize = 14;
       updateFontSize();
     }
+    
     // --- LOAD TABLE DATA ---
     function updateSecondaryFilter() {
       const tf = document.getElementById("timeframe").value;
       const label = document.getElementById("secondaryFilterLabel");
       const select = document.getElementById("secondaryFilter");
       select.innerHTML = ""; // clear old options
+      
       if (tf === "INTRADAY") {
         label.textContent = "Trend:";
         ["ALL", "UP", "DOWN"].forEach((val) => {
@@ -427,6 +848,7 @@
         });
       }
     }
+    
     async function loadTable() {
       const timeframe = document.getElementById("timeframe").value;
       const filter = document.getElementById("secondaryFilter").value;
@@ -434,10 +856,13 @@
         'input[name="optionFilter"]:checked'
       ).value;
       const optionFlag = selected === "OPTIONS";
+      
       const loader = document.getElementById("loader");
       const errorDiv = document.getElementById("errorMessage");
+      
       errorDiv.style.display = "none";
       loader.style.display = "flex";
+      
       try {
         let url;
         if (timeframe === "INTRADAY") {
@@ -449,19 +874,24 @@
             filter
           )}&optionFlag=${optionFlag}`;
         }
+        
         const res = await fetch(url);
         if (!res.ok) throw new Error(await res.text());
+        
         const data = await res.json();
         if (!data.length)
           throw new Error("No stock data found for the selected filters.");
+          
         visibleKeys = Object.entries(data[0].headers)
           .filter(([_, val]) => val[1])
           .map(([key]) => key);
+          
         // Add chart column key manually if not present
         if (!visibleKeys.includes("chart")) {
           visibleKeys.push("chart");
           columnVisibility["chart"] = true;
         }
+        
         tableData = data.map((row) => {
           // Start with visible keys data
           const base = Object.fromEntries(
@@ -472,6 +902,7 @@
           if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
           return base;
         });
+        
         filteredData = [...tableData];
         currentPage = 1;
         generateColumnToggles();
@@ -484,12 +915,15 @@
         loader.style.display = "none";
       }
     }
+    
     // --- COLUMN TOGGLE PANEL ---
     function generateColumnToggles() {
       const panel = document.getElementById("columnTogglePanel");
       panel.innerHTML = "";
+      
       visibleKeys.forEach((key) => {
         if (!(key in columnVisibility)) columnVisibility[key] = true;
+        
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
@@ -498,14 +932,13 @@
           columnVisibility[key] = checkbox.checked;
           renderTable();
         };
-        label.style.display = "flex";
-        label.style.alignItems = "center";
-        label.style.gap = "4px";
+        
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(formatHeader(key)));
         panel.appendChild(label);
       });
     }
+    
     // --- COLUMN CLASS HELPER ---
     function getColumnClass(key) {
       const lowerKey = key.toLowerCase();
@@ -520,6 +953,7 @@
       if (lowerKey === "chart") return ""; // no special class for chart column
       return "";
     }
+    
     // --- FILTER BY SEARCH BOX ---
     function filterTable() {
       const keyword = document.getElementById("search").value.toLowerCase();
@@ -529,6 +963,7 @@
       currentPage = 1;
       renderTable();
     }
+    
     // --- RESET TABLE ---
     function resetTable() {
       document.getElementById("timeframe").value = "DAILY";
@@ -538,20 +973,32 @@
       currentPage = 1;
       loadTable();
     }
+    
     // --- ERROR MESSAGE ---
     function showError(msg) {
       const errDiv = document.getElementById("errorMessage");
       errDiv.innerText = msg;
       errDiv.style.display = "block";
     }
+    
     // --- FORMAT HEADER ---
     function formatHeader(key) {
       return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
     }
+    
     // --- COLUMN DROPDOWN ---
     function toggleColumnDropdown() {
       document.getElementById("columnDropdown").classList.toggle("show");
     }
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+      const dropdown = document.getElementById("columnDropdown");
+      if (!dropdown.contains(event.target)) {
+        dropdown.classList.remove("show");
+      }
+    });
+    
     // --- THEME ---
     function toggleTheme() {
       document.body.classList.toggle("dark-mode");
@@ -560,76 +1007,97 @@
         document.body.classList.contains("dark-mode") ? "dark" : "light"
       );
     }
+    
     // --- RENDER TABLE ---
     function renderTable() {
       const head = document.getElementById("tableHead");
       const body = document.getElementById("tableBody");
       head.innerHTML = body.innerHTML = "";
+      
       // HEADERS without filter dropdowns
       visibleKeys.forEach((key) => {
         if (!columnVisibility[key]) return;
+        
         const th = document.createElement("th");
         const headerText = document.createElement("div");
         headerText.textContent = formatHeader(key);
         headerText.style.cursor = "pointer";
         headerText.onclick = () => sortTableByColumn(key);
+        
         if (sortState.column === key) {
           th.classList.add(sortState.order === "asc" ? "sort-asc" : "sort-desc");
         }
+        
         const className = getColumnClass(key);
         if (className) th.classList.add(className);
+        
         th.appendChild(headerText);
         head.appendChild(th);
       });
+      
       if (!filteredData.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
         td.colSpan = visibleKeys.filter((k) => columnVisibility[k]).length || 1;
         td.textContent = "No records found.";
         td.style.textAlign = "center";
+        td.style.padding = "40px";
+        td.style.color = "var(--text-muted)";
+        td.style.fontStyle = "italic";
         tr.appendChild(td);
         body.appendChild(tr);
         return;
       }
+      
       const start = (currentPage - 1) * rowsPerPage;
       const end = currentPage * rowsPerPage;
+      
       filteredData.slice(start, end).forEach((row) => {
         const tr = document.createElement("tr");
+        
         visibleKeys.forEach((key) => {
           if (!columnVisibility[key]) return;
+          
           const td = document.createElement("td");
           td.setAttribute("data-label", formatHeader(key));
+          
           const className = getColumnClass(key);
           if (className) td.classList.add(className);
+          
           if (key === "chart") {
             const stockName = row["name"] || "";
             const exchange = row["exchange"] || "";
             const symbol = row["symbol"] || "";
+            
             const link = document.createElement("a");
             link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(
               stockName
             )}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
             link.className = "chart-link";
             link.textContent = "View Chart";
-            link.style.color = "#00a8ff";
-            link.style.fontWeight = "600";
-            link.style.cursor = "pointer";
+            
             td.appendChild(link);
           } else {
             td.textContent = row[key];
           }
+          
           tr.appendChild(td);
         });
+        
         body.appendChild(tr);
       });
+      
       renderPagination();
     }
+    
     // --- PAGINATION ---
     function renderPagination() {
       const totalPages = Math.ceil(filteredData.length / rowsPerPage);
       const container = document.getElementById("pagination");
       container.innerHTML = "";
+      
       if (totalPages <= 1) return;
+      
       const createLink = (label, page, active = false) => {
         const btn = document.createElement("button");
         btn.textContent = label;
@@ -637,46 +1105,68 @@
         btn.onclick = () => {
           currentPage = page;
           renderTable();
+          // Smooth scroll to top of table
+          document.querySelector('.table-container').scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+          });
         };
         return btn;
       };
-      if (currentPage > 1)
-        container.append(createLink("« First", 1), createLink("Prev", currentPage - 1));
+      
+      if (currentPage > 1) {
+        container.append(createLink("« First", 1), createLink("‹ Prev", currentPage - 1));
+      }
+      
       let start = Math.max(1, currentPage - 2);
       let end = Math.min(totalPages, currentPage + 2);
+      
       if (currentPage <= 3) end = Math.min(5, totalPages);
       if (currentPage >= totalPages - 2) start = Math.max(totalPages - 4, 1);
+      
       if (start > 1) {
-        container.append(createLink(1, 1));
+        container.append(createLink("1", 1));
         if (start > 2) {
           const span = document.createElement("span");
           span.textContent = "...";
-          span.style.margin = "0 4px";
+          span.style.margin = "0 8px";
+          span.style.color = "var(--text-muted)";
           container.appendChild(span);
         }
       }
-      for (let i = start; i <= end; i++) container.append(createLink(i, i, i === currentPage));
+      
+      for (let i = start; i <= end; i++) {
+        container.append(createLink(i, i, i === currentPage));
+      }
+      
       if (end < totalPages) {
         if (end < totalPages - 1) {
           const span = document.createElement("span");
           span.textContent = "...";
-          span.style.margin = "0 4px";
+          span.style.margin = "0 8px";
+          span.style.color = "var(--text-muted)";
           container.appendChild(span);
         }
         container.append(createLink(totalPages, totalPages));
       }
-      if (currentPage < totalPages)
-        container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
+      
+      if (currentPage < totalPages) {
+        container.append(createLink("Next ›", currentPage + 1), createLink("Last »", totalPages));
+      }
     }
+    
     // --- SORT ---
     function sortTableByColumn(col) {
       const isAsc = sortState.column === col && sortState.order === "asc";
       sortState = { column: col, order: isAsc ? "desc" : "asc" };
+      
       filteredData.sort((a, b) => {
         let valA = a[col] != null ? a[col].toString().trim() : "";
         let valB = b[col] != null ? b[col].toString().trim() : "";
+        
         const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
         const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
+        
         return !isNaN(numA) && !isNaN(numB)
           ? isAsc
             ? numA - numB
@@ -685,9 +1175,11 @@
           ? valA.localeCompare(valB)
           : valB.localeCompare(valA);
       });
+      
       currentPage = 1;
       renderTable();
     }
+    
     // --- INITIAL SETTINGS ---
     document.addEventListener("DOMContentLoaded", () => {
       const storedFont = parseInt(localStorage.getItem("tableFontSize"));
@@ -695,16 +1187,22 @@
         currentFontSize = storedFont;
         updateFontSize();
       }
+      
       const theme = localStorage.getItem("theme");
       if (theme === "dark") document.body.classList.add("dark-mode");
+      
       document.querySelectorAll('input[name="optionFilter"]').forEach((radio) => {
         radio.addEventListener("change", () => {
           currentPage = 1;
           loadTable();
         });
       });
+      
+      // Initialize secondary filter
+      updateSecondaryFilter();
       loadTable();
     });
+    
     // --- CHART LINK CLICK HANDLER ---
     document.addEventListener("click", function (event) {
       const target = event.target;

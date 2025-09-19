@@ -5,162 +5,267 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Stock Result</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f9fafb;
-      margin: 20px;
+    :root {
+      --primary-color: #000000;
+      --primary-hover: #222222;
+      
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f5;
+      --bg-tertiary: #e0e0e0;
+
+      --text-primary: #111111;
+      --text-secondary: #444444;
+      --text-muted: #777777;
+
+      --border-primary: #ccc;
+      --border-secondary: #bbb;
+      
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+
+      --bg-col-trade: linear-gradient(135deg, #f0f0f0 0%, #dcdcdc 100%);
+      --bg-col-default: linear-gradient(135deg, #fafafa 0%, #e5e5e5 100%);
+      --bg-col-even: #f9f9f9;
     }
+
+    body {
+      font-family: 'Inter', Arial, sans-serif;
+      background: var(--bg-secondary);
+      margin: 20px;
+      color: var(--text-primary);
+    }
+
     h2 {
       text-align: center;
       margin-bottom: 20px;
-      color: #333;
+      font-weight: 700;
+      color: var(--text-primary);
     }
+
     .controls {
       display: flex;
       justify-content: center;
-      gap: 15px;
-      margin-bottom: 15px;
+      gap: 16px;
+      margin-bottom: 20px;
       flex-wrap: wrap;
     }
+
     input, select, button {
-      padding: 8px 10px;
-      border-radius: 6px;
-      border: 1px solid #ddd;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border-primary);
       font-size: 14px;
+      font-weight: 600;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      cursor: pointer;
     }
+
+    input:focus, select:focus, button:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+    }
+
     button.reset-btn {
-      background: #f87171;
-      color: #fff;
+      background: var(--primary-color);
+      color: var(--bg-primary);
       border: none;
       cursor: pointer;
-      font-weight: bold;
+      font-weight: 700;
+      transition: background 0.2s ease;
     }
+
     button.reset-btn:hover {
-      background: #dc2626;
+      background: var(--primary-hover);
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      background: #fff;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      border-radius: 10px;
+      background: var(--bg-primary);
+      box-shadow: var(--shadow-md);
+      border-radius: 16px;
       overflow: hidden;
       display: none;
     }
+
     thead {
-      background: #374151;
-      color: #fff;
+      background: var(--primary-color);
+      color: var(--bg-primary);
+      user-select: none;
       cursor: pointer;
     }
+
     th, td {
-      padding: 12px 15px;
-      text-align: center;
+      padding: 16px 20px;
+      text-align: left;
       font-size: 14px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-primary);
+      vertical-align: middle;
+      white-space: nowrap;
     }
+
     tbody tr:nth-child(even) {
-      background: #f3f4f6;
+      background: var(--bg-col-even);
     }
+tbody tr:hover {
+  background-color: var(--bg-tertiary);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
     .badge {
-      padding: 5px 10px;
+      padding: 6px 12px;
       border-radius: 12px;
-      font-weight: bold;
-      font-size: 12px;
+      font-weight: 600;
+      font-size: 13px;
+      background: var(--bg-col-default);
+      color: var(--text-primary);
+      user-select: none;
+      display: inline-block;
     }
-    .up { background: #d1fae5; color: #065f46; }     /* Green for UP */
-    .down { background: #fee2e2; color: #991b1b; }   /* Red for DOWN */
+    /* Type badges for UP and DOWN */
+    .badge.up {
+      background: #d1fae5; /* very light green */
+      color: #065f46; /* dark green */
+    }
+
+    .badge.down {
+      background: #fee2e2; /* very light red */
+      color: #991b1b; /* dark red */
+    }
+
     .comment {
       font-style: italic;
-      color: #6b7280;
+      color: var(--text-muted);
       white-space: nowrap;
     }
-    /* Return percentage styles */
+
+    /* Return positive and negative colors */
     .return-positive {
       color: #065f46; /* dark green */
-      font-weight: bold;
+      font-weight: 700;
     }
+
     .return-negative {
       color: #991b1b; /* dark red */
-      font-weight: bold;
+      font-weight: 700;
     }
-    /* Status badges */
+
+    /* Result status highlights */
     .status-active {
-      background-color: #d1fae5;
-      color: #065f46;
-      padding: 3px 8px;
+      background-color: #d1fae5; /* light green background */
+      color: #065f46; /* dark green */
+      padding: 5px 10px;
       border-radius: 12px;
-      font-weight: bold;
+      font-weight: 600;
       font-size: 13px;
       white-space: nowrap;
+      user-select: none;
+      display: inline-block;
     }
+
     .status-sl-hit {
-      background-color: #fee2e2;
-      color: #991b1b;
-      padding: 3px 8px;
+      background-color: #fee2e2; /* light red background */
+      color: #991b1b; /* dark red */
+      padding: 5px 10px;
       border-radius: 12px;
-      font-weight: bold;
+      font-weight: 600;
       font-size: 13px;
       white-space: nowrap;
+      user-select: none;
+      display: inline-block;
     }
+
     .loader {
-      border: 6px solid #f3f3f3;
-      border-top: 6px solid #374151;
+      border: 6px solid var(--bg-col-default);
+      border-top: 6px solid var(--primary-color);
       border-radius: 50%;
       width: 50px;
       height: 50px;
       animation: spin 1s linear infinite;
       margin: 50px auto;
     }
+
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
     .pagination {
       display: flex;
       justify-content: center;
-      gap: 5px;
-      margin-top: 15px;
+      gap: 8px;
+      margin-top: 20px;
       flex-wrap: wrap;
     }
+
     .pagination button {
-      padding: 6px 12px;
-      border: 1px solid #ddd;
-      background: #fff;
+      padding: 10px 16px;
+      border: 1px solid var(--border-primary);
+      background: var(--bg-primary);
+      color: var(--text-primary);
       cursor: pointer;
-      border-radius: 6px;
+      border-radius: 12px;
+      font-weight: 600;
+      transition: background 0.2s ease;
+      user-select: none;
     }
+
+    .pagination button:hover:not(:disabled) {
+      background: var(--bg-tertiary);
+    }
+
     .pagination button.active {
-      background: #374151;
-      color: #fff;
-      font-weight: bold;
+      background: var(--primary-color);
+      color: var(--bg-primary);
+      border-color: var(--primary-color);
+      font-weight: 700;
+      user-select: none;
     }
+
     .pagination button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+      user-select: none;
     }
-    @media (max-width: 768px) {
-      table, thead, tbody, th, td, tr { display: block; }
-      thead { display: none; }
+
+    /* Responsive mobile design */
+    @media(max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+      thead {
+        display: none;
+      }
       tr {
-        margin-bottom: 15px;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 10px;
-        background: #fff;
+        margin-bottom: 16px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-primary);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: var(--shadow-sm);
       }
       td {
-        text-align: right;
         padding-left: 50%;
-        position: relative;
+        text-align: right;
         white-space: normal;
+        position: relative;
+        font-weight: 600;
+        border: none;
+        border-bottom: 1px solid var(--border-primary);
       }
       td::before {
         content: attr(data-label);
         position: absolute;
-        left: 15px;
-        width: 45%;
+        left: 20px;
+        width: 40%;
         text-align: left;
-        font-weight: bold;
-        color: #374151;
+        font-weight: 600;
+        color: var(--text-secondary);
+        white-space: nowrap;
       }
     }
   </style>
@@ -204,7 +309,6 @@
     let currentSort = { key: null, asc: true };
     let currentPage = 1;
     const rowsPerPage = 10;
-
     async function loadData() {
       const loader = document.getElementById("loader");
       const table = document.getElementById("data-table");
@@ -226,20 +330,17 @@
         );
       }
     }
-
     function renderTable() {
       const tbody = document.getElementById("table-body");
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
       tbody.innerHTML = "";
-
       let filtered = stockData.filter(item => {
         const displayType = (item.type || "").toUpperCase();
         const matchesSearch = item.name?.toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         return matchesSearch && matchesType;
       });
-
       // Apply sorting
       if (currentSort.key) {
         filtered.sort((a, b) => {
@@ -257,21 +358,18 @@
           return 0;
         });
       }
-
       // Pagination logic
       const totalPages = Math.ceil(filtered.length / rowsPerPage);
       if (currentPage > totalPages) currentPage = totalPages || 1;
       const start = (currentPage - 1) * rowsPerPage;
       const paginated = filtered.slice(start, start + rowsPerPage);
-
       if (paginated.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#6b7280;">No records found</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">No records found</td></tr>`;
       } else {
         paginated.forEach(item => {
           const displayType = (item.type || "").toUpperCase();
           const badgeClass = displayType === "UP" ? "up" :
                              displayType === "DOWN" ? "down" : "";
-
           // Format return with coloring
           let returnPercentClass = "";
           let returnText = item.comment || "";
@@ -281,7 +379,6 @@
             returnPercentClass = value >= 0 ? "return-positive" : "return-negative";
             returnText = `Return: ${value.toFixed(2)}%`;
           }
-
           // Format status with badge
           let statusClass = "";
           let statusText = item.result || "";
@@ -290,7 +387,6 @@
           } else if (statusText.toUpperCase() === "SL HIT") {
             statusClass = "status-sl-hit";
           }
-
           const row = document.createElement("tr");
           row.innerHTML = `
             <td data-label="Traded">${item.active || "N"}</td>
@@ -309,21 +405,17 @@
           tbody.appendChild(row);
         });
       }
-
       renderPagination(totalPages);
     }
-
     function renderPagination(totalPages) {
       const pagination = document.getElementById("pagination");
       pagination.innerHTML = "";
       if (totalPages <= 1) return;
-
       const prev = document.createElement("button");
       prev.textContent = "Prev";
       prev.disabled = currentPage === 1;
       prev.onclick = () => { currentPage--; renderTable(); };
       pagination.appendChild(prev);
-
       for (let i = 1; i <= totalPages; i++) {
         const btn = document.createElement("button");
         btn.textContent = i;
@@ -331,20 +423,17 @@
         btn.onclick = () => { currentPage = i; renderTable(); };
         pagination.appendChild(btn);
       }
-
       const next = document.createElement("button");
       next.textContent = "Next";
       next.disabled = currentPage === totalPages;
       next.onclick = () => { currentPage++; renderTable(); };
       pagination.appendChild(next);
     }
-
     function formatDate(dateStr) {
       if (!dateStr) return "";
       const d = new Date(dateStr);
       return isNaN(d.getTime()) ? dateStr : d.toLocaleString();
     }
-
     // Reset functionality
     document.getElementById("resetBtn").addEventListener("click", () => {
       document.getElementById("searchBox").value = "";
@@ -353,11 +442,9 @@
       currentSort = { key: null, asc: true };
       renderTable();
     });
-
     // Event listeners for search and filter
     document.getElementById("searchBox").addEventListener("input", () => { currentPage = 1; renderTable(); });
     document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; renderTable(); });
-
     // Sorting event listeners on table headers
     document.querySelectorAll("thead th").forEach(th => {
       th.addEventListener("click", () => {
@@ -371,7 +458,6 @@
         renderTable();
       });
     });
-
     window.onload = loadData;
   </script>
 </body>
