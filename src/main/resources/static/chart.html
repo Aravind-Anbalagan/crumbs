@@ -68,9 +68,21 @@
       width: auto;
       max-width: 90vw;
     }
-    #toolbar .center-group { display: flex; gap: 20px; align-items: center; }
-    #toolbar label { margin-right: 8px; font-weight: 500; color: #444; line-height: 1.2; height: 24px; display: flex; align-items: center; }
-    #refreshButton, #settingsButton {
+    #toolbar .center-group {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    #toolbar label {
+      margin-right: 8px;
+      font-weight: 500;
+      color: #444;
+      line-height: 1.2;
+      height: 24px;
+      display: flex;
+      align-items: center;
+    }
+    #refreshButton, #settingsButton, #gotoStockButton {
       background-color: #007BFF;
       color: white;
       border: none;
@@ -81,9 +93,20 @@
       justify-content: center;
       gap: 6px;
       user-select: none;
+      cursor: pointer;
+      border-radius: 6px;
+      padding: 8px 14px;
+      transition: background-color 0.2s ease-in-out;
     }
-    #refreshButton:hover, #settingsButton:hover { background-color: #0056b3; }
-    #settingsDropdown { position: absolute; top: 10px; left: 10px; z-index: 30; user-select: none; }
+    #refreshButton:hover, #settingsButton:hover, #gotoStockButton:hover {
+      background-color: #0056b3;
+    }
+    #settingsDropdown {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 30;
+      user-select: none;
+    }
     #settingsMenu {
       display: none;
       position: absolute;
@@ -107,7 +130,11 @@
       user-select: none;
     }
     #settingsMenu label:last-child { margin-bottom: 14px; }
-    #settingsMenu input[type="checkbox"] { margin-right: 10px; cursor: pointer; width: 18px; height: 18px; }
+    #settingsMenu input[type="checkbox"] {
+      margin-right: 10px;
+      cursor: pointer;
+      width: 18px; height: 18px;
+    }
     #resetButton, #fitButton {
       display: block;
       width: 100%;
@@ -130,14 +157,23 @@
     }
     #resetButton:hover { background: #e0e0e0; }
     #fitButton:hover { background: #0056b3; }
+
+    /* New style for display name text */
+    #displayName {
+      font-weight: 600;
+      color: #007BFF;
+      margin-right: 12px;
+      user-select: text;
+    }
   </style>
 </head>
 <body>
   <div id="container">
     <div id="toolbar">
       <div class="center-group">
-        <!-- NO timeframe dropdown here -->
+        <span id="displayName">User Name</span>
         <button id="refreshButton">Refresh</button>
+        <button id="gotoStockButton">GO TO STOCK</button>
       </div>
     </div>
     <div id="chart"></div>
@@ -174,10 +210,25 @@
   const toggleLiveCheckbox = document.getElementById('toggleLive');
   const resetButton = document.getElementById('resetButton');
   const fitButton = document.getElementById('fitButton');
+  const displayNameEl = document.getElementById('displayName');
+  const gotoStockButton = document.getElementById('gotoStockButton');
+
+  function getUrlParam(param) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(param);
+  }
+
+  // Display name from URL parameter 'name', fallback to 'Guest'
+  const nameFromUrl = getUrlParam('name') || 'Guest';
+  displayNameEl.textContent = nameFromUrl;
+
+  // GO TO STOCK button action
+  gotoStockButton.addEventListener('click', () => {
+    window.location.href = 'stock.html';
+  });
 
   // Set timeframe from parent (window.timeFrame should be set externally)
   let selectedTimeFrame = window.timeFrame || 'ONE_DAY';
-
   let chart, candleSeries, volumeSeries;
   let priceActionSupportLines = [];
   let priceActionResistanceLines = [];
@@ -190,12 +241,11 @@
   let refreshInterval = null;
 
   async function fetchData() {
-  const apiUrl = `/api/data${window.location.search}`;
-  const resp = await fetch(apiUrl, { headers: { accept: 'application/json' } });
-  if (!resp.ok) throw new Error(`API error: ${resp.statusText}`);
-  return resp.json();
-}
-
+    const apiUrl = `/api/data${window.location.search}`;
+    const resp = await fetch(apiUrl, { headers: { accept: 'application/json' } });
+    if (!resp.ok) throw new Error(`API error: ${resp.statusText}`);
+    return resp.json();
+  }
 
   function saveVisibility() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -206,9 +256,9 @@
       signals: toggleSignalsCheckbox.checked,
       grid: toggleGridCheckbox.checked,
       live: toggleLiveCheckbox.checked
-      // NOTE: No timeframe persistence here
     }));
   }
+
   function loadVisibility() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -228,6 +278,7 @@
       setDefaults();
     }
   }
+
   function setDefaults() {
     togglePASupportCheckbox.checked = true;
     togglePAResistanceCheckbox.checked = true;
@@ -237,16 +288,19 @@
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
   }
+
   function clearLines(lines) {
     lines.forEach(line => candleSeries.removePriceLine(line));
     return [];
   }
+
   function redrawLines() {
     if (!lastData) return;
     priceActionSupportLines = clearLines(priceActionSupportLines);
     priceActionResistanceLines = clearLines(priceActionResistanceLines);
     fiboSupportLines = clearLines(fiboSupportLines);
     fiboResistanceLines = clearLines(fiboResistanceLines);
+
     if (togglePASupportCheckbox.checked && lastData.priceActionSupport) {
       priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({
         price: Number(price),
@@ -288,6 +342,7 @@
       }));
     }
   }
+
   togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
   toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
@@ -310,6 +365,7 @@
     saveVisibility();
     updateLiveStatus();
   });
+
   resetButton.addEventListener('click', () => {
     setDefaults();
     saveVisibility();
@@ -325,9 +381,11 @@
     }
     updateLiveStatus();
   });
+
   fitButton.addEventListener('click', () => {
     if (chart) chart.timeScale().fitContent();
   });
+
   function clearChart() {
     if (chart) {
       if (candleSeries) {
@@ -342,6 +400,7 @@
       chart = null;
     }
   }
+
   function initChart() {
     if (chart) return;
     chart = LightweightCharts.createChart(chartEl, {
@@ -362,6 +421,7 @@
         horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
       }
     });
+
     candleSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -369,11 +429,13 @@
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
     });
+
     chart.applyOptions({
       priceScales: {
         volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.98, bottom: 0 } }
       },
     });
+
     volumeSeries = chart.addHistogramSeries({
       color: 'rgba(38, 166, 154, 0.07)',
       priceFormat: { type: 'volume' },
@@ -383,9 +445,11 @@
       lineWidth: 1,
     });
   }
+
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
+
     if (isFirstLoad) {
       candleSeries.setData(data.candles);
       volumeSeries.setData(data.candles.map(c => ({
@@ -406,7 +470,9 @@
       });
       lastCandles = data.candles.slice();
     }
+
     redrawLines();
+
     if (Array.isArray(data.signals)) {
       lastSignals = data.signals.map(signal => ({
         time: signal.time,
@@ -416,14 +482,17 @@
         text: signal.type.toUpperCase()
       }));
     }
+
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   }
+
   async function refresh(firstLoad = false) {
     if (firstLoad) {
       loaderEl.style.display = 'flex';
       chartEl.style.display = 'none';
       errorEl.style.display = 'none';
     }
+
     try {
       const data = await fetchData();
       if (!chart) initChart();
@@ -443,6 +512,7 @@
       errorEl.style.display = 'block';
     }
   }
+
   function updateLiveStatus() {
     if (toggleLiveCheckbox.checked) {
       refresh(false);
@@ -456,9 +526,11 @@
       }
     }
   }
+
   window.addEventListener('resize', () => {
     if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
   });
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && refreshInterval) {
       clearInterval(refreshInterval);
@@ -468,6 +540,7 @@
       refreshInterval = setInterval(() => refresh(false), 30000);
     }
   });
+
   document.getElementById('refreshButton').addEventListener('click', () => {
     if (refreshInterval) {
       clearInterval(refreshInterval);
@@ -484,14 +557,17 @@
       }
     }).catch(() => {});
   });
+
   settingsButton.addEventListener('click', () => {
     settingsMenu.classList.toggle('visible');
   });
+
   document.addEventListener('click', e => {
     if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
       settingsMenu.classList.remove('visible');
     }
   });
+
   // Initialize
   loadVisibility();
   refresh(true);

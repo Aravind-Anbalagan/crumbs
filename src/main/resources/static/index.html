@@ -53,6 +53,16 @@
       font-weight: 600;
       box-shadow: inset 0 -3px 0 #0077b6;
     }
+    /* Disabled menu item style */
+    .menu-item.disabled-menu .menu-link {
+      pointer-events: none;
+      opacity: 0.5;
+      cursor: default;
+      background: none !important;
+      color: #a0a8b0 !important;
+      font-weight: 500;
+      box-shadow: none !important;
+    }
     #iframeContainer {
       position: relative;
       width: 100%;
@@ -157,7 +167,7 @@
   <nav aria-label="Main navigation">
     <ul class="menu">
       <li class="menu-item" data-url="stock.html"><button class="menu-link" type="button">Stocks</button></li>
-      <li class="menu-item" data-url="chart.html"><button class="menu-link" type="button">Chart</button></li>
+      <!--<li class="menu-item disabled-menu" data-url="chart.html"><button class="menu-link" type="button">Chart</button></li>-->
       <li class="menu-item" data-url="intraday.html"><button class="menu-link" type="button">Intraday</button></li>
       <!--<li class="menu-item" data-url="oi-daily.html"><button class="menu-link" type="button">OI - Daily</button></li>-->
       <li class="menu-item" data-url="orders.html"><button class="menu-link" type="button">Orders</button></li>
@@ -227,9 +237,12 @@
     }
 
     menuItems.forEach(item => {
-      item.querySelector('.menu-link').addEventListener('click', () => {
-        loadPage(item.dataset.url);
-      });
+      // Prevent click on disabled menu item
+      if (!item.classList.contains('disabled-menu')) {
+        item.querySelector('.menu-link').addEventListener('click', () => {
+          loadPage(item.dataset.url);
+        });
+      }
     });
 
     iframe.addEventListener('load', () => {
