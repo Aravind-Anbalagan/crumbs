@@ -148,13 +148,13 @@ public class StockController {
 			// dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
 			dto.addHeader("SR_SIGNAL", ind.getDaily_sr_signal(), true);
 			// dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
-			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), true);
+			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), false);
 			// dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
 			dto.addHeader("FIBO_SIGNAL", ind.getDaily_fibo_signal(), true);
 			// dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
-			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
+			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), false);
 			dto.addHeader("AI_SIGNAL", ind.getDaily_aiSignal(), true);
-			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
+			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), false);
 			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 		}
 
@@ -168,14 +168,14 @@ public class StockController {
 			// dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
 			dto.addHeader("SR_SIGNAL", ind.getWeekly_sr_signal(), true);
 			// dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
-			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), true);
+			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), false);
 			// dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
 			dto.addHeader("FIBO_SIGNAL", ind.getWeekly_fibo_signal(), true);
 			// dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(),
 			// true);
-			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), true);
+			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), false);
 			dto.addHeader("AI_SIGNAL", ind.getWeekly_aiSignal(), true);
-			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), true);
+			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), false);
 		}
 
 		if ("COMBINE".equalsIgnoreCase(flag)) {

@@ -291,17 +291,6 @@
       display: none;
       border-radius: 4px;
     }
-    thead select {
-      box-sizing: border-box;
-      font-size: 13px;
-      margin-top: 4px;
-      padding: 2px 4px;
-      border-radius: 3px;
-      border: 1px solid #ccc;
-      cursor: pointer;
-      max-width: 150px;
-      width: 100%;
-    }
   </style>
 </head>
 <body>
@@ -369,7 +358,6 @@
       currentFontSize = 14;
     const rowsPerPage = 10;
     let columnVisibility = {};
-
     // Columns considered numeric for range filtering (keys normalized uppercase)
     const numericColsForRange = new Set([
       "PRICE",
@@ -386,10 +374,8 @@
       "200MA",
       // Add other numeric keys as needed
     ]);
-
     // Store dynamic ranges per column
     const dynamicRanges = {};
-
     // --- FONT SIZE / ZOOM ---
     function updateFontSize() {
       document.documentElement.style.setProperty(
@@ -414,7 +400,6 @@
       currentFontSize = 14;
       updateFontSize();
     }
-
     // --- LOAD TABLE DATA ---
     function updateSecondaryFilter() {
       const tf = document.getElementById("timeframe").value;
@@ -478,103 +463,18 @@
           columnVisibility["chart"] = true;
         }
         tableData = data.map((row) => {
-  // Start with visible keys data
-  const base = Object.fromEntries(
-    visibleKeys.map((k) => [k, row.headers[k] ? row.headers[k][0] : ""])
-  );
-  // Add exchange and symbol explicitly if present
-  if ("exchange" in row.headers) base["exchange"] = row.headers["exchange"][0];
-  if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
-  return base;
-});
-
+          // Start with visible keys data
+          const base = Object.fromEntries(
+            visibleKeys.map((k) => [k, row.headers[k] ? row.headers[k][0] : ""])
+          );
+          // Add exchange and symbol explicitly if present
+          if ("exchange" in row.headers) base["exchange"] = row.headers["exchange"][0];
+          if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
+          return base;
+        });
         filteredData = [...tableData];
         currentPage = 1;
-
         generateColumnToggles();
-
-        // After table data loaded, populate filter dropdown options for each column (with dynamic ranges for numeric)
-        requestAnimationFrame(() => {
-          const selects = document.querySelectorAll("thead select");
-          selects.forEach((select) => {
-            const col = select.dataset.colKey;
-            if (!col) return;
-
-            while (select.options.length > 1) {
-              select.remove(1);
-            }
-
-            const colUpper = col.toUpperCase();
-            if (numericColsForRange.has(colUpper)) {
-              // Create dynamic numeric ranges for this column
-              const values = tableData
-                .map((r) => parseFloat(r[col]))
-                .filter((v) => !isNaN(v))
-                .sort((a, b) => a - b);
-
-              if (values.length === 0) return;
-
-              const min = values[0];
-              const max = values[values.length - 1];
-
-              // Decide number of intervals: e.g., 5
-              const intervals = 5;
-              const intervalSize = (max - min) / intervals;
-
-              dynamicRanges[col] = [];
-
-              // Optional: add "< min" range if min > 0
-              if (min > 0) {
-                dynamicRanges[col].push({
-                  label: `< ${min.toFixed(0)}`,
-                  min: Number.NEGATIVE_INFINITY,
-                  max: min,
-                });
-              }
-
-              // Create intervals dynamically
-              for (let i = 0; i < intervals; i++) {
-                const start = min + i * intervalSize;
-                const end =
-                  i === intervals - 1 ? max : min + (i + 1) * intervalSize;
-                dynamicRanges[col].push({
-                  label: `${start.toFixed(0)} - ${end.toFixed(0)}`,
-                  min: start,
-                  max: end,
-                });
-              }
-
-              // Add "> max" range
-              dynamicRanges[col].push({
-                label: `> ${max.toFixed(0)}`,
-                min: max,
-                max: Number.POSITIVE_INFINITY,
-              });
-
-              // Populate select with these ranges
-              dynamicRanges[col].forEach((range) => {
-                const opt = document.createElement("option");
-                opt.value = `range:${range.min}:${range.max}`;
-                opt.textContent = range.label;
-                select.appendChild(opt);
-              });
-            } else {
-              // Non-numeric: populate with unique exact values
-              const uniqueVals = Array.from(
-                new Set(tableData.map((r) => (r[col] || "").toString()))
-              ).sort();
-              uniqueVals.forEach((val) => {
-                if (val !== "") {
-                  const opt = document.createElement("option");
-                  opt.value = val;
-                  opt.textContent = val;
-                  select.appendChild(opt);
-                }
-              });
-            }
-          });
-        });
-
         renderTable();
       } catch (err) {
         showError(err.message || "Could not load data.");
@@ -584,7 +484,6 @@
         loader.style.display = "none";
       }
     }
-
     // --- COLUMN TOGGLE PANEL ---
     function generateColumnToggles() {
       const panel = document.getElementById("columnTogglePanel");
@@ -607,7 +506,6 @@
         panel.appendChild(label);
       });
     }
-
     // --- COLUMN CLASS HELPER ---
     function getColumnClass(key) {
       const lowerKey = key.toLowerCase();
@@ -622,80 +520,67 @@
       if (lowerKey === "chart") return ""; // no special class for chart column
       return "";
     }
-
-    // --- APPLY FILTERS BASED ON DROPDOWNS ---
-    function applyFilters() {
-      const filters = {};
-      const selects = document.querySelectorAll("thead select");
-      selects.forEach((s) => {
-        if (s.value) {
-          filters[s.dataset.colKey] = s.value;
-        }
-      });
-
-      filteredData = tableData.filter((row) => {
-        return Object.entries(filters).every(([key, val]) => {
-          const cellValStr = (row[key] || "").toString();
-          const cellValNum = parseFloat(cellValStr);
-          // Numeric range filter
-          if (val.startsWith("range:")) {
-            const parts = val.split(":");
-            const min = parseFloat(parts[1]);
-            const max = parseFloat(parts[2]);
-            if (isNaN(cellValNum)) return false;
-            return cellValNum >= min && cellValNum <= max;
-          }
-          // Exact value filter (case insensitive)
-          return cellValStr.toLowerCase() === val.toLowerCase();
-        });
-      });
-
+    // --- FILTER BY SEARCH BOX ---
+    function filterTable() {
+      const keyword = document.getElementById("search").value.toLowerCase();
+      filteredData = tableData.filter((row) =>
+        visibleKeys.some((k) => (row[k] + "").toLowerCase().includes(keyword))
+      );
       currentPage = 1;
       renderTable();
     }
-
+    // --- RESET TABLE ---
+    function resetTable() {
+      document.getElementById("timeframe").value = "DAILY";
+      document.getElementById("secondaryFilter").value = "ALL";
+      document.getElementById("search").value = "";
+      document.getElementById("errorMessage").style.display = "none";
+      currentPage = 1;
+      loadTable();
+    }
+    // --- ERROR MESSAGE ---
+    function showError(msg) {
+      const errDiv = document.getElementById("errorMessage");
+      errDiv.innerText = msg;
+      errDiv.style.display = "block";
+    }
+    // --- FORMAT HEADER ---
+    function formatHeader(key) {
+      return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    }
+    // --- COLUMN DROPDOWN ---
+    function toggleColumnDropdown() {
+      document.getElementById("columnDropdown").classList.toggle("show");
+    }
+    // --- THEME ---
+    function toggleTheme() {
+      document.body.classList.toggle("dark-mode");
+      localStorage.setItem(
+        "theme",
+        document.body.classList.contains("dark-mode") ? "dark" : "light"
+      );
+    }
     // --- RENDER TABLE ---
     function renderTable() {
       const head = document.getElementById("tableHead");
       const body = document.getElementById("tableBody");
       head.innerHTML = body.innerHTML = "";
-
-      // HEADERS with filter dropdowns
+      // HEADERS without filter dropdowns
       visibleKeys.forEach((key) => {
         if (!columnVisibility[key]) return;
         const th = document.createElement("th");
-
         const headerText = document.createElement("div");
         headerText.textContent = formatHeader(key);
         headerText.style.cursor = "pointer";
         headerText.onclick = () => sortTableByColumn(key);
-
         if (sortState.column === key) {
           th.classList.add(sortState.order === "asc" ? "sort-asc" : "sort-desc");
         }
-
-        const select = document.createElement("select");
-        select.style.marginTop = "4px";
-        select.style.width = "100%";
-        select.dataset.colKey = key;
-        select.onchange = () => {
-          applyFilters();
-        };
-
-        const defaultOpt = document.createElement("option");
-        defaultOpt.value = "";
-        defaultOpt.textContent = "All";
-        select.appendChild(defaultOpt);
-
-        th.appendChild(headerText);
-        th.appendChild(select);
-
         const className = getColumnClass(key);
         if (className) th.classList.add(className);
-
+        th.appendChild(headerText);
         head.appendChild(th);
       });
-
       if (!filteredData.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
@@ -704,53 +589,8 @@
         td.style.textAlign = "center";
         tr.appendChild(td);
         body.appendChild(tr);
-
-        // Clear dropdown options except default "All"
-        const selects = document.querySelectorAll("thead select");
-        selects.forEach((select) => {
-          while (select.options.length > 1) {
-            select.remove(1);
-          }
-        });
-
         return;
       }
-
-      // After rendering headers, populate filter dropdown options with distinct column values of filteredData or keep ranges
-      const selects = document.querySelectorAll("thead select");
-      selects.forEach((select) => {
-        const col = select.dataset.colKey;
-        if (!col) return;
-        const currentSelection = select.value;
-
-        while (select.options.length > 1) {
-          select.remove(1);
-        }
-
-        const colUpper = col.toUpperCase();
-        if (numericColsForRange.has(colUpper)) {
-          // Preserve dynamic ranges for numeric columns, just keep options
-          const ranges = dynamicRanges[col] || [];
-          ranges.forEach((range) => {
-            const opt = document.createElement("option");
-            opt.value = `range:${range.min}:${range.max}`;
-            opt.textContent = range.label;
-            select.appendChild(opt);
-          });
-        } else {
-          const uniqueVals = Array.from(new Set(filteredData.map((r) => (r[col] || "").toString()))).sort();
-          uniqueVals.forEach((val) => {
-            if (val !== "") {
-              const opt = document.createElement("option");
-              opt.value = val;
-              opt.textContent = val;
-              select.appendChild(opt);
-            }
-          });
-        }
-        select.value = currentSelection;
-      });
-
       const start = (currentPage - 1) * rowsPerPage;
       const end = currentPage * rowsPerPage;
       filteredData.slice(start, end).forEach((row) => {
@@ -761,7 +601,6 @@
           td.setAttribute("data-label", formatHeader(key));
           const className = getColumnClass(key);
           if (className) td.classList.add(className);
-
           if (key === "chart") {
             const stockName = row["name"] || "";
             const exchange = row["exchange"] || "";
@@ -783,10 +622,8 @@
         });
         body.appendChild(tr);
       });
-
       renderPagination();
     }
-
     // --- PAGINATION ---
     function renderPagination() {
       const totalPages = Math.ceil(filteredData.length / rowsPerPage);
@@ -831,7 +668,6 @@
       if (currentPage < totalPages)
         container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
     }
-
     // --- SORT ---
     function sortTableByColumn(col) {
       const isAsc = sortState.column === col && sortState.order === "asc";
@@ -852,55 +688,6 @@
       currentPage = 1;
       renderTable();
     }
-
-    // --- FILTER BY SEARCH BOX ---
-    function filterTable() {
-      const keyword = document.getElementById("search").value.toLowerCase();
-      filteredData = tableData.filter((row) =>
-        visibleKeys.some((k) => (row[k] + "").toLowerCase().includes(keyword))
-      );
-      currentPage = 1;
-      renderTable();
-    }
-
-    // --- RESET TABLE ---
-    function resetTable() {
-      document.getElementById("timeframe").value = "DAILY";
-      document.getElementById("secondaryFilter").value = "ALL";
-      document.getElementById("search").value = "";
-      // Reset all column header select filters
-      document.querySelectorAll("thead select").forEach((select) => (select.value = ""));
-      document.getElementById("errorMessage").style.display = "none";
-      currentPage = 1;
-      loadTable();
-    }
-
-    // --- ERROR MESSAGE ---
-    function showError(msg) {
-      const errDiv = document.getElementById("errorMessage");
-      errDiv.innerText = msg;
-      errDiv.style.display = "block";
-    }
-
-    // --- FORMAT HEADER ---
-    function formatHeader(key) {
-      return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-    }
-
-    // --- COLUMN DROPDOWN ---
-    function toggleColumnDropdown() {
-      document.getElementById("columnDropdown").classList.toggle("show");
-    }
-
-    // --- THEME ---
-    function toggleTheme() {
-      document.body.classList.toggle("dark-mode");
-      localStorage.setItem(
-        "theme",
-        document.body.classList.contains("dark-mode") ? "dark" : "light"
-      );
-    }
-
     // --- INITIAL SETTINGS ---
     document.addEventListener("DOMContentLoaded", () => {
       const storedFont = parseInt(localStorage.getItem("tableFontSize"));
@@ -918,7 +705,6 @@
       });
       loadTable();
     });
-
     // --- CHART LINK CLICK HANDLER ---
     document.addEventListener("click", function (event) {
       const target = event.target;
