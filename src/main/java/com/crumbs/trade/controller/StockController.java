@@ -135,60 +135,60 @@ public class StockController {
 
 	private void addCommonHeaders(DynamicIndicatorDTO dto, Indicator ind, String flag) {
 		dto.addHeader("name", ind.getName(), true);
-		dto.addHeader("price", ind.getCurrentPrice(), true);
-		dto.addHeader("exchange", ind.getExchange(), true);
-		dto.addHeader("symbol", ind.getTradingSymbol(), true);
+		//dto.addHeader("price", ind.getCurrentPrice(), true);
+		dto.addHeader("exchange", ind.getExchange(), false);
+		dto.addHeader("symbol", ind.getTradingSymbol(), false);
 		if ("DAILY".equalsIgnoreCase(flag)) {
 			dto.addHeader("RSI", ind.getDailyRSI(), true);
-			dto.addHeader("20-MA", ind.getMovingavg20Flag(), true);
-			dto.addHeader("daily_ma50", ind.getMovingavg50Flag(), true);
-			dto.addHeader("daily_ma200", ind.getMovingavg200Flag(), true);
-			dto.addHeader("daily_volume", ind.getVolumeFlag(), true);
-			dto.addHeader("daily_pivot", ind.getPivotFlag(), true);
+			dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
+			dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
+			dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
+			dto.addHeader("VOLUME", ind.getVolumeFlag(), true);
+			dto.addHeader("PIVOT_LEVEL", ind.getPivotFlag(), true);
 			// dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
-			dto.addHeader("daily_srsignal", ind.getDaily_sr_signal(), true);
+			dto.addHeader("SR_SIGNAL", ind.getDaily_sr_signal(), true);
 			// dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
-			dto.addHeader("daily_srReason", ind.getDaily_sr_reason(), true);
+			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), true);
 			// dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
-			dto.addHeader("daily_fibosignal", ind.getDaily_fibo_signal(), true);
+			dto.addHeader("FIBO_SIGNAL", ind.getDaily_fibo_signal(), true);
 			// dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
-			dto.addHeader("daily_fiboReason", ind.getDaily_fibo_reason(), true);
-			dto.addHeader("daily_AISignal", ind.getDaily_aiSignal(), true);
-			dto.addHeader("daily_AIReason", ind.getDaily_aiReason(), true);
-			dto.addHeader("Intraday", ind.getIntraday(), true);
+			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
+			dto.addHeader("AI_SIGNAL", ind.getDaily_aiSignal(), true);
+			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
+			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 		}
 
 		if ("WEEKLY".equalsIgnoreCase(flag)) {
-			dto.addHeader("weekly_rsi", ind.getWeeklyRSI(), true);
-			dto.addHeader("weekly_ma20", ind.getMovingavg20Flag(), true);
-			dto.addHeader("weekly_ma50", ind.getMovingavg50Flag(), true);
-			dto.addHeader("weekly_ma200", ind.getMovingavg200Flag(), true);
-			dto.addHeader("weekly_volume", ind.getVolumeFlag(), true);
-			dto.addHeader("weekly_pivot", ind.getPivotFlag(), true);
+			dto.addHeader("RSI", ind.getWeeklyRSI(), true);
+			dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
+			dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
+			dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
+			dto.addHeader("VOLUME", ind.getVolumeFlag(), true);
+			dto.addHeader("PIVOT_LEVEL", ind.getPivotFlag(), true);
 			// dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
-			dto.addHeader("weekly_srsignal", ind.getWeekly_sr_signal(), true);
+			dto.addHeader("SR_SIGNAL", ind.getWeekly_sr_signal(), true);
 			// dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
-			dto.addHeader("weekly_srReason", ind.getWeekly_sr_reason(), true);
+			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), true);
 			// dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
-			dto.addHeader("weekly_fibosignal", ind.getWeekly_fibo_signal(), true);
+			dto.addHeader("FIBO_SIGNAL", ind.getWeekly_fibo_signal(), true);
 			// dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(),
 			// true);
-			dto.addHeader("weekly_fiboReason", ind.getWeekly_fibo_reason(), true);
-			dto.addHeader("weekly_AISignal", ind.getWeekly_aiSignal(), true);
-			dto.addHeader("weekly_AIReason", ind.getWeekly_aiReason(), true);
+			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), true);
+			dto.addHeader("AI_SIGNAL", ind.getWeekly_aiSignal(), true);
+			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), true);
 		}
 
 		if ("COMBINE".equalsIgnoreCase(flag)) {
-			dto.addHeader("daily_volume", ind.getVolumeFlag(), true);
-			dto.addHeader("daily_srsignal", ind.getDaily_sr_signal(), true);
-			dto.addHeader("daily_fibosignal", ind.getDaily_fibo_signal(), true);
-			dto.addHeader("daily_AISignal", ind.getDaily_aiSignal(), true);
-			dto.addHeader("weekly_volume", ind.getVolumeFlag(), true);
-			dto.addHeader("weekly_srsignal", ind.getWeekly_sr_signal(), true);
-			dto.addHeader("weekly_fibosignal", ind.getWeekly_fibo_signal(), true);
-			dto.addHeader("weekly_AISignal", ind.getWeekly_aiSignal(), true);
+			dto.addHeader("D_VOLUME", ind.getVolumeFlag(), true);
+			dto.addHeader("D_SR_SIGNAL", ind.getDaily_sr_signal(), true);
+			dto.addHeader("D_FIBO_SIGNAL", ind.getDaily_fibo_signal(), true);
+			dto.addHeader("D_AI_SIGNAL", ind.getDaily_aiSignal(), true);
+			dto.addHeader("W_VOLUME", ind.getVolumeFlag(), true);
+			dto.addHeader("W_SR_SIGNAL", ind.getWeekly_sr_signal(), true);
+			dto.addHeader("W_FIBO_SIGNAL", ind.getWeekly_fibo_signal(), true);
+			dto.addHeader("W_AI_SIGNAL", ind.getWeekly_aiSignal(), true);
 
-			dto.addHeader("combineSignal", ind.getCombineSignal(), true);
+			dto.addHeader("COMBINE_SGNAL", ind.getCombineSignal(), true);
 			// dto.addHeader("combineConfidence", ind.getCombineConfidence(), true);
 			// dto.addHeader("combineReasonSummary", ind.getCombineReasonSummary() , true);
 			// dto.addHeader("combineDetailedReason", ind.getCombineDetailedReason(), true);
@@ -198,8 +198,8 @@ public class StockController {
 
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {
-			dto.addHeader("Intraday", ind.getIntraday(), true);
-			dto.addHeader("Result", ind.getResult(), true);
+			dto.addHeader("INTRADAY", ind.getIntraday(), true);
+			dto.addHeader("RESULT", ind.getResult(), true);
 		}
 
 	}

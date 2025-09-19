@@ -73,6 +73,7 @@ import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.CandleRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
+import com.crumbs.trade.repo.Nifty500Repo;
 import com.crumbs.trade.repo.NiftyRepo;
 import com.crumbs.trade.repo.PriceHeikinashiIndexRepo;
 import com.crumbs.trade.repo.PriceHeikinashiMcxRepo;
@@ -222,6 +223,9 @@ public class TaskService {
 
 	@Autowired
 	PriceRepo priceRepo;
+	
+	@Autowired
+	Nifty500Repo nifty500Repo;
 
 	@Value("${app.max-threads}")
 	private int maxThreads;
@@ -242,7 +246,8 @@ public class TaskService {
 
 		// Fetch for all the indexes/scripts
 		if (indexName.equalsIgnoreCase("ALL")) {
-			indexesList = indexesRepo.findAllStocks(Arrays.asList("NSE", "BSE"));
+			//indexesList = indexesRepo.findAllStocks(Arrays.asList("NSE", "BSE"));
+			indexesList =indexesRepo.findBySymbolIn(nifty500Repo.getAllNames());
 		} else if (indexName.equalsIgnoreCase("NIFTY50")) {
 			indexesList = indexesRepo.findBySymbolIn(niftyRepo.getAllNames());
 		} else if (indexName != null) {

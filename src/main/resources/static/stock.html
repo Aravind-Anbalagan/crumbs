@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stock Indicators Table</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Indicators Table with Dynamic Numeric Range Filters</title>
   <style>
     :root {
       --table-font-size: 14px;
@@ -98,30 +98,34 @@
       border: 1px solid #ccc;
     }
     .table-container {
-      width: 100%;
+      max-width: 100vw; /* constrain container to viewport width */
       overflow-x: auto;
       border: 1px solid #ccc;
       border-radius: 6px;
       margin-top: 8px;
     }
+    /* Fixed table layout for consistent column widths */
     table {
       width: 100%;
       border-collapse: collapse;
-      table-layout: auto;
+      table-layout: fixed; /* Ensures columns respect width */
     }
+    /* Allow text to wrap instead of overflow */
     th,
     td {
       border: 1px solid #999;
       padding: 6px 8px;
       text-align: left;
-      word-break: break-word;
       font-size: var(--table-font-size);
+      word-break: break-word; /* Wrap long text */
+      white-space: normal; /* Allow wrapping */
     }
     thead th {
       position: sticky;
       top: 0;
       background: inherit;
       z-index: 2;
+      vertical-align: bottom;
     }
     th {
       font-weight: bold;
@@ -287,16 +291,27 @@
       display: none;
       border-radius: 4px;
     }
+    thead select {
+      box-sizing: border-box;
+      font-size: 13px;
+      margin-top: 4px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      border: 1px solid #ccc;
+      cursor: pointer;
+      max-width: 150px;
+      width: 100%;
+    }
   </style>
 </head>
 <body>
   <div class="toolbar">
     <div class="controls">
-       <label for="timeframe">Filter:</label>
-		<div>
-		  <label><input type="radio" name="optionFilter" value="ALL" checked> All</label>
-		  <label><input type="radio" name="optionFilter" value="OPTIONS"> Options</label>
-		</div>
+      <label for="timeframe">Filter:</label>
+      <div>
+        <label><input type="radio" name="optionFilter" value="ALL" checked /> All</label>
+        <label><input type="radio" name="optionFilter" value="OPTIONS" /> Options</label>
+      </div>
       <label for="timeframe">Timeframe:</label>
       <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
         <option value="DAILY">Daily</option>
@@ -316,7 +331,13 @@
         <div class="column-dropdown-content" id="columnTogglePanel"></div>
       </div>
       <label for="search">Filter:</label>
-      <input type="text" id="search" placeholder="Search..." onkeyup="filterTable()" autocomplete="off" />
+      <input
+        type="text"
+        id="search"
+        placeholder="Search..."
+        onkeyup="filterTable()"
+        autocomplete="off"
+      />
     </div>
     <div style="margin-left:auto; display:flex; gap:5px; flex-wrap:wrap;">
       <button class="refresh-btn" onclick="zoomIn()">➕ A</button>
@@ -339,294 +360,578 @@
     <div class="spinner"></div>
     <div style="margin-top: 12px;">Loading data...</div>
   </div>
-<script>
-let tableData = [], filteredData = [], visibleKeys = [];
-let sortState = { column: null, order: null };
-let currentPage = 1, currentFontSize = 14;
-const rowsPerPage = 10;
-let columnVisibility = {};
-// --- FONT SIZE / ZOOM ---
-function updateFontSize() {
-    document.documentElement.style.setProperty('--table-font-size', `${currentFontSize}px`);
-    localStorage.setItem('tableFontSize', currentFontSize);
-}
-function zoomIn() { if (currentFontSize < 24) { currentFontSize++; updateFontSize(); } }
-function zoomOut() { if (currentFontSize > 8) { currentFontSize--; updateFontSize(); } }
-function resetZoom() { currentFontSize = 14; updateFontSize(); }
-// --- LOAD TABLE DATA ---
-function updateSecondaryFilter() {
-    const tf = document.getElementById("timeframe").value;
-    const label = document.getElementById("secondaryFilterLabel");
-    const select = document.getElementById("secondaryFilter");
-    select.innerHTML = ""; // clear old options
-    if (tf === "INTRADAY") {
-        label.textContent = "Trend:";
-        ["ALL", "UP", "DOWN"].forEach(val => {
-            const opt = document.createElement("option");
-            opt.value = val;
-            opt.textContent = val.charAt(0) + val.slice(1).toLowerCase();
-            select.appendChild(opt);
-        });
-    } else {
-        label.textContent = "Heikin/Psar:";
-        ["ALL", "FIRST BUY", "FIRST SELL"].forEach(val => {
-            const opt = document.createElement("option");
-            opt.value = val;
-            opt.textContent = val.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
-            select.appendChild(opt);
-        });
+  <script>
+    let tableData = [],
+      filteredData = [],
+      visibleKeys = [];
+    let sortState = { column: null, order: null };
+    let currentPage = 1,
+      currentFontSize = 14;
+    const rowsPerPage = 10;
+    let columnVisibility = {};
+
+    // Columns considered numeric for range filtering (keys normalized uppercase)
+    const numericColsForRange = new Set([
+      "PRICE",
+      "DAILY_SR",
+      "DAILYSR",
+      "SR",
+      "FIBO",
+      "MA",
+      "RSI",
+      "AI",
+      "COMBINE",
+      "20MA",
+      "50MA",
+      "200MA",
+      // Add other numeric keys as needed
+    ]);
+
+    // Store dynamic ranges per column
+    const dynamicRanges = {};
+
+    // --- FONT SIZE / ZOOM ---
+    function updateFontSize() {
+      document.documentElement.style.setProperty(
+        "--table-font-size",
+        `${currentFontSize}px`
+      );
+      localStorage.setItem("tableFontSize", currentFontSize);
     }
-}
-async function loadTable() {
-    const timeframe = document.getElementById("timeframe").value;
-    const filter = document.getElementById("secondaryFilter").value;
-    const selected = document.querySelector('input[name="optionFilter"]:checked').value;
-    const optionFlag = (selected === "OPTIONS");
-    const loader = document.getElementById("loader");
-    const errorDiv = document.getElementById("errorMessage");
-    errorDiv.style.display = "none";
-    loader.style.display = "flex";
-    try {
+    function zoomIn() {
+      if (currentFontSize < 24) {
+        currentFontSize++;
+        updateFontSize();
+      }
+    }
+    function zoomOut() {
+      if (currentFontSize > 8) {
+        currentFontSize--;
+        updateFontSize();
+      }
+    }
+    function resetZoom() {
+      currentFontSize = 14;
+      updateFontSize();
+    }
+
+    // --- LOAD TABLE DATA ---
+    function updateSecondaryFilter() {
+      const tf = document.getElementById("timeframe").value;
+      const label = document.getElementById("secondaryFilterLabel");
+      const select = document.getElementById("secondaryFilter");
+      select.innerHTML = ""; // clear old options
+      if (tf === "INTRADAY") {
+        label.textContent = "Trend:";
+        ["ALL", "UP", "DOWN"].forEach((val) => {
+          const opt = document.createElement("option");
+          opt.value = val;
+          opt.textContent = val.charAt(0) + val.slice(1).toLowerCase();
+          select.appendChild(opt);
+        });
+      } else {
+        label.textContent = "Heikin/Psar:";
+        ["ALL", "FIRST BUY", "FIRST SELL"].forEach((val) => {
+          const opt = document.createElement("option");
+          opt.value = val;
+          opt.textContent = val
+            .split(" ")
+            .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+            .join(" ");
+          select.appendChild(opt);
+        });
+      }
+    }
+    async function loadTable() {
+      const timeframe = document.getElementById("timeframe").value;
+      const filter = document.getElementById("secondaryFilter").value;
+      const selected = document.querySelector(
+        'input[name="optionFilter"]:checked'
+      ).value;
+      const optionFlag = selected === "OPTIONS";
+      const loader = document.getElementById("loader");
+      const errorDiv = document.getElementById("errorMessage");
+      errorDiv.style.display = "none";
+      loader.style.display = "flex";
+      try {
         let url;
         if (timeframe === "INTRADAY") {
-            url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
+          url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(
+            filter
+          )}&optionFlag=${optionFlag}`;
         } else {
-            url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
+          url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(
+            filter
+          )}&optionFlag=${optionFlag}`;
         }
         const res = await fetch(url);
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        if (!data.length) throw new Error("No stock data found for the selected filters.");
+        if (!data.length)
+          throw new Error("No stock data found for the selected filters.");
         visibleKeys = Object.entries(data[0].headers)
-            .filter(([_, val]) => val[1])
-            .map(([key]) => key);
+          .filter(([_, val]) => val[1])
+          .map(([key]) => key);
         // Add chart column key manually if not present
-        if (!visibleKeys.includes('chart')) {
-            visibleKeys.push('chart');
-            columnVisibility['chart'] = true;
+        if (!visibleKeys.includes("chart")) {
+          visibleKeys.push("chart");
+          columnVisibility["chart"] = true;
         }
-        tableData = data.map(row => Object.fromEntries(visibleKeys.map(k => [k, row.headers[k] ? row.headers[k][0] : ''])));
+        tableData = data.map((row) => {
+  // Start with visible keys data
+  const base = Object.fromEntries(
+    visibleKeys.map((k) => [k, row.headers[k] ? row.headers[k][0] : ""])
+  );
+  // Add exchange and symbol explicitly if present
+  if ("exchange" in row.headers) base["exchange"] = row.headers["exchange"][0];
+  if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
+  return base;
+});
+
         filteredData = [...tableData];
         currentPage = 1;
+
         generateColumnToggles();
+
+        // After table data loaded, populate filter dropdown options for each column (with dynamic ranges for numeric)
+        requestAnimationFrame(() => {
+          const selects = document.querySelectorAll("thead select");
+          selects.forEach((select) => {
+            const col = select.dataset.colKey;
+            if (!col) return;
+
+            while (select.options.length > 1) {
+              select.remove(1);
+            }
+
+            const colUpper = col.toUpperCase();
+            if (numericColsForRange.has(colUpper)) {
+              // Create dynamic numeric ranges for this column
+              const values = tableData
+                .map((r) => parseFloat(r[col]))
+                .filter((v) => !isNaN(v))
+                .sort((a, b) => a - b);
+
+              if (values.length === 0) return;
+
+              const min = values[0];
+              const max = values[values.length - 1];
+
+              // Decide number of intervals: e.g., 5
+              const intervals = 5;
+              const intervalSize = (max - min) / intervals;
+
+              dynamicRanges[col] = [];
+
+              // Optional: add "< min" range if min > 0
+              if (min > 0) {
+                dynamicRanges[col].push({
+                  label: `< ${min.toFixed(0)}`,
+                  min: Number.NEGATIVE_INFINITY,
+                  max: min,
+                });
+              }
+
+              // Create intervals dynamically
+              for (let i = 0; i < intervals; i++) {
+                const start = min + i * intervalSize;
+                const end =
+                  i === intervals - 1 ? max : min + (i + 1) * intervalSize;
+                dynamicRanges[col].push({
+                  label: `${start.toFixed(0)} - ${end.toFixed(0)}`,
+                  min: start,
+                  max: end,
+                });
+              }
+
+              // Add "> max" range
+              dynamicRanges[col].push({
+                label: `> ${max.toFixed(0)}`,
+                min: max,
+                max: Number.POSITIVE_INFINITY,
+              });
+
+              // Populate select with these ranges
+              dynamicRanges[col].forEach((range) => {
+                const opt = document.createElement("option");
+                opt.value = `range:${range.min}:${range.max}`;
+                opt.textContent = range.label;
+                select.appendChild(opt);
+              });
+            } else {
+              // Non-numeric: populate with unique exact values
+              const uniqueVals = Array.from(
+                new Set(tableData.map((r) => (r[col] || "").toString()))
+              ).sort();
+              uniqueVals.forEach((val) => {
+                if (val !== "") {
+                  const opt = document.createElement("option");
+                  opt.value = val;
+                  opt.textContent = val;
+                  select.appendChild(opt);
+                }
+              });
+            }
+          });
+        });
+
         renderTable();
-    } catch (err) {
+      } catch (err) {
         showError(err.message || "Could not load data.");
         tableData = filteredData = [];
         renderTable();
-    } finally {
+      } finally {
         loader.style.display = "none";
+      }
     }
-}
-// --- COLUMN TOGGLE PANEL ---
-function generateColumnToggles() {
-    const panel = document.getElementById("columnTogglePanel");
-    panel.innerHTML = "";
-    visibleKeys.forEach(key => {
+
+    // --- COLUMN TOGGLE PANEL ---
+    function generateColumnToggles() {
+      const panel = document.getElementById("columnTogglePanel");
+      panel.innerHTML = "";
+      visibleKeys.forEach((key) => {
         if (!(key in columnVisibility)) columnVisibility[key] = true;
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = columnVisibility[key];
-        checkbox.onchange = () => { columnVisibility[key] = checkbox.checked; renderTable(); };
+        checkbox.onchange = () => {
+          columnVisibility[key] = checkbox.checked;
+          renderTable();
+        };
         label.style.display = "flex";
         label.style.alignItems = "center";
         label.style.gap = "4px";
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(formatHeader(key)));
         panel.appendChild(label);
-    });
-}
-// --- COLUMN CLASS HELPER ---
-function getColumnClass(key) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey === "name") return "col-name";
-    if (lowerKey === "price") return "col-price";
-    if (["daily s/r", "daily_sr", "dailysr"].includes(lowerKey)) return "col-dailysr";
-    if (lowerKey.includes("sr")) return "sr";
-    if (lowerKey.includes("fibo")) return "fibo";
-    if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
-    if (lowerKey.includes("ai")) return "ai";
-    if (lowerKey.includes("combine")) return "combine";
-    if (lowerKey === "chart") return "";  // no special class for chart column
-    return "";
-}
-// --- RENDER TABLE ---
-function renderTable() {
-    const head = document.getElementById("tableHead");
-    const body = document.getElementById("tableBody");
-    head.innerHTML = body.innerHTML = "";
-    // HEADERS
-    visibleKeys.forEach(key => {
+      });
+    }
+
+    // --- COLUMN CLASS HELPER ---
+    function getColumnClass(key) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === "name") return "col-name";
+      if (lowerKey === "price") return "col-price";
+      if (["daily s/r", "daily_sr", "dailysr"].includes(lowerKey)) return "col-dailysr";
+      if (lowerKey.includes("sr")) return "sr";
+      if (lowerKey.includes("fibo")) return "fibo";
+      if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
+      if (lowerKey.includes("ai")) return "ai";
+      if (lowerKey.includes("combine")) return "combine";
+      if (lowerKey === "chart") return ""; // no special class for chart column
+      return "";
+    }
+
+    // --- APPLY FILTERS BASED ON DROPDOWNS ---
+    function applyFilters() {
+      const filters = {};
+      const selects = document.querySelectorAll("thead select");
+      selects.forEach((s) => {
+        if (s.value) {
+          filters[s.dataset.colKey] = s.value;
+        }
+      });
+
+      filteredData = tableData.filter((row) => {
+        return Object.entries(filters).every(([key, val]) => {
+          const cellValStr = (row[key] || "").toString();
+          const cellValNum = parseFloat(cellValStr);
+          // Numeric range filter
+          if (val.startsWith("range:")) {
+            const parts = val.split(":");
+            const min = parseFloat(parts[1]);
+            const max = parseFloat(parts[2]);
+            if (isNaN(cellValNum)) return false;
+            return cellValNum >= min && cellValNum <= max;
+          }
+          // Exact value filter (case insensitive)
+          return cellValStr.toLowerCase() === val.toLowerCase();
+        });
+      });
+
+      currentPage = 1;
+      renderTable();
+    }
+
+    // --- RENDER TABLE ---
+    function renderTable() {
+      const head = document.getElementById("tableHead");
+      const body = document.getElementById("tableBody");
+      head.innerHTML = body.innerHTML = "";
+
+      // HEADERS with filter dropdowns
+      visibleKeys.forEach((key) => {
         if (!columnVisibility[key]) return;
         const th = document.createElement("th");
-        th.textContent = formatHeader(key);
+
+        const headerText = document.createElement("div");
+        headerText.textContent = formatHeader(key);
+        headerText.style.cursor = "pointer";
+        headerText.onclick = () => sortTableByColumn(key);
+
+        if (sortState.column === key) {
+          th.classList.add(sortState.order === "asc" ? "sort-asc" : "sort-desc");
+        }
+
+        const select = document.createElement("select");
+        select.style.marginTop = "4px";
+        select.style.width = "100%";
+        select.dataset.colKey = key;
+        select.onchange = () => {
+          applyFilters();
+        };
+
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "All";
+        select.appendChild(defaultOpt);
+
+        th.appendChild(headerText);
+        th.appendChild(select);
+
         const className = getColumnClass(key);
         if (className) th.classList.add(className);
-        th.onclick = () => sortTableByColumn(key);
-        if (sortState.column === key) {
-            th.classList.add(sortState.order === 'asc' ? 'sort-asc' : 'sort-desc');
-        }
+
         head.appendChild(th);
-    });
-    // NO DATA
-    if (!filteredData.length) {
+      });
+
+      if (!filteredData.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = visibleKeys.filter(k => columnVisibility[k]).length || 1;
+        td.colSpan = visibleKeys.filter((k) => columnVisibility[k]).length || 1;
         td.textContent = "No records found.";
         td.style.textAlign = "center";
         tr.appendChild(td);
         body.appendChild(tr);
+
+        // Clear dropdown options except default "All"
+        const selects = document.querySelectorAll("thead select");
+        selects.forEach((select) => {
+          while (select.options.length > 1) {
+            select.remove(1);
+          }
+        });
+
         return;
-    }
-    // PAGE DATA
-    const start = (currentPage - 1) * rowsPerPage;
-    const end = currentPage * rowsPerPage;
-    filteredData.slice(start, end).forEach(row => {
-        const tr = document.createElement("tr");
-        visibleKeys.forEach(key => {
-            if (!columnVisibility[key]) return;
-            const td = document.createElement("td");
-            td.setAttribute("data-label", formatHeader(key));
-            const className = getColumnClass(key);
-            if (className) td.classList.add(className);
-            if (key === "chart") {
-                const stockName = row['name'] || '';
-                const exchange = row['exchange'] || '';
-                const symbol = row['symbol'] || '';
-                const link = document.createElement("a");
-                link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(stockName)}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
-                link.className = "chart-link";
-                link.textContent = "View Chart";
-                link.style.color = '#00a8ff';
-                link.style.fontWeight = '600';
-                link.style.cursor = 'pointer';
-                td.appendChild(link);
-            } else {
-                td.textContent = row[key];
+      }
+
+      // After rendering headers, populate filter dropdown options with distinct column values of filteredData or keep ranges
+      const selects = document.querySelectorAll("thead select");
+      selects.forEach((select) => {
+        const col = select.dataset.colKey;
+        if (!col) return;
+        const currentSelection = select.value;
+
+        while (select.options.length > 1) {
+          select.remove(1);
+        }
+
+        const colUpper = col.toUpperCase();
+        if (numericColsForRange.has(colUpper)) {
+          // Preserve dynamic ranges for numeric columns, just keep options
+          const ranges = dynamicRanges[col] || [];
+          ranges.forEach((range) => {
+            const opt = document.createElement("option");
+            opt.value = `range:${range.min}:${range.max}`;
+            opt.textContent = range.label;
+            select.appendChild(opt);
+          });
+        } else {
+          const uniqueVals = Array.from(new Set(filteredData.map((r) => (r[col] || "").toString()))).sort();
+          uniqueVals.forEach((val) => {
+            if (val !== "") {
+              const opt = document.createElement("option");
+              opt.value = val;
+              opt.textContent = val;
+              select.appendChild(opt);
             }
-            tr.appendChild(td);
+          });
+        }
+        select.value = currentSelection;
+      });
+
+      const start = (currentPage - 1) * rowsPerPage;
+      const end = currentPage * rowsPerPage;
+      filteredData.slice(start, end).forEach((row) => {
+        const tr = document.createElement("tr");
+        visibleKeys.forEach((key) => {
+          if (!columnVisibility[key]) return;
+          const td = document.createElement("td");
+          td.setAttribute("data-label", formatHeader(key));
+          const className = getColumnClass(key);
+          if (className) td.classList.add(className);
+
+          if (key === "chart") {
+            const stockName = row["name"] || "";
+            const exchange = row["exchange"] || "";
+            const symbol = row["symbol"] || "";
+            const link = document.createElement("a");
+            link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(
+              stockName
+            )}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
+            link.className = "chart-link";
+            link.textContent = "View Chart";
+            link.style.color = "#00a8ff";
+            link.style.fontWeight = "600";
+            link.style.cursor = "pointer";
+            td.appendChild(link);
+          } else {
+            td.textContent = row[key];
+          }
+          tr.appendChild(td);
         });
         body.appendChild(tr);
-    });
-    renderPagination();
-}
-// --- PAGINATION ---
-function renderPagination() {
-    const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-    const container = document.getElementById("pagination");
-    container.innerHTML = "";
-    if (totalPages <= 1) return;
-    const createLink = (label, page, active = false) => {
+      });
+
+      renderPagination();
+    }
+
+    // --- PAGINATION ---
+    function renderPagination() {
+      const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+      const container = document.getElementById("pagination");
+      container.innerHTML = "";
+      if (totalPages <= 1) return;
+      const createLink = (label, page, active = false) => {
         const btn = document.createElement("button");
         btn.textContent = label;
         btn.className = "page-link" + (active ? " active" : "");
-        btn.onclick = () => { currentPage = page; renderTable(); };
+        btn.onclick = () => {
+          currentPage = page;
+          renderTable();
+        };
         return btn;
-    };
-    if (currentPage > 1) container.append(createLink("« First", 1), createLink("Prev", currentPage - 1));
-    let start = Math.max(1, currentPage - 2);
-    let end = Math.min(totalPages, currentPage + 2);
-    if (currentPage <= 3) end = Math.min(5, totalPages);
-    if (currentPage >= totalPages - 2) start = Math.max(totalPages - 4, 1);
-    if (start > 1) {
+      };
+      if (currentPage > 1)
+        container.append(createLink("« First", 1), createLink("Prev", currentPage - 1));
+      let start = Math.max(1, currentPage - 2);
+      let end = Math.min(totalPages, currentPage + 2);
+      if (currentPage <= 3) end = Math.min(5, totalPages);
+      if (currentPage >= totalPages - 2) start = Math.max(totalPages - 4, 1);
+      if (start > 1) {
         container.append(createLink(1, 1));
         if (start > 2) {
-            const span = document.createElement("span");
-            span.textContent = "...";
-            span.style.margin = "0 4px";
-            container.appendChild(span);
+          const span = document.createElement("span");
+          span.textContent = "...";
+          span.style.margin = "0 4px";
+          container.appendChild(span);
         }
-    }
-    for (let i = start; i <= end; i++) container.append(createLink(i, i, i === currentPage));
-    if (end < totalPages) {
+      }
+      for (let i = start; i <= end; i++) container.append(createLink(i, i, i === currentPage));
+      if (end < totalPages) {
         if (end < totalPages - 1) {
-            const span = document.createElement("span");
-            span.textContent = "...";
-            span.style.margin = "0 4px";
-            container.appendChild(span);
+          const span = document.createElement("span");
+          span.textContent = "...";
+          span.style.margin = "0 4px";
+          container.appendChild(span);
         }
         container.append(createLink(totalPages, totalPages));
+      }
+      if (currentPage < totalPages)
+        container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
     }
-    if (currentPage < totalPages) container.append(createLink("Next", currentPage + 1), createLink("Last »", totalPages));
-}
-// --- SORT ---
-function sortTableByColumn(col) {
-    const isAsc = sortState.column === col && sortState.order === 'asc';
-    sortState = { column: col, order: isAsc ? 'desc' : 'asc' };
-    filteredData.sort((a, b) => {
-        let valA = a[col] != null ? a[col].toString().trim() : '';
-        let valB = b[col] != null ? b[col].toString().trim() : '';
-        const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ''));
-        const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ''));
-        return (!isNaN(numA) && !isNaN(numB)) ? (isAsc ? numA - numB : numB - numA) : (isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA));
-    });
-    currentPage = 1;
-    renderTable();
-}
-// --- FILTER ---
-function filterTable() {
-    const keyword = document.getElementById("search").value.toLowerCase();
-    filteredData = tableData.filter(row => visibleKeys.some(k => (row[k] + '').toLowerCase().includes(keyword)));
-    currentPage = 1;
-    renderTable();
-}
-// --- RESET TABLE ---
-function resetTable() {
-    document.getElementById("timeframe").value = "DAILY";
-    document.getElementById("secondaryFilter").value = "ALL";
-    document.getElementById("search").value = "";
-    document.getElementById("errorMessage").style.display = "none";
-    currentPage = 1;
-    loadTable();
-}
-// --- ERROR MESSAGE ---
-function showError(msg) {
-    const errDiv = document.getElementById("errorMessage");
-    errDiv.innerText = msg;
-    errDiv.style.display = "block";
-}
-// --- FORMAT HEADER ---
-function formatHeader(key) {
-    return key.replace(/[_\s]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
-// --- COLUMN DROPDOWN ---
-function toggleColumnDropdown() {
-    document.getElementById("columnDropdown").classList.toggle("show");
-}
-// --- THEME ---
-function toggleTheme() {
-    document.body.classList.toggle("dark-mode");
-    localStorage.setItem('theme', document.body.classList.contains("dark-mode") ? 'dark' : 'light');
-}
-// --- INITIAL SETTINGS ---
-document.addEventListener("DOMContentLoaded", () => {
-    const storedFont = parseInt(localStorage.getItem('tableFontSize'));
-    if (storedFont) { currentFontSize = storedFont; updateFontSize(); }
-    const theme = localStorage.getItem('theme');
-    if (theme === 'dark') document.body.classList.add("dark-mode");
-    document.querySelectorAll('input[name="optionFilter"]').forEach(radio => {
+
+    // --- SORT ---
+    function sortTableByColumn(col) {
+      const isAsc = sortState.column === col && sortState.order === "asc";
+      sortState = { column: col, order: isAsc ? "desc" : "asc" };
+      filteredData.sort((a, b) => {
+        let valA = a[col] != null ? a[col].toString().trim() : "";
+        let valB = b[col] != null ? b[col].toString().trim() : "";
+        const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
+        const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
+        return !isNaN(numA) && !isNaN(numB)
+          ? isAsc
+            ? numA - numB
+            : numB - numA
+          : isAsc
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
+      });
+      currentPage = 1;
+      renderTable();
+    }
+
+    // --- FILTER BY SEARCH BOX ---
+    function filterTable() {
+      const keyword = document.getElementById("search").value.toLowerCase();
+      filteredData = tableData.filter((row) =>
+        visibleKeys.some((k) => (row[k] + "").toLowerCase().includes(keyword))
+      );
+      currentPage = 1;
+      renderTable();
+    }
+
+    // --- RESET TABLE ---
+    function resetTable() {
+      document.getElementById("timeframe").value = "DAILY";
+      document.getElementById("secondaryFilter").value = "ALL";
+      document.getElementById("search").value = "";
+      // Reset all column header select filters
+      document.querySelectorAll("thead select").forEach((select) => (select.value = ""));
+      document.getElementById("errorMessage").style.display = "none";
+      currentPage = 1;
+      loadTable();
+    }
+
+    // --- ERROR MESSAGE ---
+    function showError(msg) {
+      const errDiv = document.getElementById("errorMessage");
+      errDiv.innerText = msg;
+      errDiv.style.display = "block";
+    }
+
+    // --- FORMAT HEADER ---
+    function formatHeader(key) {
+      return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    }
+
+    // --- COLUMN DROPDOWN ---
+    function toggleColumnDropdown() {
+      document.getElementById("columnDropdown").classList.toggle("show");
+    }
+
+    // --- THEME ---
+    function toggleTheme() {
+      document.body.classList.toggle("dark-mode");
+      localStorage.setItem(
+        "theme",
+        document.body.classList.contains("dark-mode") ? "dark" : "light"
+      );
+    }
+
+    // --- INITIAL SETTINGS ---
+    document.addEventListener("DOMContentLoaded", () => {
+      const storedFont = parseInt(localStorage.getItem("tableFontSize"));
+      if (storedFont) {
+        currentFontSize = storedFont;
+        updateFontSize();
+      }
+      const theme = localStorage.getItem("theme");
+      if (theme === "dark") document.body.classList.add("dark-mode");
+      document.querySelectorAll('input[name="optionFilter"]').forEach((radio) => {
         radio.addEventListener("change", () => {
-            currentPage = 1;
-            loadTable();
+          currentPage = 1;
+          loadTable();
         });
+      });
+      loadTable();
     });
-    loadTable();
-});
-// --- CHART LINK CLICK HANDLER ---
-document.addEventListener('click', function(event) {
-    const target = event.target;
-    if (target.classList.contains('chart-link')) {
+
+    // --- CHART LINK CLICK HANDLER ---
+    document.addEventListener("click", function (event) {
+      const target = event.target;
+      if (target.classList.contains("chart-link")) {
         event.preventDefault();
         const url = target.href;
         if (window.parent && window.parent !== window) {
-            window.parent.document.getElementById('contentFrame').src = url;
+          window.parent.document.getElementById("contentFrame").src = url;
         } else {
-            window.location.href = url;
+          window.location.href = url;
         }
-    }
-});
-</script>
+      }
+    });
+  </script>
 </body>
 </html>

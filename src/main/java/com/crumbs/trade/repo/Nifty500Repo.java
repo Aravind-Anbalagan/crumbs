@@ -1,0 +1,15 @@
+package com.crumbs.trade.repo;
+
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+import com.crumbs.trade.entity.NIFTY500;
+
+@Repository
+public interface Nifty500Repo extends JpaRepository<NIFTY500, Long> {
+
+	@Query(value = "select name from NIFTY500 ")
+	List<String> getAllNames();
+}
