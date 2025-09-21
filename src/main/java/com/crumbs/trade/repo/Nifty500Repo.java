@@ -1,6 +1,7 @@
 package com.crumbs.trade.repo;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -15,4 +16,6 @@ public interface Nifty500Repo extends JpaRepository<NIFTY500, Long> {
 	
 	 // Fetch only stocks where sector is null or empty
     List<NIFTY500> findBySectorIsNullOrSectorEquals(String emptyString);
+    
+    Optional<NIFTY500> findByNameIgnoreCase(String name);
 }

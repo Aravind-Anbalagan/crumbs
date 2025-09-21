@@ -57,6 +57,7 @@ import com.crumbs.trade.dto.Time;
 import com.crumbs.trade.entity.Candle;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Indicator;
+import com.crumbs.trade.entity.NIFTY500;
 import com.crumbs.trade.entity.PSARIndex;
 import com.crumbs.trade.entity.PSARMcx;
 import com.crumbs.trade.entity.PSARNifty;
@@ -1407,7 +1408,18 @@ public class TaskService {
 		{
 			indicator.setOptions("Y");
 		}
-// Save indicator to DB
+		
+		// Find sector & industry from DB
+		NIFTY500 stock = nifty500Repo.findByNameIgnoreCase(indicator.getName()).orElse(null);
+
+	    if (stock != null) {
+	        indicator.setSector(stock.getSector() != null ? stock.getSector() : "Unknown");
+	        //indicator.setIndustry(stock.getIndustry() != null ? stock.getIndustry() : "Unknown");
+	    } else {
+	        indicator.setSector("Unknown");
+	        //indicator.setIndustry("Unknown");
+	    }
+	    // Save indicator to DB
 		indicatorRepo.save(indicator);
 	}
 
