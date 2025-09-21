@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "NIFTY500")
 @Data  // ✅ Lombok: generates getters, setters, toString, equals, hashCode
-@NoArgsConstructor // ✅ Required by JPA (no-arg constructor)
 public class NIFTY500 {
 
     @Id
@@ -17,9 +16,12 @@ public class NIFTY500 {
 
     @Column(name = "name", nullable = false)
     private String name;
+    
+    @Column(name = "sector", nullable = false)
+    private String sector;
+    
+    @Column(name = "industry", nullable = false)
+    private String industry;
 
-    // You can still add custom constructors if needed
-    public NIFTY500(String name) {
-        this.name = name;
-    }
+  
 }

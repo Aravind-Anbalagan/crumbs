@@ -79,7 +79,11 @@
 			<version>2.2.224</version>  <!-- ✅ Add this line -->
 			<scope>runtime</scope>
 		</dependency>
-		
+		<dependency>
+        <groupId>org.jsoup</groupId>
+        <artifactId>jsoup</artifactId>
+        <version>1.16.1</version>
+        </dependency>
 		<dependency>
 		  <groupId>com.eatthepath</groupId>
 		  <artifactId>java-otp</artifactId>
@@ -103,12 +107,7 @@
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>2.2.0</version>
 		</dependency>
-	<!--  	<dependency>
-  <groupId>org.springframework.boot</groupId>
-  <artifactId>spring-boot-devtools</artifactId>
-  <scope>runtime</scope>
-  <optional>true</optional>
-</dependency>-->
+	
 
 	</dependencies>
 	<dependencyManagement>

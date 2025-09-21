@@ -31,6 +31,7 @@ import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.ResultRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.ResultService;
+import com.crumbs.trade.service.SectorUpdateService;
 import com.crumbs.trade.service.TaskService;
 import com.crumbs.trade.service.TimeLookup;
 import com.crumbs.trade.utility.AppConstant;
@@ -58,6 +59,9 @@ public class StockController {
 
 	@Autowired
 	ResultRepo resultRepo;
+	
+	@Autowired
+	SectorUpdateService sectorUpdateService;
 
 	@GetMapping("/getStocks/{indexName}/{symbol}")
 	public String indicator(@PathVariable("indexName") String indexName, @PathVariable("symbol") String symbol)
@@ -294,6 +298,15 @@ public class StockController {
 	    } else {
 	        return ResponseEntity.notFound().build();
 	    }
+	}
+	
+	@GetMapping("/updateSector")
+	public String updateSector() throws SmartAPIException, Exception {
+		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
+			sectorUpdateService.updateSectorsAndIndustry();
+			return "Completed";
+		}
+		return "STOCK Strategy Disabled";
 	}
 
 }

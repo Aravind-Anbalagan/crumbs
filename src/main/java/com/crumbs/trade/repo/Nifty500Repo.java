@@ -12,4 +12,7 @@ public interface Nifty500Repo extends JpaRepository<NIFTY500, Long> {
 
 	@Query(value = "select name from NIFTY500 ")
 	List<String> getAllNames();
+	
+	 // Fetch only stocks where sector is null or empty
+    List<NIFTY500> findBySectorIsNullOrSectorEquals(String emptyString);
 }
