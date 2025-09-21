@@ -213,12 +213,23 @@ public class ResultService {
 	        BigDecimal currentPrice = srService.getCurrentPriceForIndex(result.getName(), result.getTradingSymbol());
 	        result.setCurrentltp(currentPrice);
 
-	        // Calculate return percentage if executedltp is available
+	        // Calculate return percentage based on type
 	        if (result.getExecutedltp() != null && currentPrice != null) {
-	            BigDecimal returnPercent = currentPrice.subtract(result.getExecutedltp())
-	                    .divide(result.getExecutedltp(), 4, RoundingMode.HALF_UP)
-	                    .multiply(BigDecimal.valueOf(100));
-	            result.setComment("Return: " + returnPercent + "%");
+	            BigDecimal returnPercent;
+	            if ("UP".equalsIgnoreCase(result.getType())) {
+	                // For UP (buy) trades
+	                returnPercent = currentPrice.subtract(result.getExecutedltp())
+	                        .divide(result.getExecutedltp(), 4, RoundingMode.HALF_UP)
+	                        .multiply(BigDecimal.valueOf(100));
+	            } else if ("DOWN".equalsIgnoreCase(result.getType())) {
+	                // For DOWN (sell) trades - reverse the subtraction
+	                returnPercent = result.getExecutedltp().subtract(currentPrice)
+	                        .divide(result.getExecutedltp(), 4, RoundingMode.HALF_UP)
+	                        .multiply(BigDecimal.valueOf(100));
+	            } else {
+	                returnPercent = BigDecimal.ZERO;
+	            }
+	            result.setComment("Return: " + returnPercent.setScale(2, RoundingMode.HALF_UP) + "%");
 	        }
 
 	        // Check if SL is hit
@@ -236,6 +247,7 @@ public class ResultService {
 	    });
 	    return resultList;
 	}
+
 
 	public boolean updateActive(Long id, String active) {
         int updatedRows = resultRepo.updateActiveById(id, active);
