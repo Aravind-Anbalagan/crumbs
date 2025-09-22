@@ -1291,11 +1291,11 @@ public class TaskService {
 		indicator.setExchange(indexes.getExchange());
 		indicator.setTradingSymbol(indexes.getSymbol());
 		indicator.setCreatedDate(LocalDateTime.now());
+		indicator.setCurrentPrice(index_CurrentPrice);
 		indicator.setLast3daycandlehigh(getSignal_eq("high",name));
 		indicator.setLast3daycandlelow(getSignal_eq("low",name));
 		indicator.setLast3daycandleflag(get3DaysHighAndLow(indicator));
 		indicator.setCpr(cprData);
-		indicator.setCurrentPrice(index_CurrentPrice);
 		indicator.setDailyopenandcloseissame(findOpenAndClose(openAndClose));
 		indicator = get52WeekData(indexes, smartConnect, indicator);
 
@@ -2027,7 +2027,7 @@ public class TaskService {
 
 	    List<Indicator> bearishList = indicatorRepo.findByPsarFlagDayInAndHeikinAshiDayIn(
 	            Arrays.asList("FIRST SELL"), Arrays.asList("FIRST SELL"));
-	    bearishList.addAll(addOtherIndicator("DOWN"));
+	    bearishList.addAll(addOtherIndicator("UP"));
 	    logger.info("Bearish Stock: {}", bearishList.size());
 
 	    ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
