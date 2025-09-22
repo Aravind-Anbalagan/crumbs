@@ -121,6 +121,7 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
     List<Indicator> findByHeikinAshiWeeklyAndPsarFlagWeekly(String heikinAshiWeekly, String psarFlagWeekly);
 
     List<Indicator> findByIntraday(String value);
-
+    
+    List<Indicator> findByLast3daycandleflag(String up);
 
 }

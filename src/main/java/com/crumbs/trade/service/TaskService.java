@@ -1293,6 +1293,7 @@ public class TaskService {
 		indicator.setCreatedDate(LocalDateTime.now());
 		indicator.setLast3daycandlehigh(getSignal_eq("high",name));
 		indicator.setLast3daycandlelow(getSignal_eq("low",name));
+		indicator.setLast3daycandleflag(get3DaysHighAndLow(indicator));
 		indicator.setCpr(cprData);
 		indicator.setCurrentPrice(index_CurrentPrice);
 		indicator.setDailyopenandcloseissame(findOpenAndClose(openAndClose));
@@ -2021,10 +2022,12 @@ public class TaskService {
 
 	    List<Indicator> bullishList = indicatorRepo.findByPsarFlagDayInAndHeikinAshiDayIn(
 	            Arrays.asList("FIRST BUY"), Arrays.asList("FIRST BUY"));
+	    bullishList.addAll(addOtherIndicator("UP"));
 	    logger.info("Bullish Stock: {}", bullishList.size());
 
 	    List<Indicator> bearishList = indicatorRepo.findByPsarFlagDayInAndHeikinAshiDayIn(
 	            Arrays.asList("FIRST SELL"), Arrays.asList("FIRST SELL"));
+	    bearishList.addAll(addOtherIndicator("DOWN"));
 	    logger.info("Bearish Stock: {}", bearishList.size());
 
 	    ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
@@ -2049,6 +2052,11 @@ public class TaskService {
 	    sendEmail();
 	}
 
+	public List<Indicator> addOtherIndicator(String input) {
+		List<Indicator> last3DayCandleList = indicatorRepo.findByLast3daycandleflag(input);
+		return last3DayCandleList;
+	}
+	
 	private void processStockWithRetry(SmartConnect smartConnect, Indicator stock, boolean isBullish) {
 	    int attempts = 0;
 	    int maxAttempts = 5;
