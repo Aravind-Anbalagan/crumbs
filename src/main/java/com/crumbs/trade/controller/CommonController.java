@@ -66,7 +66,7 @@ public class CommonController {
 	/*
 	 * 8 AM clear DB
 	 */
-	@Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata") // Works
+	@Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
 	public void clear() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {
 		logger.info("Delete All Data");
 		angelOneService.deleteOrders();
@@ -74,7 +74,7 @@ public class CommonController {
 	
 	/*
 	 * 9  AM restart the JVM
-	 */
+	
 	@Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata") // Works
     public void restartJVM() {
         // Trigger JVM restart in a new thread to allow HTTP response
@@ -88,7 +88,7 @@ public class CommonController {
             JVMRestarter.restartJVM();
         }).start();
     }
-
+ */
 	/*
 	 * Used to get the instrument details
 	 */

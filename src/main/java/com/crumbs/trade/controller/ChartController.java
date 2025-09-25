@@ -3,6 +3,7 @@ package com.crumbs.trade.controller;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -34,6 +35,8 @@ public class ChartController {
 	
 	@Autowired
 	StrategyRepo strategyRepo;
+	
+	private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
 	
     @GetMapping("/stock-data")
     public ResponseEntity<?> getStockData() {
@@ -184,11 +187,21 @@ public class ChartController {
         dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
         dto.setFiboSupport(priceActionResult.getFibo_supports());
         dto.setFiboResistance(priceActionResult.getFibo_resistances());
+        CandleDTO candleDto = getPreviousDayCandle(name, exchange, symbol);
+        dto.setPreviousDayCandle(candleDto);
+
         //dto.setSignals(signals);
 
         return dto;
     }
     
+    public CandleDTO getPreviousDayCandle(String name, String exchange, String symbol) {
+        String key = name + "|" + exchange + "|" + symbol;
+        return previousDayCache.computeIfAbsent(
+            key,
+            k -> srService.getPreviousOHLC("ONE_DAY", name, exchange, symbol)
+        );
+    }
 
     private CandleDTO createCandle(long time, String open, String high, String low, String close, String volume) {
         CandleDTO candle = new CandleDTO();

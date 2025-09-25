@@ -1,5 +1,7 @@
 package com.crumbs.trade.service;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +25,10 @@ import com.crumbs.trade.repo.ChartRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.SignalsRepo;
+import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.NSEWorkingDays;
 import com.google.gson.Gson;
+
 
 import jakarta.transaction.Transactional;
 
@@ -59,6 +64,9 @@ public class SRService {
 	
 	@Autowired
 	ChartRepo chartRepo;
+	
+	@Autowired
+	StrategyRepo strategyRepo;
 	
 	private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
 	private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -326,7 +334,51 @@ public class SRService {
 	    return signal;
 	}
 
+    public CandleDTO getPreviousOHLC(String timeFrame, String name, String exchange, String symbol)
+    {
+   		LocalDate today = LocalDate.now();
+		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
+		Strategy strategy = taskService.getChart(name, strategyRepo.findByName(name).getTradingsymbol());
+		SmartConnect smartConnect = angelOne.signIn();
+		String fromDate = null;
+		String toDate = null;
+		
+		if (name.equalsIgnoreCase("NIFTY")) {
+			 fromDate = NSEWorkingDays.getLastWorkingDay(lastWorkingDay).toString().concat(" ").concat("09:15");
+			 toDate = lastWorkingDay.toString().concat(" ").concat("15:30");
 
+		} else {
+			 fromDate = NSEWorkingDays.getLastWorkingDay(lastWorkingDay).toString().concat(" ").concat("09:00");
+			 toDate = lastWorkingDay.toString().concat(" ").concat("23:30");
+		}
+	
+		//fromDate = "2025-09-22 15:30";
+		//toDate = "2025-09-23 15:30";
+		CandleDTO candleDTO = new CandleDTO();
+		JSONArray responseArray = new JSONArray();
+		JSONObject requestObejct = new JSONObject();
+		requestObejct.put("exchange", strategy.getExchange());
+		requestObejct.put("symboltoken", strategy.getToken());
+		requestObejct.put("interval", timeFrame);
+		requestObejct.put("fromdate", fromDate);
+		requestObejct.put("todate", toDate);
+
+		responseArray = smartConnect.candleData(requestObejct);
+		if (!responseArray.isEmpty()) {
+
+			JSONArray ohlcArray = (JSONArray) responseArray.get(0);
+			BigDecimal open = new BigDecimal(String.valueOf(ohlcArray.getDouble(1)));
+			BigDecimal high = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
+			BigDecimal low = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
+			BigDecimal close = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
+			candleDTO.setOpen(open);
+			candleDTO.setHigh(high);
+			candleDTO.setLow(low);
+			candleDTO.setClose(close);
+			
+		}
+		return candleDTO;
+    }
 
 	
 	/*

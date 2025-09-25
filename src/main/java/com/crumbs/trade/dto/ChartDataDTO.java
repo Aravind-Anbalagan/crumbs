@@ -4,6 +4,8 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.crumbs.trade.entity.Candle;
+
 @Data
 public class ChartDataDTO {
     private List<CandleDTO> candles;
@@ -15,6 +17,8 @@ public class ChartDataDTO {
     private List<FibonacciLevel> fiboResistance;
 
     private List<SignalDTO> signals;
+    
+    private CandleDTO previousDayCandle;
 }
 
 
