@@ -96,7 +96,7 @@ public class MovingAvgWithSMASmoothing {
 
             candle.setSmoothMA(maVal);
 
-            String signal = "Neutral";
+            String signal = "NEUTRAL";
             if (prevClose != null && prevMA != null && maVal != null) {
                 boolean wasBelow = prevClose.compareTo(prevMA) < 0;
                 boolean wasAbove = prevClose.compareTo(prevMA) > 0;
@@ -104,9 +104,9 @@ public class MovingAvgWithSMASmoothing {
                 boolean isBelow = close.compareTo(maVal) < 0;
 
                 if (wasBelow && isAbove) {
-                    signal = "Buy";
+                    signal = "BUY";
                 } else if (wasAbove && isBelow) {
-                    signal = "Sell";
+                    signal = "SELL";
                 }
             }
             candle.setMasignal(signal);
