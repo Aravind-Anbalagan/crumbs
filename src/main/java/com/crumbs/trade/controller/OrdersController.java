@@ -50,7 +50,7 @@ public class OrdersController {
         dto.setSymbol(order.getSymbol());
         dto.setPr(order.getPriceAction());
         dto.setFibo(order.getFibo());
-        dto.setCombine(order.getCombine());
+        dto.setMa(order.getMa());
         return dto;
     }
 }

@@ -38,8 +38,10 @@ public class Vix {
 	String heikinachi;
 	@Column(name="psar")
 	String psar;
-	@Column(name="macd")
-	String macd;
+	@Column(name="smoothma")
+	BigDecimal smoothma;
+	@Column(name="masignal")
+	String masignal;
 	@Column(name="active")
 	String active;
 	@Column(name="candleType")

@@ -14,7 +14,9 @@ public class Candlestick {
     public String signal;
     public BigDecimal psarPrice;
     public String candleType;
-
+    // Indicator fields
+    private BigDecimal smoothMA;
+    private String masignal;
     public Candlestick(BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close,Long id,String signal,BigDecimal psarPrice, String candleType) {
         this.open = open;
         this.high = high;

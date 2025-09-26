@@ -95,6 +95,9 @@ public class ChartService {
 	
 	@Autowired
 	SRService srService;
+	
+	@Autowired
+	MovingAvgWithSMASmoothing movingAvgWithSMASmoothing;
 	/*
 	 * Get JsonDetail
 	 */
@@ -216,6 +219,8 @@ public class ChartService {
 					List<Candlestick> pSARList = pSARIndicator.calculatePSAR(getValuesAsList(name));
 					if (pSARList != null && !pSARList.isEmpty()) {
 						updateCandleData(pSARList, "PSAR");
+						List<Candlestick> maCandleList =movingAvgWithSMASmoothing.getMovingAverage(getValuesAsList(name));
+						updateCandleData(maCandleList, "MA");
 					} else {
 						return "No Data Found";
 					}
@@ -250,7 +255,7 @@ public class ChartService {
 			Vix vix = vixOptional.get();
 			if (candleType.equalsIgnoreCase("PSAR")) {
 				vix.setPsar(candleStick.getSignal());
-			} else {
+			} else if (candleType.equalsIgnoreCase("HEIKINACHI")) {
 				vix.setHeikinachi(candleStick.getSignal());
 				vix.setCandleType(candleStick.getCandleType());
 				// Overwrite Traditional candle with HeikinAchi candle data
@@ -259,6 +264,11 @@ public class ChartService {
 				 * vix.setLow(candleStick.low); vix.setClose(candleStick.close);
 				 */
 			}
+		     else if (candleType.equalsIgnoreCase("MA")) {
+		    	 vix.setSmoothma(candleStick.getSmoothMA());
+		    	 vix.setMasignal(candleStick.getMasignal());
+		   }
+			
 			vixRepo.save(vix);
 		}
 	}
@@ -516,6 +526,7 @@ public class ChartService {
 			resultVix.setActive("Y");
 			resultVix.setTimestamp(vix.getTimestamp());
 			resultVix.setType(type);
+			resultVix.setMa(vix.getMasignal());
 			// Place Order - ENTRY
             //Determine Trading Signal
 			if(type.equalsIgnoreCase(resultVix.getCombine()))

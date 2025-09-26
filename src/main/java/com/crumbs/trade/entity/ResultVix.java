@@ -68,6 +68,8 @@ public class ResultVix {
 	String fibo;
 	@Column(name="combine")
 	String combine;
+	@Column(name="ma")
+	String ma;
 	
 }
 
