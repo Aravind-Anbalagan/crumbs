@@ -77,7 +77,7 @@ public class StockController {
 	/*
 	 * STEP 1 & 2 & 3 Trigger for find 5 days Avg volume and execute day candle
 	 */
-	@Scheduled(cron = "0 0 22 * * ?") // Works
+	@Scheduled(cron = "0 0 22 * * MON-FRI", zone = "Asia/Kolkata")
 	public String getStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			taskService.getSupportAndResistance("ALL", "ALL");
@@ -90,7 +90,7 @@ public class StockController {
 	 * 
 	 */
 	@GetMapping("/findStocks")
-	@Scheduled(cron = "0 35 09 * * ?") // Works
+	@Scheduled(cron = "0 35 09 * * MON-FRI", zone = "Asia/Kolkata")
 	public String findBullishStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			taskService.findBullishStocks();
@@ -101,7 +101,7 @@ public class StockController {
 	}
 
 	@GetMapping("/stocksResult")
-	@Scheduled(cron = "0 35 15 * * ?") // Works
+	@Scheduled(cron = "0 35 15 * * MON-FRI", zone = "Asia/Kolkata")
 	public String getResult() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			taskService.getResult();
@@ -153,13 +153,13 @@ public class StockController {
 			// dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
 			dto.addHeader("SR_SIGNAL", ind.getDaily_sr_signal(), true);
 			// dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
-			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), false);
+			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), true);
 			// dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
 			dto.addHeader("FIBO_SIGNAL", ind.getDaily_fibo_signal(), true);
 			// dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
-			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), false);
+			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
 			dto.addHeader("AI_SIGNAL", ind.getDaily_aiSignal(), true);
-			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), false);
+			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
 			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 		}
 
@@ -173,14 +173,14 @@ public class StockController {
 			// dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
 			dto.addHeader("SR_SIGNAL", ind.getWeekly_sr_signal(), true);
 			// dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
-			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), false);
+			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), true);
 			// dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
 			dto.addHeader("FIBO_SIGNAL", ind.getWeekly_fibo_signal(), true);
 			// dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(),
 			// true);
-			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), false);
+			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), true);
 			dto.addHeader("AI_SIGNAL", ind.getWeekly_aiSignal(), true);
-			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), false);
+			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), true);
 		}
 
 		if ("COMBINE".equalsIgnoreCase(flag)) {

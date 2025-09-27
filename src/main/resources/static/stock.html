@@ -901,8 +901,16 @@
           throw new Error("No stock data found for the selected filters.");
           
         visibleKeys = Object.entries(data[0].headers)
-          .filter(([_, val]) => val[1])
-          .map(([key]) => key);
+  .filter(([_, val]) => val[1])
+  .map(([key]) => key);
+
+visibleKeys.forEach((key) => {
+  if (/reason/i.test(key)) {
+    columnVisibility[key] = false;
+  } else {
+    if (!(key in columnVisibility)) columnVisibility[key] = true;
+  }
+});
           
         // Add chart column key manually if not present
         if (!visibleKeys.includes("chart")) {
