@@ -54,5 +54,7 @@ public class Result {
 	String exitTime;
 	@Column(name="sl")
 	BigDecimal sl;
+	@Column(name="hasOption")
+	String hasOption;
 }
 

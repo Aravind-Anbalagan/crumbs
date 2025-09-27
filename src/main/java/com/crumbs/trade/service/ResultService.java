@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +61,7 @@ public class ResultService {
 			result.setExecutedltp(stock.getPrevdaycloseprice());
 			result.setCurrentltp(stock.getCurrentPrice());
 			result.setType(stock.getIntraday()); // common field indicate buy /sell
+			result.setHasOption(Objects.nonNull(stock.getOptions()) ? "Y" : "N");
 			if ("UP".equalsIgnoreCase(result.getType())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
 

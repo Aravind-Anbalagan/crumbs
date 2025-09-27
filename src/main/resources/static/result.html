@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stock Result</title>
   <style>
     :root {
       --primary-color: #000000;
       --primary-hover: #222222;
-      
+
       --bg-primary: #ffffff;
       --bg-secondary: #f5f5f5;
       --bg-tertiary: #e0e0e0;
@@ -19,9 +19,11 @@
 
       --border-primary: #ccc;
       --border-secondary: #bbb;
-      
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+      --shadow-md:
+        0 4px 6px -1px rgba(0, 0, 0, 0.1),
+        0 2px 4px -2px rgba(0, 0, 0, 0.1);
 
       --bg-col-trade: linear-gradient(135deg, #f0f0f0 0%, #dcdcdc 100%);
       --bg-col-default: linear-gradient(135deg, #fafafa 0%, #e5e5e5 100%);
@@ -29,7 +31,7 @@
     }
 
     body {
-      font-family: 'Inter', Arial, sans-serif;
+      font-family: "Inter", Arial, sans-serif;
       background: var(--bg-secondary);
       margin: 20px;
       color: var(--text-primary);
@@ -50,7 +52,9 @@
       flex-wrap: wrap;
     }
 
-    input, select, button {
+    input,
+    select,
+    button {
       padding: 10px 14px;
       border-radius: 12px;
       border: 1px solid var(--border-primary);
@@ -62,7 +66,9 @@
       cursor: pointer;
     }
 
-    input:focus, select:focus, button:focus {
+    input:focus,
+    select:focus,
+    button:focus {
       outline: none;
       border-color: var(--primary-color);
       box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
@@ -98,7 +104,8 @@
       cursor: pointer;
     }
 
-    th, td {
+    th,
+    td {
       padding: 16px 20px;
       text-align: left;
       font-size: 14px;
@@ -111,11 +118,13 @@
     tbody tr:nth-child(even) {
       background: var(--bg-col-even);
     }
-tbody tr:hover {
-  background-color: var(--bg-tertiary);
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
+
+    tbody tr:hover {
+      background-color: var(--bg-tertiary);
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
     .badge {
       padding: 6px 12px;
       border-radius: 12px;
@@ -126,38 +135,41 @@ tbody tr:hover {
       user-select: none;
       display: inline-block;
     }
+
     /* Type badges for UP and DOWN */
     .badge.up {
-      background: #d1fae5; /* very light green */
-      color: #065f46; /* dark green */
+      background: #d1fae5;
+      /* very light green */
+      color: #065f46;
+      /* dark green */
     }
 
     .badge.down {
-      background: #fee2e2; /* very light red */
-      color: #991b1b; /* dark red */
-    }
-
-    .comment {
-      font-style: italic;
-      color: var(--text-muted);
-      white-space: nowrap;
+      background: #fee2e2;
+      /* very light red */
+      color: #991b1b;
+      /* dark red */
     }
 
     /* Return positive and negative colors */
     .return-positive {
-      color: #065f46; /* dark green */
+      color: #065f46;
+      /* dark green */
       font-weight: 700;
     }
 
     .return-negative {
-      color: #991b1b; /* dark red */
+      color: #991b1b;
+      /* dark red */
       font-weight: 700;
     }
 
     /* Result status highlights */
     .status-active {
-      background-color: #d1fae5; /* light green background */
-      color: #065f46; /* dark green */
+      background-color: #d1fae5;
+      /* light green background */
+      color: #065f46;
+      /* dark green */
       padding: 5px 10px;
       border-radius: 12px;
       font-weight: 600;
@@ -168,8 +180,10 @@ tbody tr:hover {
     }
 
     .status-sl-hit {
-      background-color: #fee2e2; /* light red background */
-      color: #991b1b; /* dark red */
+      background-color: #fee2e2;
+      /* light red background */
+      color: #991b1b;
+      /* dark red */
       padding: 5px 10px;
       border-radius: 12px;
       font-weight: 600;
@@ -179,6 +193,7 @@ tbody tr:hover {
       display: inline-block;
     }
 
+    /* Loader */
     .loader {
       border: 6px solid var(--bg-col-default);
       border-top: 6px solid var(--primary-color);
@@ -190,8 +205,12 @@ tbody tr:hover {
     }
 
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
     }
 
     .pagination {
@@ -233,8 +252,13 @@ tbody tr:hover {
     }
 
     /* Responsive mobile design */
-    @media(max-width: 768px) {
-      table, thead, tbody, th, td, tr {
+    @media (max-width: 768px) {
+      table,
+      thead,
+      tbody,
+      th,
+      td,
+      tr {
         display: block;
       }
       thead {
@@ -268,6 +292,18 @@ tbody tr:hover {
         white-space: nowrap;
       }
     }
+
+    /* Optional styling for hasOption badges */
+    .has-option-badge {
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 12px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-block;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
@@ -289,6 +325,7 @@ tbody tr:hover {
     <thead>
       <tr>
         <th data-key="active">Trade</th>
+        <th data-key="hasOption">Options</th> <!-- Moved here -->
         <th data-key="name">Name</th>
         <th data-key="exchange">Exchange</th>
         <th data-key="entryTime">Entry Time</th>
@@ -309,6 +346,7 @@ tbody tr:hover {
     let currentSort = { key: null, asc: true };
     let currentPage = 1;
     const rowsPerPage = 10;
+
     async function loadData() {
       const loader = document.getElementById("loader");
       const table = document.getElementById("data-table");
@@ -330,17 +368,20 @@ tbody tr:hover {
         );
       }
     }
+
     function renderTable() {
       const tbody = document.getElementById("table-body");
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
       tbody.innerHTML = "";
-      let filtered = stockData.filter(item => {
+
+      let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
         const matchesSearch = item.name?.toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         return matchesSearch && matchesType;
       });
+
       // Apply sorting
       if (currentSort.key) {
         filtered.sort((a, b) => {
@@ -358,18 +399,21 @@ tbody tr:hover {
           return 0;
         });
       }
+
       // Pagination logic
       const totalPages = Math.ceil(filtered.length / rowsPerPage);
       if (currentPage > totalPages) currentPage = totalPages || 1;
       const start = (currentPage - 1) * rowsPerPage;
       const paginated = filtered.slice(start, start + rowsPerPage);
+
       if (paginated.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">No records found</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);">No records found</td></tr>`;
       } else {
-        paginated.forEach(item => {
+        paginated.forEach((item) => {
           const displayType = (item.type || "").toUpperCase();
-          const badgeClass = displayType === "UP" ? "up" :
-                             displayType === "DOWN" ? "down" : "";
+          const badgeClass =
+            displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : "";
+
           // Format return with coloring
           let returnPercentClass = "";
           let returnText = item.comment || "";
@@ -379,6 +423,7 @@ tbody tr:hover {
             returnPercentClass = value >= 0 ? "return-positive" : "return-negative";
             returnText = `Return: ${value.toFixed(2)}%`;
           }
+
           // Format status with badge
           let statusClass = "";
           let statusText = item.result || "";
@@ -387,9 +432,17 @@ tbody tr:hover {
           } else if (statusText.toUpperCase() === "SL HIT") {
             statusClass = "status-sl-hit";
           }
+
+          // Options display
+          const optionsDisplay =
+            item.hasOption === "Y"
+              ? '<span class="has-option-badge">Yes</span>'
+              : "No";
+
           const row = document.createElement("tr");
           row.innerHTML = `
             <td data-label="Traded">${item.active || "N"}</td>
+            <td data-label="Options">${optionsDisplay}</td>
             <td data-label="Name">${item.name || ""}</td>
             <td data-label="Exchange">${item.exchange || ""}</td>
             <td data-label="Entry Time">${formatDate(item.entryTime)}</td>
@@ -407,33 +460,48 @@ tbody tr:hover {
       }
       renderPagination(totalPages);
     }
+
     function renderPagination(totalPages) {
       const pagination = document.getElementById("pagination");
       pagination.innerHTML = "";
       if (totalPages <= 1) return;
+
       const prev = document.createElement("button");
       prev.textContent = "Prev";
       prev.disabled = currentPage === 1;
-      prev.onclick = () => { currentPage--; renderTable(); };
+      prev.onclick = () => {
+        currentPage--;
+        renderTable();
+      };
       pagination.appendChild(prev);
+
       for (let i = 1; i <= totalPages; i++) {
         const btn = document.createElement("button");
         btn.textContent = i;
         if (i === currentPage) btn.classList.add("active");
-        btn.onclick = () => { currentPage = i; renderTable(); };
+        btn.onclick = () => {
+          currentPage = i;
+          renderTable();
+        };
         pagination.appendChild(btn);
       }
+
       const next = document.createElement("button");
       next.textContent = "Next";
       next.disabled = currentPage === totalPages;
-      next.onclick = () => { currentPage++; renderTable(); };
+      next.onclick = () => {
+        currentPage++;
+        renderTable();
+      };
       pagination.appendChild(next);
     }
+
     function formatDate(dateStr) {
       if (!dateStr) return "";
       const d = new Date(dateStr);
       return isNaN(d.getTime()) ? dateStr : d.toLocaleString();
     }
+
     // Reset functionality
     document.getElementById("resetBtn").addEventListener("click", () => {
       document.getElementById("searchBox").value = "";
@@ -442,11 +510,24 @@ tbody tr:hover {
       currentSort = { key: null, asc: true };
       renderTable();
     });
+
     // Event listeners for search and filter
-    document.getElementById("searchBox").addEventListener("input", () => { currentPage = 1; renderTable(); });
-    document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; renderTable(); });
+    document
+      .getElementById("searchBox")
+      .addEventListener("input", () => {
+        currentPage = 1;
+        renderTable();
+      });
+
+    document
+      .getElementById("typeFilter")
+      .addEventListener("change", () => {
+        currentPage = 1;
+        renderTable();
+      });
+
     // Sorting event listeners on table headers
-    document.querySelectorAll("thead th").forEach(th => {
+    document.querySelectorAll("thead th").forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-key");
         if (currentSort.key === key) {
@@ -458,6 +539,7 @@ tbody tr:hover {
         renderTable();
       });
     });
+
     window.onload = loadData;
   </script>
 </body>
