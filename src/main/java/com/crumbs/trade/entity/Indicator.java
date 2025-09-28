@@ -156,6 +156,10 @@ public class Indicator {
 	String volume;
 	@Column(name = "volumeFlag")
 	String volumeFlag;
+	@Column(name = "weeklyvolume")
+	String weeklyvolume;
+	@Column(name = "weeklyvolumeFlag")
+	String weeklyvolumeFlag;
 	@Column(name = "intraday")
 	String intraday;
 	@Column(name = "pivot")

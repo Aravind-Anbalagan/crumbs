@@ -1718,6 +1718,15 @@ public class TaskService {
 	private void getWeeklyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
 			SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice, List<PricesIndex> pricesList) {
 
+		Indicator indicator = indicatorRepo.findByname(indexes.getName());
+		if (indicator == null) {
+			logger.warn("No indicator found for {}", indexes.getName());
+			return;
+		}
+		
+		// Volume for last N days (5 days here) for volumeService
+		indicator.setWeeklyvolumeFlag(checkLastVolumeVsAvg(pricesList));
+		
 		// Sort and filter without hitting DB again
 		pricesList.sort(Comparator.comparing(PricesIndex::getVolume, Comparator.reverseOrder()));
 		List<PricesIndex> top10 = pricesList.stream().limit(10).toList();
@@ -1730,12 +1739,7 @@ public class TaskService {
 
 		int avgRange = candle.getPriceLimit(); // Using candle-provided range
 
-		Indicator indicator = indicatorRepo.findByname(indexes.getName());
-		if (indicator == null) {
-			logger.warn("No indicator found for {}", indexes.getName());
-			return;
-		}
-
+		
 		indicator.setWeeklysupport(supportList.toString());
 		indicator.setWeeklyresistance(resistanceList.toString());
 
@@ -1776,9 +1780,32 @@ public class TaskService {
 		indicator.setWeekly_fibo_reason(analysis.getFibo_reason());
 
 		indicator.setOneweek("Y");
+	
 		indicatorRepo.save(indicator);
 	}
 
+	 public static String checkLastVolumeVsAvg(List<PricesIndex> pricesList) {
+	        if (pricesList == null || pricesList.size() < 6) {
+	            // Not enough data (need last + 5 previous)
+	            return null;
+	        }
+
+	        int lastIndex = pricesList.size() - 1;
+	        PricesIndex lastPrice = pricesList.get(lastIndex);
+
+	        // Calculate average of previous 5
+	        BigDecimal sum = BigDecimal.ZERO;
+	        for (int i = lastIndex - 5; i < lastIndex; i++) {
+	            sum = sum.add(pricesList.get(i).getVolume());
+	        }
+	        BigDecimal avg = sum.divide(BigDecimal.valueOf(5), BigDecimal.ROUND_HALF_UP);
+
+	        // Compare last volume with average
+	        if (lastPrice.getVolume().compareTo(avg) > 0) {
+	            return "HIGH";
+	        }
+	        return null;
+	    }
 	private <T> T retryWithBackoff(Callable<T> task, int maxRetries, long initialBackoffMs) throws Exception {
 		long backoff = initialBackoffMs;
 		for (int attempt = 1; attempt <= maxRetries; attempt++) {

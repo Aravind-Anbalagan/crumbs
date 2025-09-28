@@ -149,16 +149,16 @@ public class StockController {
 			dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
 			dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
 			dto.addHeader("VOLUME", ind.getVolumeFlag(), true);
-			dto.addHeader("PIVOT_LEVEL", ind.getPivotFlag(), true);
+			dto.addHeader("PIVOT", ind.getPivotFlag(), true);
 			// dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
-			dto.addHeader("SR_SIGNAL", ind.getDaily_sr_signal(), true);
+			dto.addHeader("SR", ind.getDaily_sr_signal(), true);
 			// dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
 			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), true);
 			// dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
-			dto.addHeader("FIBO_SIGNAL", ind.getDaily_fibo_signal(), true);
+			dto.addHeader("FIBO", ind.getDaily_fibo_signal(), true);
 			// dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
 			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
-			dto.addHeader("AI_SIGNAL", ind.getDaily_aiSignal(), true);
+			dto.addHeader("AI", ind.getDaily_aiSignal(), true);
 			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
 			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 		}
@@ -168,32 +168,38 @@ public class StockController {
 			dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
 			dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
 			dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
-			dto.addHeader("VOLUME", ind.getVolumeFlag(), true);
-			dto.addHeader("PIVOT_LEVEL", ind.getPivotFlag(), true);
+			dto.addHeader("VOLUME", ind.getWeeklyvolumeFlag(), true);
+			dto.addHeader("PIVOT", ind.getPivotFlag(), true);
 			// dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
-			dto.addHeader("SR_SIGNAL", ind.getWeekly_sr_signal(), true);
+			dto.addHeader("SR", ind.getWeekly_sr_signal(), true);
 			// dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
 			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), true);
 			// dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
-			dto.addHeader("FIBO_SIGNAL", ind.getWeekly_fibo_signal(), true);
+			dto.addHeader("FIBO", ind.getWeekly_fibo_signal(), true);
 			// dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(),
 			// true);
 			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), true);
-			dto.addHeader("AI_SIGNAL", ind.getWeekly_aiSignal(), true);
+			dto.addHeader("AI", ind.getWeekly_aiSignal(), true);
 			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), true);
 		}
 
 		if ("COMBINE".equalsIgnoreCase(flag)) {
+			
 			dto.addHeader("D_VOLUME", ind.getVolumeFlag(), true);
-			dto.addHeader("D_SR_SIGNAL", ind.getDaily_sr_signal(), true);
-			dto.addHeader("D_FIBO_SIGNAL", ind.getDaily_fibo_signal(), true);
-			dto.addHeader("D_AI_SIGNAL", ind.getDaily_aiSignal(), true);
-			dto.addHeader("W_VOLUME", ind.getVolumeFlag(), true);
-			dto.addHeader("W_SR_SIGNAL", ind.getWeekly_sr_signal(), true);
-			dto.addHeader("W_FIBO_SIGNAL", ind.getWeekly_fibo_signal(), true);
-			dto.addHeader("W_AI_SIGNAL", ind.getWeekly_aiSignal(), true);
+			dto.addHeader("D_HEIKIN", ind.getHeikinAshiDay() , true);
+			dto.addHeader("D_PSAR", ind.getPsarFlagDay(), true);
+			dto.addHeader("D_SR", ind.getDaily_sr_signal(), true);
+			dto.addHeader("D_FIBO", ind.getDaily_fibo_signal(), true);
+			//dto.addHeader("D_AI", ind.getDaily_aiSignal(), true);
+			
+			dto.addHeader("W_VOLUME", ind.getWeeklyvolumeFlag(), true);
+			dto.addHeader("W_HEIKIN", ind.getHeikinAshiWeekly() , true);
+			dto.addHeader("W_PSAR", ind.getPsarFlagWeekly() , true);
+			dto.addHeader("W_SR", ind.getWeekly_sr_signal(), true);
+			dto.addHeader("W_FIBO", ind.getWeekly_fibo_signal(), true);
+			//dto.addHeader("W_AI", ind.getWeekly_aiSignal(), true);
 
-			dto.addHeader("COMBINE_SGNAL", ind.getCombineSignal(), true);
+			//dto.addHeader("COMBINE_SIGNAL", ind.getCombineSignal(), true);
 			// dto.addHeader("combineConfidence", ind.getCombineConfidence(), true);
 			// dto.addHeader("combineReasonSummary", ind.getCombineReasonSummary() , true);
 			// dto.addHeader("combineDetailedReason", ind.getCombineDetailedReason(), true);
