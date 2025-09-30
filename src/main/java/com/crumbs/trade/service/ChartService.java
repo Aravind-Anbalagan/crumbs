@@ -98,6 +98,9 @@ public class ChartService {
 	
 	@Autowired
 	MovingAvgWithSMASmoothing movingAvgWithSMASmoothing;
+	
+	@Autowired
+	TelegramService telegramService;
 	/*
 	 * Get JsonDetail
 	 */
@@ -407,12 +410,14 @@ public class ChartService {
 			// i)) {
 			if (compareHeikinAchiAndPsarCandle(vixList, i)) {
 				if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
-						&& vix.getPsar().equalsIgnoreCase("BUY")) {
+						&& vix.getPsar().equalsIgnoreCase("BUY")
+						&& vix.getMasignal().equalsIgnoreCase("BUY")) {
 
 					makeEntry(vix, strategy, "BUY", testFlag, currentPrice);
 
 				} else if (vix.getType().equalsIgnoreCase("SELL") && vix.getHeikinachi().equalsIgnoreCase("SELL")
-						&& vix.getPsar().equalsIgnoreCase("SELL")) {
+						&& vix.getPsar().equalsIgnoreCase("SELL")
+						&& vix.getMasignal().equalsIgnoreCase("SELL")) {
 					makeEntry(vix, strategy, "SELL", testFlag, currentPrice);
 
 				}
@@ -528,13 +533,15 @@ public class ChartService {
 			resultVix.setType(type);
 			resultVix.setMa(vix.getMasignal());
 			// Place Order - ENTRY
-            //Determine Trading Signal
-			if(type.equalsIgnoreCase(resultVix.getCombine()))
-			{
-				tradeFlag =true;
-				logger.info("Entry trade: Signal={}, Final={}", type, resultVix.getCombine());
-			}
+			// Determine Trading Signal
+
+			tradeFlag = true;
+			logger.info("Entry trade: Signal={}, Ma={}", type, resultVix.getCombine());
+			String message = "Entry :" + strategy.getName() + " -> " + type;
+			boolean ok = telegramService.sendMessage(message);
+
 			Token token = triggerEntryOrder(strategy, type, resultVix, tradeFlag);
+
 			if (token != null) {
 				resultVix.setLotSize(token.getQuantity());
 				resultVix.setToken(token.getToken());
@@ -544,7 +551,7 @@ public class ChartService {
 			}
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
-				//&& (!type.equalsIgnoreCase(resultVix.getCombine()) && !"NO_TRADE".equalsIgnoreCase(resultVix.getCombine()))) {
+				//&& (resultVix.getType().equalsIgnoreCase(resultVix.getMa()))) {
 			//PR Updates
 			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
 			if(pr!=null)
@@ -584,16 +591,13 @@ public class ChartService {
 			resultVix.setActive(null);
 			// Place Order  - EXIT
 			//Determine Trading Signal
-			String combine = resultVix.getCombine();
+			String maSignal = resultVix.getMa();
 
-			if (!combine.equalsIgnoreCase(type)    // not same as current trade
-			        && !"NO_TRADE".equalsIgnoreCase(combine)) {  // not NO_TRADE
-			    tradeFlag = true;
-			    logger.info("Exit trade: Signal={}, Final={}", type, combine);
-			} else {
-			    logger.info("No action: Signal={}, Final={}", type, combine);
-			}
-			triggerExitOrder(resultVix,tradeFlag);
+			tradeFlag = true;
+			String message = "Exit :" + strategy.getName() + " -> " + type;
+			boolean ok = telegramService.sendMessage(message);
+			logger.info("Exit trade: Signal={}, Ma={}", type, maSignal);
+			triggerExitOrder(resultVix, tradeFlag);
 		}
 		resultVixRepo.save(resultVix);
 	}
