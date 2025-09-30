@@ -115,7 +115,7 @@ public class HeikinPsarController {
 		if (strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
 			chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,strategyRepo.findByName("NIFTY").getTradingsymbol());
 			chartService.monitorSignal("NIFTY", "NFO", false, 0);
-			srService.getSignals("NIFTY", "NFO");
+			//srService.getSignals("NIFTY", "NFO");
 		}
 		//NIFTY OI
 		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
@@ -135,7 +135,7 @@ public class HeikinPsarController {
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
 			chartService.readChartData("FIVE_MINUTE", "MCX", false, "CRUDEOIL", fromDate, toDate,strategyRepo.findByName("CRUDEOIL").getTradingsymbol());
 			chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
-			srService.getSignals("CRUDEOIL", "MCX");
+			//srService.getSignals("CRUDEOIL", "MCX");
 		}
 		//OI
 		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {

@@ -535,7 +535,7 @@ public class ChartService {
 			// Place Order - ENTRY
 			// Determine Trading Signal
 
-			tradeFlag = true;
+			tradeFlag = false; // Take Trade In Flat Trade
 			logger.info("Entry trade: Signal={}, Ma={}", type, resultVix.getCombine());
 			String message = "Entry :" + strategy.getName() + " -> " + type;
 			boolean ok = telegramService.sendMessage(message);
@@ -593,7 +593,7 @@ public class ChartService {
 			//Determine Trading Signal
 			String maSignal = resultVix.getMa();
 
-			tradeFlag = true;
+			tradeFlag = false; // Take Trade In Flat Trade
 			String message = "Exit :" + strategy.getName() + " -> " + type;
 			boolean ok = telegramService.sendMessage(message);
 			logger.info("Exit trade: Signal={}, Ma={}", type, maSignal);
@@ -769,13 +769,12 @@ public class ChartService {
 				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 						: Constants.TRANSACTION_TYPE_BUY;
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
-					if(resultVix.getType().equalsIgnoreCase(resultVix.getCombine()))
-					{
-						tradeFlag = true;
-						logger.info("SL Trade: Signal={}, Final={}",resultVix.getType(),resultVix.getCombine());
-					}
-                    //Place Order - EXIT
-					Token token = placeOrder(setValues(resultVix), transactionType,"S", tradeFlag);
+
+					tradeFlag = false; // Take Trade in Flat Trade
+					logger.info("Exit Trade: Result={}", result);
+
+					// Place Order - EXIT
+					Token token = placeOrder(setValues(resultVix), transactionType, "S", tradeFlag);
 					closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
 
 				}
