@@ -209,6 +209,7 @@ public class StockController {
 
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {
+			dto.addHeader("OPTION", ind.getOptions(), true);
 			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 			dto.addHeader("RESULT", ind.getResult(), true);
 		}
