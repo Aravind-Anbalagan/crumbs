@@ -240,7 +240,9 @@ public class TaskService {
 		SmartConnect smartConnect = angelOne.signIn();
 		List<Indexes> indexesList = new ArrayList<>();
 		indicatorRepo.deleteAll();
-
+        pricesIndexRepo.deleteAll();
+        priceHeikinashiIndexRepo.deleteAll();
+        psarIndexRepo.deleteAll();
 		// Update Volume
 		// indexesRepo.updateVolume(null);
 		// volumeService.checkVolume();
