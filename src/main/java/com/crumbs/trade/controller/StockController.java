@@ -160,7 +160,7 @@ public class StockController {
 			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
 			dto.addHeader("AI", ind.getDaily_aiSignal(), true);
 			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
-			dto.addHeader("INTRADAY", ind.getIntraday(), true);
+			//dto.addHeader("INTRADAY", ind.getIntraday(), true);
 		}
 
 		if ("WEEKLY".equalsIgnoreCase(flag)) {
@@ -197,6 +197,7 @@ public class StockController {
 			dto.addHeader("W_PSAR", ind.getPsarFlagWeekly() , true);
 			dto.addHeader("W_SR", ind.getWeekly_sr_signal(), true);
 			dto.addHeader("W_FIBO", ind.getWeekly_fibo_signal(), true);
+			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 			//dto.addHeader("W_AI", ind.getWeekly_aiSignal(), true);
 
 			//dto.addHeader("COMBINE_SIGNAL", ind.getCombineSignal(), true);
