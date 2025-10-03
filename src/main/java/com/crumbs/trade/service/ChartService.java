@@ -536,10 +536,7 @@ public class ChartService {
 			// Determine Trading Signal
 
 			tradeFlag = false; // Take Trade In Flat Trade
-			logger.info("Entry trade: Signal={}, Ma={}", type, resultVix.getCombine());
-			String message = "Entry :" + strategy.getName() + " -> " + type;
-			boolean ok = telegramService.sendMessage(message);
-
+			logger.info("Entry trade: Signal={}, Ma={}", type, resultVix.getMa());
 			Token token = triggerEntryOrder(strategy, type, resultVix, tradeFlag);
 
 			if (token != null) {
@@ -549,6 +546,10 @@ public class ChartService {
 				resultVix.setSymbol(token.getSymbol());
 
 			}
+			resultVixRepo.save(resultVix);
+			String message = "Entry :" + strategy.getName() + " -> " + type;
+			boolean ok = telegramService.sendMessage(message);
+			logger.info("Signal has Sent : ", ok);
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (resultVix.getType().equalsIgnoreCase(resultVix.getMa()))) {
@@ -594,12 +595,14 @@ public class ChartService {
 			String maSignal = resultVix.getMa();
 
 			tradeFlag = false; // Take Trade In Flat Trade
-			String message = "Exit :" + strategy.getName() + " -> " + type;
-			boolean ok = telegramService.sendMessage(message);
 			logger.info("Exit trade: Signal={}, Ma={}", type, maSignal);
 			triggerExitOrder(resultVix, tradeFlag);
+			resultVixRepo.save(resultVix);
+			String message = "Exit :" + strategy.getName() + " -> " + type;
+			boolean ok = telegramService.sendMessage(message);
+			logger.info("Signal has Sent : ", ok);
 		}
-		resultVixRepo.save(resultVix);
+		
 	}
 
 	public Token triggerExitOrder(ResultVix resultVix, boolean tradeFlag) {
