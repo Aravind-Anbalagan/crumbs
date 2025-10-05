@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stock Result</title>
+  <title>Stock Result Dashboard</title>
   <style>
     :root {
       --primary-color: #000000;
@@ -21,28 +21,82 @@
       --bg-col-trade: linear-gradient(135deg, #f0f0f0 0%, #dcdcdc 100%);
       --bg-col-default: linear-gradient(135deg, #fafafa 0%, #e5e5e5 100%);
       --bg-col-even: #f9f9f9;
+      --green: #065f46;
+      --green-bg: #d1fae5;
+      --red: #991b1b;
+      --red-bg: #fee2e2;
+    }
+
+    * {
+      box-sizing: border-box;
     }
 
     body {
-      font-family: "Inter", Arial, sans-serif;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       background: var(--bg-secondary);
-      margin: 20px;
+      margin: 0;
+      padding: 20px;
       color: var(--text-primary);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
     }
 
     h2 {
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 30px;
       font-weight: 700;
       color: var(--text-primary);
+      font-size: 28px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: var(--bg-primary);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-md);
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .stat-value.positive {
+      color: var(--green);
+    }
+
+    .stat-value.negative {
+      color: var(--red);
     }
 
     .controls {
       display: flex;
       justify-content: center;
-      gap: 16px;
+      gap: 12px;
       margin-bottom: 20px;
       flex-wrap: wrap;
+      align-items: center;
     }
 
     input,
@@ -55,7 +109,7 @@
       font-weight: 600;
       background: var(--bg-primary);
       color: var(--text-primary);
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      transition: all 0.2s ease;
       cursor: pointer;
     }
 
@@ -67,7 +121,7 @@
       box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
     }
 
-    button.reset-btn {
+    button.primary-btn {
       background: var(--primary-color);
       color: var(--bg-primary);
       border: none;
@@ -76,17 +130,30 @@
       transition: background 0.2s ease;
     }
 
-    button.reset-btn:hover {
+    button.primary-btn:hover {
       background: var(--primary-hover);
+    }
+
+    button.export-btn {
+      background: var(--green);
+      color: white;
+      border: none;
+    }
+
+    button.export-btn:hover {
+      background: #047857;
+    }
+
+    .table-container {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      background: var(--bg-primary);
-      box-shadow: var(--shadow-md);
-      border-radius: 16px;
-      overflow: hidden;
       display: none;
     }
 
@@ -94,10 +161,43 @@
       background: var(--primary-color);
       color: var(--bg-primary);
       user-select: none;
-      cursor: pointer;
     }
 
-    th,
+    th {
+      padding: 16px 20px;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-primary);
+      cursor: pointer;
+      position: relative;
+      white-space: nowrap;
+    }
+
+    th:hover {
+      background: var(--primary-hover);
+    }
+
+    th.sorted::after {
+      content: '';
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+    }
+
+    th.sorted.asc::after {
+      border-bottom: 6px solid var(--bg-primary);
+    }
+
+    th.sorted.desc::after {
+      border-top: 6px solid var(--bg-primary);
+    }
+
     td {
       padding: 16px 20px;
       text-align: left;
@@ -130,28 +230,28 @@
     }
 
     .badge.up {
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--green-bg);
+      color: var(--green);
     }
 
     .badge.down {
-      background: #fee2e2;
-      color: #991b1b;
+      background: var(--red-bg);
+      color: var(--red);
     }
 
     .return-positive {
-      color: #065f46;
+      color: var(--green);
       font-weight: 700;
     }
 
     .return-negative {
-      color: #991b1b;
+      color: var(--red);
       font-weight: 700;
     }
 
     .status-active {
-      background-color: #d1fae5;
-      color: #065f46;
+      background-color: var(--green-bg);
+      color: var(--green);
       padding: 5px 10px;
       border-radius: 12px;
       font-weight: 600;
@@ -162,8 +262,8 @@
     }
 
     .status-sl-hit {
-      background-color: #fee2e2;
-      color: #991b1b;
+      background-color: var(--red-bg);
+      color: var(--red);
       padding: 5px 10px;
       border-radius: 12px;
       font-weight: 600;
@@ -226,9 +326,37 @@
       user-select: none;
     }
 
+    .has-option-badge {
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 12px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-block;
+      user-select: none;
+    }
+
+    .info-text {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 20px;
+    }
+
     @media (max-width: 768px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
       table, thead, tbody, th, td, tr { display: block; }
       thead { display: none; }
+      
+      .table-container {
+        background: transparent;
+        box-shadow: none;
+      }
+
       tr {
         margin-bottom: 16px;
         background: var(--bg-primary);
@@ -237,6 +365,7 @@
         padding: 16px;
         box-shadow: var(--shadow-sm);
       }
+      
       td {
         padding-left: 50%;
         text-align: right;
@@ -246,6 +375,11 @@
         border: none;
         border-bottom: 1px solid var(--border-primary);
       }
+
+      td:last-child {
+        border-bottom: none;
+      }
+      
       td::before {
         content: attr(data-label);
         position: absolute;
@@ -257,60 +391,60 @@
         white-space: nowrap;
       }
     }
-
-    .has-option-badge {
-      background: #dbeafe;
-      color: #1e40af;
-      border-radius: 12px;
-      padding: 6px 12px;
-      font-size: 13px;
-      font-weight: 600;
-      display: inline-block;
-      user-select: none;
-    }
   </style>
 </head>
 <body>
-  <h2>Stock Result</h2>
+  <div class="container">
+   <div id="stats" class="stats-grid" style="display: none;"></div>
 
-  <div class="controls">
-    <input type="text" id="searchBox" placeholder="Search by Name..." />
-    <select id="typeFilter">
-      <option value="ALL">All</option>
-      <option value="UP">UP</option>
-      <option value="DOWN">DOWN</option>
-    </select>
-    <select id="periodFilter">
-      <option value="current" selected>Current Month</option>
-      <option value="previous">Previous Month</option>
-      <option value="last3">Last 3 Months</option>
-      <option value="all">All</option>
-    </select>
-    <button id="resetBtn" class="reset-btn">Reset</button>
+    <div class="controls">
+      <input type="text" id="searchBox" placeholder="🔍 Search by Name..." />
+      <select id="typeFilter">
+        <option value="ALL">All Types</option>
+        <option value="UP">UP</option>
+        <option value="DOWN">DOWN</option>
+      </select>
+      <select id="statusFilter">
+        <option value="ALL">All Status</option>
+        <option value="ACTIVE">Active</option>
+        <option value="SL HIT">SL Hit</option>
+      </select>
+      <select id="periodFilter">
+        <option value="current" selected>Current Month</option>
+        <option value="previous">Previous Month</option>
+        <option value="last3">Last 3 Months</option>
+        <option value="all">All Time</option>
+      </select>
+      <button id="resetBtn" class="primary-btn">Reset</button>
+      <button id="exportBtn" class="export-btn">Export CSV</button>
+    </div>
+
+    <div id="loader" class="loader"></div>
+
+    <div class="table-container">
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th data-key="active">Trade</th>
+            <th data-key="hasOption">Options</th>
+            <th data-key="name">Name</th>
+            <th data-key="exchange">Exchange</th>
+            <th data-key="entryTime">Entry Time</th>
+            <th data-key="type">Type</th>
+            <th data-key="executedltp">Executed LTP</th>
+            <th data-key="currentltp">Current LTP</th>
+            <th data-key="sl">SL</th>
+            <th data-key="returnPercent">Return %</th>
+            <th data-key="result">Status</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div id="pagination" class="pagination"></div>
+    <div class="info-text" id="infoText"></div>
   </div>
-
-  <div id="loader" class="loader"></div>
-
-  <table id="data-table">
-    <thead>
-      <tr>
-        <th data-key="active">Trade</th>
-        <th data-key="hasOption">Options</th>
-        <th data-key="name">Name</th>
-        <th data-key="exchange">Exchange</th>
-        <th data-key="entryTime">Entry Time</th>
-        <th data-key="type">Type</th>
-        <th data-key="executedltp">Executed LTP</th>
-        <th data-key="currentltp">Current LTP</th>
-        <th data-key="sl">SL</th>
-        <th data-key="comment">Return</th>
-        <th data-key="result">Status</th>
-      </tr>
-    </thead>
-    <tbody id="table-body"></tbody>
-  </table>
-
-  <div id="pagination" class="pagination"></div>
 
   <script>
     let stockData = [];
@@ -321,8 +455,10 @@
     async function loadData() {
       const loader = document.getElementById("loader");
       const table = document.getElementById("data-table");
+      const stats = document.getElementById("stats");
       loader.style.display = "block";
       table.style.display = "none";
+      stats.style.display = "none";
 
       const periodVal = document.getElementById("periodFilter").value;
 
@@ -330,43 +466,108 @@
         const response = await fetch(`/api/getDetailsResults?period=${periodVal}`);
         if (!response.ok) throw new Error("Network error");
         stockData = await response.json();
+        
+        // Process return percentages
+        stockData.forEach(item => {
+          const returnMatch = (item.comment || "").match(/Return:\s*(-?[\d.]+)%/);
+          item.returnPercent = returnMatch ? parseFloat(returnMatch[1]) : 0;
+        });
+
+        renderStats();
         renderTable();
         loader.style.display = "none";
         table.style.display = "table";
+        stats.style.display = "grid";
       } catch (error) {
         console.error("Error fetching data:", error);
         loader.style.display = "none";
-        document.body.insertAdjacentHTML(
-          "beforeend",
-          "<p style='color:red;text-align:center;'>Failed to load data.</p>"
-        );
+        document.getElementById("infoText").innerHTML = 
+          '<p style="color:red;">Failed to load data. Please try again.</p>';
       }
+    }
+
+    function renderStats() {
+      const stats = document.getElementById("stats");
+      const totalTrades = stockData.length;
+      const activeTrades = stockData.filter(i => (i.result || "").toUpperCase() === "ACTIVE").length;
+      const closedTrades = totalTrades - activeTrades;
+      
+      const totalReturn = stockData.reduce((sum, item) => sum + (item.returnPercent || 0), 0);
+      const avgReturn = totalTrades > 0 ? totalReturn / totalTrades : 0;
+      
+      const winningTrades = stockData.filter(i => (i.returnPercent || 0) > 0).length;
+      const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
+      const upTrades = stockData.filter(i => (i.type || "").toUpperCase() === "UP").length;
+      const downTrades = stockData.filter(i => (i.type || "").toUpperCase() === "DOWN").length;
+
+      stats.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">Total Trades</div>
+          <div class="stat-value">${totalTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active Trades</div>
+          <div class="stat-value">${activeTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Closed Trades</div>
+          <div class="stat-value">${closedTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Win Rate</div>
+          <div class="stat-value ${winRate >= 50 ? 'positive' : 'negative'}">${winRate.toFixed(1)}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Return</div>
+          <div class="stat-value ${avgReturn >= 0 ? 'positive' : 'negative'}">${avgReturn >= 0 ? '+' : ''}${avgReturn.toFixed(2)}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">UP Trades</div>
+          <div class="stat-value">${upTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">DOWN Trades</div>
+          <div class="stat-value">${downTrades}</div>
+        </div>
+      `;
     }
 
     function renderTable() {
       const tbody = document.getElementById("table-body");
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
+      const statusVal = document.getElementById("statusFilter").value;
       tbody.innerHTML = "";
 
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
-        const matchesSearch = item.name?.toLowerCase().includes(searchVal);
+        const displayStatus = (item.result || "").toUpperCase();
+        const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
-        return matchesSearch && matchesType;
+        const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
+        return matchesSearch && matchesType && matchesStatus;
       });
 
       if (currentSort.key) {
         filtered.sort((a, b) => {
-          let valA = a[currentSort.key] ?? "";
-          let valB = b[currentSort.key] ?? "";
-          if (!isNaN(valA) && !isNaN(valB)) {
-            valA = parseFloat(valA);
-            valB = parseFloat(valB);
+          let valA = a[currentSort.key];
+          let valB = b[currentSort.key];
+          
+          if (currentSort.key === 'returnPercent') {
+            valA = valA || 0;
+            valB = valB || 0;
+          } else if (currentSort.key === 'entryTime') {
+            valA = new Date(valA || 0).getTime();
+            valB = new Date(valB || 0).getTime();
+          } else if (!isNaN(valA) && !isNaN(valB)) {
+            valA = parseFloat(valA) || 0;
+            valB = parseFloat(valB) || 0;
           } else {
-            valA = valA.toString().toLowerCase();
-            valB = valB.toString().toLowerCase();
+            valA = (valA || "").toString().toLowerCase();
+            valB = (valB || "").toString().toLowerCase();
           }
+          
           if (valA < valB) return currentSort.asc ? -1 : 1;
           if (valA > valB) return currentSort.asc ? 1 : -1;
           return 0;
@@ -378,20 +579,18 @@
       const start = (currentPage - 1) * rowsPerPage;
       const paginated = filtered.slice(start, start + rowsPerPage);
 
+      updateSortIndicators();
+
       if (paginated.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);">No records found</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px;">No records found</td></tr>`;
       } else {
         paginated.forEach((item) => {
           const displayType = (item.type || "").toUpperCase();
           const badgeClass = displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : "";
-          let returnPercentClass = "";
-          let returnText = item.comment || "";
-          const returnMatch = returnText.match(/Return:\s*(-?[\d.]+)%/);
-          if (returnMatch) {
-            const value = parseFloat(returnMatch[1]);
-            returnPercentClass = value >= 0 ? "return-positive" : "return-negative";
-            returnText = `Return: ${value.toFixed(2)}%`;
-          }
+          
+          const returnPercent = item.returnPercent || 0;
+          const returnPercentClass = returnPercent >= 0 ? "return-positive" : "return-negative";
+          const returnText = `${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%`;
 
           let statusClass = "";
           let statusText = item.result || "";
@@ -411,14 +610,34 @@
             <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
             <td data-label="Current LTP">${item.currentltp ?? ""}</td>
             <td data-label="SL">${item.sl ?? ""}</td>
-            <td data-label="Return" class="${returnPercentClass}">${returnText}</td>
-            <td data-label="Status" class="${statusClass}">${statusText}</td>
+            <td data-label="Return %" class="${returnPercentClass}">${returnText}</td>
+            <td data-label="Status"><span class="${statusClass}">${statusText}</span></td>
           `;
           tbody.appendChild(row);
         });
       }
 
       renderPagination(totalPages);
+      updateInfoText(filtered.length, stockData.length);
+    }
+
+    function updateSortIndicators() {
+      document.querySelectorAll("thead th").forEach(th => {
+        th.classList.remove("sorted", "asc", "desc");
+        if (th.getAttribute("data-key") === currentSort.key) {
+          th.classList.add("sorted");
+          th.classList.add(currentSort.asc ? "asc" : "desc");
+        }
+      });
+    }
+
+    function updateInfoText(filtered, total) {
+      const infoText = document.getElementById("infoText");
+      if (filtered < total) {
+        infoText.textContent = `Showing ${filtered} of ${total} trades`;
+      } else {
+        infoText.textContent = `Showing all ${total} trades`;
+      }
     }
 
     function renderPagination(totalPages) {
@@ -427,12 +646,34 @@
       if (totalPages <= 1) return;
 
       const prev = document.createElement("button");
-      prev.textContent = "Prev";
+      prev.textContent = "← Prev";
       prev.disabled = currentPage === 1;
       prev.onclick = () => { currentPage--; renderTable(); };
       pagination.appendChild(prev);
 
-      for (let i = 1; i <= totalPages; i++) {
+      const maxButtons = 5;
+      let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+      let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+      
+      if (endPage - startPage < maxButtons - 1) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+      }
+
+      if (startPage > 1) {
+        const firstBtn = document.createElement("button");
+        firstBtn.textContent = "1";
+        firstBtn.onclick = () => { currentPage = 1; renderTable(); };
+        pagination.appendChild(firstBtn);
+        
+        if (startPage > 2) {
+          const dots = document.createElement("button");
+          dots.textContent = "...";
+          dots.disabled = true;
+          pagination.appendChild(dots);
+        }
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
         const btn = document.createElement("button");
         btn.textContent = i;
         if (i === currentPage) btn.classList.add("active");
@@ -440,8 +681,22 @@
         pagination.appendChild(btn);
       }
 
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          const dots = document.createElement("button");
+          dots.textContent = "...";
+          dots.disabled = true;
+          pagination.appendChild(dots);
+        }
+        
+        const lastBtn = document.createElement("button");
+        lastBtn.textContent = totalPages;
+        lastBtn.onclick = () => { currentPage = totalPages; renderTable(); };
+        pagination.appendChild(lastBtn);
+      }
+
       const next = document.createElement("button");
-      next.textContent = "Next";
+      next.textContent = "Next →";
       next.disabled = currentPage === totalPages;
       next.onclick = () => { currentPage++; renderTable(); };
       pagination.appendChild(next);
@@ -450,17 +705,70 @@
     function formatDate(dateStr) {
       if (!dateStr) return "";
       const d = new Date(dateStr);
-      return isNaN(d.getTime()) ? dateStr : d.toLocaleString();
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    function exportToCSV() {
+      const searchVal = document.getElementById("searchBox").value.toLowerCase();
+      const typeVal = document.getElementById("typeFilter").value;
+      const statusVal = document.getElementById("statusFilter").value;
+
+      let filtered = stockData.filter((item) => {
+        const displayType = (item.type || "").toUpperCase();
+        const displayStatus = (item.result || "").toUpperCase();
+        const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
+        const matchesType = typeVal === "ALL" || displayType === typeVal;
+        const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
+        return matchesSearch && matchesType && matchesStatus;
+      });
+
+      const headers = ["Trade", "Options", "Name", "Exchange", "Entry Time", "Type", 
+                       "Executed LTP", "Current LTP", "SL", "Return %", "Status"];
+      
+      const csvContent = [
+        headers.join(","),
+        ...filtered.map(item => [
+          item.active || "N",
+          item.hasOption || "N",
+          `"${item.name || ""}"`,
+          item.exchange || "",
+          formatDate(item.entryTime),
+          item.type || "",
+          item.executedltp || "",
+          item.currentltp || "",
+          item.sl || "",
+          (item.returnPercent || 0).toFixed(2),
+          item.result || ""
+        ].join(","))
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stock_results_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     document.getElementById("resetBtn").addEventListener("click", () => {
       document.getElementById("searchBox").value = "";
       document.getElementById("typeFilter").value = "ALL";
+      document.getElementById("statusFilter").value = "ALL";
       document.getElementById("periodFilter").value = "current";
       currentPage = 1;
       currentSort = { key: null, asc: true };
       loadData();
     });
+
+    document.getElementById("exportBtn").addEventListener("click", exportToCSV);
 
     document.getElementById("searchBox").addEventListener("input", () => {
       currentPage = 1;
@@ -468,6 +776,11 @@
     });
 
     document.getElementById("typeFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("statusFilter").addEventListener("change", () => {
       currentPage = 1;
       renderTable();
     });
@@ -480,8 +793,12 @@
     document.querySelectorAll("thead th").forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-key");
-        if (currentSort.key === key) currentSort.asc = !currentSort.asc;
-        else { currentSort.key = key; currentSort.asc = true; }
+        if (currentSort.key === key) {
+          currentSort.asc = !currentSort.asc;
+        } else {
+          currentSort.key = key;
+          currentSort.asc = true;
+        }
         renderTable();
       });
     });

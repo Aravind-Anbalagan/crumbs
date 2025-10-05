@@ -2,151 +2,518 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>Orders List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orders Dashboard</title>
     <style>
-        html, body {
-            height: 100%;
+        * {
             margin: 0;
             padding: 0;
-            overflow: hidden; /* prevent body scrolling */
-            font-family: Arial, sans-serif;
+            box-sizing: border-box;
         }
 
-   table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto; /* <-- let columns resize based on content */
-    font-size: 13px;    /* slightly smaller text for better fit */
-}
-
-th, td {
-    border: 1px solid #cccccc;
-    padding: 6px;
-    text-align: left;
-    white-space: nowrap; /* keep in single line */
-}
-
-th {
-    font-size: 13px; /* slightly bigger for header */
-}
-
-        tbody tr:nth-child(even) {
-            background-color: #f9f9f9;
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --background: #f8fafc;
+            --surface: #ffffff;
+            --surface-light: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --active-bg: #22c55e20;
+            --active-border: #22c55e;
         }
 
-       .table-container {
-    height: calc(100vh - 70px);
-    overflow-y: auto;
-    overflow-x: auto; /* horizontal scroll if needed */
-}
-
-
-        /* Pagination fixed at bottom */
-        #pagination {
-            position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            padding: 6px 10px;
-            border-radius: 6px;
-            box-shadow: 0 0 6px rgba(0,0,0,0.1);
-            z-index: 999;
-            text-align: center;
-            width: fit-content;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            position: relative;
         }
 
-        #pagination button {
-            margin: 0 3px;
-            padding: 6px 12px;
-            border: 1px solid #ccc;
-            background-color: white;
+        .dashboard-container {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .header {
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .title {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stats-container {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .table-wrapper {
+            background: var(--surface);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border);
+        }
+
+        .table-container {
+            max-height: calc(100vh - 280px);
+            overflow: auto;
+            position: relative;
+        }
+
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .table-container::-webkit-scrollbar-track {
+            background: var(--surface-light);
+        }
+
+        .table-container::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 4px;
+        }
+
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-dark);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: linear-gradient(180deg, var(--surface-light) 0%, var(--surface) 100%);
+        }
+
+        th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--border);
+            white-space: nowrap;
+            position: relative;
+        }
+
+        th:hover {
+            background: rgba(99, 102, 241, 0.1);
             cursor: pointer;
         }
 
-        #pagination button.active {
-            background-color: #007BFF;
+        td {
+            padding: 0.875rem 1rem;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            transition: all 0.2s ease;
+        }
+
+        tbody tr:hover {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        tbody tr.active-order {
+            background: var(--active-bg);
+            border-left: 3px solid var(--active-border);
+        }
+
+        tbody tr.active-order td {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .badge-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .badge-info {
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary);
+        }
+
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+            gap: 0.5rem;
+            background: var(--background);
+            border-top: 1px solid var(--border);
+        }
+
+        .pagination-info {
+            color: var(--text-secondary);
+            margin: 0 1rem;
+            font-size: 0.875rem;
+        }
+
+        button {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            color: var(--text-secondary);
+        }
+
+        button.active {
+            background: var(--primary);
+            border-color: var(--primary);
             color: white;
-            border-color: #007BFF;
         }
 
-        #pagination button:disabled {
-            background-color: #eee;
-            color: #999;
-            cursor: default;
+        .page-btn {
+            min-width: 2.5rem;
+            height: 2.5rem;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        /* Mobile-friendly pagination */
-        @media (max-width: 600px) {
-            #pagination {
-                bottom: 0;
-                width: 100%;
-                left: 0;
-                transform: none;
-                border-radius: 0;
-                box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 4rem;
+            color: var(--primary);
+        }
+
+        .loading-spinner {
+            width: 3rem;
+            height: 3rem;
+            border: 3px solid var(--surface-light);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state svg {
+            width: 4rem;
+            height: 4rem;
+            margin: 0 auto 1rem;
+            opacity: 0.5;
+        }
+
+        .error-state {
+            text-align: center;
+            padding: 4rem;
+            color: var(--danger);
+        }
+
+        .profit {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .loss {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                padding: 1rem;
             }
-            #pagination button {
-                flex: 1;
-                padding: 10px;
+
+            .title {
+                font-size: 1.5rem;
+            }
+
+            .table-container {
+                max-height: calc(100vh - 320px);
+            }
+
+            th, td {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+
+            .pagination-container {
+                flex-wrap: wrap;
             }
         }
     </style>
 </head>
 <body>
-    <div class="table-container">
-        <table id="ordersTable">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Active</th>
-                    <th>Type</th>
-                    <th>PR</th>
-                    <th>Fibo</th>
-                    <th>MA</th>
-                    <th>Exchange</th>
-                    <th>Token</th>
-                    <th>Symbol</th>
-                    <th>Timestamp</th>
-                    <th>Entry Time</th>
-                    <th>Entry Price</th>
-                    <th>Exit Time</th>
-                    <th>Exit Price</th>
-                    <th>Points</th>
-                    <th>Lot Size</th>
-                    <th>Max High</th>
-                    <th>Max Low</th>
-                    <th>Result</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Data rows will be inserted here -->
-            </tbody>
-        </table>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1 class="title">📊 Orders Dashboard</h1>
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-label">Total Orders</div>
+                    <div class="stat-value" id="totalOrders">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active</div>
+                    <div class="stat-value" id="activeOrders" style="color: var(--success);">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Win Rate</div>
+                    <div class="stat-value" id="winRate">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <div class="table-container">
+                <table id="ordersTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('name')">Name ↕</th>
+                            <th onclick="sortTable('active')">Status ↕</th>
+                            <th onclick="sortTable('type')">Type ↕</th>
+                            <th>MA</th>
+                            <th>Symbol</th>
+                            <th>Entry Time</th>
+                            <th onclick="sortTable('entryPrice')">Entry ↕</th>
+                            <th>Exit Time</th>
+                            <th onclick="sortTable('exitPrice')">Exit ↕</th>
+                            <th onclick="sortTable('points')">Points ↕</th>
+                            <th>High</th>
+                            <th>Low</th>
+                            <th onclick="sortTable('result')">Result ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Data rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination-container">
+                <button onclick="goToFirstPage()">⏮</button>
+                <button onclick="previousPage()">◀</button>
+                <div id="pageButtons"></div>
+                <button onclick="nextPage()">▶</button>
+                <button onclick="goToLastPage()">⏭</button>
+                <div class="pagination-info" id="paginationInfo"></div>
+            </div>
+        </div>
     </div>
 
-    <div id="pagination"></div>
-
     <script>
-        const rowsPerPage = 10;
+        const rowsPerPage = 15;
         let currentPage = 1;
         let ordersData = [];
+        let sortColumn = null;
+        let sortDirection = 'asc';
 
         async function loadOrders() {
             const tbody = document.querySelector('#ordersTable tbody');
-            tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; color:#007BFF;">Loading...</td></tr>`;
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="19" class="loading">
+                        <div class="loading-spinner"></div>
+                    </td>
+                </tr>
+            `;
 
             try {
                 const response = await fetch('/api/orders');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 ordersData = await response.json();
                 currentPage = 1;
+                updateStats();
                 renderTablePage(currentPage);
                 renderPagination();
             } catch (error) {
-                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; color:red;">Error loading orders</td></tr>`;
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="19" class="error-state">
+                            ⚠️ Error loading orders<br>
+                            <small>${error.message}</small>
+                        </td>
+                    </tr>
+                `;
                 console.error('Error loading orders:', error);
             }
+        }
+
+        function updateStats() {
+            document.getElementById('totalOrders').textContent = ordersData.length;
+            
+            const activeCount = ordersData.filter(o => 
+                o.active === true || o.active === "YES" || o.active === "yes"
+            ).length;
+            document.getElementById('activeOrders').textContent = activeCount;
+            
+            const wins = ordersData.filter(o => 
+                o.result && (o.result.toLowerCase() === 'profit' || o.result > 0)
+            ).length;
+            const totalWithResults = ordersData.filter(o => o.result).length;
+            const winRate = totalWithResults > 0 ? Math.round((wins / totalWithResults) * 100) : 0;
+            document.getElementById('winRate').textContent = winRate + '%';
+        }
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+
+            ordersData.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+
+                if (aVal === null || aVal === undefined) return 1;
+                if (bVal === null || bVal === undefined) return -1;
+
+                if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+                if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderTablePage(currentPage);
+        }
+
+        function formatValue(value, type) {
+            if (value === null || value === undefined || value === '') return '-';
+            
+            if (type === 'price' && !isNaN(value)) {
+                return parseFloat(value).toFixed(2);
+            }
+            
+            if (type === 'status') {
+                const isActive = value === true || value === "YES" || value === "yes";
+                return isActive ? 
+                    '<span class="badge badge-success">ACTIVE</span>' : 
+                    '<span class="badge badge-info">INACTIVE</span>';
+            }
+            
+            if (type === 'result') {
+                const isProfit = value.toString().toLowerCase() === 'profit' || parseFloat(value) > 0;
+                const isLoss = value.toString().toLowerCase() === 'loss' || parseFloat(value) < 0;
+                
+                if (isProfit) return `<span class="profit">✓ ${value}</span>`;
+                if (isLoss) return `<span class="loss">✗ ${value}</span>`;
+                return value;
+            }
+            
+            if (type === 'type') {
+                const colors = {
+                    'BUY': 'badge-success',
+                    'SELL': 'badge-danger',
+                    'CALL': 'badge-success',
+                    'PUT': 'badge-danger'
+                };
+                const badgeClass = colors[value.toUpperCase()] || 'badge-info';
+                return `<span class="badge ${badgeClass}">${value}</span>`;
+            }
+            
+            return value;
         }
 
         function renderTablePage(page) {
@@ -154,91 +521,113 @@ th {
             tbody.innerHTML = '';
 
             if (ordersData.length === 0) {
-                const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="17" style="text-align:center; color:#666;">No orders found</td>`;
-                tbody.appendChild(row);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="19" class="empty-state">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4">
+                                </path>
+                            </svg>
+                            <div>No orders found</div>
+                        </td>
+                    </tr>
+                `;
                 return;
             }
 
             const start = (page - 1) * rowsPerPage;
-            const end = start + rowsPerPage;
+            const end = Math.min(start + rowsPerPage, ordersData.length);
             const pageItems = ordersData.slice(start, end);
 
             pageItems.forEach(order => {
+                const isActive = order.active === true || order.active === "YES" || order.active === "yes";
                 const row = document.createElement('tr');
+                if (isActive) row.classList.add('active-order');
+                
                 row.innerHTML = `
-                    <td>${order.name ?? ''}</td>
-                    <td>${order.active ?? ''}</td>
-                    <td>${order.type ?? ''}</td>
-                    <td>${order.pr ?? ''}</td>
-                    <td>${order.fibo ?? ''}</td>
-                    <td>${order.ma ?? ''}</td>
-                    <td>${order.exchange ?? ''}</td>
-                    <td>${order.token ?? ''}</td>
-                    <td>${order.symbol ?? ''}</td>
-                    <td>${order.timestamp ?? ''}</td>
-                    <td>${order.entryTime ?? ''}</td>
-                    <td>${order.entryPrice ?? ''}</td>
-                    <td>${order.exitTime ?? ''}</td>
-                    <td>${order.exitPrice ?? ''}</td>
-                    <td>${order.points ?? ''}</td>
-                    <td>${order.lotSize ?? ''}</td>
-                    <td>${order.maxHigh ?? ''}</td>
-                    <td>${order.maxLow ?? ''}</td>
-                    <td>${order.result ?? ''}</td>
+                    <td>${formatValue(order.name)}</td>
+                    <td>${formatValue(order.active, 'status')}</td>
+                    <td>${formatValue(order.type, 'type')}</td>
+                    <td>${formatValue(order.ma)}</td>
+                    <td>${formatValue(order.symbol)}</td>
+                    <td>${formatValue(order.entryTime)}</td>
+                    <td>${formatValue(order.entryPrice, 'price')}</td>
+                    <td>${formatValue(order.exitTime)}</td>
+                    <td>${formatValue(order.exitPrice, 'price')}</td>
+                    <td>${formatValue(order.points)}</td>
+                    <td>${formatValue(order.maxHigh, 'price')}</td>
+                    <td>${formatValue(order.maxLow, 'price')}</td>
+                    <td>${formatValue(order.result, 'result')}</td>
                 `;
-                if (order.active === true || order.active === "YES") {
-                    row.style.backgroundColor = "#e6f7ff";
-                    row.style.fontWeight = "bold";
-                }
                 tbody.appendChild(row);
             });
         }
 
         function renderPagination() {
-            const pagination = document.getElementById('pagination');
-            pagination.innerHTML = '';
-
             const totalPages = Math.ceil(ordersData.length / rowsPerPage);
-            if (totalPages === 0) return;
+            const pageButtons = document.getElementById('pageButtons');
+            const paginationInfo = document.getElementById('paginationInfo');
+            
+            if (totalPages === 0) {
+                pageButtons.innerHTML = '';
+                paginationInfo.textContent = '';
+                return;
+            }
 
-            const prevButton = document.createElement('button');
-            prevButton.textContent = 'Prev';
-            prevButton.disabled = currentPage === 1;
-            prevButton.onclick = () => {
-                currentPage--;
-                renderTablePage(currentPage);
-                renderPagination();
-            };
-            pagination.appendChild(prevButton);
-
+            pageButtons.innerHTML = '';
+            
             let startPage = Math.max(1, currentPage - 2);
             let endPage = Math.min(totalPages, startPage + 4);
-            if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+            
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
 
             for (let i = startPage; i <= endPage; i++) {
                 const btn = document.createElement('button');
                 btn.textContent = i;
+                btn.classList.add('page-btn');
                 if (i === currentPage) btn.classList.add('active');
-                btn.onclick = () => {
-                    currentPage = i;
-                    renderTablePage(currentPage);
-                    renderPagination();
-                };
-                pagination.appendChild(btn);
+                btn.onclick = () => goToPage(i);
+                pageButtons.appendChild(btn);
             }
 
-            const nextButton = document.createElement('button');
-            nextButton.textContent = 'Next';
-            nextButton.disabled = currentPage === totalPages;
-            nextButton.onclick = () => {
-                currentPage++;
-                renderTablePage(currentPage);
-                renderPagination();
-            };
-            pagination.appendChild(nextButton);
+            const start = (currentPage - 1) * rowsPerPage + 1;
+            const end = Math.min(currentPage * rowsPerPage, ordersData.length);
+            paginationInfo.textContent = `Showing ${start}-${end} of ${ordersData.length}`;
         }
 
+        function goToPage(page) {
+            const totalPages = Math.ceil(ordersData.length / rowsPerPage);
+            if (page >= 1 && page <= totalPages) {
+                currentPage = page;
+                renderTablePage(currentPage);
+                renderPagination();
+            }
+        }
+
+        function previousPage() {
+            goToPage(currentPage - 1);
+        }
+
+        function nextPage() {
+            goToPage(currentPage + 1);
+        }
+
+        function goToFirstPage() {
+            goToPage(1);
+        }
+
+        function goToLastPage() {
+            const totalPages = Math.ceil(ordersData.length / rowsPerPage);
+            goToPage(totalPages);
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadOrders, 30000);
+
+        // Load orders on page load
         window.onload = loadOrders;
     </script>
 </body>
