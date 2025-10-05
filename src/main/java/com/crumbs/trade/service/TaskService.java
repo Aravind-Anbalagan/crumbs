@@ -2491,7 +2491,7 @@ public class TaskService {
 		if (type.equalsIgnoreCase("MCX") && time.equalsIgnoreCase("FROM")) {
 			return " 23:25";
 		} else if ((type.equalsIgnoreCase("NFO") || type.equalsIgnoreCase("NSE")) && time.equalsIgnoreCase("FROM")) {
-			return " 15:25";
+			return " 14:50";
 		}
 
 		if (time.equalsIgnoreCase("FROM")) {
