@@ -592,10 +592,10 @@ public class ChartService {
 			resultVix.setActive(null);
 			// Place Order  - EXIT
 			//Determine Trading Signal
-			String maSignal = resultVix.getMa();
+		
 
 			tradeFlag = false; // Take Trade In Flat Trade
-			logger.info("Exit trade: Signal={}, Ma={}", type, maSignal);
+			logger.info("Exit trade: Signal={}, Ma={}", type, vix.getMasignal());
 			triggerExitOrder(resultVix, tradeFlag);
 			resultVixRepo.save(resultVix);
 			String message = "Exit :" + strategy.getName() + " -> " + type;

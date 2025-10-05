@@ -41,6 +41,7 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 	List<Indicator> findByIntradayIsNotNullOrderByIntradayAsc();
 
 	List<Indicator> findByHeikinAshiDayAndPsarFlagDay(String heikinAshiDay, String psarFlagDay);
+	List<Indicator>findByHeikinAshiHourlyAndPsarFlagHourly(String heikinAshiHourly, String psarFlagHourly);
 
 	@Query("SELECT i FROM Indicator i WHERE (:heikin IS NULL OR i.heikinAshiDay = :heikin OR i.heikinAshiWeekly = :heikin OR i.heikinAshiHourly = :heikin) AND (:psar IS NULL OR i.psarFlagDay = :psar OR i.psarFlagWeekly = :psar OR i.psarFlagHourly = :psar)")
 	List<Indicator> findByHeikinAndPsar(String heikin, String psar);

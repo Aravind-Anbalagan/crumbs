@@ -8,23 +8,16 @@
     :root {
       --primary-color: #000000;
       --primary-hover: #222222;
-
       --bg-primary: #ffffff;
       --bg-secondary: #f5f5f5;
       --bg-tertiary: #e0e0e0;
-
       --text-primary: #111111;
       --text-secondary: #444444;
       --text-muted: #777777;
-
       --border-primary: #ccc;
       --border-secondary: #bbb;
-
       --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-      --shadow-md:
-        0 4px 6px -1px rgba(0, 0, 0, 0.1),
-        0 2px 4px -2px rgba(0, 0, 0, 0.1);
-
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
       --bg-col-trade: linear-gradient(135deg, #f0f0f0 0%, #dcdcdc 100%);
       --bg-col-default: linear-gradient(135deg, #fafafa 0%, #e5e5e5 100%);
       --bg-col-even: #f9f9f9;
@@ -136,40 +129,29 @@
       display: inline-block;
     }
 
-    /* Type badges for UP and DOWN */
     .badge.up {
       background: #d1fae5;
-      /* very light green */
       color: #065f46;
-      /* dark green */
     }
 
     .badge.down {
       background: #fee2e2;
-      /* very light red */
       color: #991b1b;
-      /* dark red */
     }
 
-    /* Return positive and negative colors */
     .return-positive {
       color: #065f46;
-      /* dark green */
       font-weight: 700;
     }
 
     .return-negative {
       color: #991b1b;
-      /* dark red */
       font-weight: 700;
     }
 
-    /* Result status highlights */
     .status-active {
       background-color: #d1fae5;
-      /* light green background */
       color: #065f46;
-      /* dark green */
       padding: 5px 10px;
       border-radius: 12px;
       font-weight: 600;
@@ -181,9 +163,7 @@
 
     .status-sl-hit {
       background-color: #fee2e2;
-      /* light red background */
       color: #991b1b;
-      /* dark red */
       padding: 5px 10px;
       border-radius: 12px;
       font-weight: 600;
@@ -193,7 +173,6 @@
       display: inline-block;
     }
 
-    /* Loader */
     .loader {
       border: 6px solid var(--bg-col-default);
       border-top: 6px solid var(--primary-color);
@@ -205,12 +184,8 @@
     }
 
     @keyframes spin {
-      0% {
-        transform: rotate(0deg);
-      }
-      100% {
-        transform: rotate(360deg);
-      }
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
 
     .pagination {
@@ -251,19 +226,9 @@
       user-select: none;
     }
 
-    /* Responsive mobile design */
     @media (max-width: 768px) {
-      table,
-      thead,
-      tbody,
-      th,
-      td,
-      tr {
-        display: block;
-      }
-      thead {
-        display: none;
-      }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
       tr {
         margin-bottom: 16px;
         background: var(--bg-primary);
@@ -293,7 +258,6 @@
       }
     }
 
-    /* Optional styling for hasOption badges */
     .has-option-badge {
       background: #dbeafe;
       color: #1e40af;
@@ -308,7 +272,7 @@
 </head>
 <body>
   <h2>Stock Result</h2>
-  <!-- Controls -->
+
   <div class="controls">
     <input type="text" id="searchBox" placeholder="Search by Name..." />
     <select id="typeFilter">
@@ -316,16 +280,22 @@
       <option value="UP">UP</option>
       <option value="DOWN">DOWN</option>
     </select>
+    <select id="periodFilter">
+      <option value="current" selected>Current Month</option>
+      <option value="previous">Previous Month</option>
+      <option value="last3">Last 3 Months</option>
+      <option value="all">All</option>
+    </select>
     <button id="resetBtn" class="reset-btn">Reset</button>
   </div>
-  <!-- Loader -->
+
   <div id="loader" class="loader"></div>
-  <!-- Table -->
+
   <table id="data-table">
     <thead>
       <tr>
         <th data-key="active">Trade</th>
-        <th data-key="hasOption">Options</th> <!-- Moved here -->
+        <th data-key="hasOption">Options</th>
         <th data-key="name">Name</th>
         <th data-key="exchange">Exchange</th>
         <th data-key="entryTime">Entry Time</th>
@@ -339,8 +309,9 @@
     </thead>
     <tbody id="table-body"></tbody>
   </table>
-  <!-- Pagination -->
+
   <div id="pagination" class="pagination"></div>
+
   <script>
     let stockData = [];
     let currentSort = { key: null, asc: true };
@@ -352,8 +323,11 @@
       const table = document.getElementById("data-table");
       loader.style.display = "block";
       table.style.display = "none";
+
+      const periodVal = document.getElementById("periodFilter").value;
+
       try {
-        const response = await fetch("/api/getDetailsResults");
+        const response = await fetch(`/api/getDetailsResults?period=${periodVal}`);
         if (!response.ok) throw new Error("Network error");
         stockData = await response.json();
         renderTable();
@@ -382,7 +356,6 @@
         return matchesSearch && matchesType;
       });
 
-      // Apply sorting
       if (currentSort.key) {
         filtered.sort((a, b) => {
           let valA = a[currentSort.key] ?? "";
@@ -400,7 +373,6 @@
         });
       }
 
-      // Pagination logic
       const totalPages = Math.ceil(filtered.length / rowsPerPage);
       if (currentPage > totalPages) currentPage = totalPages || 1;
       const start = (currentPage - 1) * rowsPerPage;
@@ -411,10 +383,7 @@
       } else {
         paginated.forEach((item) => {
           const displayType = (item.type || "").toUpperCase();
-          const badgeClass =
-            displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : "";
-
-          // Format return with coloring
+          const badgeClass = displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : "";
           let returnPercentClass = "";
           let returnText = item.comment || "";
           const returnMatch = returnText.match(/Return:\s*(-?[\d.]+)%/);
@@ -424,20 +393,12 @@
             returnText = `Return: ${value.toFixed(2)}%`;
           }
 
-          // Format status with badge
           let statusClass = "";
           let statusText = item.result || "";
-          if (statusText.toUpperCase() === "ACTIVE") {
-            statusClass = "status-active";
-          } else if (statusText.toUpperCase() === "SL HIT") {
-            statusClass = "status-sl-hit";
-          }
+          if (statusText.toUpperCase() === "ACTIVE") statusClass = "status-active";
+          else if (statusText.toUpperCase() === "SL HIT") statusClass = "status-sl-hit";
 
-          // Options display
-          const optionsDisplay =
-            item.hasOption === "Y"
-              ? '<span class="has-option-badge">Yes</span>'
-              : "No";
+          const optionsDisplay = item.hasOption === "Y" ? '<span class="has-option-badge">Yes</span>' : "No";
 
           const row = document.createElement("tr");
           row.innerHTML = `
@@ -446,9 +407,7 @@
             <td data-label="Name">${item.name || ""}</td>
             <td data-label="Exchange">${item.exchange || ""}</td>
             <td data-label="Entry Time">${formatDate(item.entryTime)}</td>
-            <td data-label="Type">
-              <span class="badge ${badgeClass}">${displayType}</span>
-            </td>
+            <td data-label="Type"><span class="badge ${badgeClass}">${displayType}</span></td>
             <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
             <td data-label="Current LTP">${item.currentltp ?? ""}</td>
             <td data-label="SL">${item.sl ?? ""}</td>
@@ -458,6 +417,7 @@
           tbody.appendChild(row);
         });
       }
+
       renderPagination(totalPages);
     }
 
@@ -469,30 +429,21 @@
       const prev = document.createElement("button");
       prev.textContent = "Prev";
       prev.disabled = currentPage === 1;
-      prev.onclick = () => {
-        currentPage--;
-        renderTable();
-      };
+      prev.onclick = () => { currentPage--; renderTable(); };
       pagination.appendChild(prev);
 
       for (let i = 1; i <= totalPages; i++) {
         const btn = document.createElement("button");
         btn.textContent = i;
         if (i === currentPage) btn.classList.add("active");
-        btn.onclick = () => {
-          currentPage = i;
-          renderTable();
-        };
+        btn.onclick = () => { currentPage = i; renderTable(); };
         pagination.appendChild(btn);
       }
 
       const next = document.createElement("button");
       next.textContent = "Next";
       next.disabled = currentPage === totalPages;
-      next.onclick = () => {
-        currentPage++;
-        renderTable();
-      };
+      next.onclick = () => { currentPage++; renderTable(); };
       pagination.appendChild(next);
     }
 
@@ -502,40 +453,35 @@
       return isNaN(d.getTime()) ? dateStr : d.toLocaleString();
     }
 
-    // Reset functionality
     document.getElementById("resetBtn").addEventListener("click", () => {
       document.getElementById("searchBox").value = "";
       document.getElementById("typeFilter").value = "ALL";
+      document.getElementById("periodFilter").value = "current";
       currentPage = 1;
       currentSort = { key: null, asc: true };
+      loadData();
+    });
+
+    document.getElementById("searchBox").addEventListener("input", () => {
+      currentPage = 1;
       renderTable();
     });
 
-    // Event listeners for search and filter
-    document
-      .getElementById("searchBox")
-      .addEventListener("input", () => {
-        currentPage = 1;
-        renderTable();
-      });
+    document.getElementById("typeFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
 
-    document
-      .getElementById("typeFilter")
-      .addEventListener("change", () => {
-        currentPage = 1;
-        renderTable();
-      });
+    document.getElementById("periodFilter").addEventListener("change", () => {
+      currentPage = 1;
+      loadData();
+    });
 
-    // Sorting event listeners on table headers
     document.querySelectorAll("thead th").forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-key");
-        if (currentSort.key === key) {
-          currentSort.asc = !currentSort.asc;
-        } else {
-          currentSort.key = key;
-          currentSort.asc = true;
-        }
+        if (currentSort.key === key) currentSort.asc = !currentSort.asc;
+        else { currentSort.key = key; currentSort.asc = true; }
         renderTable();
       });
     });

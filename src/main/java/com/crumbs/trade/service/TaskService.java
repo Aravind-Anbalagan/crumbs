@@ -231,7 +231,7 @@ public class TaskService {
 	@Value("${app.max-threads}")
 	private int maxThreads;
 
-	public void getSupportAndResistance(String indexName, String symbol)
+	public void getSupportAndResistance(String indexName, String symbol, long timeId)
 			throws IOException, SmartAPIException, ParseException {
 		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -264,17 +264,20 @@ public class TaskService {
 		/*
 		 * STEP 1: LOOK FOR DAY CANDLE
 		 */
-		 read_Day_Candle(smartConnect, indexesList, candleMap);
+		 read_Day_Candle(smartConnect, indexesList, candleMap,timeId);
 
 		/*
 		 * STEP 2: FETCH ONLY FIRST BUY/FIRST SELL INDEXES STEP 2: LOOK FOR WEEKLY
 		 * CANDLE - APPLICABLE FOR CERTAIN STOCK
 		 */
-		read_weekly_candle(smartConnect, fetchIndexes(), candleMap);
+		if (timeId == 4L) {
+			read_weekly_candle(smartConnect, fetchIndexes(), candleMap);
+			// Combine Signal
+			List<Indicator> allIndicators = indicatorRepo.findByOnedayIsNotNullAndOneweekIsNotNull();
+			List<Indicator> updated = combinedSignalService.updateCombinedSignals(allIndicators);
+		}
 
-		// Combine Signal
-		List<Indicator> allIndicators = indicatorRepo.findByOnedayIsNotNullAndOneweekIsNotNull();
-		List<Indicator> updated = combinedSignalService.updateCombinedSignals(allIndicators);
+		
 		timeDisplay(startTime, formatter);
 	}
 
@@ -301,7 +304,7 @@ public class TaskService {
 				durationFormatted);
 	}
 
-	public void read_Day_Candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap) {
+	public void read_Day_Candle(SmartConnect smartConnect, List<Indexes> indexesList, Map<Long, Candle> candleMap, long timeId) {
 		// control concurrency
 		ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
 		AtomicInteger counter = new AtomicInteger(0);
@@ -310,7 +313,7 @@ public class TaskService {
 		for (Indexes index : indexesList) {
 			executor.submit(() -> {
 				try {
-					Candle dayCandle = candleMap.get(4L);
+					Candle dayCandle = candleMap.get(timeId);
 					if (dayCandle != null && "Y".equalsIgnoreCase(dayCandle.getActive())) {
 						boolean done = false;
 						int attempts = 0;
@@ -449,8 +452,7 @@ public class TaskService {
 					pricesIndexRepo.flush(); // force commit before returning
 
 					if ("HOURLY".equalsIgnoreCase(candle.getName())) {
-						getHourlyVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle,
-								index_OpenPrice);
+						getHourlyVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle);
 					} else if ("DAY".equalsIgnoreCase(candle.getName())) {
 						getDayVolumeData(candle.getTimeFrame(), index, index_CurrentPrice, smartConnect, candle,
 								index_OpenPrice,optionNameList);
@@ -1029,31 +1031,52 @@ public class TaskService {
 	}
 
 	public void getHourlyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
-			SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice)
-			throws IOException, SmartAPIException {
-		// Get the Volume data and sort it, get the high volume data and store in
-		List<PricesIndex> pricesList = pricesIndexRepo.findAll();
-		String cprData = pricesList.get(pricesList.size() - 1).getCpr();
-		PricesIndex openandclose = pricesList.get(pricesList.size() - 1);
-		pricesList.sort(Comparator.comparing(PricesIndex::getVolume, Comparator.reverseOrder()));
-		List<PricesIndex> n_pricesList = pricesList.stream().limit(10).collect(Collectors.toList());
-		List<PricesIndex> buyList = n_pricesList.stream().filter(s -> s.getType().equalsIgnoreCase("BUY"))
+			SmartConnect smartConnect, Candle candle) throws IOException, SmartAPIException {
+
+		String name = indexes.getName();
+		String timeframe = timeFrame;
+
+		// Fetch only hourly records for this index
+		List<PricesIndex> pricesList = pricesIndexRepo.findByNameAndTimeframe(name, timeframe);
+		if (pricesList == null || pricesList.isEmpty()) {
+			logger.info("No hourly data found for {} / {}", name, timeframe);
+			return;
+		}
+
+		// Last record for CPR or Open/Close
+		PricesIndex lastRecord = pricesList.get(pricesList.size() - 1);
+		String cprData = lastRecord.getCpr();
+		PricesIndex openAndClose = lastRecord;
+
+		// Sort by volume descending
+		List<PricesIndex> topVolumeList = pricesList.stream()
+				.sorted(Comparator.comparing(PricesIndex::getVolume, Comparator.reverseOrder())).limit(10)
 				.collect(Collectors.toList());
-		List<PricesIndex> sellList = n_pricesList.stream().filter(s -> s.getType().equalsIgnoreCase("SELL"))
+
+		List<PricesIndex> buyList = topVolumeList.stream().filter(s -> "BUY".equalsIgnoreCase(s.getType()))
 				.collect(Collectors.toList());
+
+		List<PricesIndex> sellList = topVolumeList.stream().filter(s -> "SELL".equalsIgnoreCase(s.getType()))
+				.collect(Collectors.toList());
+
 		List<String> supportList = buyList.stream()
 				.map(v -> v.getVolume().toString().concat("=").concat(v.getHigh().toString()))
 				.collect(Collectors.toList());
+
 		List<String> resistanceList = sellList.stream()
 				.map(v -> v.getVolume().toString().concat("=").concat(v.getLow().toString()))
 				.collect(Collectors.toList());
-		int avgRange = (int) pricesList.stream().mapToInt(d -> d.getRange().intValue()).average().orElse(0);
-		avgRange = candle.getPriceLimit(); // default value
-		Indicator indicator = indicatorRepo.findByname(indexes.getName());
-		if (indicator == null) {
+
+		// Calculate avg range safely
+		int avgRange = (int) pricesList.stream().filter(d -> d.getRange() != null)
+				.mapToInt(d -> d.getRange().intValue()).average().orElse(candle.getPriceLimit());
+
+		// Get or create indicator
+		Indicator indicator = indicatorRepo.findByname(name);
+		if (indicator == null)
 			indicator = new Indicator();
-		}
-		indicator.setName(indexes.getName());
+
+		indicator.setName(name);
 		indicator.setToken(indexes.getToken());
 		indicator.setTimeFrame(timeFrame);
 		indicator.setHoursupport(supportList.toString());
@@ -1063,45 +1086,38 @@ public class TaskService {
 		indicator.setExchange(indexes.getExchange());
 		indicator.setTradingSymbol(indexes.getSymbol());
 		indicator.setCreatedDate(LocalDateTime.now());
-		indicator.setLast3HourCandleHigh(getSignal_eq("high",indexes.getName()));
-		indicator.setLast3Hourcandlelow(getSignal_eq("low",indexes.getName()));
-		// indicator.setCpr(cprData);
+		indicator.setLast3HourCandleHigh(getSignal_eq("high", name));
+		indicator.setLast3Hourcandlelow(getSignal_eq("low", name));
+		indicator.setCpr(cprData);
 		indicator.setCurrentPrice(index_CurrentPrice);
-		// indicator.setDailyopenandcloseissame(findOpenAndClose(openandclose));
-		// indicator = get52WeekData(indexes, smartConnect, indicator);
-		// Find Support and Resistance
+
+		// Support/Resistance signal
 		indicator = checkForHourlySignal(indicator, supportList, resistanceList, index_CurrentPrice,
 				new BigDecimal(avgRange));
-		// getRSI
 
-		/*
-		 * Pageable pageable = PageRequest.of(0, 15, Sort.by(Sort.Direction.DESC,
-		 * "id"));
-		 * indicator.setDailyRSI(indicatorService.getRSIData(pricesIndexRepo.findAll(
-		 * pageable).getContent()));
-		 * //indicator.setDailyRSI(slowRSICalculator.getRSIData(pricesEqRepo.findAll(
-		 * pageable).getContent())); Pageable pageable_ma = PageRequest.of(0, 200,
-		 * Sort.by(Sort.Direction.DESC, "id"));
-		 * indicator.setMovingavg200(movingAverageCalculator.getMovingAverage(
-		 * pricesIndexRepo.findAll(pageable_ma).getContent()));
-		 * indicator.setMovingavg200Flag(index_CurrentPrice.subtract(indicator.
-		 * getMovingavg200())); Pageable pageableb = PageRequest.of(0, 20,
-		 * Sort.by(Sort.Direction.DESC, "id"));
-		 * indicator.setBollingerband(bollingerBandsCalculator.createBand(
-		 * pricesIndexRepo.findAll(pageableb).getContent()));
-		 * indicator.setBollingerflag(findBollingerBand(indicator.getBollingerband(),
-		 * indicator.getCurrentPrice()));
-		 */
-		updateHeikinAshi(indexes.getName(), null, "INDEX");
+		// Heikin-Ashi and PSAR
+		updateHeikinAshi(name, "ONE_HOUR", "INDEX");
 		indicator.setHeikinAshiHourly(checkEntryHeikinAshi("INDEX"));
 		indicator.setPsarFlagHourly(checkEntryPsar("INDEX"));
-
+		deletePsarAndHiekeinTableData(name,"ONE_HOUR");
+		// Stop loss / buy-sell SL
 		indicator.setHourlysellsl(convertStringToList(indicator.getLast3HourCandleHigh(), "SELL"));
 		indicator.setHourlybuysl(convertStringToList(indicator.getLast3Hourcandlelow(), "BUY"));
-
+		if(indicator.getHeikinAshiHourly().equalsIgnoreCase("FIRST BUY") 
+				&& indicator.getPsarFlagHourly().equalsIgnoreCase("FIRST BUY"))
+		{
+			indicator.setIntraday("UP");
+		}
+		if(indicator.getHeikinAshiHourly().equalsIgnoreCase("FIRST SELL") 
+				&& indicator.getPsarFlagHourly().equalsIgnoreCase("FIRST SELL"))
+		{
+			indicator.setIntraday("DOWN");
+		}
+		
+		// Save
 		indicatorRepo.save(indicator);
-
 	}
+
 
 	public BigDecimal convertStringToList(String input, String type) {
 		// Input string
@@ -1387,7 +1403,7 @@ public class TaskService {
 		updateHeikinAshi(name, "ONE_DAY", "INDEX");
 		indicator.setHeikinAshiDay(checkEntryHeikinAshi("INDEX"));
 		indicator.setPsarFlagDay(checkEntryPsar("INDEX"));
-		deletePsarAndHiekeinTableData(name);
+		deletePsarAndHiekeinTableData(name,"ONE_DAY");
 // Convert last 3 day candle high/low to SL lists
 		// indicator.setSellsl(convertStringToList(indicator.getLast3daycandlehigh(),
 		// "SELL"));
@@ -1426,9 +1442,9 @@ public class TaskService {
 		indicatorRepo.save(indicator);
 	}
 
-	public void deletePsarAndHiekeinTableData(String name) {
-		priceHeikinashiIndexRepo.deleteByNameAndTimeframe(name, "ONE_DAY");
-		psarIndexRepo.deleteByNameAndTimeframe(name, "ONE_DAY");
+	public void deletePsarAndHiekeinTableData(String name, String timeFrame) {
+		priceHeikinashiIndexRepo.deleteByNameAndTimeframe(name, timeFrame);
+		psarIndexRepo.deleteByNameAndTimeframe(name, timeFrame);
 	}
 
 	public PriceActionResult getLevels(List<PricesIndex> list, BigDecimal index_CurrentPrice)
@@ -2051,12 +2067,12 @@ public class TaskService {
 
 	    List<Indicator> bullishList = indicatorRepo.findByPsarFlagDayInAndHeikinAshiDayIn(
 	            Arrays.asList("FIRST BUY"), Arrays.asList("FIRST BUY"));
-	    bullishList.addAll(addOtherIndicator("UP"));
+	    //bullishList.addAll(addOtherIndicator("UP"));
 	    logger.info("Bullish Stock: {}", bullishList.size());
 
 	    List<Indicator> bearishList = indicatorRepo.findByPsarFlagDayInAndHeikinAshiDayIn(
 	            Arrays.asList("FIRST SELL"), Arrays.asList("FIRST SELL"));
-	    bearishList.addAll(addOtherIndicator("UP"));
+	    //bearishList.addAll(addOtherIndicator("UP"));
 	    logger.info("Bearish Stock: {}", bearishList.size());
 
 	    ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
@@ -2223,13 +2239,13 @@ public class TaskService {
 	// Helper methods
 	private boolean isUpSignal(Indicator stock) {
 	    return "UP".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
-	        //&& "UP".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
+	        || "UP".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
 	        || "UP".equalsIgnoreCase(stock.getCprflag());
 	}
 
 	private boolean isDownSignal(Indicator stock) {
 	    return "DOWN".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
-	        //&& "DOWN".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
+	        || "DOWN".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
 	        || "DOWN".equalsIgnoreCase(stock.getCprflag());
 	}
 

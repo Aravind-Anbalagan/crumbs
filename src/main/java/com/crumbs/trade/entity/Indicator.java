@@ -276,5 +276,7 @@ public class Indicator {
 	String options;
 	@Column(name = "sector")
 	String sector;
+	@Column(name = "tradetype")
+	String tradetype;
 
 }

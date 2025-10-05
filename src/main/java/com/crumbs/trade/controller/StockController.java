@@ -4,13 +4,21 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -39,6 +47,9 @@ import com.crumbs.trade.utility.AppConstant;
 @RestController
 @RequestMapping("/api")
 public class StockController {
+	
+	Logger logger = LoggerFactory.getLogger(StockController.class);
+	
 	@Autowired
 	AngelOne angelOne;
 
@@ -68,7 +79,7 @@ public class StockController {
 			throws InterruptedException, URISyntaxException, IOException, SmartAPIException, ParseException {
 		Instant start = timeLookUp.getStartTime();
 
-		taskService.getSupportAndResistance(indexName, symbol);
+		taskService.getSupportAndResistance(indexName, symbol,4L);
 
 		timeLookUp.getEndTime(start);
 		return "Completed";
@@ -80,7 +91,18 @@ public class StockController {
 	@Scheduled(cron = "0 0 22 * * MON-FRI", zone = "Asia/Kolkata")
 	public String getStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
-			taskService.getSupportAndResistance("ALL", "ALL");
+			taskService.getSupportAndResistance("ALL", "ALL",4L);
+			return "Completed";
+		}
+		return "STOCK Strategy Disabled";
+	}
+	
+	@GetMapping("/hourlyStock")
+	@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
+	public String getHourlyStocks() throws SmartAPIException, Exception {
+		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
+			logger.info("Hourly Stock");
+			taskService.getSupportAndResistance("ALL", "ALL",2L);
 			return "Completed";
 		}
 		return "STOCK Strategy Disabled";
@@ -211,6 +233,7 @@ public class StockController {
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {
 			dto.addHeader("OPTION", ind.getOptions() != null ? ind.getOptions() : "N", true);
+			dto.addHeader("TYPE", ind.getTradetype(), true);
 			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 			dto.addHeader("RESULT", ind.getResult(), true);
 		}
@@ -270,7 +293,8 @@ public class StockController {
 		// ================== INTRADAY ==================
 		case "INTRADAY":
 			if (heikinPsarFilter == null || "ALL".equals(heikinPsarFilter)) { // CASE 10
-				return indicatorRepo.findByIntradayIsNotNull();
+				// Convert back to list if needed
+				return returnIntradayList();
 			} else if ("UP".equals(heikinPsarFilter)) { // CASE 11
 				return indicatorRepo.findByIntraday("UP");
 			} else if ("DOWN".equals(heikinPsarFilter)) { // CASE 12
@@ -284,12 +308,102 @@ public class StockController {
 
 		return Collections.emptyList();
 	}
+	
+	public List<Indicator> returnIntradayList()
+	{
+		Set<Indicator> resultSet = new LinkedHashSet<>();
 
-	@GetMapping("/getDetailsResults")
-	public List<Result> getResultList() {
-		return resultRepo.findAll();
+		// 🔹 Your existing logic (unchanged)
+		resultSet.addAll(indicatorRepo.findByHeikinAshiHourlyAndPsarFlagHourly("FIRST BUY", "FIRST BUY"));
+		resultSet.addAll(indicatorRepo.findByHeikinAshiHourlyAndPsarFlagHourly("FIRST SELL", "FIRST SELL"));
+		resultSet.addAll(indicatorRepo.findByIntraday("UP"));
+		resultSet.addAll(indicatorRepo.findByIntraday("DOWN"));
+
+		// ✅ Step 1: Convert to list (unique, ordered)
+		List<Indicator> finalList = new ArrayList<>(resultSet);
+
+		// ✅ Step 2: Post-process — set tradetype if found in hourly/daily/weekly
+		for (Indicator ind : finalList) {
+		    Set<String> types = new LinkedHashSet<>();
+
+		    // Hourly condition
+		    if (("FIRST BUY".equalsIgnoreCase(ind.getHeikinAshiHourly()) && "FIRST BUY".equalsIgnoreCase(ind.getPsarFlagHourly()))
+		     || ("FIRST SELL".equalsIgnoreCase(ind.getHeikinAshiHourly()) && "FIRST SELL".equalsIgnoreCase(ind.getPsarFlagHourly()))) {
+		        types.add("HOURLY");
+		    }
+
+		    // Daily condition
+		    if (("FIRST BUY".equalsIgnoreCase(ind.getHeikinAshiDay()) && "FIRST BUY".equalsIgnoreCase(ind.getPsarFlagDay()))
+		     || ("FIRST SELL".equalsIgnoreCase(ind.getHeikinAshiDay()) && "FIRST SELL".equalsIgnoreCase(ind.getPsarFlagDay()))) {
+		        types.add("DAILY");
+		    }
+
+		    // Weekly condition
+		    if (("FIRST BUY".equalsIgnoreCase(ind.getHeikinAshiWeekly()) && "FIRST BUY".equalsIgnoreCase(ind.getPsarFlagWeekly()))
+		     || ("FIRST SELL".equalsIgnoreCase(ind.getHeikinAshiWeekly()) && "FIRST SELL".equalsIgnoreCase(ind.getPsarFlagWeekly()))) {
+		        types.add("WEEKLY");
+		    }
+
+		    // Combine detected types
+		    if (!types.isEmpty()) {
+		        ind.setTradetype(String.join(",", types));
+		    }
+		}
+
+		// ✅ Step 3: Return updated, unique list
+		return finalList;
 
 	}
+
+	@GetMapping("/getDetailsResults")
+	public List<Result> getResultList(
+	        @RequestParam(required = false, defaultValue = "current") String period) {
+
+	    List<Result> allResults = resultRepo.findAll();
+
+	    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+	    LocalDateTime now = LocalDateTime.now();
+
+	    LocalDateTime startDate;
+	    LocalDateTime endDate;
+
+	    switch (period.toLowerCase()) {
+	        case "previous":
+	            startDate = now.minusMonths(1).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+	            endDate = startDate.withDayOfMonth(startDate.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59);
+	            break;
+
+	        case "last3":
+	            startDate = now.minusMonths(2).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+	            endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59);
+	            break;
+
+	        case "all":
+	            startDate = LocalDateTime.of(1970, 1, 1, 0, 0);
+	            endDate = LocalDateTime.of(2100, 12, 31, 23, 59);
+	            break;
+
+	        default: // current month
+	            startDate = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+	            endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59);
+	    }
+
+	    List<Result> filtered = allResults.stream()
+	            .filter(r -> {
+	                if (r.getEntryTime() == null) return false;
+	                try {
+	                    LocalDateTime entry = LocalDateTime.parse(r.getEntryTime(), formatter);
+	                    return !entry.isBefore(startDate) && !entry.isAfter(endDate);
+	                } catch (Exception e) {
+	                    return false; // skip invalid formats
+	                }
+	            })
+	            .toList();
+
+	    return filtered;
+	}
+
+
 
 	@PatchMapping("/{id}/active")
 	public ResponseEntity<String> updateActive(
