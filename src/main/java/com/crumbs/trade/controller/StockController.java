@@ -97,8 +97,8 @@ public class StockController {
 		return "STOCK Strategy Disabled";
 	}
 	
-	@GetMapping("/hourlyStock")
-	@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
+	//@GetMapping("/hourlyStock")
+	//@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
 	public String getHourlyStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			logger.info("Hourly Stock");
