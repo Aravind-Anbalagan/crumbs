@@ -239,7 +239,12 @@ public class TaskService {
 		logger.info("Processing started at: {}", startTime.format(formatter));
 		SmartConnect smartConnect = angelOne.signIn();
 		List<Indexes> indexesList = new ArrayList<>();
-		indicatorRepo.deleteAll();
+		
+		//Delete for daily
+		if (timeId == 4L) {
+			indicatorRepo.deleteAll();
+		}
+		
         pricesIndexRepo.deleteAll();
         priceHeikinashiIndexRepo.deleteAll();
         psarIndexRepo.deleteAll();
