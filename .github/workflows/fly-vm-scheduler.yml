@@ -2,8 +2,8 @@ name: Fly VM Scheduler
 
 on:
   schedule:
-    # Start at 9:00 AM IST (03:30 UTC),every day
-    - cron: "30 3 * * 0-6"
+    # Start at 8:30 AM IST (03:30 UTC),every day
+    - cron: "0 3 * * 0-6"
     # Stop at 2:00 AM IST (20:30 UTC, previous day),every day
     - cron: "30 20 * * 0-6"
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
 jobs:
   start-vm:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'start' || github.event_name == 'schedule' && github.event.schedule == '30 3 * * 0-6'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'start' || github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0-6'
     steps:
       - name: Start Fly.io VM
         run: |
