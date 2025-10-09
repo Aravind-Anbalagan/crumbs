@@ -1112,11 +1112,13 @@ public class TaskService {
 				&& indicator.getPsarFlagHourly().equalsIgnoreCase("FIRST BUY"))
 		{
 			indicator.setIntraday("UP");
+			indicator.setTradetype("HOURLY");
 		}
 		if(indicator.getHeikinAshiHourly().equalsIgnoreCase("FIRST SELL") 
 				&& indicator.getPsarFlagHourly().equalsIgnoreCase("FIRST SELL"))
 		{
 			indicator.setIntraday("DOWN");
+			indicator.setTradetype("HOURLY");
 		}
 		
 		// Save
@@ -2147,6 +2149,7 @@ public class TaskService {
 
 	    if ((isBullish && isUpSignal(stock)) || (!isBullish && isDownSignal(stock))) {
 	        stock.setIntraday(isBullish ? "UP" : "DOWN");
+	        stock.setTradetype("DAILY");
 	        indicatorRepo.save(stock);
 	        resultService.saveNiftyResult(stock);
      

@@ -346,7 +346,7 @@ public class StockController {
 
 		    // Combine detected types
 		    if (!types.isEmpty()) {
-		        ind.setTradetype(String.join(",", types));
+		        //ind.setTradetype(String.join(",", types));
 		    }
 		}
 

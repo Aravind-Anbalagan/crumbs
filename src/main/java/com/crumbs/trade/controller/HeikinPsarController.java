@@ -147,7 +147,7 @@ public class HeikinPsarController {
 	/*
 	 * Its a common method to entry and exist order for Vix
 	 */
-	@Scheduled(cron = "*/10 * * * * MON-FRI")
+	//@Scheduled(cron = "*/10 * * * * MON-FRI")
 	public void monitorExecutedOrders() {
 
 		if (chartService.getName().equalsIgnoreCase("NIFTY")
