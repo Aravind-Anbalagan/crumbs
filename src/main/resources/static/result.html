@@ -27,10 +27,7 @@
       --red-bg: #fee2e2;
     }
 
-    * {
-      box-sizing: border-box;
-    }
-
+    * { box-sizing: border-box; }
     body {
       font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       background: var(--bg-secondary);
@@ -38,27 +35,14 @@
       padding: 20px;
       color: var(--text-primary);
     }
-
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    h2 {
-      text-align: center;
-      margin-bottom: 30px;
-      font-weight: 700;
-      color: var(--text-primary);
-      font-size: 28px;
-    }
-
+    .container { max-width: 1400px; margin: 0 auto; }
+    h2 { text-align: center; margin-bottom: 30px; font-weight: 700; color: var(--text-primary); font-size: 28px; }
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 30px;
     }
-
     .stat-card {
       background: var(--bg-primary);
       padding: 16px;
@@ -66,7 +50,6 @@
       box-shadow: var(--shadow-md);
       text-align: center;
     }
-
     .stat-label {
       font-size: 12px;
       color: var(--text-muted);
@@ -75,21 +58,13 @@
       letter-spacing: 0.5px;
       margin-bottom: 6px;
     }
-
     .stat-value {
       font-size: 24px;
       font-weight: 700;
       color: var(--text-primary);
     }
-
-    .stat-value.positive {
-      color: var(--green);
-    }
-
-    .stat-value.negative {
-      color: var(--red);
-    }
-
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
     .controls {
       display: flex;
       justify-content: center;
@@ -98,7 +73,6 @@
       flex-wrap: wrap;
       align-items: center;
     }
-
     input,
     select,
     button {
@@ -112,7 +86,6 @@
       transition: all 0.2s ease;
       cursor: pointer;
     }
-
     input:focus,
     select:focus,
     button:focus {
@@ -120,7 +93,6 @@
       border-color: var(--primary-color);
       box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
     }
-
     button.primary-btn {
       background: var(--primary-color);
       color: var(--bg-primary);
@@ -129,40 +101,29 @@
       font-weight: 700;
       transition: background 0.2s ease;
     }
-
-    button.primary-btn:hover {
-      background: var(--primary-hover);
-    }
-
+    button.primary-btn:hover { background: var(--primary-hover); }
     button.export-btn {
       background: var(--green);
       color: white;
       border: none;
     }
-
-    button.export-btn:hover {
-      background: #047857;
-    }
-
+    button.export-btn:hover { background: #047857; }
     .table-container {
       background: var(--bg-primary);
       border-radius: 16px;
       box-shadow: var(--shadow-md);
       overflow: hidden;
     }
-
     table {
       width: 100%;
       border-collapse: collapse;
       display: none;
     }
-
     thead {
       background: var(--primary-color);
       color: var(--bg-primary);
       user-select: none;
     }
-
     th {
       padding: 16px 20px;
       text-align: left;
@@ -173,11 +134,7 @@
       position: relative;
       white-space: nowrap;
     }
-
-    th:hover {
-      background: var(--primary-hover);
-    }
-
+    th:hover { background: var(--primary-hover); }
     th.sorted::after {
       content: '';
       position: absolute;
@@ -189,15 +146,8 @@
       border-left: 5px solid transparent;
       border-right: 5px solid transparent;
     }
-
-    th.sorted.asc::after {
-      border-bottom: 6px solid var(--bg-primary);
-    }
-
-    th.sorted.desc::after {
-      border-top: 6px solid var(--bg-primary);
-    }
-
+    th.sorted.asc::after { border-bottom: 6px solid var(--bg-primary); }
+    th.sorted.desc::after { border-top: 6px solid var(--bg-primary); }
     td {
       padding: 16px 20px;
       text-align: left;
@@ -207,17 +157,12 @@
       vertical-align: middle;
       white-space: nowrap;
     }
-
-    tbody tr:nth-child(even) {
-      background: var(--bg-col-even);
-    }
-
+    tbody tr:nth-child(even) { background: var(--bg-col-even); }
     tbody tr:hover {
       background-color: var(--bg-tertiary);
       cursor: pointer;
       transition: background-color 0.2s ease;
     }
-
     .badge {
       padding: 6px 12px;
       border-radius: 12px;
@@ -228,27 +173,16 @@
       user-select: none;
       display: inline-block;
     }
-
     .badge.up {
       background: var(--green-bg);
       color: var(--green);
     }
-
     .badge.down {
       background: var(--red-bg);
       color: var(--red);
     }
-
-    .return-positive {
-      color: var(--green);
-      font-weight: 700;
-    }
-
-    .return-negative {
-      color: var(--red);
-      font-weight: 700;
-    }
-
+    .return-positive { color: var(--green); font-weight: 700; }
+    .return-negative { color: var(--red); font-weight: 700; }
     .status-active {
       background-color: var(--green-bg);
       color: var(--green);
@@ -260,7 +194,6 @@
       user-select: none;
       display: inline-block;
     }
-
     .status-sl-hit {
       background-color: var(--red-bg);
       color: var(--red);
@@ -272,7 +205,6 @@
       user-select: none;
       display: inline-block;
     }
-
     .loader {
       border: 6px solid var(--bg-col-default);
       border-top: 6px solid var(--primary-color);
@@ -282,12 +214,10 @@
       animation: spin 1s linear infinite;
       margin: 50px auto;
     }
-
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-
     .pagination {
       display: flex;
       justify-content: center;
@@ -295,7 +225,6 @@
       margin-top: 20px;
       flex-wrap: wrap;
     }
-
     .pagination button {
       padding: 10px 16px;
       border: 1px solid var(--border-primary);
@@ -307,11 +236,7 @@
       transition: background 0.2s ease;
       user-select: none;
     }
-
-    .pagination button:hover:not(:disabled) {
-      background: var(--bg-tertiary);
-    }
-
+    .pagination button:hover:not(:disabled) { background: var(--bg-tertiary); }
     .pagination button.active {
       background: var(--primary-color);
       color: var(--bg-primary);
@@ -319,13 +244,11 @@
       font-weight: 700;
       user-select: none;
     }
-
     .pagination button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
       user-select: none;
     }
-
     .has-option-badge {
       background: #dbeafe;
       color: #1e40af;
@@ -336,27 +259,64 @@
       display: inline-block;
       user-select: none;
     }
-
     .info-text {
       text-align: center;
       color: var(--text-muted);
       font-size: 14px;
       margin-top: 20px;
     }
-
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+      cursor: pointer;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.3s;
+      border-radius: 24px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--green);
+    }
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(26px);
+    }
+    .toggle-switch:hover .toggle-slider {
+      box-shadow: 0 0 0 3px rgba(6, 95, 70, 0.1);
+    }
+    .toggle-switch input:disabled + .toggle-slider {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     @media (max-width: 768px) {
-      .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
       table, thead, tbody, th, td, tr { display: block; }
       thead { display: none; }
-      
-      .table-container {
-        background: transparent;
-        box-shadow: none;
-      }
-
+      .table-container { background: transparent; box-shadow: none; }
       tr {
         margin-bottom: 16px;
         background: var(--bg-primary);
@@ -365,7 +325,6 @@
         padding: 16px;
         box-shadow: var(--shadow-sm);
       }
-      
       td {
         padding-left: 50%;
         text-align: right;
@@ -375,11 +334,7 @@
         border: none;
         border-bottom: 1px solid var(--border-primary);
       }
-
-      td:last-child {
-        border-bottom: none;
-      }
-      
+      td:last-child { border-bottom: none; }
       td::before {
         content: attr(data-label);
         position: absolute;
@@ -395,8 +350,7 @@
 </head>
 <body>
   <div class="container">
-   <div id="stats" class="stats-grid" style="display: none;"></div>
-
+    <div id="stats" class="stats-grid" style="display: none;"></div>
     <div class="controls">
       <input type="text" id="searchBox" placeholder="🔍 Search by Name..." />
       <select id="typeFilter">
@@ -418,9 +372,7 @@
       <button id="resetBtn" class="primary-btn">Reset</button>
       <button id="exportBtn" class="export-btn">Export CSV</button>
     </div>
-
     <div id="loader" class="loader"></div>
-
     <div class="table-container">
       <table id="data-table">
         <thead>
@@ -441,7 +393,6 @@
         <tbody id="table-body"></tbody>
       </table>
     </div>
-
     <div id="pagination" class="pagination"></div>
     <div class="info-text" id="infoText"></div>
   </div>
@@ -459,20 +410,15 @@
       loader.style.display = "block";
       table.style.display = "none";
       stats.style.display = "none";
-
       const periodVal = document.getElementById("periodFilter").value;
-
       try {
         const response = await fetch(`/api/getDetailsResults?period=${periodVal}`);
         if (!response.ok) throw new Error("Network error");
         stockData = await response.json();
-        
-        // Process return percentages
         stockData.forEach(item => {
           const returnMatch = (item.comment || "").match(/Return:\s*(-?[\d.]+)%/);
           item.returnPercent = returnMatch ? parseFloat(returnMatch[1]) : 0;
         });
-
         renderStats();
         renderTable();
         loader.style.display = "none";
@@ -491,16 +437,12 @@
       const totalTrades = stockData.length;
       const activeTrades = stockData.filter(i => (i.result || "").toUpperCase() === "ACTIVE").length;
       const closedTrades = totalTrades - activeTrades;
-      
       const totalReturn = stockData.reduce((sum, item) => sum + (item.returnPercent || 0), 0);
       const avgReturn = totalTrades > 0 ? totalReturn / totalTrades : 0;
-      
       const winningTrades = stockData.filter(i => (i.returnPercent || 0) > 0).length;
       const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
-
       const upTrades = stockData.filter(i => (i.type || "").toUpperCase() === "UP").length;
       const downTrades = stockData.filter(i => (i.type || "").toUpperCase() === "DOWN").length;
-
       stats.innerHTML = `
         <div class="stat-card">
           <div class="stat-label">Total Trades</div>
@@ -553,7 +495,6 @@
         filtered.sort((a, b) => {
           let valA = a[currentSort.key];
           let valB = b[currentSort.key];
-          
           if (currentSort.key === 'returnPercent') {
             valA = valA || 0;
             valB = valB || 0;
@@ -567,7 +508,6 @@
             valA = (valA || "").toString().toLowerCase();
             valB = (valB || "").toString().toLowerCase();
           }
-          
           if (valA < valB) return currentSort.asc ? -1 : 1;
           if (valA > valB) return currentSort.asc ? 1 : -1;
           return 0;
@@ -587,21 +527,19 @@
         paginated.forEach((item) => {
           const displayType = (item.type || "").toUpperCase();
           const badgeClass = displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : "";
-          
           const returnPercent = item.returnPercent || 0;
           const returnPercentClass = returnPercent >= 0 ? "return-positive" : "return-negative";
           const returnText = `${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%`;
-
           let statusClass = "";
           let statusText = item.result || "";
           if (statusText.toUpperCase() === "ACTIVE") statusClass = "status-active";
           else if (statusText.toUpperCase() === "SL HIT") statusClass = "status-sl-hit";
-
           const optionsDisplay = item.hasOption === "Y" ? '<span class="has-option-badge">Yes</span>' : "No";
 
+          const activeFlag = item.active === "Y";
           const row = document.createElement("tr");
           row.innerHTML = `
-            <td data-label="Traded">${item.active || "N"}</td>
+            <td data-label="Trade"></td>
             <td data-label="Options">${optionsDisplay}</td>
             <td data-label="Name">${item.name || ""}</td>
             <td data-label="Exchange">${item.exchange || ""}</td>
@@ -613,10 +551,64 @@
             <td data-label="Return %" class="${returnPercentClass}">${returnText}</td>
             <td data-label="Status"><span class="${statusClass}">${statusText}</span></td>
           `;
+          
+          // Create toggle switch
+          const toggleLabel = document.createElement("label");
+          toggleLabel.className = "toggle-switch";
+          toggleLabel.title = activeFlag ? "Click to mark as inactive" : "Click to mark as active";
+          
+          const toggleInput = document.createElement("input");
+          toggleInput.type = "checkbox";
+          toggleInput.checked = activeFlag;
+          
+          const toggleSlider = document.createElement("span");
+          toggleSlider.className = "toggle-slider";
+          
+          toggleLabel.appendChild(toggleInput);
+          toggleLabel.appendChild(toggleSlider);
+          
+          toggleInput.addEventListener("change", async (e) => {
+            const newActiveVal = e.target.checked ? "Y" : "N";
+            const originalVal = item.active;
+            
+            // Disable toggle during API call
+            toggleInput.disabled = true;
+            
+            // Optimistic update
+            item.active = newActiveVal;
+            
+            try {
+              const apiUrl = `/api/${item.id}/active?active=${newActiveVal}`;
+              const resp = await fetch(apiUrl, { 
+                method: "PATCH", 
+                headers: { "accept": "*/*" } 
+              });
+              
+              if (resp.ok) {
+                showToast(`Trade "${item.name}" marked as ${newActiveVal === "Y" ? "active" : "inactive"}`, "success");
+                renderStats();
+              } else {
+                // Rollback on failure
+                item.active = originalVal;
+                e.target.checked = originalVal === "Y";
+                showToast("Failed to update trade status", "error");
+              }
+            } catch (error) {
+              console.error("API Error:", error);
+              // Rollback on error
+              item.active = originalVal;
+              e.target.checked = originalVal === "Y";
+              showToast("Network error. Please try again.", "error");
+            } finally {
+              // Re-enable toggle
+              toggleInput.disabled = false;
+            }
+          });
+          
+          row.children[0].appendChild(toggleLabel);
           tbody.appendChild(row);
         });
       }
-
       renderPagination(totalPages);
       updateInfoText(filtered.length, stockData.length);
     }
@@ -654,7 +646,7 @@
       const maxButtons = 5;
       let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
       let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-      
+
       if (endPage - startPage < maxButtons - 1) {
         startPage = Math.max(1, endPage - maxButtons + 1);
       }
@@ -664,7 +656,6 @@
         firstBtn.textContent = "1";
         firstBtn.onclick = () => { currentPage = 1; renderTable(); };
         pagination.appendChild(firstBtn);
-        
         if (startPage > 2) {
           const dots = document.createElement("button");
           dots.textContent = "...";
@@ -688,7 +679,6 @@
           dots.disabled = true;
           pagination.appendChild(dots);
         }
-        
         const lastBtn = document.createElement("button");
         lastBtn.textContent = totalPages;
         lastBtn.onclick = () => { currentPage = totalPages; renderTable(); };
@@ -715,11 +705,76 @@
       });
     }
 
+    function showToast(message, type = 'info') {
+      const existingToast = document.querySelector('.toast-notification');
+      if (existingToast) existingToast.remove();
+      
+      const toast = document.createElement('div');
+      toast.className = 'toast-notification';
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 16px 24px;
+        border-radius: 12px;
+        color: white;
+        font-weight: 600;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        max-width: 300px;
+      `;
+      
+      if (type === 'success') {
+        toast.style.background = 'var(--green)';
+        toast.innerHTML = `✓ ${message}`;
+      } else if (type === 'error') {
+        toast.style.background = 'var(--red)';
+        toast.innerHTML = `✕ ${message}`;
+      } else {
+        toast.style.background = 'var(--primary-color)';
+        toast.innerHTML = message;
+      }
+      
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Add animation keyframes
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
     function exportToCSV() {
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
       const statusVal = document.getElementById("statusFilter").value;
-
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
         const displayStatus = (item.result || "").toUpperCase();
@@ -728,10 +783,8 @@
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
         return matchesSearch && matchesType && matchesStatus;
       });
-
       const headers = ["Trade", "Options", "Name", "Exchange", "Entry Time", "Type", 
                        "Executed LTP", "Current LTP", "SL", "Return %", "Status"];
-      
       const csvContent = [
         headers.join(","),
         ...filtered.map(item => [
@@ -748,7 +801,6 @@
           item.result || ""
         ].join(","))
       ].join("\n");
-
       const blob = new Blob([csvContent], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
