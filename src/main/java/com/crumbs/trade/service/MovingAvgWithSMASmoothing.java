@@ -15,7 +15,7 @@ public class MovingAvgWithSMASmoothing {
 
     public enum SourceType {OPEN, HIGH, LOW, CLOSE, HL2, OHLC4}
 
-    // Get the value from candle based on source type
+    // ✅ Get the value from candle based on source type
     private static BigDecimal getSourceValue(Candlestick candle, SourceType source) {
         switch (source) {
             case OPEN: return candle.getOpen();
@@ -31,7 +31,7 @@ public class MovingAvgWithSMASmoothing {
         }
     }
 
-    // Simple Moving Average
+    // ✅ Simple Moving Average
     public static List<BigDecimal> calculateSMA(List<BigDecimal> data, int period) {
         List<BigDecimal> sma = new ArrayList<>(Collections.nCopies(data.size(), null));
         if (data.size() < period) return sma;
@@ -53,7 +53,7 @@ public class MovingAvgWithSMASmoothing {
         return sma;
     }
 
-    // Shift the data by offset
+    // ✅ Shift by offset
     public static List<BigDecimal> applyOffset(List<BigDecimal> data, int offset) {
         List<BigDecimal> shifted = new ArrayList<>(Collections.nCopies(data.size(), null));
         int size = data.size();
@@ -66,33 +66,42 @@ public class MovingAvgWithSMASmoothing {
         return shifted;
     }
 
-    // Calculate moving average signals with persistent trend
-    public static List<Candlestick> calculateMovingAvgSignals(List<Candlestick> candles,
-                                                              int length,
-                                                              int smoothingLength,
-                                                              SourceType source,
-                                                              int offset) {
+    // ✅ Core logic: calculate signals using previous-day seeding
+    public static List<Candlestick> calculateMovingAvgSignalsWithSeed(List<Candlestick> todayCandles,
+                                                                      List<Candlestick> previousDayCandles,
+                                                                      int length,
+                                                                      int smoothingLength,
+                                                                      SourceType source,
+                                                                      int offset) {
+
+        // Seed with previous day's last N candles
+        int seedCount = Math.min(previousDayCandles.size(), length);
+        List<Candlestick> seedCandles = previousDayCandles
+                .subList(previousDayCandles.size() - seedCount, previousDayCandles.size());
+
+        List<Candlestick> combined = new ArrayList<>(seedCandles);
+        combined.addAll(todayCandles);
+
+        // Compute base and smoothed MA
         List<BigDecimal> sourceValues = new ArrayList<>();
-        for (Candlestick candle : candles) {
-            sourceValues.add(getSourceValue(candle, source));
+        for (Candlestick c : combined) {
+            sourceValues.add(getSourceValue(c, source));
         }
 
-        // First SMA
         List<BigDecimal> sma = calculateSMA(sourceValues, length);
-
-        // Smoothed MA
-        List<BigDecimal> smoothedMA = smoothingLength > 1 ? calculateSMA(sma, smoothingLength) : sma;
+        List<BigDecimal> smoothedMA = (smoothingLength > 1)
+                ? calculateSMA(sma, smoothingLength)
+                : sma;
         smoothedMA = applyOffset(smoothedMA, offset);
 
         BigDecimal prevClose = null;
         BigDecimal prevMA = null;
-        String currentTrend = null; // persistent trend
+        String currentTrend = null;
 
-        for (int i = 0; i < candles.size(); i++) {
-            Candlestick candle = candles.get(i);
+        for (int i = 0; i < combined.size(); i++) {
+            Candlestick candle = combined.get(i);
             BigDecimal close = candle.getClose();
             BigDecimal maVal = i < smoothedMA.size() ? smoothedMA.get(i) : null;
-
             candle.setSmoothMA(maVal);
 
             if (prevClose != null && prevMA != null && maVal != null) {
@@ -100,24 +109,29 @@ public class MovingAvgWithSMASmoothing {
                 boolean wasAbove = prevClose.compareTo(prevMA) > 0;
 
                 if (wasBelow && close.compareTo(maVal) > 0) {
-                    currentTrend = "BUY";  // crossover up
+                    currentTrend = "BUY";
                 } else if (wasAbove && close.compareTo(maVal) < 0) {
-                    currentTrend = "SELL"; // crossover down
+                    currentTrend = "SELL";
                 }
             }
 
-            // persist trend in masignal
             candle.setMasignal(currentTrend);
-
             prevClose = close;
             prevMA = maVal;
         }
 
-        return candles;
+        // ✅ Return only today's candles with early signals
+        return combined.subList(seedCandles.size(), combined.size());
     }
 
-    // Public method to get processed candles
+    // ✅ Public method for early-start MA & signals
+    public List<Candlestick> getMovingAvgWithPreviousDaySeed(List<Candlestick> todayCandles,
+                                                             List<Candlestick> previousDayCandles) {
+        return calculateMovingAvgSignalsWithSeed(todayCandles, previousDayCandles, 9, 9, SourceType.CLOSE, 0);
+    }
+
+    // ✅ Original method preserved
     public List<Candlestick> getMovingAverage(List<Candlestick> candles) {
-        return calculateMovingAvgSignals(candles, 9, 9, SourceType.CLOSE, 0);
+        return calculateMovingAvgSignalsWithSeed(candles, new ArrayList<>(), 9, 9, SourceType.CLOSE, 0);
     }
 }
