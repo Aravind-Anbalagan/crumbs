@@ -25,20 +25,35 @@
     }
     #loader {
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      display: flex; align-items: center; justify-content: center;
+      display: flex; 
+      flex-direction: column;
+      align-items: center; 
+      justify-content: center;
       background: rgba(255,255,255,0.95);
       z-index: 10;
       border-radius: 12px;
+      gap: 16px;
     }
     .spinner {
       border: 6px solid #e0e0e0;
-      border-top: 6px solid #007BFF;
+      border-top: 6px solid #4a5568;
       border-radius: 50%;
       width: 48px; height: 48px;
       animation: spin 1s linear infinite;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+    #loaderText {
+      font-size: 15px;
+      font-weight: 600;
+      color: #4a5568;
+      text-align: center;
+    }
+    #retryCount {
+      font-size: 13px;
+      color: #666;
+      margin-top: -8px;
     }
     #error {
       position: absolute;
@@ -106,12 +121,12 @@
     #toolbar select:hover, #toolbar button:hover,
     #toolbar select:focus, #toolbar button:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      border-color: #4a5568;
+      box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
       transform: translateY(-1px);
     }
     #refreshButton, #settingsButton {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
       color: white;
       border: none;
       font-weight: 600;
@@ -125,11 +140,11 @@
       gap: 6px;
       user-select: none;
       transition: all 0.3s ease;
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
     #refreshButton:hover, #settingsButton:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     }
     #settingsDropdown {
       position: absolute;
@@ -179,7 +194,7 @@
       border-radius: 6px;
     }
     #settingsMenu label:hover {
-      background: rgba(102, 126, 234, 0.08);
+      background: rgba(74, 85, 104, 0.08);
     }
     #settingsMenu label:last-child {
       margin-bottom: 14px;
@@ -189,7 +204,7 @@
       cursor: pointer;
       width: 18px;
       height: 18px;
-      accent-color: #667eea;
+      accent-color: #4a5568;
     }
     #resetButton, #fitButton {
       display: block;
@@ -207,10 +222,10 @@
       user-select: none;
     }
     #fitButton {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
       color: white;
       border: none;
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
     #resetButton:hover {
       background: #e0e0e0;
@@ -218,7 +233,7 @@
     }
     #fitButton:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     }
   </style>
 </head>
@@ -241,7 +256,11 @@
       <button id="refreshButton">Refresh</button>
     </div>
     <div id="chart"></div>
-    <div id="loader"><div class="spinner"></div></div>
+    <div id="loader">
+      <div class="spinner"></div>
+      <div id="loaderText">Loading chart data...</div>
+      <div id="retryCount"></div>
+    </div>
     <div id="error"></div>
     <div id="settingsDropdown">
       <button id="settingsButton">Settings ▼</button>
@@ -274,6 +293,8 @@
 
   const chartEl = document.getElementById('chart');
   const loaderEl = document.getElementById('loader');
+  const loaderText = document.getElementById('loaderText');
+  const retryCountEl = document.getElementById('retryCount');
   const errorEl = document.getElementById('error');
   const settingsButton = document.getElementById('settingsButton');
   const settingsMenu = document.getElementById('settingsMenu');
@@ -301,6 +322,9 @@
   let lastData = null;
   let isFirstLoad = true;
   let refreshInterval = null;
+  let retryCount = 0;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 2000; // 2 seconds
 
   function updateSettings() {
     settings.paSupport = togglePASupportCheckbox.checked;
@@ -538,6 +562,9 @@
       loaderEl.style.display = 'flex';
       chartEl.style.display = 'none';
       errorEl.style.display = 'none';
+      retryCount = 0;
+      loaderText.textContent = 'Loading chart data...';
+      retryCountEl.textContent = '';
     }
     try {
       const data = await fetchData(selectedTimeFrame, selectedSymbol);
@@ -546,16 +573,27 @@
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
+      retryCount = 0;
       setTimeout(() => {
         if (chart) {
           chart.resize(chartEl.clientWidth, chartEl.clientHeight);
         }
       }, 50);
     } catch (e) {
-      loaderEl.style.display = 'none';
-      chartEl.style.display = 'none';
-      errorEl.textContent = e.message;
-      errorEl.style.display = 'block';
+      if (firstLoad && retryCount < MAX_RETRIES) {
+        retryCount++;
+        loaderText.textContent = 'Connection failed. Retrying...';
+        retryCountEl.textContent = `Attempt ${retryCount} of ${MAX_RETRIES}`;
+        setTimeout(() => refresh(true), RETRY_DELAY);
+      } else {
+        loaderEl.style.display = 'none';
+        chartEl.style.display = 'none';
+        errorEl.textContent = retryCount >= MAX_RETRIES 
+          ? `Failed after ${MAX_RETRIES} attempts: ${e.message}` 
+          : e.message;
+        errorEl.style.display = 'block';
+        retryCount = 0;
+      }
     }
   }
 
@@ -598,9 +636,12 @@
       refreshInterval = null;
     }
     isFirstLoad = true;
+    retryCount = 0;
     errorEl.style.display = 'none';
     loaderEl.style.display = 'flex';
     chartEl.style.display = 'none';
+    loaderText.textContent = 'Loading chart data...';
+    retryCountEl.textContent = '';
     clearChart();
     refresh(true).then(() => {
       if (toggleLiveCheckbox.checked) {
