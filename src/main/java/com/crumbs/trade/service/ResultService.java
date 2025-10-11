@@ -62,10 +62,10 @@ public class ResultService {
 			result.setCurrentltp(stock.getCurrentPrice());
 			result.setType(stock.getIntraday()); // common field indicate buy /sell
 			result.setHasOption(Objects.nonNull(stock.getOptions()) ? "Y" : "N");
-			if ("UP".equalsIgnoreCase(result.getType())) {
+			if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
 
-			} else {
+			} else if ("DOWN".equalsIgnoreCase(result.getType())  && "DAILY".equalsIgnoreCase(stock.getTradetype())){
 				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
 			}
 			

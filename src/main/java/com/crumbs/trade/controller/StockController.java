@@ -98,7 +98,7 @@ public class StockController {
 	}
 	
 	@GetMapping("/hourlyStock")
-	@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
+	//@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
 	public String getHourlyStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			logger.info("Hourly Stock");
@@ -126,7 +126,9 @@ public class StockController {
 	@Scheduled(cron = "0 35 15 * * MON-FRI", zone = "Asia/Kolkata")
 	public String getResult() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
+			//Get All the Intraday Stock and give the intraday result
 			taskService.getResult();
+			//Get All the Stock in the Result Table and update the current Status of the Trade.
 			resultService.getAllResults();
 			return "Completed";
 		}
