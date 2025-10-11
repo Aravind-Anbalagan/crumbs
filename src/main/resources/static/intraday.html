@@ -10,15 +10,18 @@
       margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
         Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      background-color: #f9fafb;
+      background: linear-gradient(135deg, #2c3e50 0%, #4a5568 100%);
       color: #333;
+      overflow: hidden;
     }
     #chart {
-      width: 100%;
-      height: 100%;
+      width: calc(100% - 32px);
+      height: calc(100% - 32px);
+      margin: 16px;
       display: none;
-      border-radius: 12px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      background: #ffffff;
     }
     #loader {
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
@@ -55,13 +58,14 @@
     }
     #toolbar {
       position: absolute;
-      top: 16px; left: 50%;
+      top: 24px; left: 50%;
       transform: translateX(-50%);
       z-index: 31;
-      background: #ffffffcc;
-      border-radius: 10px;
-      padding: 12px 20px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 14px 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
       display: flex;
       gap: 20px;
       align-items: center;
@@ -69,6 +73,7 @@
       user-select: none;
       width: auto;
       max-width: 90vw;
+      border: 1px solid rgba(255, 255, 255, 0.3);
     }
     #toolbar .center-group {
       display: flex;
@@ -86,103 +91,134 @@
     }
     #toolbar select {
       font-size: 13px;
-      padding: 3px 10px;
-      border-radius: 6px;
-      min-width: 100px;
-      height: 28px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      min-width: 110px;
+      height: 32px;
       line-height: 1.2;
       cursor: pointer;
-      transition: box-shadow 0.3s ease, border-color 0.3s ease;
+      transition: all 0.3s ease;
       font-weight: 500;
       color: #444;
+      border: 2px solid #e0e0e0;
+      background: white;
     }
     #toolbar select:hover, #toolbar button:hover,
     #toolbar select:focus, #toolbar button:focus {
       outline: none;
-      border-color: #007BFF;
-      box-shadow: 0 0 6px rgba(0, 123, 255, 0.5);
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      transform: translateY(-1px);
     }
     #refreshButton, #settingsButton {
-      background-color: #007BFF;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       border: none;
       font-weight: 600;
       min-width: 100px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
       user-select: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     }
     #refreshButton:hover, #settingsButton:hover {
-      background-color: #0056b3;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
     }
     #settingsDropdown {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      top: 24px;
+      left: 24px;
       z-index: 30;
       user-select: none;
     }
     #settingsMenu {
       display: none;
       position: absolute;
-      top: 36px;
+      top: 48px;
       left: 0;
-      background: #ffffff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-      padding: 14px 20px;
-      min-width: 240px;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+      padding: 16px 24px;
+      min-width: 260px;
       font-size: 13px;
       color: #333;
-      transition: opacity 0.3s ease;
+      transition: all 0.3s ease;
     }
     #settingsMenu.visible {
       display: block;
+      animation: slideDown 0.3s ease;
+    }
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
     #settingsMenu label {
       display: flex;
       align-items: center;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       cursor: pointer;
       user-select: none;
+      transition: all 0.2s ease;
+      padding: 4px;
+      border-radius: 6px;
+    }
+    #settingsMenu label:hover {
+      background: rgba(102, 126, 234, 0.08);
     }
     #settingsMenu label:last-child {
       margin-bottom: 14px;
     }
     #settingsMenu input[type="checkbox"] {
-      margin-right: 10px;
+      margin-right: 12px;
       cursor: pointer;
       width: 18px;
       height: 18px;
+      accent-color: #667eea;
     }
     #resetButton, #fitButton {
       display: block;
       width: 100%;
-      padding: 8px 0;
+      padding: 10px 0;
       font-size: 14px;
       background: #f4f6f8;
-      border: 1px solid #ccc;
+      border: 2px solid #e0e0e0;
       border-radius: 10px;
       cursor: pointer;
       font-weight: 600;
       color: #444;
-      margin-top: 8px;
-      transition: background 0.25s ease;
+      margin-top: 10px;
+      transition: all 0.25s ease;
       user-select: none;
     }
     #fitButton {
-      background: #007BFF;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      border-color: #0056b3;
+      border: none;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     }
     #resetButton:hover {
       background: #e0e0e0;
+      transform: translateY(-1px);
     }
     #fitButton:hover {
-      background: #0056b3;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
     }
   </style>
 </head>
@@ -210,20 +246,32 @@
     <div id="settingsDropdown">
       <button id="settingsButton">Settings ▼</button>
       <div id="settingsMenu">
-        <label><input type="checkbox" id="togglePASupport" /> Price Action Support</label>
-        <label><input type="checkbox" id="togglePAResistance" /> Price Action Resistance</label>
-        <label><input type="checkbox" id="toggleFiboSupport" /> Fibonacci Support</label>
-        <label><input type="checkbox" id="toggleFiboResistance" /> Fibonacci Resistance</label>
-        <label><input type="checkbox" id="toggleSignals" /> Signals</label>
-        <label><input type="checkbox" id="toggleGrid" /> Grid</label>
-        <label><input type="checkbox" id="toggleLive" /> Live</label>
+        <label><input type="checkbox" id="togglePASupport" checked /> Price Action Support</label>
+        <label><input type="checkbox" id="togglePAResistance" checked /> Price Action Resistance</label>
+        <label><input type="checkbox" id="toggleFiboSupport" checked /> Fibonacci Support</label>
+        <label><input type="checkbox" id="toggleFiboResistance" checked /> Fibonacci Resistance</label>
+        <label><input type="checkbox" id="toggleSignals" checked /> Signals</label>
+        <label><input type="checkbox" id="toggleGrid" checked /> Grid</label>
+        <label><input type="checkbox" id="toggleLive" checked /> Live</label>
         <button id="resetButton">Reset Defaults</button>
         <button id="fitButton">Fit Chart</button>
       </div>
     </div>
   </div>
 <script>
-  const STORAGE_KEY = 'chartComponentVisibilityLiveToggle';
+  // In-memory settings (no localStorage)
+  const settings = {
+    paSupport: true,
+    paResistance: true,
+    fiboSupport: true,
+    fiboResistance: true,
+    signals: true,
+    grid: true,
+    live: true,
+    symbol: 'NIFTY',
+    timeframe: 'FIVE_MINUTE'
+  };
+
   const chartEl = document.getElementById('chart');
   const loaderEl = document.getElementById('loader');
   const errorEl = document.getElementById('error');
@@ -240,8 +288,9 @@
   const fitButton = document.getElementById('fitButton');
   const symbolDropdown = document.getElementById('symbolDropdown');
   const timeframeDropdown = document.getElementById('timeframeDropdown');
-  let selectedSymbol = symbolDropdown.value;
-  let selectedTimeFrame = timeframeDropdown.value;
+  
+  let selectedSymbol = settings.symbol;
+  let selectedTimeFrame = settings.timeframe;
   let chart, candleSeries, volumeSeries;
   let priceActionSupportLines = [];
   let priceActionResistanceLines = [];
@@ -253,54 +302,16 @@
   let isFirstLoad = true;
   let refreshInterval = null;
 
-  function saveVisibility() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      paSupport: togglePASupportCheckbox.checked,
-      paResistance: togglePAResistanceCheckbox.checked,
-      fiboSupport: toggleFiboSupportCheckbox.checked,
-      fiboResistance: toggleFiboResistanceCheckbox.checked,
-      signals: toggleSignalsCheckbox.checked,
-      grid: toggleGridCheckbox.checked,
-      live: toggleLiveCheckbox.checked,
-      symbol: selectedSymbol,
-      timeframe: selectedTimeFrame
-    }));
-  }
-  function loadVisibility() {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const settings = JSON.parse(saved);
-        togglePASupportCheckbox.checked = settings.paSupport !== false;
-        togglePAResistanceCheckbox.checked = settings.paResistance !== false;
-        toggleFiboSupportCheckbox.checked = settings.fiboSupport !== false;
-        toggleFiboResistanceCheckbox.checked = settings.fiboResistance !== false;
-        toggleSignalsCheckbox.checked = settings.signals !== false;
-        toggleGridCheckbox.checked = settings.grid !== false;
-        toggleLiveCheckbox.checked = settings.live !== false;
-        symbolDropdown.value = settings.symbol || "NIFTY";
-        selectedSymbol = settings.symbol || "NIFTY";
-        timeframeDropdown.value = settings.timeframe || "FIVE_MINUTE";
-        selectedTimeFrame = settings.timeframe || "FIVE_MINUTE";
-      } catch {
-        setDefaults();
-      }
-    } else {
-      setDefaults();
-    }
-  }
-  function setDefaults() {
-    togglePASupportCheckbox.checked = true;
-    togglePAResistanceCheckbox.checked = true;
-    toggleFiboSupportCheckbox.checked = true;
-    toggleFiboResistanceCheckbox.checked = true;
-    toggleSignalsCheckbox.checked = true;
-    toggleGridCheckbox.checked = true;
-    toggleLiveCheckbox.checked = true;
-    symbolDropdown.value = "NIFTY";
-    selectedSymbol = "NIFTY";
-    timeframeDropdown.value = "FIVE_MINUTE";
-    selectedTimeFrame = "FIVE_MINUTE";
+  function updateSettings() {
+    settings.paSupport = togglePASupportCheckbox.checked;
+    settings.paResistance = togglePAResistanceCheckbox.checked;
+    settings.fiboSupport = toggleFiboSupportCheckbox.checked;
+    settings.fiboResistance = toggleFiboResistanceCheckbox.checked;
+    settings.signals = toggleSignalsCheckbox.checked;
+    settings.grid = toggleGridCheckbox.checked;
+    settings.live = toggleLiveCheckbox.checked;
+    settings.symbol = selectedSymbol;
+    settings.timeframe = selectedTimeFrame;
   }
 
   function clearLines(lines) {
@@ -314,6 +325,7 @@
     priceActionResistanceLines = clearLines(priceActionResistanceLines);
     fiboSupportLines = clearLines(fiboSupportLines);
     fiboResistanceLines = clearLines(fiboResistanceLines);
+    
     if (togglePASupportCheckbox.checked && lastData.priceActionSupport) {
       priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({
         price: Number(price),
@@ -356,16 +368,16 @@
     }
   }
 
-  togglePASupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
-  togglePAResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
-  toggleFiboSupportCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
-  toggleFiboResistanceCheckbox.addEventListener('change', () => { saveVisibility(); redrawLines(); });
+  togglePASupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
+  togglePAResistanceCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
+  toggleFiboSupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
+  toggleFiboResistanceCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
   toggleSignalsCheckbox.addEventListener('change', () => {
-    saveVisibility();
+    updateSettings();
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
   });
   toggleGridCheckbox.addEventListener('change', () => {
-    saveVisibility();
+    updateSettings();
     if (!chart) return;
     chart.applyOptions({
       grid: {
@@ -375,13 +387,19 @@
     });
   });
   toggleLiveCheckbox.addEventListener('change', () => {
-    saveVisibility();
+    updateSettings();
     updateLiveStatus();
   });
 
   resetButton.addEventListener('click', () => {
-    setDefaults();
-    saveVisibility();
+    togglePASupportCheckbox.checked = true;
+    togglePAResistanceCheckbox.checked = true;
+    toggleFiboSupportCheckbox.checked = true;
+    toggleFiboResistanceCheckbox.checked = true;
+    toggleSignalsCheckbox.checked = true;
+    toggleGridCheckbox.checked = true;
+    toggleLiveCheckbox.checked = true;
+    updateSettings();
     redrawLines();
     if (chart) {
       chart.applyOptions({
@@ -394,6 +412,7 @@
     }
     updateLiveStatus();
   });
+  
   fitButton.addEventListener('click', () => {
     if (chart) chart.timeScale().fitContent();
   });
@@ -418,14 +437,15 @@
     clearChart();
     isFirstLoad = true;
     refresh(true);
-    saveVisibility();
+    updateSettings();
   });
+  
   timeframeDropdown.addEventListener('change', () => {
     selectedTimeFrame = timeframeDropdown.value;
     clearChart();
     isFirstLoad = true;
     refresh(true);
-    saveVisibility();
+    updateSettings();
   });
 
   function initChart() {
@@ -589,19 +609,16 @@
     }).catch(() => {});
   });
 
-  // Settings dropdown toggle with CSS class
   settingsButton.addEventListener('click', () => {
     settingsMenu.classList.toggle('visible');
   });
 
-  // Click outside closes the settings menu
   document.addEventListener('click', e => {
     if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
       settingsMenu.classList.remove('visible');
     }
   });
 
-  loadVisibility();
   refresh(true);
   updateLiveStatus();
 </script>
