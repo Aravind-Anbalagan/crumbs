@@ -451,6 +451,19 @@ public class ChartService {
 			if (isToday(currentDate) && IsExit(currentDate, hour, min)) {
 				triggerExitOrder(resultVix,true);
 				logger.info("Last trade: {}", name);
+				resultVix.setExitPrice(currentPrice);
+				resultVix.setExitTime(currentDate);
+				BigDecimal profitLoss = null;
+				if ("BUY".equalsIgnoreCase(resultVix.getType())) {
+					profitLoss = resultVix.getExitPrice().subtract(resultVix.getEntryPrice());
+				} else if ("SELL".equalsIgnoreCase(resultVix.getType())) {
+					profitLoss = resultVix.getEntryPrice().subtract(resultVix.getExitPrice());
+				}
+				if (profitLoss.compareTo(BigDecimal.ZERO) > 0) {
+					resultVix.setResult("PROFIT");
+				} else if (profitLoss.compareTo(BigDecimal.ZERO) < 0) {
+					resultVix.setResult("LOSS");
+				}
 				resultVix.setActive(null);
 				resultVixRepo.save(resultVix);
 			}
