@@ -534,7 +534,7 @@
           let statusText = item.result || "";
           if (statusText.toUpperCase() === "ACTIVE") statusClass = "status-active";
           else if (statusText.toUpperCase() === "SL HIT") statusClass = "status-sl-hit";
-          const optionsDisplay = item.hasOption === "Y" ? '<span class="has-option-badge">Yes</span>' : "No";
+          const optionsDisplay = item.hasOption === "Y" ? '<span class="has-option-badge">Y</span>' : '<span class="has-option-badge">N</span>';
 
           const activeFlag = item.active === "Y";
           const row = document.createElement("tr");
