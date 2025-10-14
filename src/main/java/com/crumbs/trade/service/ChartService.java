@@ -614,6 +614,10 @@ public class ChartService {
 			String message = "Exit :" + strategy.getName() + " -> " + type;
 			boolean ok = telegramService.sendMessage(message);
 			logger.info("Signal has Sent : ", ok);
+			
+			//Execute the Next Trade as per the signal
+			logger.info("Execute the Next Trade for {} ", resultVix.getName());
+			monitorSignal(resultVix.getName(), resultVix.getExchange(), false, 0);
 		}
 		
 	}
