@@ -221,15 +221,33 @@
       transition: all 0.25s ease;
       user-select: none;
     }
+    #uncheckAllButton {
+      display: block;
+      width: 100%;
+      padding: 10px 0;
+      font-size: 14px;
+      background: #fff3e0;
+      border: 2px solid #ffb74d;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #e65100;
+      margin-top: 10px;
+      transition: all 0.25s ease;
+      user-select: none;
+    }
     #fitButton {
       background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
       color: white;
       border: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
-    #resetButton:hover {
+    #resetButton:hover, #uncheckAllButton:hover {
       background: #e0e0e0;
       transform: translateY(-1px);
+    }
+    #uncheckAllButton:hover {
+      background: #ffe0b2;
     }
     #fitButton:hover {
       transform: translateY(-2px);
@@ -325,6 +343,7 @@
         <label><input type="checkbox" id="toggleSignals" checked /> Signals</label>
         <label><input type="checkbox" id="toggleGrid" checked /> Grid</label>
         <label><input type="checkbox" id="toggleLive" checked /> Live</label>
+        <button id="uncheckAllButton">Uncheck All</button>
         <button id="resetButton">Reset Defaults</button>
         <button id="fitButton">Fit Chart</button>
       </div>
@@ -359,6 +378,7 @@
   const toggleGridCheckbox = document.getElementById('toggleGrid');
   const toggleLiveCheckbox = document.getElementById('toggleLive');
   const resetButton = document.getElementById('resetButton');
+  const uncheckAllButton = document.getElementById('uncheckAllButton');
   const fitButton = document.getElementById('fitButton');
   const symbolDropdown = document.getElementById('symbolDropdown');
   const timeframeDropdown = document.getElementById('timeframeDropdown');
@@ -513,6 +533,28 @@
         }
       });
       if (candleSeries) candleSeries.setMarkers(lastSignals);
+    }
+    updateLiveStatus();
+  });
+  
+  uncheckAllButton.addEventListener('click', () => {
+    togglePASupportCheckbox.checked = false;
+    togglePAResistanceCheckbox.checked = false;
+    toggleFiboSupportCheckbox.checked = false;
+    toggleFiboResistanceCheckbox.checked = false;
+    toggleSignalsCheckbox.checked = false;
+    toggleGridCheckbox.checked = false;
+    toggleLiveCheckbox.checked = false;
+    updateSettings();
+    redrawLines();
+    if (chart) {
+      chart.applyOptions({
+        grid: {
+          vertLines: { visible: false, color: '#eee' },
+          horzLines: { visible: false, color: '#eee' }
+        }
+      });
+      if (candleSeries) candleSeries.setMarkers([]);
     }
     updateLiveStatus();
   });
