@@ -89,6 +89,13 @@ public class CommonController {
         }).start();
     }
  */
+	
+	//Execute every FRI at 11 PM
+	@Scheduled(cron = "0 0 23 * * FRI", zone = "Asia/Kolkata")
+    public void fetchTokensScheduled() throws IOException {
+		downloadFile(true); // call your logic
+    }
+	
 	/*
 	 * Used to get the instrument details
 	 */
