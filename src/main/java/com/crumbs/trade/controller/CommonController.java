@@ -131,7 +131,7 @@ public class CommonController {
 					//|| node.path("name").asText().equals("NATURALGAS") || node.path("name").asText().equals("FINNIFTY")
 					//|| node.path("name").asText().equals("BANKNIFTY") || node.path("name").asText().equals("BANKNIFTY")
 					//|| node.path("name").asText().equals("MIDCPNIFTY")|| node.path("name").asText().equals("SENSEX")
-					|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("GOLD")) {
+					|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("SILVER")) {
 				inputList.add(node.toString());
 
 			}
@@ -162,7 +162,7 @@ public class CommonController {
 						//|| node.path("name").asText().equals("FINNIFTY")
 						//|| node.path("name").asText().equals("BANKNIFTY") || node.path("name").asText().equals("BANKNIFTY")
 						//|| node.path("name").asText().equals("MIDCPNIFTY")|| node.path("name").asText().equals("SENSEX")
-						|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("GOLD")) ) {
+						|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("SILVER")) ) {
 				inputList.add(node.toString());
 
 				//Save Index Values

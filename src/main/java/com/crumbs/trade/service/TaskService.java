@@ -2539,7 +2539,7 @@ public class TaskService {
 			return convertStrategyToDto(strategyRepo.findByName("NIFTY"));
 		} else if ("MCX".equalsIgnoreCase(exchange)) {
 			// return strategyRepo.findByName("CRUDEOIL");
-			return convertStrategyToDto(strategyRepo.findByName("CRUDEOIL"));
+			return convertStrategyToDto(strategyRepo.findByName(name));
 		} else if ("NSE".equalsIgnoreCase(exchange)) {
 			// return strategyRepo.findByName("VIX");
 			return convertStrategyToDto(strategyRepo.findByName("VIX"));

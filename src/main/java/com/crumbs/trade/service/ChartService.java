@@ -525,13 +525,13 @@ public class ChartService {
 			resultVix = new ResultVix();
 			
 			//PR Updates
-			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
+			/*PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
 			if(pr!=null)
 			{
 				resultVix.setPriceAction(pr.getSr_signal());
 				resultVix.setFibo(pr.getFibo_signal());
 				resultVix.setCombine(pr.getConsolidatedDecision());
-			}
+			}*/
 			
 			resultVix.setName(vix.getName());
 			if (testFlag) {
@@ -567,13 +567,13 @@ public class ChartService {
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (resultVix.getType().equalsIgnoreCase(resultVix.getMa()))) {
 			//PR Updates
-			PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
+			/*PriceActionResult pr= srService.getPriceAction("FIVE_MINUTE", strategy.getName(), strategy.getExchange(),strategy.getTradingsymbol());
 			if(pr!=null)
 			{
 				resultVix.setPriceAction(pr.getSr_signal());
 				resultVix.setFibo(pr.getFibo_signal());
 				resultVix.setCombine(pr.getConsolidatedDecision());
-			}
+			}*/
 			if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
 						resultVix.getType()));
@@ -704,8 +704,14 @@ public class ChartService {
 				strategy.getTradingsymbol(), strategy.getToken());
 
 		if (currentPrice != null) {
-
-			int base = 50; // Change this to 100 or any other number as needed
+			int base = 0;
+			if ("NIFTY".equalsIgnoreCase(strategy.getName()) || "CRUDEOIL".equalsIgnoreCase(strategy.getName())) {
+				base = 50; // Change this to 100 or any other number as needed
+			}
+			else if ("SILVER".equalsIgnoreCase(strategy.getName()))
+			{
+				base = 250;
+			}
 
 			int nearestPrice = findNearestMultiple(currentPrice.intValue(), base);
 

@@ -130,16 +130,16 @@ public class HeikinPsarController {
 		String fromDate = chartService.getDate("FROM", "MCX");
 		String toDate = chartService.getDate("TO", "MCX");
 		vixRepo.deleteAll();
-		
+		String name = "SILVER";
         //FUT
-		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "MCX", false, "CRUDEOIL", fromDate, toDate,strategyRepo.findByName("CRUDEOIL").getTradingsymbol());
-			chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
+		if (strategyRepo.findByName(name).getActive().equals("Y")) {
+			chartService.readChartData("FIVE_MINUTE", "MCX", false, name, fromDate, toDate,strategyRepo.findByName(name).getTradingsymbol());
+			chartService.monitorSignal(name, "MCX", false, 0);
 			//srService.getSignals("CRUDEOIL", "MCX");
 		}
 		//OI
-		if (strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")) {
-			oiService.getOptionChain("CRUDEOIL");
+		if (strategyRepo.findByName(name).getActive().equals("Y")) {
+			//oiService.getOptionChain(name);
 		}
 
 	}
@@ -187,6 +187,6 @@ public class HeikinPsarController {
 	// Exit for Crude
 	@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = "Asia/Kolkata")
 	public void mcxExit() throws AddressException, MessagingException, IOException {
-		chartService.exitFromTrade("CRUDEOIL", "MCX");
+		chartService.exitFromTrade("SILVER", "MCX");
 	}
 }

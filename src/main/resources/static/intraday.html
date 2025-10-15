@@ -235,6 +235,52 @@
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     }
+    
+    /* Drawing Tools Styles */
+    #drawingTools {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      z-index: 30;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      display: flex;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .draw-btn {
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      font-size: 20px;
+      font-weight: bold;
+      color: #444;
+      user-select: none;
+    }
+    .draw-btn:hover {
+      border-color: #4a5568;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .draw-btn.active {
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      color: white;
+      border-color: #4a5568;
+    }
+    .draw-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -255,6 +301,13 @@
       </div>
       <button id="refreshButton">Refresh</button>
     </div>
+    
+    <div id="drawingTools">
+      <button class="draw-btn" id="hLineBtn" title="Horizontal Line">—</button>
+      <button class="draw-btn" id="vLineBtn" title="Vertical Line">|</button>
+      <button class="draw-btn" id="clearDrawBtn" title="Clear All Drawings">✕</button>
+    </div>
+    
     <div id="chart"></div>
     <div id="loader">
       <div class="spinner"></div>
@@ -310,6 +363,11 @@
   const symbolDropdown = document.getElementById('symbolDropdown');
   const timeframeDropdown = document.getElementById('timeframeDropdown');
   
+  // Drawing tool elements
+  const hLineBtn = document.getElementById('hLineBtn');
+  const vLineBtn = document.getElementById('vLineBtn');
+  const clearDrawBtn = document.getElementById('clearDrawBtn');
+  
   let selectedSymbol = settings.symbol;
   let selectedTimeFrame = settings.timeframe;
   let chart, candleSeries, volumeSeries;
@@ -324,7 +382,11 @@
   let refreshInterval = null;
   let retryCount = 0;
   const MAX_RETRIES = 3;
-  const RETRY_DELAY = 2000; // 2 seconds
+  const RETRY_DELAY = 2000;
+  
+  // Drawing tool state
+  let drawingMode = null; // 'hline', 'vline', or null
+  let drawnLines = []; // Store user-drawn lines
 
   function updateSettings() {
     settings.paSupport = togglePASupportCheckbox.checked;
@@ -390,6 +452,24 @@
         title: levelObj.label || 'Fibo Resistance'
       }));
     }
+    
+    // Redraw user-drawn lines
+    redrawUserLines();
+  }
+
+  function redrawUserLines() {
+    drawnLines.forEach(lineData => {
+      if (lineData.type === 'hline') {
+        lineData.line = candleSeries.createPriceLine({
+          price: lineData.price,
+          color: '#9333ea',
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Solid,
+          axisLabelVisible: true,
+          title: 'H-Line'
+        });
+      }
+    });
   }
 
   togglePASupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
@@ -442,6 +522,22 @@
   });
 
   function clearChart() {
+    // Clear drawn lines first
+    if (chart && candleSeries) {
+      drawnLines.forEach(lineData => {
+        try {
+          if (lineData.type === 'hline' && lineData.line) {
+            candleSeries.removePriceLine(lineData.line);
+          } else if (lineData.type === 'vline' && lineData.series) {
+            chart.removeSeries(lineData.series);
+          }
+        } catch (e) {
+          console.error('Error removing line:', e);
+        }
+      });
+    }
+    drawnLines = [];
+    
     if (chart) {
       if (candleSeries) {
         chart.removeSeries(candleSeries);
@@ -512,7 +608,112 @@
       overlay: true,
       lineWidth: 1,
     });
+    
+    // Setup chart click handler for drawing
+    setupDrawingHandlers();
   }
+
+  function setupDrawingHandlers() {
+    chartEl.addEventListener('click', handleChartClick);
+  }
+
+  function handleChartClick(event) {
+    if (!drawingMode || !chart) return;
+    
+    const rect = chartEl.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    if (drawingMode === 'hline') {
+      const price = candleSeries.coordinateToPrice(y);
+      if (price) {
+        const line = candleSeries.createPriceLine({
+          price: price,
+          color: '#9333ea',
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Solid,
+          axisLabelVisible: true,
+          title: 'H-Line'
+        });
+        drawnLines.push({ type: 'hline', price: price, line: line });
+      }
+    } else if (drawingMode === 'vline') {
+      const time = chart.timeScale().coordinateToTime(x);
+      
+      if (time && lastCandles.length > 0) {
+        // Get min/max prices from all candles for range
+        let minPrice = Math.min(...lastCandles.map(c => c.low));
+        let maxPrice = Math.max(...lastCandles.map(c => c.high));
+        
+        // Add some padding
+        const padding = (maxPrice - minPrice) * 0.1;
+        minPrice -= padding;
+        maxPrice += padding;
+        
+        // Create histogram series for vertical line
+        const vLineSeries = chart.addHistogramSeries({
+          color: '#9333ea',
+          priceFormat: { type: 'price' },
+          lastValueVisible: false,
+          priceLineVisible: false,
+        });
+        
+        // Add single bar that will appear as vertical line
+        vLineSeries.setData([{
+          time: time,
+          value: maxPrice,
+          color: '#9333ea'
+        }]);
+        
+        // Style it to look like a vertical line
+        vLineSeries.applyOptions({
+          base: minPrice,
+        });
+        
+        drawnLines.push({ type: 'vline', time: time, series: vLineSeries });
+        console.log('Vertical line added at time:', time);
+      }
+    }
+    
+    // Deactivate drawing mode after drawing
+    drawingMode = null;
+    updateDrawingButtons();
+  }
+
+  function updateDrawingButtons() {
+    hLineBtn.classList.toggle('active', drawingMode === 'hline');
+    vLineBtn.classList.toggle('active', drawingMode === 'vline');
+  }
+
+  // Drawing tool button handlers
+  hLineBtn.addEventListener('click', () => {
+    drawingMode = drawingMode === 'hline' ? null : 'hline';
+    updateDrawingButtons();
+  });
+
+  vLineBtn.addEventListener('click', () => {
+    drawingMode = drawingMode === 'vline' ? null : 'vline';
+    updateDrawingButtons();
+  });
+
+  clearDrawBtn.addEventListener('click', () => {
+    if (!chart || !candleSeries) return;
+    
+    drawnLines.forEach(lineData => {
+      try {
+        if (lineData.type === 'hline' && lineData.line) {
+          candleSeries.removePriceLine(lineData.line);
+        } else if (lineData.type === 'vline' && lineData.series) {
+          chart.removeSeries(lineData.series);
+        }
+      } catch (e) {
+        console.error('Error removing line:', e);
+      }
+    });
+    drawnLines = [];
+    drawingMode = null;
+    updateDrawingButtons();
+  });
 
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
