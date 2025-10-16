@@ -1,10 +1,12 @@
 package com.crumbs.trade.repo;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,4 +32,7 @@ public interface ResultRepo  extends JpaRepository<Result, Long> {
 	@Transactional
 	@Query("UPDATE Result r SET r.active = :active WHERE r.id = :id")
 	int updateActiveById(Long id, String active);
+	
+	@Query("SELECT r FROM Result r WHERE r.entryTime BETWEEN :start AND :end ORDER BY FUNCTION('PARSEDATETIME', r.entryTime, 'yyyy-MM-dd HH:mm:ss') DESC")
+	List<Result> findByEntryTimeBetweenOrderByEntryTimeDesc(@Param("start") String start, @Param("end") String end);
 }

@@ -717,6 +717,7 @@ public class ChartService {
 
 			String tradingSymbol = strategy.getName().concat(strategy.getExpiry()).concat(String.valueOf(nearestPrice))
 					.concat("BUY".equalsIgnoreCase(type) == true ? "CE" : "PE");
+			logger.info("Trading Symbol : " + tradingSymbol);
 			strategy.setTradingsymbol(tradingSymbol);
 			strategy.setName(strategy.getName());
 		}

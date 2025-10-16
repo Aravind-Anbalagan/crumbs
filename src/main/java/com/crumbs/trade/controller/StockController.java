@@ -6,6 +6,7 @@ import java.text.ParseException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -358,52 +359,64 @@ public class StockController {
 	}
 
 	@GetMapping("/getDetailsResults")
-	public List<Result> getResultList(
-	        @RequestParam(required = false, defaultValue = "current") String period) {
+    public List<Result> getResultList(
+            @RequestParam(required = false, defaultValue = "current") String period) {
 
-	    List<Result> allResults = resultRepo.findAll();
+        List<Result> allResults = resultRepo.findAll(); // fetch all records
 
-	    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-	    LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        LocalDateTime now = LocalDateTime.now();
 
-	    LocalDateTime startDate;
-	    LocalDateTime endDate;
+        LocalDateTime startDate;
+        LocalDateTime endDate;
 
-	    switch (period.toLowerCase()) {
-	        case "previous":
-	            startDate = now.minusMonths(1).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
-	            endDate = startDate.withDayOfMonth(startDate.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59);
-	            break;
+        // Determine start and end dates based on period
+        switch (period.toLowerCase()) {
+            case "previous" -> {
+                startDate = now.minusMonths(1).withDayOfMonth(1).with(LocalTime.MIN);
+                endDate = now.minusMonths(1)
+                        .withDayOfMonth(now.minusMonths(1).toLocalDate().lengthOfMonth())
+                        .with(LocalTime.MAX);
+            }
+            case "last3" -> {
+                startDate = now.minusMonths(2).withDayOfMonth(1).with(LocalTime.MIN);
+                endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).with(LocalTime.MAX);
+            }
+            case "all" -> {
+                startDate = LocalDateTime.of(1970, 1, 1, 0, 0);
+                endDate = LocalDateTime.of(2100, 12, 31, 23, 59, 59);
+            }
+            default -> { // current month
+                startDate = now.withDayOfMonth(1).with(LocalTime.MIN);
+                endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).with(LocalTime.MAX);
+            }
+        }
 
-	        case "last3":
-	            startDate = now.minusMonths(2).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
-	            endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59);
-	            break;
+        // Filter and sort latest first
+        List<Result> filtered = allResults.stream()
+                .filter(r -> r.getEntryTime() != null)
+                .filter(r -> {
+                    try {
+                        LocalDateTime entry = LocalDateTime.parse(r.getEntryTime(), formatter);
+                        return !entry.isBefore(startDate) && !entry.isAfter(endDate);
+                    } catch (Exception e) {
+                        return false; // skip invalid formats
+                    }
+                })
+                .sorted((r1, r2) -> {
+                    try {
+                        LocalDateTime e1 = LocalDateTime.parse(r1.getEntryTime(), formatter);
+                        LocalDateTime e2 = LocalDateTime.parse(r2.getEntryTime(), formatter);
+                        return e2.compareTo(e1); // descending (latest first)
+                    } catch (Exception e) {
+                        return 0;
+                    }
+                })
+                .toList();
 
-	        case "all":
-	            startDate = LocalDateTime.of(1970, 1, 1, 0, 0);
-	            endDate = LocalDateTime.of(2100, 12, 31, 23, 59);
-	            break;
+        return filtered;
+    }
 
-	        default: // current month
-	            startDate = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
-	            endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59);
-	    }
-
-	    List<Result> filtered = allResults.stream()
-	            .filter(r -> {
-	                if (r.getEntryTime() == null) return false;
-	                try {
-	                    LocalDateTime entry = LocalDateTime.parse(r.getEntryTime(), formatter);
-	                    return !entry.isBefore(startDate) && !entry.isAfter(endDate);
-	                } catch (Exception e) {
-	                    return false; // skip invalid formats
-	                }
-	            })
-	            .toList();
-
-	    return filtered;
-	}
 
 
 
