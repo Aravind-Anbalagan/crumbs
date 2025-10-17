@@ -548,7 +548,7 @@ public class ChartService {
 			// Place Order - ENTRY
 			// Determine Trading Signal
 
-			tradeFlag = false; // Take Trade In Flat Trade
+			tradeFlag = true; // Take Trade In Flat Trade
 			logger.info("Entry trade: Signal={}, Ma={}", type, resultVix.getMa());
 			Token token = triggerEntryOrder(strategy, type, resultVix, tradeFlag);
 
@@ -607,7 +607,7 @@ public class ChartService {
 			//Determine Trading Signal
 		
 
-			tradeFlag = false; // Take Trade In Flat Trade
+			tradeFlag = true; // Take Trade In Flat Trade
 			logger.info("Exit trade: Signal={}, Ma={}", type, vix.getMasignal());
 			triggerExitOrder(resultVix, tradeFlag);
 			resultVixRepo.save(resultVix);
