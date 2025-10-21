@@ -544,13 +544,13 @@
           if (lineData.type === 'hline' && lineData.price) {
             const line = candleSeries.createPriceLine({
               price: lineData.price,
-              color: lineData.color || '#9333ea',
+              color: lineData.color || selectedColor,
               lineWidth: 2,
               lineStyle: LightweightCharts.LineStyle.Solid,
               axisLabelVisible: true,
               title: 'H-Line'
             });
-            drawnLines.push({ type: 'hline', price: lineData.price, line: line, color: lineData.color || '#9333ea' });
+            drawnLines.push({ type: 'hline', price: lineData.price, line: line, color: lineData.color || selectedColor });
           }
         });
       }
@@ -646,7 +646,7 @@
       if (lineData.type === 'hline') {
         lineData.line = candleSeries.createPriceLine({
           price: lineData.price,
-          color: lineData.color || '#9333ea',
+          color: lineData.color || selectedColor,
           lineWidth: 2,
           lineStyle: LightweightCharts.LineStyle.Solid,
           axisLabelVisible: true,
@@ -833,13 +833,13 @@
       if (price) {
         const line = candleSeries.createPriceLine({
           price: price,
-          color: '#9333ea',
+          color: selectedColor,
           lineWidth: 2,
           lineStyle: LightweightCharts.LineStyle.Solid,
           axisLabelVisible: true,
           title: 'H-Line'
         });
-        drawnLines.push({ type: 'hline', price: price, line: line });
+        drawnLines.push({ type: 'hline', price: price, line: line, color: selectedColor });
       }
     } else if (drawingMode === 'vline') {
       const time = chart.timeScale().coordinateToTime(x);
@@ -852,7 +852,7 @@
         maxPrice += padding;
         
         const vLineSeries = chart.addHistogramSeries({
-          color: '#9333ea',
+          color: selectedColor,
           priceFormat: { type: 'price' },
           lastValueVisible: false,
           priceLineVisible: false,
@@ -861,11 +861,11 @@
         vLineSeries.setData([{
           time: time,
           value: maxPrice,
-          color: '#9333ea'
+          color: selectedColor
         }]);
         
         vLineSeries.applyOptions({ base: minPrice });
-        drawnLines.push({ type: 'vline', time: time, series: vLineSeries });
+        drawnLines.push({ type: 'vline', time: time, series: vLineSeries, color: selectedColor });
       }
     }
     drawingMode = null;
