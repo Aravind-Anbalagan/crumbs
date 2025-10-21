@@ -444,7 +444,7 @@ public class ChartService {
 			if ("NIFTY".equalsIgnoreCase(name)) {
 				hour = 15;
 				min = 20;
-			} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+			} else if ("SILVERM".equalsIgnoreCase(name)) {
 				hour = 23;
 				min = 20;
 			}
@@ -708,7 +708,7 @@ public class ChartService {
 			if ("NIFTY".equalsIgnoreCase(strategy.getName()) || "CRUDEOIL".equalsIgnoreCase(strategy.getName())) {
 				base = 50; // Change this to 100 or any other number as needed
 			}
-			else if ("SILVER".equalsIgnoreCase(strategy.getName()))
+			else if ("SILVERM".equalsIgnoreCase(strategy.getName()))
 			{
 				base = 250;
 			}

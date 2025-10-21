@@ -130,7 +130,7 @@ public class HeikinPsarController {
 		String fromDate = chartService.getDate("FROM", "MCX");
 		String toDate = chartService.getDate("TO", "MCX");
 		vixRepo.deleteAll();
-		String name = "SILVER";
+		String name = "SILVERM";
         //FUT
 		if (strategyRepo.findByName(name).getActive().equals("Y")) {
 			chartService.readChartData("FIVE_MINUTE", "MCX", false, name, fromDate, toDate,strategyRepo.findByName(name).getTradingsymbol());
@@ -187,6 +187,6 @@ public class HeikinPsarController {
 	// Exit for Crude
 	@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = "Asia/Kolkata")
 	public void mcxExit() throws AddressException, MessagingException, IOException {
-		chartService.exitFromTrade("SILVER", "MCX");
+		chartService.exitFromTrade("SILVERM", "MCX");
 	}
 }
