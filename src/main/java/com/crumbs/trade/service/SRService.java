@@ -338,7 +338,7 @@ public class SRService {
     {
    		LocalDate today = LocalDate.now();
 		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
-		Strategy strategy = taskService.getChart(name, strategyRepo.findByName(name).getTradingsymbol());
+		Strategy strategy = taskService.getChart(name, strategyRepo.findByName(name).getTradingsymbol(),strategyRepo.findByName(name).getLive());
 		SmartConnect smartConnect = angelOne.signIn();
 		String fromDate = null;
 		String toDate = null;
@@ -386,7 +386,7 @@ public class SRService {
 	 */
 	public Strategy getTokenDetails(String name, String exchange) {
 		StrategyDTO strategyModified = taskService.getStrategyDetails(name, exchange);
-		Strategy strategy = taskService.getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
+		Strategy strategy = taskService.getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol(),strategyModified.getLive());
 		if (strategy != null) {
 			return strategy;
 		}

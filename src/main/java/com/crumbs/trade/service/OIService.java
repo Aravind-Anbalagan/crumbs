@@ -398,9 +398,9 @@ public class OIService {
 		CEType = strategy.getSymbol() + strategy.getSymbol1() + oiDto.getStrikePrice().intValue() + "CE";
 		PEType = strategy.getSymbol() + strategy.getSymbol1() + oiDto.getStrikePrice().intValue() + "PE";
 		expiry = (new SimpleDateFormat("yyyy")).format(new Date()) + strategy.getExpiry().substring(0, 2);
-		Strategy strategyNifty = taskService.getChart(name, CEType);
+		Strategy strategyNifty = taskService.getChart(name, CEType,"N");
 		oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "CE");
-		strategyNifty = taskService.getChart(name, PEType);
+		strategyNifty = taskService.getChart(name, PEType,"N");
 		oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "PE");
 		return oiDto;
 	}

@@ -281,7 +281,7 @@ public class ChartService {
 	 */
 	public Strategy getTokenDetails(String name, String exchange) {
 		StrategyDTO strategyModified = taskService.getStrategyDetails(name, exchange);
-		Strategy strategy = taskService.getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
+		Strategy strategy = taskService.getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol(), strategyModified.getLive());
 		if (strategy != null) {
 			return strategy;
 		}
@@ -548,7 +548,7 @@ public class ChartService {
 			// Place Order - ENTRY
 			// Determine Trading Signal
 
-			tradeFlag = true; // Take Trade In Flat Trade
+			tradeFlag = "Y".equals(strategy.getLive()); // Take Trade In Flat Trade
 			logger.info("Entry trade: Signal={}, Ma={}", type, resultVix.getMa());
 			Token token = triggerEntryOrder(strategy, type, resultVix, tradeFlag);
 
@@ -607,7 +607,7 @@ public class ChartService {
 			//Determine Trading Signal
 		
 
-			tradeFlag = true; // Take Trade In Flat Trade
+			tradeFlag = "Y".equals(strategy.getLive()); // Take Trade In Flat Trade
 			logger.info("Exit trade: Signal={}, Ma={}", type, vix.getMasignal());
 			triggerExitOrder(resultVix, tradeFlag);
 			resultVixRepo.save(resultVix);

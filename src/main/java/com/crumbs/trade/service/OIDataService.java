@@ -409,10 +409,10 @@ public class OIDataService {
 
 		CEType = strategy.getTradingsymbol() + strategy.getExpiry() + oiDto.getStrikePrice().intValue() + "CE";
 		PEType = strategy.getTradingsymbol() + strategy.getExpiry() + oiDto.getStrikePrice().intValue() + "PE";
-		Strategy strategyNifty = taskService.getChart(name, CEType);
+		Strategy strategyNifty = taskService.getChart(name, CEType,"N");
 		if (strategyNifty.getToken() != null) {
 			oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "CE");
-			strategyNifty = taskService.getChart(name, PEType);
+			strategyNifty = taskService.getChart(name, PEType,"N");
 			oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "PE");
 			return oiDto;
 		} else {

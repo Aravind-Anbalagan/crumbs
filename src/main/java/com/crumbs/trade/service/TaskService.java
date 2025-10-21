@@ -2441,7 +2441,7 @@ public class TaskService {
 
 	}
 
-	public Strategy getChart(String indexName, String symbol) {
+	public Strategy getChart(String indexName, String symbol, String live) {
 		// TODO Auto-generated method stub
 		Strategy strategy = new Strategy();
 		Indexes indexes = indexesRepo.findByNameAndSymbol(indexName, symbol);
@@ -2450,6 +2450,7 @@ public class TaskService {
 			strategy.setName(indexes.getName());
 			strategy.setToken(indexes.getToken());
 			strategy.setTradingsymbol(indexes.getSymbol());
+			strategy.setLive(live);
 		}
 		return strategy;
 	}
@@ -2555,7 +2556,7 @@ public class TaskService {
 		try {
 
 			StrategyDTO strategyModified = getStrategyDetails("NIFTY", type);
-			Strategy strategy = getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
+			Strategy strategy = getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol(),strategyModified.getLive());
 			SmartConnect smartConnect = angelOne.signIn();
 			// pricesRepo.deleteAll();
 			// Get Current Price
@@ -2778,7 +2779,7 @@ public class TaskService {
 		try {
 
 			StrategyDTO strategyModified = getStrategyDetails("NIFTY", type);
-			Strategy strategy = getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol());
+			Strategy strategy = getChart(strategyModified.getSymbol(), strategyModified.getTradingsymbol(),strategyModified.getLive());
 			SmartConnect smartConnect = angelOne.signIn();
 
 			// Get Current Price
