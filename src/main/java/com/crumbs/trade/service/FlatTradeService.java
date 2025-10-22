@@ -53,7 +53,7 @@ public class FlatTradeService {
     private static final String API_KEY = "GHUDWU53H32MTHPA536Q32WR";
 
     private static final String USER_ID = "MALIT158";
-    private static final String PASSWORD = "Athiran*2020";
+    private static final String PASSWORD = "Athiran@2020";
     private static final String TOTP_SECRET = "6JY737J3P2ZG25665L37CI3Q3D44RQ5I"; // copied from flattrade site
     private static final String APP_KEY = "24d7ba25364447109e9880c6ae7e0d14";
     private static final String API_SECRET = "2025.7cd53caa0af5444cb084056fd6f5cb91925b3f1f3dd7ff21"; // copied from flattrade site
@@ -68,12 +68,20 @@ public class FlatTradeService {
 
 		String key = getTokenForFlatTrade();	
 		//Token token= new Token();
-		token.setExch_seg(token.getExch_seg());
-		token.setSymbol(Utility.normalizeToken(token.getSymbol()));
-		token.setTransactionType(token.getTransactionType());
-		token.setQuantity(token.getQuantity());
-		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
-		APIResponse apiResponse=callFlatTrade(setJDataForOrder(token), key, url);
+		if(key!=null)
+		{
+			token.setExch_seg(token.getExch_seg());
+			token.setSymbol(Utility.normalizeToken(token.getSymbol()));
+			token.setTransactionType(token.getTransactionType());
+			token.setQuantity(token.getQuantity());
+			String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
+			APIResponse apiResponse=callFlatTrade(setJDataForOrder(token), key, url);
+		}
+		else
+		{
+			logger.error("Failed to get the key from FlatTrade");
+		}
+		
 		
 		//flatTradeService.placeOrder();
 	}
@@ -204,10 +212,11 @@ public class FlatTradeService {
             	    )
             	    .bodyToMono(APIResponse.class)
             	    .block();
+            logger.info("Order place successfully in FlatTrade");
             return response;
 
         } catch (Exception e) {
-        	logger.error("Order placement failed: {}" ,e.getMessage());
+        	logger.error("Order placement failed in FlatTrade : {}" ,e.getMessage());
             return null;
         }
     }

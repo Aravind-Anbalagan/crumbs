@@ -1,5 +1,6 @@
 package com.crumbs.trade.controller;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -119,5 +120,12 @@ public class StrangleController {
 		jdata.setOrdersource("API");
 		return jdata;
 		
+	}
+	
+	//Take Entry at 9:20 based on CPR
+	//@Scheduled(fixedRate = 10000)
+	public void Strangle_CPR() throws IOException, SmartAPIException
+	{
+		strategyService.strangle_CPR();
 	}
 }

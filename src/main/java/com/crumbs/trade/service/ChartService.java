@@ -752,6 +752,8 @@ public class ChartService {
 			{
 				placeOrderInFlatTrade(token,flatTradeType);
 			}		
+		} else {
+			logger.error("Failed to get trading sysmbol {} : {} ", strategy.getName(), strategy.getTradingsymbol());
 		}
 		return token;
 	}

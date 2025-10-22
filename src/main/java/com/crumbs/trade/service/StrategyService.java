@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,6 +35,7 @@ import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.PriceRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.NSEWorkingDays;
 
 import jakarta.transaction.Transactional;
 
@@ -61,6 +63,9 @@ public class StrategyService {
 	
 	@Autowired
 	TaskService taskService;
+	
+	@Autowired
+	ChartService chartService;
 	
 	public static int MAX;
 	public static int MIN;
@@ -342,22 +347,23 @@ public class StrategyService {
 	public CPR calculate_CPR(SmartConnect smartConnect, Strategy strategy) throws IOException, SmartAPIException
 	{
 		CPR cpr =new CPR();
-		String[] timing = strategy.getDayCandle().split(",");
-		Instant now = Instant.now(); //current date
-		Instant twoDateMinus= now.minus(Duration.ofDays(Integer.parseInt(timing[0])));
-		Instant oneDateMinus= now.minus(Duration.ofDays(Integer.parseInt(timing[1])));
-		Date from = Date.from(twoDateMinus);
-		Date to = Date.from(oneDateMinus);
-		String fromDate = new SimpleDateFormat("yyyy-MM-dd").format(from);
-		String toDate = new SimpleDateFormat("yyyy-MM-dd").format(to);
-		
+		//String[] timing = strategy.getDayCandle().split(",");
+		//Instant now = Instant.now(); //current date
+		//Instant twoDateMinus= now.minus(Duration.ofDays(Integer.parseInt(timing[0])));
+		//Instant oneDateMinus= now.minus(Duration.ofDays(Integer.parseInt(timing[1])));
+		//Date from = Date.from(twoDateMinus);
+		//Date to = Date.from(oneDateMinus);
+		//String fromDate = new SimpleDateFormat("yyyy-MM-dd").format(from);
+		//String toDate = new SimpleDateFormat("yyyy-MM-dd").format(to);
+		LocalDate today = LocalDate.now();
+		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
 		JSONArray responseArray = new JSONArray();
 		JSONObject requestObejct = new JSONObject();
 		requestObejct.put("exchange", strategy.getExchange());
 		requestObejct.put("symboltoken", strategy.getToken());
 		requestObejct.put("interval", "ONE_DAY");
-		requestObejct.put("fromdate", fromDate.concat(" 09:15"));
-		requestObejct.put("todate", toDate.concat(" 09:15"));
+		requestObejct.put("fromdate", lastWorkingDay.toString().concat(" 09:15"));
+		requestObejct.put("todate", today.toString().concat(" 09:15"));
 		
 		responseArray = smartConnect.candleData(requestObejct);
         if(!responseArray.isEmpty())
@@ -368,15 +374,32 @@ public class StrategyService {
 			BigDecimal high = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
 			BigDecimal low = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
 			BigDecimal close = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
-			BigDecimal pivot =(high.add(low).add(close)).divide(new BigDecimal(3),2, BigDecimal.ROUND_HALF_UP);
-			BigDecimal bottom_pivot =(high.add(low)).divide(new BigDecimal(2),2,BigDecimal.ROUND_HALF_UP);
-			BigDecimal top_pivot =(pivot.subtract(bottom_pivot)).add(pivot);
-			cpr.setPivot(pivot);
-			cpr.setBottom_pivot(bottom_pivot);
-			cpr.setTop_pivot(top_pivot);
+			
+			List<String> cprList = taskService.calculateCpr(high, low, close);
+			if(!cprList.isEmpty())
+			{
+				cpr.setBottom_pivot(new BigDecimal(cprList.get(0)));
+				cpr.setPivot(new BigDecimal(cprList.get(1)));
+				cpr.setTop_pivot(new BigDecimal(cprList.get(2)));
+			}
+			
 			
         }
 		return cpr;
       
+	}
+	
+	public void strangle_CPR() throws IOException, SmartAPIException
+	{
+		Strategy strategy = new Strategy();
+		strategy = strategyRepo.findByName("STRANGLE");
+		String signal;
+		//getNiftyPrice();
+		List<Orders> orderList = orderRepository.findByNameAndActive("NIFTY", 1);
+		SmartConnect smartconnect = angelOne.signIn();
+		//CPR
+		
+		CPR cpr = calculate_CPR(smartconnect,strategy);
+		System.out.println(cpr);
 	}
 }
