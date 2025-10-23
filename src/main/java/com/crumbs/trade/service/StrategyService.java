@@ -29,6 +29,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CPR;
+import com.crumbs.trade.dto.StrangleCprDto;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Stoploss;
 import com.crumbs.trade.entity.Strategy;
@@ -344,62 +345,85 @@ public class StrategyService {
 		return response.getBody();
 	}
 	
-	public CPR calculate_CPR(SmartConnect smartConnect, Strategy strategy) throws IOException, SmartAPIException
-	{
-		CPR cpr =new CPR();
-		//String[] timing = strategy.getDayCandle().split(",");
-		//Instant now = Instant.now(); //current date
-		//Instant twoDateMinus= now.minus(Duration.ofDays(Integer.parseInt(timing[0])));
-		//Instant oneDateMinus= now.minus(Duration.ofDays(Integer.parseInt(timing[1])));
-		//Date from = Date.from(twoDateMinus);
-		//Date to = Date.from(oneDateMinus);
-		//String fromDate = new SimpleDateFormat("yyyy-MM-dd").format(from);
-		//String toDate = new SimpleDateFormat("yyyy-MM-dd").format(to);
-		LocalDate today = LocalDate.now();
-		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
+	
+	//Get candle data based on given input
+	public JSONArray getCandleDataByChoice(SmartConnect smartConnect, Strategy strategy, StrangleCprDto strangleCprDto,
+			String interval, String fromDate, String toDate) {
+
 		JSONArray responseArray = new JSONArray();
 		JSONObject requestObejct = new JSONObject();
 		requestObejct.put("exchange", strategy.getExchange());
 		requestObejct.put("symboltoken", strategy.getToken());
-		requestObejct.put("interval", "ONE_DAY");
-		requestObejct.put("fromdate", lastWorkingDay.toString().concat(" 09:15"));
-		requestObejct.put("todate", today.toString().concat(" 09:15"));
-		
+		requestObejct.put("interval", interval);
+		requestObejct.put("fromdate", fromDate);
+		requestObejct.put("todate", toDate);
+
 		responseArray = smartConnect.candleData(requestObejct);
-        if(!responseArray.isEmpty())
-        {
-			
+		if (!responseArray.isEmpty()) {
+
 			JSONArray ohlcArray = (JSONArray) responseArray.get(0);
-			BigDecimal open = new BigDecimal(String.valueOf(ohlcArray.getDouble(1)));
-			BigDecimal high = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
-			BigDecimal low = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
-			BigDecimal close = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
-			
-			List<String> cprList = taskService.calculateCpr(high, low, close);
-			if(!cprList.isEmpty())
-			{
-				cpr.setBottom_pivot(new BigDecimal(cprList.get(0)));
-				cpr.setPivot(new BigDecimal(cprList.get(1)));
-				cpr.setTop_pivot(new BigDecimal(cprList.get(2)));
+			return ohlcArray;
+		}
+		return null;
+	}
+	
+	//Calculate CPR
+	public StrangleCprDto getCPR(SmartConnect smartconnect, Strategy strategy, StrangleCprDto strangleCprDto)
+			throws IOException, SmartAPIException {
+		LocalDate today = LocalDate.now();
+		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
+		String fromDate = lastWorkingDay.toString().concat(" 09:15");
+		String toDate = today.toString().concat(" 09:15");
+		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "ONE_DAY", fromDate,
+				toDate);
+		if (!ohlcArray.isEmpty()) {
+			strangleCprDto.setOpen(new BigDecimal(String.valueOf(ohlcArray.getDouble(1))));
+			strangleCprDto.setHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
+			strangleCprDto.setLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
+			strangleCprDto.setClose(new BigDecimal(String.valueOf(ohlcArray.getDouble(4))));
+			List<String> cprList = taskService.calculateCpr(strangleCprDto.getHigh(), strangleCprDto.getLow(),
+					strangleCprDto.getClose());
+			if (!cprList.isEmpty()) {
+				strangleCprDto.setBottom_pivot(new BigDecimal(cprList.get(0)));
+				strangleCprDto.setPivot(new BigDecimal(cprList.get(1)));
+				strangleCprDto.setTop_pivot(new BigDecimal(cprList.get(2)));
 			}
-			
-			
-        }
-		return cpr;
-      
+			return strangleCprDto;
+		}
+		return null;
+	}
+	
+	public StrangleCprDto getFirstCandleData(SmartConnect smartconnect, Strategy strategy,
+			StrangleCprDto strangleCprDto) {
+		LocalDate today = LocalDate.now();
+		String fromDate = today.toString().concat(" 09:15");
+		String toDate = today.toString().concat(" 09:20");
+		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "FIVE_MINUTE", fromDate,
+				toDate);
+		if (!ohlcArray.isEmpty()) {
+			strangleCprDto.setHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
+			strangleCprDto.setLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
+		}
+		return null;
+
 	}
 	
 	public void strangle_CPR() throws IOException, SmartAPIException
 	{
+		StrangleCprDto strangleCprDto  = new StrangleCprDto();
 		Strategy strategy = new Strategy();
 		strategy = strategyRepo.findByName("STRANGLE");
-		String signal;
-		//getNiftyPrice();
+
 		List<Orders> orderList = orderRepository.findByNameAndActive("NIFTY", 1);
 		SmartConnect smartconnect = angelOne.signIn();
-		//CPR
+		//Get CPR
+		strangleCprDto = getCPR(smartconnect,strategy,strangleCprDto);
 		
-		CPR cpr = calculate_CPR(smartconnect,strategy);
-		System.out.println(cpr);
+		//Get First 5 Mins Candle Data
+		strangleCprDto = getFirstCandleData(smartconnect,strategy,strangleCprDto);
+		
+		System.out.println(strangleCprDto);
+		//Get First Five mins OHLC
+		
 	}
 }

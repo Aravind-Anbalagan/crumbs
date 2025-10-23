@@ -323,7 +323,7 @@
         <label for="symbolDropdown">Name:</label>
         <select id="symbolDropdown">
           <option value="NIFTY" selected>NIFTY</option>
-          <option value="CRUDEOIL">CRUDEOIL</option>
+          <option value="SILVERM">SILVERM</option>
         </select>
         <label for="timeframeDropdown">TimeFrame:</label>
         <select id="timeframeDropdown">
@@ -436,7 +436,11 @@
   window.addEventListener('pagehide', () => { saveChartState(); });
 
   function saveChartState() {
-    if (chartInitialized && lastCandles.length > 0) {
+    if (chartInitialized && lastCandles.length > 0 && chart) {
+      // Get current visible range
+      const timeScale = chart.timeScale();
+      const visibleRange = timeScale.getVisibleRange();
+      
       const chartState = {
         hasData: true,
         savedCandles: lastCandles.slice(),
@@ -449,6 +453,10 @@
           minPrice: line.minPrice, maxPrice: line.maxPrice
         })),
         userHasLoadedChart: true,
+        visibleRange: visibleRange ? {
+          from: visibleRange.from,
+          to: visibleRange.to
+        } : null,
         settings: {
           paSupport: togglePASupportCheckbox.checked,
           paResistance: togglePAResistanceCheckbox.checked,
@@ -493,7 +501,24 @@
         time: c.time, value: c.volume,
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       })));
-      chart.timeScale().fitContent();
+      
+      // Restore visible range if available
+      if (savedState.visibleRange && savedState.visibleRange.from && savedState.visibleRange.to) {
+        setTimeout(() => {
+          try {
+            chart.timeScale().setVisibleRange({
+              from: savedState.visibleRange.from,
+              to: savedState.visibleRange.to
+            });
+          } catch (e) {
+            console.warn('Could not restore visible range:', e);
+            chart.timeScale().fitContent();
+          }
+        }, 100);
+      } else {
+        chart.timeScale().fitContent();
+      }
+      
       isFirstLoad = false;
       redrawLines();
       
@@ -599,13 +624,14 @@
     });
   }
 
-  togglePASupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
-  togglePAResistanceCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
-  toggleFiboSupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
-  toggleFiboResistanceCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); });
+  togglePASupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); saveChartState(); });
+  togglePAResistanceCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); saveChartState(); });
+  toggleFiboSupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); saveChartState(); });
+  toggleFiboResistanceCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); saveChartState(); });
   toggleSignalsCheckbox.addEventListener('change', () => {
     updateSettings();
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+    saveChartState();
   });
   toggleGridCheckbox.addEventListener('change', () => {
     updateSettings();
@@ -616,8 +642,9 @@
         horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
       }
     });
+    saveChartState();
   });
-  toggleLiveCheckbox.addEventListener('change', () => { updateSettings(); updateLiveStatus(); });
+  toggleLiveCheckbox.addEventListener('change', () => { updateSettings(); updateLiveStatus(); saveChartState(); });
 
   resetButton.addEventListener('click', () => {
     togglePASupportCheckbox.checked = true;
@@ -636,6 +663,7 @@
       if (candleSeries) candleSeries.setMarkers(lastSignals);
     }
     updateLiveStatus();
+    saveChartState();
   });
   
   uncheckAllButton.addEventListener('click', () => {
@@ -655,9 +683,15 @@
       if (candleSeries) candleSeries.setMarkers([]);
     }
     updateLiveStatus();
+    saveChartState();
   });
   
-  fitButton.addEventListener('click', () => { if (chart) chart.timeScale().fitContent(); });
+  fitButton.addEventListener('click', () => { 
+    if (chart) {
+      chart.timeScale().fitContent();
+      saveChartState();
+    }
+  });
 
   function clearChart() {
     if (chart && candleSeries) {
@@ -737,6 +771,18 @@
       overlay: true,
       lineWidth: 1,
     });
+    
+    // Subscribe to visible range changes to save chart position
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      if (chartInitialized && lastCandles.length > 0) {
+        // Debounce the save to avoid too many saves during scrolling
+        clearTimeout(window.savePositionTimeout);
+        window.savePositionTimeout = setTimeout(() => {
+          saveChartState();
+        }, 500);
+      }
+    });
+    
     setupDrawingHandlers();
     chartInitialized = true;
   }
@@ -764,6 +810,7 @@
           title: 'H-Line'
         });
         drawnLines.push({ type: 'hline', price: price, line: line, color: selectedColor });
+        saveChartState();
       }
     } else if (drawingMode === 'vline') {
       const time = chart.timeScale().coordinateToTime(x);
@@ -797,6 +844,7 @@
           minPrice: minPrice,
           maxPrice: maxPrice
         });
+        saveChartState();
       }
     }
     drawingMode = null;
@@ -832,6 +880,7 @@
     drawnLines = [];
     drawingMode = null;
     updateDrawingButtons();
+    saveChartState();
   });
 
   function updateChart(data) {
@@ -936,6 +985,7 @@
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
+      saveChartState();
       if (refreshInterval) {
         clearInterval(refreshInterval);
         refreshInterval = null;
@@ -947,7 +997,6 @@
       }
       if (chart) {
         setTimeout(() => {
-          chart.timeScale().fitContent();
           chart.resize(chartEl.clientWidth, chartEl.clientHeight);
         }, 100);
       }
