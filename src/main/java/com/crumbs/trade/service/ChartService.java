@@ -679,6 +679,7 @@ public class ChartService {
 		return offsetDateTime.format(formatter);
 	}
 
+	//Check Heikin = Psar
 	public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
 		if (vixList.get(i).getPsar() != null && vixList.get(i).getHeikinachi() != null) {
 			if (vixList.get(i).getPsar().equalsIgnoreCase(vixList.get(i).getHeikinachi())) {
@@ -687,6 +688,43 @@ public class ChartService {
 		}
 		return false;
 	}
+	
+	/*public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
+	 
+
+	    if (vixList == null || vixList.isEmpty() || i < 0 || i >= vixList.size()) {
+	        logger.info("Invalid list or index {}", i);
+	        return false;
+	    }
+
+	    Vix current = vixList.get(i);
+	    String psar = current.getPsar();
+	    String heikinAchi = current.getHeikinachi();
+
+	    // Case 1: PSAR and Heikin must match
+	    if (!psar.equalsIgnoreCase(heikinAchi)) {
+	        logger.info("Candle[{}] → PSAR={} ❌ Heikin={} → No Signal", i, psar, heikinAchi);
+	        return false;
+	    }
+
+	    logger.info("Candle[{}] → PSAR={} ✅ Heikin={}", i, psar, heikinAchi);
+
+	    // Case 2: Fresh PSAR start (i+2 must be different)
+	    if (i + 2 < vixList.size()) {
+	        String psarI2 = vixList.get(i + 2).getPsar();
+	        logger.info("Candle[{}] i+2 PSAR → {}", i, psarI2);
+
+	        if (psarI2.equalsIgnoreCase(psar)) {
+	            logger.info("Candle[{}] → PSAR same at i+2 → ❌ Not Fresh Start", i);
+	            return false;
+	        }
+	    }
+
+	    logger.info("Candle[{}] → Fresh PSAR Start Detected ✅", i);
+	    return true;
+	}*/
+
+
 
 	public Token triggerEntryOrder(Strategy strategy, String type, ResultVix resultVix, boolean tradeFlag)
 			throws AddressException, MessagingException, IOException {
@@ -800,7 +838,7 @@ public class ChartService {
 						: Constants.TRANSACTION_TYPE_BUY;
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
 
-					tradeFlag = false; // Take Trade in Flat Trade
+					tradeFlag = "Y".equals(strategy.getLive()); // Take Trade In Flat Trade
 					logger.info("Exit Trade: Result={}", result);
 
 					// Place Order - EXIT
