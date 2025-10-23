@@ -166,7 +166,7 @@ public class HeikinPsarController {
 			if (vixList != null && !vixList.isEmpty()) {
 				// Get Last candle
 				vix = vixList.get(0);
-				chartService.lookForExecutedOrder("SILVERM", "MCX", vix, false);
+				chartService.lookForExecutedOrder("SILVERM", "MCX", vix, true); // Flag is to place the order in flat Trade
 			}
 
 		}
