@@ -160,13 +160,13 @@ public class HeikinPsarController {
 				chartService.lookForExecutedOrder("NIFTY", "NFO", vix, false);
 			}
 
-		} else if(strategyRepo.findByName("CRUDEOIL").getActive().equals("Y")){
-			List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc("CRUDEOIL");
+		} else if(strategyRepo.findByName("SILVERM").getActive().equals("Y")){
+			List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc("SILVERM");
 			Vix vix = new Vix();
 			if (vixList != null && !vixList.isEmpty()) {
 				// Get Last candle
 				vix = vixList.get(0);
-				chartService.lookForExecutedOrder("CRUDEOIL", "MCX", vix, false);
+				chartService.lookForExecutedOrder("SILVERM", "MCX", vix, false);
 			}
 
 		}

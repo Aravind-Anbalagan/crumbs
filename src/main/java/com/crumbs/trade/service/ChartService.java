@@ -613,8 +613,8 @@ public class ChartService {
 			resultVixRepo.save(resultVix);
 			
 			//Execute the Next Trade as per the signal
-			logger.info("Execute the Next Trade for {} ", resultVix.getName());
-			monitorSignal(resultVix.getName(), resultVix.getExchange(), false, 0);
+			//logger.info("Execute the Next Trade for {} ", resultVix.getName());
+			//monitorSignal(resultVix.getName(), resultVix.getExchange(), false, 0);
 			
 			String message = "Exit :" + strategy.getName() + " -> " + type;
 			boolean ok = telegramService.sendMessage(message);
@@ -795,7 +795,7 @@ public class ChartService {
 			}
 
 			if (currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) != 0) {
-				String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType());
+				String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType(),name);
 				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
 						: Constants.TRANSACTION_TYPE_BUY;
 				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
@@ -814,10 +814,18 @@ public class ChartService {
 	}
 
 	// Check for SL and Target
-	public String checkPrice(BigDecimal currentPrice, BigDecimal executedPrice, String transactionType) {
+	public String checkPrice(BigDecimal currentPrice, BigDecimal executedPrice, String transactionType,String name) {
 
-		BigDecimal targetThreshold = new BigDecimal("40.00");
-		BigDecimal stopLossThreshold = new BigDecimal("-20.00");
+		BigDecimal targetThreshold;
+		BigDecimal stopLossThreshold;
+
+		if ("SILVERM".equalsIgnoreCase(name)) {
+		    targetThreshold = new BigDecimal("200.00");
+		    stopLossThreshold = new BigDecimal("-100.00");
+		} else { // Default: Nifty
+		    targetThreshold = new BigDecimal("40.00");
+		    stopLossThreshold = new BigDecimal("-20.00");
+		}
 		BigDecimal difference = currentPrice.subtract(executedPrice);
 
 		if ("BUY".equalsIgnoreCase(transactionType)) {
