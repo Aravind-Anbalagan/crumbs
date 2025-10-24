@@ -748,7 +748,7 @@ public class ChartService {
 			}
 			else if ("SILVERM".equalsIgnoreCase(strategy.getName()))
 			{
-				base = 250;
+				base = 500;
 			}
 
 			int nearestPrice = findNearestMultiple(currentPrice.intValue(), base);
@@ -858,8 +858,8 @@ public class ChartService {
 		BigDecimal stopLossThreshold;
 
 		if ("SILVERM".equalsIgnoreCase(name)) {
-		    targetThreshold = new BigDecimal("200.00");
-		    stopLossThreshold = new BigDecimal("-100.00");
+		    targetThreshold = new BigDecimal("500.00");
+		    stopLossThreshold = new BigDecimal("-250.00");
 		} else { // Default: Nifty
 		    targetThreshold = new BigDecimal("40.00");
 		    stopLossThreshold = new BigDecimal("-20.00");
