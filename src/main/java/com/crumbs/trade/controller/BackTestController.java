@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.entity.Vix;
 import com.crumbs.trade.repo.ResultVixRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.ChartService;
 import com.crumbs.trade.service.TaskService;
@@ -39,16 +40,19 @@ public class BackTestController {
 	
 	@Autowired
 	ResultVixRepo resultVixRepo;
+	
+	@Autowired
+	StrategyRepo strategyRepo;
 
 	@GetMapping(value = "/HeikinPsar")
 	public String monitorNifty() throws SmartAPIException, Exception {
-		String fromDate = "2025-08-13 15:25";
-		String toDate = "2025-08-14 15:25";
+		String fromDate = "2025-10-23 12:50";
+		String toDate = "2025-10-24 15:25";
 		vixRepo.deleteAll();
 		resultVixRepo.deleteAll();
 		//List<String> times = generateTimes(fromDate, toDate);
 		String result = null;
-		result = chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,null);
+		result = chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,strategyRepo.findByName("NIFTY").getTradingsymbol());
 		if (!"No Data Found".equalsIgnoreCase(result)) {
 			for (int i = vixRepo.findAll().size() - 3; i > 0; i--) {
 				

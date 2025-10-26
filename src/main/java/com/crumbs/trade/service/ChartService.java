@@ -411,13 +411,13 @@ public class ChartService {
 			if (compareHeikinAchiAndPsarCandle(vixList, i)) {
 				if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
 						&& vix.getPsar().equalsIgnoreCase("BUY")
-						&& vix.getMasignal().equalsIgnoreCase("BUY")) {
+						&& vix.getMasignal()!=null && vix.getMasignal().equalsIgnoreCase("BUY")) {
 
 					makeEntry(vix, strategy, "BUY", testFlag, currentPrice);
 
 				} else if (vix.getType().equalsIgnoreCase("SELL") && vix.getHeikinachi().equalsIgnoreCase("SELL")
 						&& vix.getPsar().equalsIgnoreCase("SELL")
-						&& vix.getMasignal().equalsIgnoreCase("SELL")) {
+						&& vix.getMasignal()!=null && vix.getMasignal().equalsIgnoreCase("SELL")) {
 					makeEntry(vix, strategy, "SELL", testFlag, currentPrice);
 
 				}
