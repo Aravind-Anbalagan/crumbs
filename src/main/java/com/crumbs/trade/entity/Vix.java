@@ -46,6 +46,10 @@ public class Vix {
 	String active;
 	@Column(name="candleType")
 	String candleType;
+	@Column(name="superTrend")
+	BigDecimal superTrend;
+	@Column(name="supertrendSignal")
+	String supertrendSignal;
 
 
 }

@@ -101,6 +101,9 @@ public class ChartService {
 	
 	@Autowired
 	TelegramService telegramService;
+	
+	@Autowired
+	SuperTrendIndicator superTrendIndicator;
 	/*
 	 * Get JsonDetail
 	 */
@@ -224,6 +227,13 @@ public class ChartService {
 						updateCandleData(pSARList, "PSAR");
 						List<Candlestick> maCandleList =movingAvgWithSMASmoothing.getMovingAverage(getValuesAsList(name));
 						updateCandleData(maCandleList, "MA");
+						 // ✅ Add SuperTrend integration
+			            List<Candlestick> superTrendList = superTrendIndicator.calculateSuperTrend(getValuesAsList(name));
+			            if (superTrendList != null && !superTrendList.isEmpty()) {
+			                updateCandleData(superTrendList, "SUPER_TREND");
+			            } else {
+			                logger.warn("SuperTrend calculation returned no data for {}", name);
+			            }
 					} else {
 						return "No Data Found";
 					}
@@ -267,10 +277,14 @@ public class ChartService {
 				 * vix.setLow(candleStick.low); vix.setClose(candleStick.close);
 				 */
 			}
-		     else if (candleType.equalsIgnoreCase("MA")) {
-		    	 vix.setSmoothma(candleStick.getSmoothMA());
-		    	 vix.setMasignal(candleStick.getMasignal());
-		   }
+			else if (candleType.equalsIgnoreCase("MA")) {
+				vix.setSmoothma(candleStick.getSmoothMA());
+				vix.setMasignal(candleStick.getMasignal());
+			} else if (candleType.equalsIgnoreCase("SUPER_TREND")) {
+				vix.setSuperTrend(candleStick.getSuperTrend());
+		        vix.setSupertrendSignal(candleStick.getSuperTrendSignal());
+				
+			}
 			
 			vixRepo.save(vix);
 		}
@@ -390,7 +404,7 @@ public class ChartService {
 				strategy.getSymbol(), strategy.getToken());
 		List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc(name);
 		List<ResultVix> resultVixList = resultVixRepo.findByName(name);
-		ResultVix resultVix = new ResultVix();
+		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", name);
 		if (!resultVixList.isEmpty()) {
 			resultVix = resultVixList.get(resultVixList.size() - 1);
 		}
@@ -404,28 +418,78 @@ public class ChartService {
 			if (testFlag) {
 				currentPrice = vix.getClose();
 			}
-			// Check Two condition
+			
+			if (resultVix == null) {
+				// Entry
 
-			// if (getLastTwoHeikinAchiCandle(vixList, i) && getLastTwoPsarCandle(vixList,
-			// i)) {
-			if (compareHeikinAchiAndPsarCandle(vixList, i)) {
-				if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
-						&& vix.getPsar().equalsIgnoreCase("BUY")
-						&& vix.getMasignal()!=null && vix.getMasignal().equalsIgnoreCase("BUY")) {
+				if (vix.getType().equalsIgnoreCase("BUY") && buyEntrySignal(vix)) {
 
 					makeEntry(vix, strategy, "BUY", testFlag, currentPrice);
 
-				} else if (vix.getType().equalsIgnoreCase("SELL") && vix.getHeikinachi().equalsIgnoreCase("SELL")
-						&& vix.getPsar().equalsIgnoreCase("SELL")
-						&& vix.getMasignal()!=null && vix.getMasignal().equalsIgnoreCase("SELL")) {
+				} else if (vix.getType().equalsIgnoreCase("SELL") && sellEntrySignal(vix)) {
 					makeEntry(vix, strategy, "SELL", testFlag, currentPrice);
 
 				}
+
+			} else {
+				// Exit
+				if (vix.getType().equalsIgnoreCase("BUY") && buyExitSignal(vix)) {
+
+					makeEntry(vix, strategy, "BUY", testFlag, currentPrice);
+
+				} else if (vix.getType().equalsIgnoreCase("SELL") && sellExitSignal(vix)) {
+					makeEntry(vix, strategy, "SELL", testFlag, currentPrice);
+
+				}
+
 			}
+			
 			// Exit trade at martket close
 			//exitFromTrade(vix.getTimestamp(), name, vix, strategy, currentPrice);
 		}
 	}
+	
+	/*
+	 * Heikin + Psar+ MA + Super Trend
+	 * All 4 condition should be satisfied
+	 */
+	
+	public boolean buyEntrySignal(Vix vix) {
+		if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
+				&& vix.getPsar().equalsIgnoreCase("BUY") && vix.getMasignal() != null
+				&& vix.getMasignal().equalsIgnoreCase("BUY") && vix.getSupertrendSignal() != "NA"
+				&& vix.getSupertrendSignal().equalsIgnoreCase("BUY")) {
+			return true;
+		}
+		return false;
+	}
+	
+	public boolean sellEntrySignal(Vix vix) {
+		if (vix.getType().equalsIgnoreCase("SELL") && vix.getHeikinachi().equalsIgnoreCase("SELL")
+				&& vix.getPsar().equalsIgnoreCase("SELL") && vix.getMasignal() != null
+				&& vix.getMasignal().equalsIgnoreCase("SELL") && vix.getSupertrendSignal() != "NA"
+				&& vix.getSupertrendSignal().equalsIgnoreCase("SELL")) {
+			return true;
+		}
+		return false;
+	}
+	
+	public boolean buyExitSignal(Vix vix) {
+		if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
+				&& vix.getPsar().equalsIgnoreCase("BUY")) {
+			return true;
+		}
+		return false;
+	}
+	
+	public boolean sellExitSignal(Vix vix) {
+		if (vix.getType().equalsIgnoreCase("SELL") && vix.getHeikinachi().equalsIgnoreCase("SELL")
+				&& vix.getPsar().equalsIgnoreCase("SELL")) {
+			return true;
+		}
+		return false;
+	}
+	
 	
 	public void exitFromTrade(String name, String type)
 			throws AddressException, MessagingException, IOException {
