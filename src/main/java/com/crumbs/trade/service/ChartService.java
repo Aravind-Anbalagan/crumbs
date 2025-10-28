@@ -404,7 +404,7 @@ public class ChartService {
 				strategy.getSymbol(), strategy.getToken());
 		List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc(name);
 		List<ResultVix> resultVixList = resultVixRepo.findByName(name);
-		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", name);
+		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(name);
 		if (!resultVixList.isEmpty()) {
 			resultVix = resultVixList.get(resultVixList.size() - 1);
 		}
@@ -498,7 +498,7 @@ public class ChartService {
 		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
 				strategy.getSymbol(), strategy.getToken());
 		
-		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", name);
+		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(name);
 		
 		if(resultVix!=null)
 		{
@@ -528,7 +528,7 @@ public class ChartService {
 				} else if (profitLoss.compareTo(BigDecimal.ZERO) < 0) {
 					resultVix.setResult("LOSS");
 				}
-				resultVix.setActive(null);
+				resultVix.setActive(false);
 				resultVixRepo.save(resultVix);
 			}
 		}
@@ -581,7 +581,7 @@ public class ChartService {
 	public void makeEntry(Vix vix, Strategy strategy, String type, boolean testFlag, BigDecimal currentPrice)
 			throws AddressException, MessagingException, IOException {
 		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
-		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", vix.getName());
+		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(vix.getName());
 		boolean tradeFlag = false;
 		//if (resultVix == null && type.equalsIgnoreCase(resultVix.getCombine()) ) {
 		if (resultVix == null ) {
@@ -605,7 +605,7 @@ public class ChartService {
 				resultVix.setEntryTime(currentDate);
 				resultVix.setEntryPrice(currentPrice);
 			}
-			resultVix.setActive("Y");
+			resultVix.setActive(true);
 			resultVix.setTimestamp(vix.getTimestamp());
 			resultVix.setType(type);
 			resultVix.setMa(vix.getMasignal());
@@ -667,7 +667,7 @@ public class ChartService {
 				}
 			}
 			resultVix.setPoints(calculatePoints(resultVix));
-			resultVix.setActive(null);
+			resultVix.setActive(false);
 			// Place Order  - EXIT
 			//Determine Trading Signal
 		
@@ -880,7 +880,7 @@ public class ChartService {
 	 */
 	public void lookForExecutedOrder(String name, String type, Vix vix, boolean testFlag) {
 
-		ResultVix resultVix = resultVixRepo.findByActiveAndName("Y", name);
+		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(name);
 		Strategy strategy = getTokenDetails(name, type);
 		BigDecimal currentPrice = new BigDecimal("0");
 		boolean tradeFlag = false;
@@ -1011,7 +1011,7 @@ public class ChartService {
 			resultVix.setResult(result);
 		}
 		resultVix.setPoints(calculatePoints(resultVix));
-		resultVix.setActive(null);
+		resultVix.setActive(false);
 		resultVixRepo.save(resultVix);
 	}
 

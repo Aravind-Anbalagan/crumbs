@@ -30,7 +30,7 @@ public class OrdersController {
         OrdersDTO dto = new OrdersDTO();
         dto.setId(order.getId());
         dto.setName(order.getName());
-        dto.setActive(order.getActive());
+        dto.setActive(order.isActive()? "Y" : null);
         dto.setCreatedDate(order.getCreatedDate());
         dto.setModifiedDate(order.getModifiedDate());
         dto.setComment(order.getComment());

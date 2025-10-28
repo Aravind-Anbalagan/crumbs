@@ -21,7 +21,7 @@ public interface ResultVixRepo  extends JpaRepository<ResultVix, Long> {
 
 	public List<ResultVix> findAllByOrderByIdDesc();
 	
-	ResultVix findByActiveAndName(String active,String name);
+	ResultVix findByActiveTrueAndName(String name);
 	
 	@Modifying
 	@Query("delete from ResultVix r")

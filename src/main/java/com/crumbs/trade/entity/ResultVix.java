@@ -25,7 +25,7 @@ public class ResultVix {
 	@Column(name="name")
 	String name;
 	@Column(name="active")
-	String active;
+	private boolean active;
 	@CreatedDate
 	@Column(name="createdDate")
 	Date  createdDate;
