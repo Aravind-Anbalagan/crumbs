@@ -455,23 +455,19 @@ public class ChartService {
 	 */
 	
 	public boolean buyEntrySignal(Vix vix) {
-		if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
-				&& vix.getPsar().equalsIgnoreCase("BUY") && vix.getMasignal() != null
-				&& vix.getMasignal().equalsIgnoreCase("BUY") && vix.getSupertrendSignal() != "NA"
-				&& vix.getSupertrendSignal().equalsIgnoreCase("BUY")) {
-			return true;
-		}
-		return false;
+	    return "BUY".equalsIgnoreCase(vix.getType())
+	        && "BUY".equalsIgnoreCase(vix.getHeikinachi())
+	        && "BUY".equalsIgnoreCase(vix.getPsar())
+	        && "BUY".equalsIgnoreCase(vix.getMasignal())
+	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal());
 	}
 	
 	public boolean sellEntrySignal(Vix vix) {
-		if (vix.getType().equalsIgnoreCase("SELL") && vix.getHeikinachi().equalsIgnoreCase("SELL")
-				&& vix.getPsar().equalsIgnoreCase("SELL") && vix.getMasignal() != null
-				&& vix.getMasignal().equalsIgnoreCase("SELL") && vix.getSupertrendSignal() != "NA"
-				&& vix.getSupertrendSignal().equalsIgnoreCase("SELL")) {
-			return true;
-		}
-		return false;
+	    return "SELL".equalsIgnoreCase(vix.getType())
+	        && "SELL".equalsIgnoreCase(vix.getHeikinachi())
+	        && "SELL".equalsIgnoreCase(vix.getPsar())
+	        && "SELL".equalsIgnoreCase(vix.getMasignal())
+	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal());
 	}
 	
 	public boolean buyExitSignal(Vix vix) {
