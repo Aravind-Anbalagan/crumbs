@@ -609,6 +609,7 @@ public class ChartService {
 			resultVix.setTimestamp(vix.getTimestamp());
 			resultVix.setType(type);
 			resultVix.setMa(vix.getMasignal());
+			resultVix.setSuperTrend(vix.getSupertrendSignal());
 			// Place Order - ENTRY
 			// Determine Trading Signal
 

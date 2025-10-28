@@ -70,6 +70,8 @@ public class ResultVix {
 	String combine;
 	@Column(name="ma")
 	String ma;
+	@Column(name="superTrend")
+	String superTrend;
 	
 }
 

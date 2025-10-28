@@ -51,6 +51,7 @@ public class OrdersController {
         dto.setPr(order.getPriceAction());
         dto.setFibo(order.getFibo());
         dto.setMa(order.getMa());
+        dto.setSupertrend(order.getSuperTrend());
         return dto;
     }
 }

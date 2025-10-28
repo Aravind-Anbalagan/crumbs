@@ -31,4 +31,5 @@ public class OrdersDTO {
 	    private String exchange;
 	    private String token;
 	    private String symbol;
+	    private String supertrend;
 }
