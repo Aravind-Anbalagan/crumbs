@@ -3,13 +3,16 @@ package com.crumbs.trade.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,7 +53,12 @@ public class ResultService {
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 		sdf.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
 		String dateTimeIST = sdf.format(new Date());
-		Result result = resultRepo.findByName(stock.getName());
+		String currentMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
+		Result result = new Result();
+		Optional<Result> optionalResult = resultRepo.findTopByNameAndMonth(stock.getName(), currentMonth);
+		if (optionalResult.isPresent()) {
+			result = optionalResult.get();
+		}
 		if (result == null) {
 			result = new Result();
 			result.setName(stock.getName());

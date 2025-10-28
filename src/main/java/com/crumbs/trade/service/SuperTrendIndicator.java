@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 public class SuperTrendIndicator {
 
     private static final int DEFAULT_PERIOD = 10;
-    private static final BigDecimal DEFAULT_MULTIPLIER = new BigDecimal("1");
+    private static final BigDecimal DEFAULT_MULTIPLIER = new BigDecimal("3");
     private static final int SCALE = 8; // Precision for calculations
     
     // Flat detection parameters
