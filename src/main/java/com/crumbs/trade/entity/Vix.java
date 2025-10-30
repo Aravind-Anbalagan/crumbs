@@ -50,6 +50,10 @@ public class Vix {
 	BigDecimal superTrend;
 	@Column(name="supertrendSignal")
 	String supertrendSignal;
+	@Column(precision = 19, scale = 6)
+	private BigDecimal vwap;
+	// Optional: if you plan to store signal (e.g. "BUY"/"SELL")
+	private String vwapSignal;
 
 
 }

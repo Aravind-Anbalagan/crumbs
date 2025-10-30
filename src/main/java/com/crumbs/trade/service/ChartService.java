@@ -104,6 +104,9 @@ public class ChartService {
 	
 	@Autowired
 	SuperTrendIndicator superTrendIndicator;
+	
+	@Autowired
+	VWAPIndicator vwapIndicator;
 	/*
 	 * Get JsonDetail
 	 */
@@ -208,48 +211,67 @@ public class ChartService {
         public LocalDateTime getTo() { return to; }
     }
 
-	// 1. Read the chart based on given time frame
-	// 2.HeikinAchi + psar store
-	// 3. Monitor the signal
-	public String readChartData(String timeFrame, String type, boolean testflag, String name, String fromDate,
-			String toDate,String symbol) throws SmartAPIException {
-		try {
-			Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
-			Strategy strategy = getTokenDetails(name, type);
-			if (strategy.getName() != null) {
-				readCandle(indexes, type, testflag, timeFrame, name, fromDate, toDate,"HEIKIN_PSAR");
-				List<Candlestick> heikinAshiList = heikinAshiIndicator
-						.calculateHeikinAshiCandles(getValuesAsList(name));
-				if (heikinAshiList != null && !heikinAshiList.isEmpty()) {
-					updateCandleData(heikinAshiList, "HEIKINACHI");
-					List<Candlestick> pSARList = pSARIndicator.calculatePSAR(getValuesAsList(name));
-					if (pSARList != null && !pSARList.isEmpty()) {
-						updateCandleData(pSARList, "PSAR");
-						List<Candlestick> maCandleList =movingAvgWithSMASmoothing.getMovingAverage(getValuesAsList(name));
-						updateCandleData(maCandleList, "MA");
-						 // ✅ Add SuperTrend integration
-			            List<Candlestick> superTrendList = superTrendIndicator.calculateSuperTrend(getValuesAsList(name));
-			            if (superTrendList != null && !superTrendList.isEmpty()) {
-			                updateCandleData(superTrendList, "SUPER_TREND");
-			            } else {
-			                logger.warn("SuperTrend calculation returned no data for {}", name);
-			            }
-					} else {
-						return "No Data Found";
-					}
+ // 1. Read the chart based on given time frame
+ // 2. HeikinAshi + PSAR store
+ // 3. Monitor the signal + VWAP
+ public String readChartData(String timeFrame, String type, boolean testflag, String name, String fromDate,
+                             String toDate, String symbol) throws SmartAPIException {
+     try {
+         Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
+         Strategy strategy = getTokenDetails(name, type);
 
-				} else {
-					return "No Data Found";
-				}
-			} else {
-				logger.error("No Strategy found");
-			}
+         if (strategy.getName() != null) {
+             // Step 1: Read candles
+             readCandle(indexes, type, testflag, timeFrame, name, fromDate, toDate, "HEIKIN_PSAR");
 
-		} catch (Exception e) {
-			logger.error("Error Occured in readChartData() , {}", e.getMessage());
-		}
-		return "Completed";
-	}
+             // Step 2: Heikin Ashi calculation
+             List<Candlestick> heikinAshiList = heikinAshiIndicator.calculateHeikinAshiCandles(getValuesAsList(name));
+             if (heikinAshiList == null || heikinAshiList.isEmpty()) {
+                 return "No HeikinAshi Data Found";
+             }
+             updateCandleData(heikinAshiList, "HEIKINACHI");
+
+             // Step 3: PSAR calculation
+             List<Candlestick> pSARList = pSARIndicator.calculatePSAR(getValuesAsList(name));
+             if (pSARList == null || pSARList.isEmpty()) {
+                 return "No PSAR Data Found";
+             }
+             updateCandleData(pSARList, "PSAR");
+
+             // Step 4: Moving Average (MA)
+             List<Candlestick> maCandleList = movingAvgWithSMASmoothing.getMovingAverage(getValuesAsList(name));
+             if (maCandleList != null && !maCandleList.isEmpty()) {
+                 updateCandleData(maCandleList, "MA");
+             }
+
+             // Step 5: SuperTrend
+             List<Candlestick> superTrendList = superTrendIndicator.calculateSuperTrend(getValuesAsList(name));
+             if (superTrendList != null && !superTrendList.isEmpty()) {
+                 updateCandleData(superTrendList, "SUPER_TREND");
+             } else {
+                 logger.warn("SuperTrend calculation returned no data for {}", name);
+             }
+
+             // ✅ Step 6: VWAP
+             List<Candlestick> vwapList = vwapIndicator.calculateVWAP(getValuesAsList(name));
+             if (vwapList != null && !vwapList.isEmpty()) {
+                 updateCandleData(vwapList, "VWAP");
+                 logger.info("VWAP calculated and updated for {}", name);
+             } else {
+                 logger.warn("VWAP calculation returned no data for {}", name);
+             }
+
+         } else {
+             logger.error("No Strategy found for {}", name);
+         }
+
+     } catch (Exception e) {
+         logger.error("Error occurred in readChartData() for {}: {}", name, e.getMessage(), e);
+     }
+
+     return "Completed";
+ }
+
 
 	/*
 	 * Update Candle Details
@@ -263,32 +285,43 @@ public class ChartService {
 	}
 
 	public void updateCandle(Candlestick candleStick, String candleType) {
-		Optional<Vix> vixOptional = vixRepo.findById(candleStick.getId());
-		if (vixOptional.isPresent()) {
-			Vix vix = vixOptional.get();
-			if (candleType.equalsIgnoreCase("PSAR")) {
-				vix.setPsar(candleStick.getSignal());
-			} else if (candleType.equalsIgnoreCase("HEIKINACHI")) {
-				vix.setHeikinachi(candleStick.getSignal());
-				vix.setCandleType(candleStick.getCandleType());
-				// Overwrite Traditional candle with HeikinAchi candle data
-				/*
-				 * vix.setOpen(candleStick.open); vix.setHigh(candleStick.high);
-				 * vix.setLow(candleStick.low); vix.setClose(candleStick.close);
-				 */
-			}
-			else if (candleType.equalsIgnoreCase("MA")) {
-				vix.setSmoothma(candleStick.getSmoothMA());
-				vix.setMasignal(candleStick.getMasignal());
-			} else if (candleType.equalsIgnoreCase("SUPER_TREND")) {
-				vix.setSuperTrend(candleStick.getSuperTrend());
-		        vix.setSupertrendSignal(candleStick.getSuperTrendSignal());
-				
-			}
-			
-			vixRepo.save(vix);
-		}
+	    Optional<Vix> vixOptional = vixRepo.findById(candleStick.getId());
+	    if (vixOptional.isPresent()) {
+	        Vix vix = vixOptional.get();
+
+	        if (candleType.equalsIgnoreCase("PSAR")) {
+	            vix.setPsar(candleStick.getSignal());
+
+	        } else if (candleType.equalsIgnoreCase("HEIKINACHI")) {
+	            vix.setHeikinachi(candleStick.getSignal());
+	            vix.setCandleType(candleStick.getCandleType());
+	            // If you want HeikinAshi values to overwrite OHLC, uncomment:
+	            /*
+	            vix.setOpen(candleStick.getOpen());
+	            vix.setHigh(candleStick.getHigh());
+	            vix.setLow(candleStick.getLow());
+	            vix.setClose(candleStick.getClose());
+	            */
+
+	        } else if (candleType.equalsIgnoreCase("MA")) {
+	            vix.setSmoothma(candleStick.getSmoothMA());
+	            vix.setMasignal(candleStick.getMasignal());
+
+	        } else if (candleType.equalsIgnoreCase("SUPER_TREND")) {
+	            vix.setSuperTrend(candleStick.getSuperTrend());
+	            vix.setSupertrendSignal(candleStick.getSuperTrendSignal());
+
+	        } 
+	        // ✅ Add VWAP integration here
+	        else if (candleType.equalsIgnoreCase("VWAP")) {
+	            vix.setVwap(candleStick.getVwap());
+	            vix.setVwapSignal(candleStick.getSignal());
+	        }
+
+	        vixRepo.save(vix);
+	    }
 	}
+
 
 	/*
 	 * Get Token Details
@@ -379,19 +412,31 @@ public class ChartService {
 	 * get the value as List
 	 */
 	public List<Candlestick> getValuesAsList(String name) {
-		List<Vix> vixList = vixRepo.findByName(name);
-		List<Candlestick> candlesticksList = new ArrayList<>();
-		if (vixList != null && !vixList.isEmpty()) {
-			vixList.stream().forEach(item -> {
-				Candlestick candlestick = new Candlestick(item.getOpen(), item.getHigh(), item.getLow(),
-						item.getClose(), item.getId(), null, null, null);
-				candlesticksList.add(candlestick);
-			});
+	    List<Vix> vixList = vixRepo.findByName(name);
+	    List<Candlestick> candlesticksList = new ArrayList<>();
 
-		}
-		return candlesticksList;
-
+	    if (vixList != null && !vixList.isEmpty()) {
+	        for (Vix item : vixList) {
+	            Candlestick candlestick = new Candlestick(
+	                item.getOpen(),
+	                item.getHigh(),
+	                item.getLow(),
+	                item.getClose(),
+	                item.getId(),
+	                null, // signal
+	                null, // psarPrice
+	                null  // candleType
+	            );
+	            // ✅ manually set volume
+	            candlestick.setVolume(item.getVolume() != null ? item.getVolume() : BigDecimal.ZERO);
+	            candlesticksList.add(candlestick);
+	        }
+	    }
+	    return candlesticksList;
 	}
+
+
+
 
 	/*
 	 * Monitor for Signal
@@ -459,7 +504,8 @@ public class ChartService {
 	        && "BUY".equalsIgnoreCase(vix.getHeikinachi())
 	        && "BUY".equalsIgnoreCase(vix.getPsar())
 	        && "BUY".equalsIgnoreCase(vix.getMasignal())
-	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal());
+	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal())
+	        && "BUY".equalsIgnoreCase(vix.getVwapSignal());
 	}
 	
 	public boolean sellEntrySignal(Vix vix) {
@@ -467,7 +513,8 @@ public class ChartService {
 	        && "SELL".equalsIgnoreCase(vix.getHeikinachi())
 	        && "SELL".equalsIgnoreCase(vix.getPsar())
 	        && "SELL".equalsIgnoreCase(vix.getMasignal())
-	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal());
+	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal())
+	        && "SELL".equalsIgnoreCase(vix.getVwapSignal());
 	}
 	
 	public boolean buyExitSignal(Vix vix) {
