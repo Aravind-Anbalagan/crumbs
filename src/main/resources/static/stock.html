@@ -915,7 +915,7 @@ visibleKeys.forEach((key) => {
         // Add chart column key manually if not present
         if (!visibleKeys.includes("chart")) {
           visibleKeys.push("chart");
-          columnVisibility["chart"] = true;
+          columnVisibility["chart"] = false; // Disable the chart
         }
         
         tableData = data.map((row) => {
