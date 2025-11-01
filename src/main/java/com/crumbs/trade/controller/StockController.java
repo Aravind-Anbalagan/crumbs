@@ -169,43 +169,47 @@ public class StockController {
 		dto.addHeader("exchange", ind.getExchange(), false);
 		dto.addHeader("symbol", ind.getTradingSymbol(), false);
 		if ("DAILY".equalsIgnoreCase(flag)) {
+			dto.addHeader("SUPERTREND", ind.getSuperTrendSignalDaily(), true);
+			dto.addHeader("VWAP", ind.getVwapSignalDaily(), true);
 			dto.addHeader("RSI", ind.getDailyRSI(), true);
-			dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
-			dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
-			dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
 			dto.addHeader("VOLUME", ind.getVolumeFlag(), true);
-			dto.addHeader("PIVOT", ind.getPivotFlag(), true);
-			// dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
+			//dto.addHeader("CPR", ind.getCpr1D(), true);
 			dto.addHeader("SR", ind.getDaily_sr_signal(), true);
-			// dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
-			dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), true);
-			// dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
 			dto.addHeader("FIBO", ind.getDaily_fibo_signal(), true);
-			// dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
-			dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
 			dto.addHeader("AI", ind.getDaily_aiSignal(), true);
-			dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
+			//dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
+			//dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
+			//dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
+			// dto.addHeader("daily_srtrend", ind.getDaily_sr_trend(), true);
+			// dto.addHeader("daily_srconfidence", ind.getDaily_sr_confidence(), true);
+			//dto.addHeader("SR_REASON", ind.getDaily_sr_reason(), true);
+			// dto.addHeader("daily_fibotrend", ind.getDaily_fibo_trend(), true);
+			// dto.addHeader("daily_fiboconfidence", ind.getDaily_fibo_confidence(), true);
+			//dto.addHeader("FIBO_REASON", ind.getDaily_fibo_reason(), true);
+			//dto.addHeader("AI_REASON", ind.getDaily_aiReason(), true);
 			//dto.addHeader("INTRADAY", ind.getIntraday(), true);
 		}
 
 		if ("WEEKLY".equalsIgnoreCase(flag)) {
+			dto.addHeader("SUPERTREND", ind.getSuperTrendSignalWeekly(), true);
+			dto.addHeader("VWAP", ind.getVwapSignalWeekly(), true);
 			dto.addHeader("RSI", ind.getWeeklyRSI(), true);
-			dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
-			dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
-			dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
 			dto.addHeader("VOLUME", ind.getWeeklyvolumeFlag(), true);
-			dto.addHeader("PIVOT", ind.getPivotFlag(), true);
-			// dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
+			//dto.addHeader("CPR", ind.getCpr1W(), true);
 			dto.addHeader("SR", ind.getWeekly_sr_signal(), true);
-			// dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
-			dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), true);
-			// dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
 			dto.addHeader("FIBO", ind.getWeekly_fibo_signal(), true);
+			dto.addHeader("AI", ind.getWeekly_aiSignal(), true);
+			//dto.addHeader("20MA", ind.getMovingavg20Flag(), true);
+			//dto.addHeader("50MA", ind.getMovingavg50Flag(), true);
+			//dto.addHeader("200MA", ind.getMovingavg200Flag(), true);
+			// dto.addHeader("weekly_srtrend", ind.getWeekly_sr_trend(), true);
+			// dto.addHeader("weekly_srconfidence", ind.getWeekly_sr_confidence(), true);
+			//dto.addHeader("SR_REASON", ind.getWeekly_sr_reason(), true);
+			// dto.addHeader("weekly_fibotrend", ind.getWeekly_fibo_trend(), true);
 			// dto.addHeader("weekly_fiboconfidence", ind.getWeekly_fibo_confidence(),
 			// true);
-			dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), true);
-			dto.addHeader("AI", ind.getWeekly_aiSignal(), true);
-			dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), true);
+			//dto.addHeader("FIBO_REASON", ind.getWeekly_fibo_reason(), true);
+			//dto.addHeader("AI_REASON", ind.getWeekly_aiReason(), true);
 		}
 
 		if ("COMBINE".equalsIgnoreCase(flag)) {

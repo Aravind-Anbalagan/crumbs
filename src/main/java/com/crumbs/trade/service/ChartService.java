@@ -256,7 +256,7 @@ public class ChartService {
              List<Candlestick> vwapList = vwapIndicator.calculateVWAP(getValuesAsList(name));
              if (vwapList != null && !vwapList.isEmpty()) {
                  updateCandleData(vwapList, "VWAP");
-                 logger.info("VWAP calculated and updated for {}", name);
+                 //logger.info("VWAP calculated and updated for {}", name);
              } else {
                  logger.warn("VWAP calculation returned no data for {}", name);
              }

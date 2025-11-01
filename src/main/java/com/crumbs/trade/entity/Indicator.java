@@ -278,5 +278,48 @@ public class Indicator {
 	String sector;
 	@Column(name = "tradetype")
 	String tradetype;
+	
+	
+	@Column(name = "superTrendDaily")
+	BigDecimal superTrendDaily;
+	@Column(name = "superTrendSignalDaily")
+	String superTrendSignalDaily;
+	@Column(name = "superTrendVolatilityDaily")
+	String superTrendVolatilityDaily;
+	@Column(name = "VwapDaily")
+	BigDecimal VwapDaily;
+	@Column(name = "VwapSignalDaily")
+	String VwapSignalDaily;
+	
+	@Column(name = "superTrendWeekly")
+	BigDecimal superTrendWeekly;
+	@Column(name = "superTrendSignalWeekly")
+	String superTrendSignalWeekly;
+	@Column(name = "superTrendVolatilityWeekly")
+	String superTrendVolatilityWeekly;
+	@Column(name = "VwapWeekly")
+	BigDecimal VwapWeekly;
+	@Column(name = "VwapSignalWeekly")
+	String VwapSignalWeekly;
+	
+	@Column(name = "superTrendHourly")
+	BigDecimal superTrendHourly;
+	@Column(name = "superTrendSignalHourly")
+	String superTrendSignalHourly;
+	@Column(name = "superTrendVolatilityHourly")
+	String superTrendVolatilityHourly;
+	@Column(name = "VwapHourly")
+	BigDecimal VwapHourly;
+	@Column(name = "VwapSignalHourly")
+	String VwapSignalHourly;
+	
+	@Column(precision = 30, scale = 10)
+	private String cpr1H;
+
+	@Column(precision = 30, scale = 10)
+	private String cpr1D;
+
+	@Column(precision = 30, scale = 10)
+	private String cpr1W;
 
 }

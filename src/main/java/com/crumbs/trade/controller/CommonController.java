@@ -64,7 +64,7 @@ public class CommonController {
 	}
 	
 	/*
-	 * 8 AM clear DB
+	 * 9.10 AM clear DB
 	 */
 	@Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
 	public void clear() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {

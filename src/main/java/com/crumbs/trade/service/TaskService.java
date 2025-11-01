@@ -49,6 +49,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CandlesDetails;
+import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.dto.PivotRequest;
 import com.crumbs.trade.dto.PivotResponse;
 import com.crumbs.trade.dto.PriceActionResult;
@@ -227,6 +228,15 @@ public class TaskService {
 	
 	@Autowired
 	Nifty500Repo nifty500Repo;
+	
+	@Autowired
+	SuperTrendSwingIndicator superTrendSwingIndicator;
+	
+	@Autowired
+	private VWAPSwingIndicator vwapSwingIndicator;
+	
+	@Autowired
+	IndicatorService indicatorService;
 
 	@Value("${app.max-threads}")
 	private int maxThreads;
@@ -1427,9 +1437,16 @@ public class TaskService {
 		Pageable page1 = PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "id"));
 		List<PricesIndex> last1 = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page1);
 		indicator.setPivot(calPivot(last1));
-
+// CPR
+		getCPR(indicator,name,timeFrame,index_CurrentPrice,null);
 		indicator.setOneday("Y");
 
+// Super Trend
+		getSuperTrend(indicator, name, timeframe,null);
+		
+// Vwap
+		getVwap(indicator, name, timeframe, null);
+// Check F&O		
 		if(optionNameList.contains(name))
 		{
 			indicator.setOptions("Y");
@@ -1448,6 +1465,318 @@ public class TaskService {
 	    // Save indicator to DB
 		indicatorRepo.save(indicator);
 	}
+	
+	public void getVwap(Indicator indicator, String name, String timeframe, List<PricesIndex> pricesList) {
+	    try {
+	        // ✅ Use provided list if available, else fetch from DB
+	        List<PricesIndex> vwapPrices;
+	        if (pricesList != null && !pricesList.isEmpty()) {
+	            vwapPrices = pricesList;
+	        } else {
+	            Pageable vwapPage = PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "id"));
+	            vwapPrices = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, vwapPage);
+	        }
+
+	        if (vwapPrices == null || vwapPrices.isEmpty()) {
+	            logger.warn("⚠️ No VWAP data found for {} [{}]", name, timeframe);
+	            return;
+	        }
+
+	        // Convert DB entities → Candlestick DTOs (newest → oldest)
+	        List<Candlestick> vwapCandles = vwapPrices.stream().map(p -> {
+	            Candlestick c = new Candlestick();
+	            c.setOpen(p.getOpen());
+	            c.setHigh(p.getHigh());
+	            c.setLow(p.getLow());
+	            c.setClose(p.getClose());
+	            c.setVolume(p.getVolume());
+	            c.setTimestamp(p.getTimestamp());
+	            return c;
+	        }).collect(Collectors.toList());
+
+	        // ✅ No reverse here — most recent first (same as SuperTrend)
+	        // Calculate VWAP
+	        List<Candlestick> vwapResult = vwapSwingIndicator.calculateVWAP(vwapCandles, timeframe);
+
+	        if (vwapResult.isEmpty()) {
+	            logger.warn("⚠️ VWAP result empty for {} [{}]", name, timeframe);
+	            return;
+	        }
+
+	        // ✅ Since most recent candle is FIRST, pick index 0
+	        Candlestick latest = vwapResult.get(0);
+
+	        BigDecimal vwap = latest.getVwap();
+	        String signal = latest.getSignal();
+
+	        switch (timeframe.toUpperCase()) {
+	            case "ONE_HOUR":
+	                indicator.setVwapHourly(vwap);
+	                indicator.setVwapSignalHourly(signal);
+	                break;
+	            case "ONE_DAY":
+	                indicator.setVwapDaily(vwap);
+	                indicator.setVwapSignalDaily(signal);
+	                break;
+	            case "ONE_WEEK":
+	                indicator.setVwapWeekly(vwap);
+	                indicator.setVwapSignalWeekly(signal);
+	                break;
+	            default:
+	                logger.warn("⚠️ Unknown timeframe {} for VWAP", timeframe);
+	                break;
+	        }
+
+	        //logger.info("✅ [{}] VWAP={} Signal={} for {}", timeframe, vwap, signal, name);
+	    } catch (Exception e) {
+	        logger.error("⚠️ VWAP calc failed for {} [{}]: {}", name, timeframe, e.getMessage());
+	    }
+	}
+
+
+	public void getCPR(
+	        Indicator indicator,
+	        String name,
+	        String timeframe,
+	        BigDecimal index_CurrentPrice,
+	        List<PricesIndex> pricesList) {
+
+	    try {
+	        PricesIndex refCandle = null;
+
+	        // 🔹 Select the correct candle based on timeframe
+	        if ("WEEK".equalsIgnoreCase(timeframe)) {
+	            // For weekly: most recent is last element → use previous week (second last)
+	            if (pricesList != null && pricesList.size() > 1) {
+	                refCandle = pricesList.get(pricesList.size() - 2);
+	            }
+	        } else {
+	            // For 1H or 1D → fetch last 2 candles, use previous one
+	            Pageable lastTwo = PageRequest.of(0, 2, Sort.by(Sort.Direction.DESC, "id"));
+	            List<PricesIndex> list = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, lastTwo);
+	            if (list.size() > 1) {
+	                refCandle = list.get(1); // previous completed candle
+	            }
+	        }
+
+	        if (refCandle == null) {
+	            logger.warn("⚠️ No previous candle found for CPR calculation: {} [{}]", name, timeframe);
+	            return;
+	        }
+
+	        // 🔹 Compute CPR based on previous candle
+	        String cprSignal = calculateCPRSignal(
+	                refCandle.getHigh(),
+	                refCandle.getLow(),
+	                refCandle.getClose(),
+	                index_CurrentPrice);
+
+	        // 🔹 Assign result to correct field in Indicator
+	        switch (timeframe.toUpperCase()) {
+	            case "ONE_HOUR":
+	                indicator.setCpr1H(cprSignal);
+	                break;
+	            case "ONE_DAY":
+	                indicator.setCpr1D(cprSignal);
+	                break;
+	            case "WEEK":
+	                indicator.setCpr1W(cprSignal);
+	                break;
+	            default:
+	                logger.warn("Unsupported timeframe for CPR: {}", timeframe);
+	        }
+
+	    } catch (Exception e) {
+	        logger.warn("⚠️ CPR calculation failed for {} [{}]: {}", name, timeframe, e.getMessage());
+	    }
+	}
+
+
+
+	private String calculateCPRSignal(BigDecimal high, BigDecimal low, BigDecimal close, BigDecimal currentPrice) {
+	    if (high == null || low == null || close == null || currentPrice == null)
+	        return null;
+
+	    // Base CPR values
+	    BigDecimal pivot = high.add(low).add(close).divide(BigDecimal.valueOf(3), RoundingMode.HALF_UP);
+	    BigDecimal bc = high.add(low).divide(BigDecimal.valueOf(2), RoundingMode.HALF_UP);
+	    BigDecimal tc = pivot.multiply(BigDecimal.valueOf(2)).subtract(bc);
+
+	    // Ensure proper order (so TC < BC always means CPR lower = TC, upper = BC)
+	    BigDecimal lowerCPR = tc.min(bc);
+	    BigDecimal upperCPR = tc.max(bc);
+
+	    // Determine position
+	    String position;
+	    if (currentPrice.compareTo(upperCPR) > 0) {
+	        position = "Above CPR";
+	    } else if (currentPrice.compareTo(lowerCPR) < 0) {
+	        position = "Below CPR";
+	    } else {
+	        position = "Between CPR";
+	    }
+
+	    // Return clear info
+	    return String.format("Pivot=%.2f, TC=%.2f, BC=%.2f | Position=%s",
+	            pivot, upperCPR, lowerCPR, position);
+	}
+
+	public void getSuperTrend(Indicator indicator, String name, String timeframe, List<PricesIndex> pricesList) {
+	    try {
+	        int candleCount;
+	        int period;
+	        BigDecimal multiplier;
+
+	        // --- timeframe-specific parameters ---
+	        switch (timeframe.toUpperCase()) {
+	            case "ONE_WEEK":
+	                candleCount = 104;
+	                period = 7;
+	                multiplier = new BigDecimal("4");
+	                break;
+
+	            case "ONE_DAY":
+	                candleCount = 100;
+	                period = 10;
+	                multiplier = new BigDecimal("3");
+	                break;
+
+	            case "ONE_HOUR":
+	                candleCount = 200;
+	                period = 10;
+	                multiplier = new BigDecimal("2.5");
+	                break;
+
+	            default:
+	                candleCount = 150;
+	                period = 10;
+	                multiplier = new BigDecimal("3");
+	        }
+
+	        // ✅ Fetch price data
+	        List<PricesIndex> priceList;
+	        if (pricesList != null && !pricesList.isEmpty()) {
+	            priceList = pricesList;
+	        } else {
+	            Pageable page = PageRequest.of(0, candleCount, Sort.by(Sort.Direction.DESC, "id"));
+	            priceList = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page);
+	        }
+
+	        if (priceList == null || priceList.isEmpty()) {
+	            setIndicatorDefaults(indicator, timeframe);
+	            return;
+	        }
+
+	        // ✅ Reverse copy for chronological order (oldest → newest)
+	        List<PricesIndex> calcList = new ArrayList<>(priceList);
+	        Collections.reverse(calcList);
+
+	        // --- Convert PricesIndex → Candlestick list ---
+	        List<Candlestick> candleList = calcList.stream().map(pi -> {
+	            Candlestick c = new Candlestick();
+	            c.setOpen(pi.getOpen());
+	            c.setHigh(pi.getHigh());
+	            c.setLow(pi.getLow());
+	            c.setClose(pi.getClose());
+	            c.setVolume(pi.getVolume());
+	            c.setTimestamp(pi.getTimestamp());
+	            return c;
+	        }).collect(Collectors.toList());
+
+	        // ✅ Calculate SuperTrend only
+	        List<Candlestick> superTrendResult =
+	                superTrendSwingIndicator.calculateSuperTrend(candleList, period, multiplier);
+
+	        if (superTrendResult == null || superTrendResult.isEmpty()) {
+	            setIndicatorDefaults(indicator, timeframe);
+	            return;
+	        }
+
+	        // ✅ Get the latest (most recent) candle result
+	        Candlestick lastCandle = superTrendResult.get(superTrendResult.size() - 1);
+
+	        // ✅ Assign results to the indicator
+	        switch (timeframe.toUpperCase()) {
+	            case "ONE_HOUR":
+	                indicator.setSuperTrendHourly(lastCandle.getSuperTrend());
+	                indicator.setSuperTrendSignalHourly(lastCandle.getSuperTrendSignal());
+	                indicator.setSuperTrendVolatilityWeekly(
+	                    superTrendSwingIndicator.calculateVolatility(candleList, period)
+	                        .setScale(2, RoundingMode.HALF_UP)
+	                        .toPlainString()
+	                );
+	                break;
+
+	            case "ONE_DAY":
+	                indicator.setSuperTrendDaily(lastCandle.getSuperTrend());
+	                indicator.setSuperTrendSignalDaily(lastCandle.getSuperTrendSignal());
+	                indicator.setSuperTrendVolatilityWeekly(
+	                    superTrendSwingIndicator.calculateVolatility(candleList, period)
+	                        .setScale(2, RoundingMode.HALF_UP)
+	                        .toPlainString()
+	                );
+	                break;
+
+	            case "ONE_WEEK":
+	                indicator.setSuperTrendWeekly(lastCandle.getSuperTrend());
+	                indicator.setSuperTrendSignalWeekly(lastCandle.getSuperTrendSignal());
+	                indicator.setSuperTrendVolatilityWeekly(
+	                    superTrendSwingIndicator.calculateVolatility(candleList, period)
+	                        .setScale(2, RoundingMode.HALF_UP)
+	                        .toPlainString()
+	                );
+	                break;
+	        }
+
+	        logger.info("✅ [{}] SuperTrend={} (Value={})", timeframe,
+	                lastCandle.getSuperTrendSignal(), lastCandle.getSuperTrend());
+
+	    } catch (Exception e) {
+	        logger.error("⚠️ Error in SuperTrend for {} [{}]: {}", name, timeframe, e.getMessage());
+	        setIndicatorError(indicator, timeframe);
+	    }
+	}
+
+
+
+
+
+	/** Set defaults when insufficient data */
+	private void setIndicatorDefaults(Indicator indicator, String timeframe) {
+	    switch (timeframe.toUpperCase()) {
+	        case "ONE_DAY":
+	            indicator.setSuperTrendSignalDaily("NA");
+	            indicator.setVwapSignalDaily("NA");
+	            break;
+	        case "ONE_WEEK":
+	            indicator.setSuperTrendSignalWeekly("NA");
+	            indicator.setVwapSignalWeekly("NA");
+	            break;
+	        case "ONE_HOUR":
+	            indicator.setSuperTrendSignalHourly("NA");
+	            indicator.setVwapSignalHourly("NA");
+	            break;
+	    }
+	}
+
+	/** Set error state if something fails */
+	private void setIndicatorError(Indicator indicator, String timeframe) {
+	    switch (timeframe.toUpperCase()) {
+	        case "ONE_DAY":
+	            indicator.setSuperTrendSignalDaily("ERROR");
+	            indicator.setVwapSignalDaily("ERROR");
+	            break;
+	        case "ONE_WEEK":
+	            indicator.setSuperTrendSignalWeekly("ERROR");
+	            indicator.setVwapSignalWeekly("ERROR");
+	            break;
+	        case "ONE_HOUR":
+	            indicator.setSuperTrendSignalHourly("ERROR");
+	            indicator.setVwapSignalHourly("ERROR");
+	            break;
+	    }
+	}
+
 
 	public void deletePsarAndHiekeinTableData(String name, String timeFrame) {
 		priceHeikinashiIndexRepo.deleteByNameAndTimeframe(name, timeFrame);
@@ -1740,6 +2069,7 @@ public class TaskService {
 		}
 	}
 
+	@Transactional
 	private void getWeeklyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
 			SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice, List<PricesIndex> pricesList) {
 
@@ -1748,7 +2078,8 @@ public class TaskService {
 			logger.warn("No indicator found for {}", indexes.getName());
 			return;
 		}
-		
+		//CPR
+		getCPR(indicator, indexes.getName(), timeFrame, index_CurrentPrice,pricesList);
 		// Volume for last N days (5 days here) for volumeService
 		indicator.setWeeklyvolumeFlag(checkLastVolumeVsAvg(pricesList));
 		
@@ -1805,8 +2136,14 @@ public class TaskService {
 		indicator.setWeekly_fibo_reason(analysis.getFibo_reason());
 
 		indicator.setOneweek("Y");
-	
-		indicatorRepo.save(indicator);
+		// Super Trend
+		getSuperTrend(indicator, indexes.getName(), "ONE_WEEK",pricesList);
+		// Vwap
+		getVwap(indicator, indexes.getName(), "ONE_WEEK", pricesList);
+		indicatorService.saveIndicator(indicator);
+		//logger.info("✅ Persisted weekly indicator for {} -> SuperTrendWeekly={}, VWAPWeekly={}",
+		  //      indexes.getName(), indicator.getSuperTrendWeekly(), indicator.getVwapWeekly());
+		//indicatorRepo.saveAndFlush(indicator);
 	}
 
 	 public static String checkLastVolumeVsAvg(List<PricesIndex> pricesList) {
