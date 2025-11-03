@@ -58,8 +58,10 @@ public class ResultService {
 		Optional<Result> optionalResult = resultRepo.findTopByNameAndMonth(stock.getName(), currentMonth);
 		if (optionalResult.isPresent()) {
 			result = optionalResult.get();
-		}
-		if (result == null) {
+			result.setResult(stock.getResult());
+			resultRepo.save(result);
+		} else {
+			// Make New Entry
 			result = new Result();
 			result.setName(stock.getName());
 			result.setEntryTime(dateTimeIST);
@@ -73,14 +75,12 @@ public class ResultService {
 			if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
 
-			} else if ("DOWN".equalsIgnoreCase(result.getType())  && "DAILY".equalsIgnoreCase(stock.getTradetype())){
+			} else if ("DOWN".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
 			}
-			
-		} else {
-			result.setResult(stock.getResult());
+			resultRepo.save(result);
 		}
-		resultRepo.save(result);
+
 	}
 	
 	public BigDecimal convertStringToList(String input) {
@@ -219,31 +219,34 @@ public class ResultService {
 	
 	public List<Result> getAllResults() {
 	    List<Result> resultList = resultRepo.findAll();
-	    resultList.forEach(result -> {
-	        BigDecimal currentPrice = srService.getCurrentPriceForIndex(result.getName(), result.getTradingSymbol());
-	        result.setCurrentltp(currentPrice);
+	    List<Result> updatedResults = new ArrayList<>();
 
-	        // Calculate return percentage based on type
-	        if (result.getExecutedltp() != null && currentPrice != null) {
-	            BigDecimal returnPercent;
-	            if ("UP".equalsIgnoreCase(result.getType())) {
-	                // For UP (buy) trades
-	                returnPercent = currentPrice.subtract(result.getExecutedltp())
-	                        .divide(result.getExecutedltp(), 4, RoundingMode.HALF_UP)
-	                        .multiply(BigDecimal.valueOf(100));
-	            } else if ("DOWN".equalsIgnoreCase(result.getType())) {
-	                // For DOWN (sell) trades - reverse the subtraction
-	                returnPercent = result.getExecutedltp().subtract(currentPrice)
-	                        .divide(result.getExecutedltp(), 4, RoundingMode.HALF_UP)
-	                        .multiply(BigDecimal.valueOf(100));
-	            } else {
-	                returnPercent = BigDecimal.ZERO;
-	            }
-	            result.setComment("Return: " + returnPercent.setScale(2, RoundingMode.HALF_UP) + "%");
+	    for (Result result : resultList) {
+	        BigDecimal executedLtp = result.getExecutedltp();
+	        BigDecimal currentPrice = srService.getCurrentPriceForIndex(result.getName(), result.getTradingSymbol());
+
+	        if (currentPrice == null || executedLtp == null || executedLtp.compareTo(BigDecimal.ZERO) == 0) {
+	            continue; // skip invalid data
 	        }
 
-	        // Check if SL is hit
-	        if (result.getSl() != null && currentPrice != null) {
+	        result.setCurrentltp(currentPrice);
+
+	        // Calculate return %
+	        BigDecimal returnPercent = BigDecimal.ZERO;
+	        if ("UP".equalsIgnoreCase(result.getType())) {
+	            returnPercent = currentPrice.subtract(executedLtp)
+	                    .divide(executedLtp, 4, RoundingMode.HALF_UP)
+	                    .multiply(BigDecimal.valueOf(100));
+	        } else if ("DOWN".equalsIgnoreCase(result.getType())) {
+	            returnPercent = executedLtp.subtract(currentPrice)
+	                    .divide(executedLtp, 4, RoundingMode.HALF_UP)
+	                    .multiply(BigDecimal.valueOf(100));
+	        }
+
+	        result.setComment("Return: " + returnPercent.setScale(2, RoundingMode.HALF_UP) + "%");
+
+	        // Check SL
+	        if (result.getSl() != null) {
 	            boolean slHit = false;
 	            if ("UP".equalsIgnoreCase(result.getType())) {
 	                slHit = currentPrice.compareTo(result.getSl()) <= 0;
@@ -253,10 +256,16 @@ public class ResultService {
 	            result.setResult(slHit ? "SL HIT" : "ACTIVE");
 	        }
 
-	        resultRepo.save(result);
-	    });
-	    return resultList;
+	        updatedResults.add(result);
+	    }
+
+	    if (!updatedResults.isEmpty()) {
+	        resultRepo.saveAll(updatedResults); // batch update
+	    }
+
+	    return updatedResults;
 	}
+
 
 
 	public boolean updateActive(Long id, String active) {
