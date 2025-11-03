@@ -23,6 +23,9 @@
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
       background: #ffffff;
     }
+    #chart.drawing-mode {
+      cursor: crosshair;
+    }
     #loader {
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
       display: none; 
@@ -314,6 +317,32 @@
       background: #e0e0e0;
       margin: 0 4px;
     }
+    #drawingModeIndicator {
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(74, 85, 104, 0.95);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      display: none;
+      z-index: 30;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 10px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
   </style>
 </head>
 <body>
@@ -343,6 +372,8 @@
       <div class="color-divider"></div>
       <button class="draw-btn" id="clearDrawBtn" title="Clear All Drawings">✕</button>
     </div>
+    
+    <div id="drawingModeIndicator">Click on chart to draw line</div>
     
     <div id="chart"></div>
     <div id="loader">
@@ -396,6 +427,7 @@
   const vLineBtn = document.getElementById('vLineBtn');
   const clearDrawBtn = document.getElementById('clearDrawBtn');
   const colorPicker = document.getElementById('colorPicker');
+  const drawingModeIndicator = document.getElementById('drawingModeIndicator');
   
   let selectedSymbol = settings.symbol;
   let selectedTimeFrame = settings.timeframe;
@@ -437,7 +469,6 @@
 
   function saveChartState() {
     if (chartInitialized && lastCandles.length > 0 && chart) {
-      // Get current visible range
       const timeScale = chart.timeScale();
       const visibleRange = timeScale.getVisibleRange();
       
@@ -449,8 +480,12 @@
         savedSymbol: selectedSymbol,
         savedTimeframe: selectedTimeFrame,
         savedDrawnLines: drawnLines.map(line => ({
-          type: line.type, price: line.price, time: line.time, color: line.color,
-          minPrice: line.minPrice, maxPrice: line.maxPrice
+          type: line.type, 
+          price: line.price, 
+          time: line.time, 
+          color: line.color,
+          minPrice: line.minPrice, 
+          maxPrice: line.maxPrice
         })),
         userHasLoadedChart: true,
         visibleRange: visibleRange ? {
@@ -502,7 +537,6 @@
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       })));
       
-      // Restore visible range if available
       if (savedState.visibleRange && savedState.visibleRange.from && savedState.visibleRange.to) {
         setTimeout(() => {
           try {
@@ -522,27 +556,49 @@
       isFirstLoad = false;
       redrawLines();
       
-      if (savedState.savedDrawnLines) {
+      // Restore drawn lines with improved cleanup
+      if (savedState.savedDrawnLines && Array.isArray(savedState.savedDrawnLines)) {
         savedState.savedDrawnLines.forEach(lineData => {
-          if (lineData.type === 'hline' && lineData.price) {
-            const line = candleSeries.createPriceLine({
-              price: lineData.price, color: lineData.color || selectedColor,
-              lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid,
-              axisLabelVisible: true, title: 'H-Line'
-            });
-            drawnLines.push({ type: 'hline', price: lineData.price, line: line, color: lineData.color || selectedColor });
-          } else if (lineData.type === 'vline' && lineData.time) {
-            const vLineSeries = chart.addHistogramSeries({
-              color: lineData.color || selectedColor,
-              priceFormat: { type: 'price' },
-              lastValueVisible: false, priceLineVisible: false,
-            });
-            vLineSeries.setData([{ time: lineData.time, value: lineData.maxPrice, color: lineData.color || selectedColor }]);
-            vLineSeries.applyOptions({ base: lineData.minPrice });
-            drawnLines.push({ 
-              type: 'vline', time: lineData.time, series: vLineSeries, color: lineData.color || selectedColor,
-              minPrice: lineData.minPrice, maxPrice: lineData.maxPrice
-            });
+          try {
+            if (lineData.type === 'hline' && lineData.price != null) {
+              const line = candleSeries.createPriceLine({
+                price: lineData.price, 
+                color: lineData.color || selectedColor,
+                lineWidth: 2, 
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true, 
+                title: 'H-Line'
+              });
+              drawnLines.push({ 
+                type: 'hline', 
+                price: lineData.price, 
+                line: line, 
+                color: lineData.color || selectedColor 
+              });
+            } else if (lineData.type === 'vline' && lineData.time != null) {
+              const vLineSeries = chart.addHistogramSeries({
+                color: lineData.color || selectedColor,
+                priceFormat: { type: 'price' },
+                lastValueVisible: false, 
+                priceLineVisible: false,
+              });
+              vLineSeries.setData([{ 
+                time: lineData.time, 
+                value: lineData.maxPrice, 
+                color: lineData.color || selectedColor 
+              }]);
+              vLineSeries.applyOptions({ base: lineData.minPrice });
+              drawnLines.push({ 
+                type: 'vline', 
+                time: lineData.time, 
+                series: vLineSeries, 
+                color: lineData.color || selectedColor,
+                minPrice: lineData.minPrice, 
+                maxPrice: lineData.maxPrice
+              });
+            }
+          } catch (e) {
+            console.error('Failed to restore line:', e);
           }
         });
       }
@@ -570,7 +626,13 @@
   }
 
   function clearLines(lines) {
-    lines.forEach(line => candleSeries.removePriceLine(line));
+    lines.forEach(line => {
+      try {
+        candleSeries.removePriceLine(line);
+      } catch (e) {
+        console.error('Failed to remove price line:', e);
+      }
+    });
     return [];
   }
 
@@ -613,15 +675,77 @@
   }
 
   function redrawUserLines() {
+    if (!candleSeries || !chart) return;
+    
+    // Create a new array to store valid lines
+    const validLines = [];
+    
     drawnLines.forEach(lineData => {
-      if (lineData.type === 'hline') {
-        lineData.line = candleSeries.createPriceLine({
-          price: lineData.price, color: lineData.color || selectedColor,
-          lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid,
-          axisLabelVisible: true, title: 'H-Line'
-        });
+      try {
+        if (lineData.type === 'hline' && lineData.price != null) {
+          // Remove old line reference if it exists
+          if (lineData.line) {
+            try {
+              candleSeries.removePriceLine(lineData.line);
+            } catch (e) {}
+          }
+          
+          // Create new line
+          const newLine = candleSeries.createPriceLine({
+            price: lineData.price, 
+            color: lineData.color || selectedColor,
+            lineWidth: 2, 
+            lineStyle: LightweightCharts.LineStyle.Solid,
+            axisLabelVisible: true, 
+            title: 'H-Line'
+          });
+          
+          validLines.push({
+            type: 'hline',
+            price: lineData.price,
+            line: newLine,
+            color: lineData.color || selectedColor
+          });
+        } else if (lineData.type === 'vline' && lineData.time != null) {
+          // Remove old series if it exists
+          if (lineData.series) {
+            try {
+              chart.removeSeries(lineData.series);
+            } catch (e) {}
+          }
+          
+          // Create new series
+          const vLineSeries = chart.addHistogramSeries({
+            color: lineData.color || selectedColor,
+            priceFormat: { type: 'price' },
+            lastValueVisible: false, 
+            priceLineVisible: false,
+          });
+          
+          vLineSeries.setData([{ 
+            time: lineData.time, 
+            value: lineData.maxPrice, 
+            color: lineData.color || selectedColor 
+          }]);
+          
+          vLineSeries.applyOptions({ base: lineData.minPrice });
+          
+          validLines.push({
+            type: 'vline',
+            time: lineData.time,
+            series: vLineSeries,
+            color: lineData.color || selectedColor,
+            minPrice: lineData.minPrice,
+            maxPrice: lineData.maxPrice
+          });
+        }
+      } catch (e) {
+        console.error('Failed to redraw line:', e);
       }
     });
+    
+    // Replace drawnLines with only valid lines
+    drawnLines = validLines;
   }
 
   togglePASupportCheckbox.addEventListener('change', () => { updateSettings(); redrawLines(); saveChartState(); });
@@ -694,6 +818,7 @@
   });
 
   function clearChart() {
+    // Improved cleanup for drawn lines
     if (chart && candleSeries) {
       drawnLines.forEach(lineData => {
         try {
@@ -702,14 +827,23 @@
           } else if (lineData.type === 'vline' && lineData.series) {
             chart.removeSeries(lineData.series);
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('Error removing line during clearChart:', e);
+        }
       });
     }
     drawnLines = [];
+    
     if (chart) {
-      if (candleSeries) { chart.removeSeries(candleSeries); candleSeries = null; }
-      if (volumeSeries) { chart.removeSeries(volumeSeries); volumeSeries = null; }
-      chart.remove();
+      if (candleSeries) { 
+        try { chart.removeSeries(candleSeries); } catch (e) {}
+        candleSeries = null; 
+      }
+      if (volumeSeries) { 
+        try { chart.removeSeries(volumeSeries); } catch (e) {}
+        volumeSeries = null; 
+      }
+      try { chart.remove(); } catch (e) {}
       chart = null;
     }
   }
@@ -772,10 +906,8 @@
       lineWidth: 1,
     });
     
-    // Subscribe to visible range changes to save chart position
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       if (chartInitialized && lastCandles.length > 0) {
-        // Debounce the save to avoid too many saves during scrolling
         clearTimeout(window.savePositionTimeout);
         window.savePositionTimeout = setTimeout(() => {
           saveChartState();
@@ -854,6 +986,14 @@
   function updateDrawingButtons() {
     hLineBtn.classList.toggle('active', drawingMode === 'hline');
     vLineBtn.classList.toggle('active', drawingMode === 'vline');
+    chartEl.classList.toggle('drawing-mode', drawingMode !== null);
+    
+    if (drawingMode) {
+      drawingModeIndicator.style.display = 'block';
+      drawingModeIndicator.textContent = drawingMode === 'hline' ? 'Click to draw horizontal line' : 'Click to draw vertical line';
+    } else {
+      drawingModeIndicator.style.display = 'none';
+    }
   }
 
   hLineBtn.addEventListener('click', () => {
@@ -868,6 +1008,8 @@
 
   clearDrawBtn.addEventListener('click', () => {
     if (!chart || !candleSeries) return;
+    
+    // Improved cleanup
     drawnLines.forEach(lineData => {
       try {
         if (lineData.type === 'hline' && lineData.line) {
@@ -875,8 +1017,11 @@
         } else if (lineData.type === 'vline' && lineData.series) {
           chart.removeSeries(lineData.series);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error removing line:', e);
+      }
     });
+    
     drawnLines = [];
     drawingMode = null;
     updateDrawingButtons();
