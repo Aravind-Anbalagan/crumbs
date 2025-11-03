@@ -469,10 +469,24 @@ public class ChartService {
 
 				if (vix.getType().equalsIgnoreCase("BUY") && buyEntrySignal(vix)) {
 
-					makeEntry(vix, strategy, "BUY", testFlag, currentPrice);
+					if (compareHeikinAchiAndPsarCandle(vixList, i)) // Check for Psar start
+					{
+						makeEntry(vix, strategy, "BUY", testFlag, currentPrice);
+					}
+					else
+					{
+						logger.error("First Psar Failed");
+					}
 
 				} else if (vix.getType().equalsIgnoreCase("SELL") && sellEntrySignal(vix)) {
-					makeEntry(vix, strategy, "SELL", testFlag, currentPrice);
+					if (compareHeikinAchiAndPsarCandle(vixList, i)) // Check for Psar start
+					{
+						makeEntry(vix, strategy, "SELL", testFlag, currentPrice);
+					}
+					else
+					{
+						logger.error("First Psar Failed");
+					}
 
 				}
 
@@ -500,21 +514,21 @@ public class ChartService {
 	 */
 	
 	public boolean buyEntrySignal(Vix vix) {
-	    return "BUY".equalsIgnoreCase(vix.getType())
-	        && "BUY".equalsIgnoreCase(vix.getHeikinachi())
+	    return //"BUY".equalsIgnoreCase(vix.getType())
+	           "BUY".equalsIgnoreCase(vix.getHeikinachi())
 	        && "BUY".equalsIgnoreCase(vix.getPsar())
-	        && "BUY".equalsIgnoreCase(vix.getMasignal())
-	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal())
-	        && "BUY".equalsIgnoreCase(vix.getVwapSignal());
+	        //&& "BUY".equalsIgnoreCase(vix.getMasignal())
+	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal());
+	        //&& "BUY".equalsIgnoreCase(vix.getVwapSignal());
 	}
 	
 	public boolean sellEntrySignal(Vix vix) {
-	    return "SELL".equalsIgnoreCase(vix.getType())
-	        && "SELL".equalsIgnoreCase(vix.getHeikinachi())
+	    return //"SELL".equalsIgnoreCase(vix.getType())
+	           "SELL".equalsIgnoreCase(vix.getHeikinachi())
 	        && "SELL".equalsIgnoreCase(vix.getPsar())
-	        && "SELL".equalsIgnoreCase(vix.getMasignal())
-	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal())
-	        && "SELL".equalsIgnoreCase(vix.getVwapSignal());
+	        //&& "SELL".equalsIgnoreCase(vix.getMasignal())
+	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal());
+	        //&& "SELL".equalsIgnoreCase(vix.getVwapSignal());
 	}
 	
 	public boolean buyExitSignal(Vix vix) {
@@ -788,16 +802,16 @@ public class ChartService {
 	}
 
 	//Check Heikin = Psar
-	public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
+	/*public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
 		if (vixList.get(i).getPsar() != null && vixList.get(i).getHeikinachi() != null) {
 			if (vixList.get(i).getPsar().equalsIgnoreCase(vixList.get(i).getHeikinachi())) {
 				return true;
 			}
 		}
 		return false;
-	}
+	}*/
 	
-	/*public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
+	public boolean compareHeikinAchiAndPsarCandle(List<Vix> vixList, int i) {
 	 
 
 	    if (vixList == null || vixList.isEmpty() || i < 0 || i >= vixList.size()) {
@@ -830,7 +844,7 @@ public class ChartService {
 
 	    logger.info("Candle[{}] → Fresh PSAR Start Detected ✅", i);
 	    return true;
-	}*/
+	}
 
 
 
@@ -966,11 +980,11 @@ public class ChartService {
 		BigDecimal stopLossThreshold;
 
 		if ("SILVERM".equalsIgnoreCase(name)) {
-		    targetThreshold = new BigDecimal("500.00");
-		    stopLossThreshold = new BigDecimal("-250.00");
+		    targetThreshold = new BigDecimal("250.00");
+		    stopLossThreshold = new BigDecimal("-100.00");
 		} else { // Default: Nifty
-		    targetThreshold = new BigDecimal("40.00");
-		    stopLossThreshold = new BigDecimal("-20.00");
+		    targetThreshold = new BigDecimal("20.00");
+		    stopLossThreshold = new BigDecimal("-10.00");
 		}
 		BigDecimal difference = currentPrice.subtract(executedPrice);
 

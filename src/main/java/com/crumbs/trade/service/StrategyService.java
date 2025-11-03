@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -372,8 +373,9 @@ public class StrategyService {
 			throws IOException, SmartAPIException {
 		LocalDate today = LocalDate.now();
 		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
-		String fromDate = lastWorkingDay.toString().concat(" 09:15");
-		String toDate = today.toString().concat(" 09:15");
+		String toDate = lastWorkingDay.toString().concat(" 09:15");
+		LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(lastWorkingDay);
+		String fromDate = previousWorkingDay.toString().concat(" 09:15");
 		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "ONE_DAY", fromDate,
 				toDate);
 		if (!ohlcArray.isEmpty()) {
@@ -404,26 +406,78 @@ public class StrategyService {
 			strangleCprDto.setHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
 			strangleCprDto.setLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
 		}
-		return null;
+		return strangleCprDto;
 
 	}
 	
-	public void strangle_CPR() throws IOException, SmartAPIException
-	{
-		StrangleCprDto strangleCprDto  = new StrangleCprDto();
-		Strategy strategy = new Strategy();
-		strategy = strategyRepo.findByName("STRANGLE");
+	public void strangle_CPR() throws IOException, SmartAPIException {
+	    StrangleCprDto strangleCprDto = new StrangleCprDto();
+	    Strategy strategy = strategyRepo.findByName("STRANGLE");
+	   
 
-		List<Orders> orderList = orderRepository.findByNameAndActive("NIFTY", 1);
-		SmartConnect smartconnect = angelOne.signIn();
-		//Get CPR
-		strangleCprDto = getCPR(smartconnect,strategy,strangleCprDto);
-		
-		//Get First 5 Mins Candle Data
-		strangleCprDto = getFirstCandleData(smartconnect,strategy,strangleCprDto);
-		
-		System.out.println(strangleCprDto);
-		//Get First Five mins OHLC
-		
+	    SmartConnect smartconnect = angelOne.signIn();
+
+	    // Ensure we start after 09:20 (first 5-min candle closed)
+	    LocalTime now = LocalTime.now();
+	    if (now.isBefore(LocalTime.of(9, 20))) {
+	        System.out.println("⏰ Wait until 09:20 AM for first 5-min candle to close.");
+	        return;
+	    }
+
+	    // 1️⃣ Get CPR (top, bottom, pivot)
+	    strangleCprDto = getCPR(smartconnect, strategy, strangleCprDto);
+
+	    // 2️⃣ Get first 5-minute candle data
+	    strangleCprDto = getFirstCandleData(smartconnect, strategy, strangleCprDto);
+
+	    // Print reference values
+	    System.out.println("CPR & Candle Data: " + strangleCprDto);
+	    getCPRStrategySignal(strangleCprDto,strategy,smartconnect);
+	   
 	}
+
+    public void getCPRStrategySignal(StrangleCprDto strangleCprDto, Strategy strategy, SmartConnect smartconnect)
+    {
+    	 // Extract required fields
+	    BigDecimal topPivot = strangleCprDto.getTop_pivot();
+	    BigDecimal bottomPivot = strangleCprDto.getBottom_pivot();
+	    BigDecimal first5High = strangleCprDto.getFirstFiveMinHigh();
+	    BigDecimal first5Low = strangleCprDto.getFirstFiveMinLow();
+
+	    // 3️⃣ Fetch current LTP
+	    BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect,
+				strategy.getExchange(), strategy.getTradingsymbol(),
+				strategy.getToken(),"ltp");
+	    System.out.println("Current Price: " + currentPrice);
+
+	    // 4️⃣ Decision logic
+	    String signal;
+	    if (currentPrice.compareTo(bottomPivot) > 0 && currentPrice.compareTo(topPivot) < 0) {
+	        signal = "NO TRADE";  // between CPR
+	    } else if (currentPrice.compareTo(first5High) > 0 && currentPrice.compareTo(topPivot) > 0) {
+	        signal = "BUY";
+	    } else if (currentPrice.compareTo(first5Low) < 0 && currentPrice.compareTo(bottomPivot) < 0) {
+	        signal = "SELL";
+	    } else {
+	        signal = "WAIT";
+	    }
+
+	    System.out.println("Signal: " + signal);
+	    executeCPRStrategyOrders(signal);
+    }
+    
+    public void executeCPRStrategyOrders(String signal)
+    {
+    	  SmartConnect smartconnect = angelOne.signIn();
+    	 List<Orders> orderList = orderRepository.findByNameAndActive("NIFTY", 1);
+	    // 5️⃣ Optional: Execute trades
+	    if ("BUY".equals(signal)) {
+	        //placeBuyOrder(orderList, smartconnect);
+	    } else if ("SELL".equals(signal)) {
+	        //placeSellOrder(orderList, smartconnect);
+	    } else {
+	        System.out.println("No trade executed. Signal = " + signal);
+	    }
+    }
+
 }
