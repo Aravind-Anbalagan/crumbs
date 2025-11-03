@@ -116,13 +116,18 @@ public class SRService {
 		return null;
 	}
 	
-	public BigDecimal getCurrentPriceForIndex(String name, String symbol)
-	{
-		SmartConnect smartConnect = angelOne.signIn();
-		Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
-		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartConnect, indexes.getExchange(),
-				indexes.getSymbol(), indexes.getToken());
-		return currentPrice;
+	public BigDecimal getCurrentPriceForIndex(String name, String symbol) {
+		try {
+			SmartConnect smartConnect = angelOne.signIn();
+			Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
+			BigDecimal currentPrice = angelOneService.getcurrentPrice(smartConnect, indexes.getExchange(),
+					indexes.getSymbol(), indexes.getToken());
+			return currentPrice;
+		} catch (Exception e) {
+			logger.error("Unable to get price {} {} ", name, symbol);
+		}
+		return null;
+
 	}
 	
 	// New method to get last candle close based on market timings
