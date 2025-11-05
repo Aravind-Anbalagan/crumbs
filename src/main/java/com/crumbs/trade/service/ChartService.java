@@ -640,6 +640,7 @@ public class ChartService {
 		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
 		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(vix.getName());
 		boolean tradeFlag = false;
+		SmartConnect smartconnect = angelOne.signIn();
 		//if (resultVix == null && type.equalsIgnoreCase(resultVix.getCombine()) ) {
 		if (resultVix == null ) {
 			// Entry
@@ -660,7 +661,7 @@ public class ChartService {
 				resultVix.setEntryPrice(vix.getOpen());
 			} else {
 				resultVix.setEntryTime(currentDate);
-				resultVix.setEntryPrice(currentPrice);
+				
 			}
 			resultVix.setActive(true);
 			resultVix.setTimestamp(vix.getTimestamp());
@@ -679,7 +680,8 @@ public class ChartService {
 				resultVix.setToken(token.getToken());
 				resultVix.setExchange(token.getExch_seg());
 				resultVix.setSymbol(token.getSymbol());
-
+				//Fetch the current tradable price
+				resultVix.setEntryPrice(token.getCurrentPrice());
 			}
 			resultVixRepo.save(resultVix);
 			String message = "Entry :" + strategy.getName() + " -> " + type;
@@ -704,12 +706,13 @@ public class ChartService {
 						resultVix.getType()));
 			}
 
-			
+			Token token =triggerExitOrder(resultVix, tradeFlag);
 			if (testFlag) {
 				resultVix.setExitPrice(vix.getOpen());
 				resultVix.setExitTime(formatDateTime(vix.getTimestamp()));
 			} else {
-				resultVix.setExitPrice(currentPrice);
+				//Get the Current Tradable price
+				resultVix.setExitPrice(token.getCurrentPrice());
 				resultVix.setExitTime(currentDate);
 				BigDecimal profitLoss = null;
 				if ("BUY".equalsIgnoreCase(resultVix.getType())) {
@@ -731,7 +734,7 @@ public class ChartService {
 
 			tradeFlag = "Y".equals(strategy.getLive()); // Take Trade In Flat Trade
 			logger.info("Exit trade: Signal={}, Ma={}", type, vix.getMasignal());
-			triggerExitOrder(resultVix, tradeFlag);
+			
 			resultVixRepo.save(resultVix);
 			
 			//Execute the Next Trade as per the signal
@@ -906,7 +909,10 @@ public class ChartService {
 			token.setToken(indexes.getToken());
 			token.setSymbol(indexes.getSymbol());
 			// orderService.PlaceOrder(smartconnect, token, null);
-			
+			//Before place order, get the current Price
+			BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, indexes.getExchange(),
+					indexes.getSymbol(),indexes.getToken());
+			token.setCurrentPrice(currentPrice);
 			//Place trade in Flat Trade
 			if(tradeFlag)
 			{
@@ -980,10 +986,10 @@ public class ChartService {
 		BigDecimal stopLossThreshold;
 
 		if ("SILVERM".equalsIgnoreCase(name)) {
-		    targetThreshold = new BigDecimal("250.00");
-		    stopLossThreshold = new BigDecimal("-100.00");
+		    targetThreshold = new BigDecimal("1000.00");
+		    stopLossThreshold = new BigDecimal("-250.00");
 		} else { // Default: Nifty
-		    targetThreshold = new BigDecimal("20.00");
+		    targetThreshold = new BigDecimal("40.00");
 		    stopLossThreshold = new BigDecimal("-10.00");
 		}
 		BigDecimal difference = currentPrice.subtract(executedPrice);

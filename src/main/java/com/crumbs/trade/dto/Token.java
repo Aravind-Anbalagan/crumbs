@@ -1,5 +1,7 @@
 package com.crumbs.trade.dto;
 
+import java.math.BigDecimal;
+
 import lombok.Data;
 
 @Data
@@ -33,4 +35,5 @@ public class Token {
 	String stoploss;
 	String gttType;
 	String stoplosstriggerprice;
+	BigDecimal currentPrice;
 }
