@@ -1069,7 +1069,7 @@ public class ChartService {
 		}
 		else
 		{
-			resultVix.setExitPrice(currentPrice);
+			resultVix.setExitPrice(token.getCurrentPrice());
 			resultVix.setExitTime(currentDate);
 			resultVix.setResult(result);
 		}
