@@ -716,17 +716,28 @@ public class ChartService {
 				//Get the Current Tradable price
 				resultVix.setExitPrice(token.getCurrentPrice());
 				resultVix.setExitTime(currentDate);
-				BigDecimal profitLoss = null;
-				if ("BUY".equalsIgnoreCase(resultVix.getType())) {
-					profitLoss = resultVix.getExitPrice().subtract(resultVix.getEntryPrice());
-				} else if ("SELL".equalsIgnoreCase(resultVix.getType())) {
-					profitLoss = resultVix.getEntryPrice().subtract(resultVix.getExitPrice());
+
+				BigDecimal entry = resultVix.getEntryPrice();
+				BigDecimal exit = resultVix.getExitPrice();
+
+				if (entry == null || exit == null) {
+				    logger.error("Entry or Exit price missing for {}", resultVix.getName());
+				    return;
 				}
-				if (profitLoss.compareTo(BigDecimal.ZERO) > 0) {
-					resultVix.setResult("PROFIT");
-				} else if (profitLoss.compareTo(BigDecimal.ZERO) < 0) {
-					resultVix.setResult("LOSS");
+
+				// Since both CE BUY ("BUY") and PE BUY ("SELL") are option buys
+				BigDecimal profitLoss = exit.subtract(entry);
+				profitLoss = profitLoss.setScale(2, RoundingMode.HALF_UP);
+
+				int compare = profitLoss.compareTo(BigDecimal.ZERO);
+				if (compare > 0) {
+				    resultVix.setResult("PROFIT");
+				} else if (compare < 0) {
+				    resultVix.setResult("LOSS");
+				} else {
+				    resultVix.setResult("NO CHANGE");
 				}
+
 			}
 			resultVix.setPoints(calculatePoints(resultVix));
 			resultVix.setActive(false);
