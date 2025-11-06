@@ -19,6 +19,10 @@ public class ChartDataDTO {
     private List<SignalDTO> signals;
     
     private CandleDTO previousDayCandle;
+    
+    private String final_signal;
+    private String final_reason;
+    private String final_confidence;
 }
 
 

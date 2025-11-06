@@ -189,7 +189,10 @@ public class ChartController {
         dto.setFiboResistance(priceActionResult.getFibo_resistances());
         CandleDTO candleDto = getPreviousDayCandle(name, exchange, symbol);
         dto.setPreviousDayCandle(candleDto);
-
+        dto.setFinal_confidence(priceActionResult.getFinal_confidence());
+        dto.setFinal_reason(priceActionResult.getFinal_reason());
+        dto.setFinal_signal(priceActionResult.getFinal_signal());
+        
         //dto.setSignals(signals);
 
         return dto;

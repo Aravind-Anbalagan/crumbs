@@ -4,6 +4,7 @@ import com.crumbs.trade.dto.FibonacciLevel;
 import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SupportResistanceZone;
 import com.crumbs.trade.entity.PricesIndex;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -11,32 +12,54 @@ import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class PriceActionService {
 
     public enum Signal { BUY, SELL, HOLD }
     public enum Trend { UPTREND, DOWNTREND, SIDEWAYS, UNKNOWN }
 
+    // Configuration Constants
     private static final int MAX_SR_ZONES_INTRADAY = 5;
     private static final int MAX_SR_ZONES_POSITIONAL = 5;
+    private static final int MIN_TOUCHES_INTRADAY = 2;
+    private static final int MIN_TOUCHES_POSITIONAL = 3;
+    private static final int MIN_CANDLES_REQUIRED = 10;
+    private static final int TREND_SHORT_MA_PERIOD = 5;
+    private static final int TREND_LONG_MA_PERIOD = 20;
+    
+    private static final BigDecimal TOLERANCE_PERCENTAGE = BigDecimal.valueOf(0.0015);
+    private static final BigDecimal MCX_MAX_DISTANCE_PERCENTAGE = BigDecimal.valueOf(0.005);
+    private static final BigDecimal INTRADAY_MAX_DISTANCE_PERCENTAGE = BigDecimal.valueOf(0.005);
+    private static final BigDecimal POSITIONAL_MAX_DISTANCE_PERCENTAGE = BigDecimal.valueOf(0.1);
+    private static final BigDecimal FIBO_TOLERANCE_PERCENTAGE = BigDecimal.valueOf(0.02);
+    private static final BigDecimal TREND_THRESHOLD_PERCENTAGE = BigDecimal.valueOf(0.01);
+    
     private static final Set<String> INTRADAY_FRAMES = Set.of("ONE_MINUTE", "FIVE_MINUTE", "THIRTY_MINUTE", "ONE_HOUR");
+    private static final Set<String> VOLUME_IGNORED_EXCHANGES = Set.of("MCX");
 
     // ---------------------- PUBLIC ANALYZE METHOD ----------------------
     public PriceActionResult analyze(BigDecimal currentPrice, List<PricesIndex> candles, String timeframe) {
+        if (log.isDebugEnabled()) {
+            log.debug("Starting price action analysis: price={}, candles={}, timeframe={}", 
+                currentPrice, candles != null ? candles.size() : 0, timeframe);
+        }
+
         PriceActionResult result = new PriceActionResult();
         result.setCurrentPrice(currentPrice);
 
-        if (candles == null || candles.size() < 5) {
-            result.setSr_signal(Signal.HOLD.name());
-            result.setSr_trend(Trend.UNKNOWN.name());
-            result.setSr_reason("Insufficient data");
-            result.setFibo_signal(Signal.HOLD.name());
-            result.setFibo_reason("Insufficient data");
-            result.setFinal_signal(Signal.HOLD.name());
-            result.setFinal_reason("Insufficient data");
-            result.setFinal_confidence("LOW");
-            return result;
+        // Validate input
+        if (candles == null || candles.isEmpty()) {
+            return buildInsufficientDataResult(currentPrice, "No candle data available");
         }
+
+        if (candles.size() < MIN_CANDLES_REQUIRED) {
+            return buildInsufficientDataResult(currentPrice, 
+                "Insufficient candles: " + candles.size() + " (minimum " + MIN_CANDLES_REQUIRED + " required)");
+        }
+
+        // Calculate min/max from candles
+        calculateMinMaxData(candles, result);
 
         // Price Action SR
         analyzePriceActionSR(currentPrice, candles, timeframe, result);
@@ -47,6 +70,60 @@ public class PriceActionService {
         // Final merged signal
         mergeFinalSignal(result);
 
+        if (log.isDebugEnabled()) {
+            log.debug("Analysis complete: signal={}, confidence={}", 
+                result.getFinal_signal(), result.getFinal_confidence());
+        }
+
+        return result;
+    }
+
+    // ---------------------- MIN/MAX DATA CALCULATION ----------------------
+    private void calculateMinMaxData(List<PricesIndex> candles, PriceActionResult result) {
+        if (candles == null || candles.isEmpty()) return;
+
+        BigDecimal maxHigh = candles.get(0).getHigh();
+        BigDecimal minLow = candles.get(0).getLow();
+        BigDecimal maxVolume = candles.get(0).getVolume();
+        BigDecimal minVolume = candles.get(0).getVolume();
+
+        for (PricesIndex candle : candles) {
+            if (candle.getHigh() != null && candle.getHigh().compareTo(maxHigh) > 0) {
+                maxHigh = candle.getHigh();
+            }
+            if (candle.getLow() != null && candle.getLow().compareTo(minLow) < 0) {
+                minLow = candle.getLow();
+            }
+            if (candle.getVolume() != null) {
+                if (maxVolume == null || candle.getVolume().compareTo(maxVolume) > 0) {
+                    maxVolume = candle.getVolume();
+                }
+                if (minVolume == null || candle.getVolume().compareTo(minVolume) < 0) {
+                    minVolume = candle.getVolume();
+                }
+            }
+        }
+
+        result.setMaxHigh(maxHigh);
+        result.setMinLow(minLow);
+        result.setMaxVolume(maxVolume);
+        result.setMinVolume(minVolume);
+        result.setPriceRange(maxHigh.subtract(minLow));
+    }
+
+    // ---------------------- INSUFFICIENT DATA HELPER ----------------------
+    private PriceActionResult buildInsufficientDataResult(BigDecimal currentPrice, String reason) {
+        PriceActionResult result = new PriceActionResult();
+        result.setCurrentPrice(currentPrice);
+        result.setSr_signal(Signal.HOLD.name());
+        result.setSr_trend(Trend.UNKNOWN.name());
+        result.setSr_reason(reason);
+        result.setFibo_signal(Signal.HOLD.name());
+        result.setFibo_reason(reason);
+        result.setFinal_signal(Signal.HOLD.name());
+        result.setFinal_reason(reason);
+        result.setFinal_confidence("LOW");
+        result.setConsolidatedDecision("NO_TRADE");
         return result;
     }
 
@@ -60,7 +137,7 @@ public class PriceActionService {
         String finalReason = "HOLD - No strong confluence detected.";
         String finalConfidence = "LOW";
 
-        // --- Determine final_signal based on SR and Fibonacci ---
+        // Determine final_signal based on SR and Fibonacci
         if (srSignal == fiboSignal && srSignal != Signal.HOLD) {
             finalSignal = srSignal;
             finalReason = "Strong confluence: " + srSignal + " from both SR & Fibonacci.";
@@ -77,7 +154,7 @@ public class PriceActionService {
             finalConfidence = "LOW";
         }
 
-        // --- Adjust confidence based on trend ---
+        // Adjust confidence based on trend
         if (finalSignal == Signal.BUY && trend == Trend.UPTREND) {
             finalConfidence = "VERY_HIGH";
             finalReason += " Supported by uptrend.";
@@ -91,12 +168,11 @@ public class PriceActionService {
             }
         }
 
-        // --- Set final fields ---
         result.setFinal_signal(finalSignal.name());
         result.setFinal_reason(finalReason);
         result.setFinal_confidence(finalConfidence);
 
-        // --- Consolidated decision for DB storage ---
+        // Consolidated decision for DB storage
         String consolidatedDecision;
         if ("BUY".equals(result.getFinal_signal()) &&
             ("UPTREND".equals(result.getSr_trend()) || "SIDEWAYS".equals(result.getSr_trend())) &&
@@ -112,68 +188,83 @@ public class PriceActionService {
         result.setConsolidatedDecision(consolidatedDecision);
     }
 
-
     // ---------------------- PRICE ACTION SR ----------------------
     private void analyzePriceActionSR(BigDecimal currentPrice, List<PricesIndex> candles, String timeframe, PriceActionResult result) {
         if (candles == null || candles.isEmpty()) return;
 
-        // Set exchange from first candle
         String exchange = candles.get(0).getExchange();
         result.setExchange(exchange);
 
-        // Detect trend
+        // Detect trend with improved algorithm
         Trend trend = detectTrend(candles);
         result.setSr_trend(trend.name());
 
-        // Calculate average volume and range
-        BigDecimal avgVolume = candles.stream()
-                .map(PricesIndex::getVolume)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .divide(BigDecimal.valueOf(candles.size()), RoundingMode.HALF_UP);
+        // Single-pass calculation for better performance
+        BigDecimal totalVolume = BigDecimal.ZERO;
+        BigDecimal totalRange = BigDecimal.ZERO;
+        int validCandles = 0;
 
-        BigDecimal avgRange = candles.stream()
-                .map(c -> c.getHigh().subtract(c.getLow()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .divide(BigDecimal.valueOf(candles.size()), RoundingMode.HALF_UP);
+        for (PricesIndex candle : candles) {
+            if (candle.getVolume() != null) {
+                totalVolume = totalVolume.add(candle.getVolume());
+            }
+            if (candle.getHigh() != null && candle.getLow() != null) {
+                totalRange = totalRange.add(candle.getHigh().subtract(candle.getLow()));
+                validCandles++;
+            }
+        }
+
+        if (validCandles == 0) {
+            result.setSr_signal(Signal.HOLD.name());
+            result.setSr_reason("No valid candle data");
+            return;
+        }
+
+        BigDecimal avgVolume = totalVolume.divide(BigDecimal.valueOf(candles.size()), RoundingMode.HALF_UP);
+        BigDecimal avgRange = totalRange.divide(BigDecimal.valueOf(validCandles), RoundingMode.HALF_UP);
 
         // Adaptive tolerance
-        BigDecimal tolerance = avgRange.max(currentPrice.multiply(BigDecimal.valueOf(0.0015)));
+        BigDecimal tolerance = avgRange.max(currentPrice.multiply(TOLERANCE_PERCENTAGE));
 
         boolean intraday = INTRADAY_FRAMES.contains(timeframe.toUpperCase());
 
-        // Adaptive maxDistance for MCX vs NFO
+        // Adaptive maxDistance
         BigDecimal maxDistance;
-        if ("MCX".equalsIgnoreCase(exchange)) {
-            maxDistance = avgRange.max(currentPrice.multiply(BigDecimal.valueOf(0.005))); // 0.5% or avgRange
+        if (VOLUME_IGNORED_EXCHANGES.contains(exchange.toUpperCase())) {
+            maxDistance = avgRange.max(currentPrice.multiply(MCX_MAX_DISTANCE_PERCENTAGE));
         } else {
             maxDistance = intraday
-                    ? currentPrice.multiply(BigDecimal.valueOf(0.005))  // 0.5%
-                    : currentPrice.multiply(BigDecimal.valueOf(0.1));   // 10%
+                    ? currentPrice.multiply(INTRADAY_MAX_DISTANCE_PERCENTAGE)
+                    : currentPrice.multiply(POSITIONAL_MAX_DISTANCE_PERCENTAGE);
         }
 
         int maxSRZones = intraday ? MAX_SR_ZONES_INTRADAY : MAX_SR_ZONES_POSITIONAL;
-        final int minTouches = 1; // 1 touch sufficient for all instruments
+        int minTouches = intraday ? MIN_TOUCHES_INTRADAY : MIN_TOUCHES_POSITIONAL;
 
-        List<SupportResistanceZone> supportZones = new ArrayList<>();
-        List<SupportResistanceZone> resistanceZones = new ArrayList<>();
+        // Use HashMap for O(1) zone lookup
+        Map<BigDecimal, SupportResistanceZone> supportZoneMap = new HashMap<>();
+        Map<BigDecimal, SupportResistanceZone> resistanceZoneMap = new HashMap<>();
 
         for (int i = 0; i < candles.size(); i++) {
             PricesIndex c = candles.get(i);
             int age = candles.size() - 1 - i;
-            if (c.getLow() != null) addOrUpdateZone(exchange, supportZones, c.getLow(), c.getVolume(), avgVolume, tolerance, age);
-            if (c.getHigh() != null) addOrUpdateZone(exchange, resistanceZones, c.getHigh(), c.getVolume(), avgVolume, tolerance, age);
+            if (c.getLow() != null) {
+                addOrUpdateZoneOptimized(exchange, supportZoneMap, c.getLow(), c.getVolume(), avgVolume, tolerance, age);
+            }
+            if (c.getHigh() != null) {
+                addOrUpdateZoneOptimized(exchange, resistanceZoneMap, c.getHigh(), c.getVolume(), avgVolume, tolerance, age);
+            }
         }
 
-        // Filter and sort zones
-        supportZones = supportZones.stream()
+        // Convert to lists and filter
+        List<SupportResistanceZone> supportZones = supportZoneMap.values().stream()
                 .filter(z -> z.getTouches() >= minTouches
                         && currentPrice.subtract(z.getLevel()).abs().compareTo(maxDistance) <= 0)
                 .sorted(Comparator.comparing(z -> weightedDistance(z, currentPrice)))
                 .limit(maxSRZones)
                 .collect(Collectors.toList());
 
-        resistanceZones = resistanceZones.stream()
+        List<SupportResistanceZone> resistanceZones = resistanceZoneMap.values().stream()
                 .filter(z -> z.getTouches() >= minTouches
                         && z.getLevel().subtract(currentPrice).abs().compareTo(maxDistance) <= 0)
                 .sorted(Comparator.comparing(z -> weightedDistance(z, currentPrice)))
@@ -195,14 +286,14 @@ public class PriceActionService {
 
         if (nearSupport && !nearResistance) {
             srSignal = Signal.BUY;
-            srReason = "BUY - Price near strong support zone.";
-            srConfidence = "HIGH";
+            srReason = "BUY - Price near strong support zone (touches: " + supportZones.get(0).getTouches() + ").";
+            srConfidence = supportZones.get(0).getTouches() >= minTouches + 2 ? "VERY_HIGH" : "HIGH";
             result.setSr_stopLoss(supportZones.get(0).getLevel().subtract(tolerance));
             result.setSr_projectedTarget(resistanceZones.isEmpty() ? null : resistanceZones.get(0).getLevel());
         } else if (nearResistance && !nearSupport) {
             srSignal = Signal.SELL;
-            srReason = "SELL - Price near strong resistance zone.";
-            srConfidence = "HIGH";
+            srReason = "SELL - Price near strong resistance zone (touches: " + resistanceZones.get(0).getTouches() + ").";
+            srConfidence = resistanceZones.get(0).getTouches() >= minTouches + 2 ? "VERY_HIGH" : "HIGH";
             result.setSr_stopLoss(resistanceZones.get(0).getLevel().add(tolerance));
             result.setSr_projectedTarget(supportZones.isEmpty() ? null : supportZones.get(0).getLevel());
         } else if (nearSupport && nearResistance) {
@@ -218,36 +309,42 @@ public class PriceActionService {
         result.setSr_priceActionTriggered(srSignal != Signal.HOLD);
     }
 
-    // Updated addOrUpdateZone() for exchange
-    private void addOrUpdateZone(String exchange, List<SupportResistanceZone> zones, BigDecimal level, BigDecimal volume,
-                                 BigDecimal avgVolume, BigDecimal tolerance, int ageInCandles) {
-        for (SupportResistanceZone z : zones) {
-            if (z.getLevel().subtract(level).abs().compareTo(tolerance) <= 0) {
-                z.setTouches(z.getTouches() + 1);
-                if ("MCX".equalsIgnoreCase(exchange)) {
-                    z.setVolumeConfirmed(true); // ignore volume for MCX
-                } else {
-                    if (volume != null && volume.compareTo(avgVolume) > 0) z.setVolumeConfirmed(true);
-                }
-                z.setLastTouchAge(Math.min(z.getLastTouchAge(), ageInCandles));
-                return;
+    // Optimized zone management with HashMap
+    private void addOrUpdateZoneOptimized(String exchange, Map<BigDecimal, SupportResistanceZone> zoneMap, 
+                                         BigDecimal level, BigDecimal volume, BigDecimal avgVolume, 
+                                         BigDecimal tolerance, int ageInCandles) {
+        // Find existing zone within tolerance
+        SupportResistanceZone existingZone = null;
+        BigDecimal existingKey = null;
+        
+        for (Map.Entry<BigDecimal, SupportResistanceZone> entry : zoneMap.entrySet()) {
+            if (entry.getKey().subtract(level).abs().compareTo(tolerance) <= 0) {
+                existingZone = entry.getValue();
+                existingKey = entry.getKey();
+                break;
             }
         }
-        SupportResistanceZone newZone = new SupportResistanceZone();
-        newZone.setLevel(level);
-        newZone.setTouches(1);
-        if ("MCX".equalsIgnoreCase(exchange)) {
-            newZone.setVolumeConfirmed(true);
+
+        if (existingZone != null) {
+            existingZone.setTouches(existingZone.getTouches() + 1);
+            if (VOLUME_IGNORED_EXCHANGES.contains(exchange.toUpperCase())) {
+                existingZone.setVolumeConfirmed(true);
+            } else {
+                if (volume != null && volume.compareTo(avgVolume) > 0) {
+                    existingZone.setVolumeConfirmed(true);
+                }
+            }
+            existingZone.setLastTouchAge(Math.min(existingZone.getLastTouchAge(), ageInCandles));
         } else {
-            if (volume != null && volume.compareTo(avgVolume) > 0) newZone.setVolumeConfirmed(true);
+            SupportResistanceZone newZone = new SupportResistanceZone();
+            newZone.setLevel(level);
+            newZone.setTouches(1);
+            newZone.setVolumeConfirmed(VOLUME_IGNORED_EXCHANGES.contains(exchange.toUpperCase()) ||
+                    (volume != null && volume.compareTo(avgVolume) > 0));
+            newZone.setLastTouchAge(ageInCandles);
+            zoneMap.put(level, newZone);
         }
-        newZone.setLastTouchAge(ageInCandles);
-        zones.add(newZone);
     }
-
-
-
-
 
     // ---------------------- FIBONACCI SR ----------------------
     private void analyzeFiboSR(BigDecimal currentPrice, List<PricesIndex> candles, PriceActionResult result, String timeframe) {
@@ -256,24 +353,52 @@ public class PriceActionService {
         int lookback = Math.min(candles.size(), 50);
         List<PricesIndex> recent = candles.subList(candles.size() - lookback, candles.size());
 
-        BigDecimal high = recent.stream().map(PricesIndex::getHigh).max(BigDecimal::compareTo).orElse(currentPrice);
-        BigDecimal low = recent.stream().map(PricesIndex::getLow).min(BigDecimal::compareTo).orElse(currentPrice);
+        BigDecimal high = recent.stream()
+                .map(PricesIndex::getHigh)
+                .filter(Objects::nonNull)
+                .max(BigDecimal::compareTo)
+                .orElse(currentPrice);
+        
+        BigDecimal low = recent.stream()
+                .map(PricesIndex::getLow)
+                .filter(Objects::nonNull)
+                .min(BigDecimal::compareTo)
+                .orElse(currentPrice);
+        
         BigDecimal range = high.subtract(low);
 
-        BigDecimal tolerance = range.multiply(BigDecimal.valueOf(0.02)).max(currentPrice.multiply(BigDecimal.valueOf(0.002)));
+        if (range.compareTo(BigDecimal.ZERO) == 0) {
+            result.setFibo_signal(Signal.HOLD.name());
+            result.setFibo_reason("No price range for Fibonacci calculation");
+            return;
+        }
 
-        BigDecimal[] ratios = {BigDecimal.valueOf(0.236), BigDecimal.valueOf(0.382),
-                BigDecimal.valueOf(0.5), BigDecimal.valueOf(0.618), BigDecimal.valueOf(0.786)};
+        BigDecimal tolerance = range.multiply(FIBO_TOLERANCE_PERCENTAGE)
+                .max(currentPrice.multiply(BigDecimal.valueOf(0.002)));
+
+        BigDecimal[] ratios = {
+            BigDecimal.valueOf(0.236), 
+            BigDecimal.valueOf(0.382),
+            BigDecimal.valueOf(0.5), 
+            BigDecimal.valueOf(0.618), 
+            BigDecimal.valueOf(0.786)
+        };
 
         List<FibonacciLevel> fiboSupports = new ArrayList<>();
         List<FibonacciLevel> fiboResistances = new ArrayList<>();
 
         for (BigDecimal r : ratios) {
             BigDecimal supportLevel = low.add(range.multiply(r)).setScale(2, RoundingMode.HALF_UP);
-            fiboSupports.add(new FibonacciLevel(supportLevel, r.multiply(BigDecimal.valueOf(100)).setScale(1, RoundingMode.HALF_UP) + "% (" + supportLevel + ")"));
+            fiboSupports.add(new FibonacciLevel(
+                supportLevel, 
+                r.multiply(BigDecimal.valueOf(100)).setScale(1, RoundingMode.HALF_UP) + "% (" + supportLevel + ")"
+            ));
 
             BigDecimal resistanceLevel = high.subtract(range.multiply(r)).setScale(2, RoundingMode.HALF_UP);
-            fiboResistances.add(new FibonacciLevel(resistanceLevel, r.multiply(BigDecimal.valueOf(100)).setScale(1, RoundingMode.HALF_UP) + "% (" + resistanceLevel + ")"));
+            fiboResistances.add(new FibonacciLevel(
+                resistanceLevel, 
+                r.multiply(BigDecimal.valueOf(100)).setScale(1, RoundingMode.HALF_UP) + "% (" + resistanceLevel + ")"
+            ));
         }
 
         fiboSupports.sort(Comparator.comparing(f -> currentPrice.subtract(f.getLevel()).abs()));
@@ -282,12 +407,7 @@ public class PriceActionService {
         result.setFibo_supports(fiboSupports);
         result.setFibo_resistances(fiboResistances);
 
-        FibonacciLevel nearest = !fiboSupports.isEmpty() && !fiboResistances.isEmpty()
-                ? (currentPrice.subtract(fiboSupports.get(0).getLevel()).abs()
-                .compareTo(fiboResistances.get(0).getLevel().subtract(currentPrice).abs()) < 0
-                ? fiboSupports.get(0) : fiboResistances.get(0))
-                : (fiboSupports.isEmpty() ? (fiboResistances.isEmpty() ? null : fiboResistances.get(0)) : fiboSupports.get(0));
-
+        FibonacciLevel nearest = findNearestFibonacciLevel(currentPrice, fiboSupports, fiboResistances);
         result.setFibo_nearestLevel(nearest);
 
         Signal fiboSignal = Signal.HOLD;
@@ -324,22 +444,84 @@ public class PriceActionService {
     }
 
     // ---------------------- HELPERS ----------------------
-   
+    
+    private FibonacciLevel findNearestFibonacciLevel(BigDecimal currentPrice, 
+                                                     List<FibonacciLevel> supports, 
+                                                     List<FibonacciLevel> resistances) {
+        if (supports.isEmpty() && resistances.isEmpty()) return null;
+        if (supports.isEmpty()) return resistances.get(0);
+        if (resistances.isEmpty()) return supports.get(0);
+        
+        BigDecimal supportDistance = currentPrice.subtract(supports.get(0).getLevel()).abs();
+        BigDecimal resistanceDistance = resistances.get(0).getLevel().subtract(currentPrice).abs();
+        
+        return supportDistance.compareTo(resistanceDistance) < 0 ? supports.get(0) : resistances.get(0);
+    }
+
     private BigDecimal weightedDistance(SupportResistanceZone zone, BigDecimal currentPrice) {
         BigDecimal distance = currentPrice.subtract(zone.getLevel()).abs();
         BigDecimal strength = BigDecimal.valueOf(zone.getTouches())
                 .multiply(zone.isVolumeConfirmed() ? BigDecimal.ONE : BigDecimal.valueOf(0.5))
                 .divide(BigDecimal.valueOf(zone.getLastTouchAge() + 1), 8, RoundingMode.HALF_UP);
+        
         if (strength.compareTo(BigDecimal.ZERO) == 0) return distance;
         return distance.divide(strength, 8, RoundingMode.HALF_UP);
     }
 
     private Trend detectTrend(List<PricesIndex> candles) {
-        if (candles.size() < 5) return Trend.SIDEWAYS;
-        long upCount = candles.stream().filter(c -> c.getClose().compareTo(c.getOpen()) > 0).count();
-        long downCount = candles.stream().filter(c -> c.getClose().compareTo(c.getOpen()) < 0).count();
-        if (upCount > downCount) return Trend.UPTREND;
-        if (downCount > upCount) return Trend.DOWNTREND;
+        if (candles.size() < TREND_LONG_MA_PERIOD) {
+            return Trend.UNKNOWN;
+        }
+
+        try {
+            BigDecimal shortMA = calculateSMA(candles, TREND_SHORT_MA_PERIOD);
+            BigDecimal longMA = calculateSMA(candles, TREND_LONG_MA_PERIOD);
+
+            if (longMA.compareTo(BigDecimal.ZERO) == 0) {
+                return Trend.SIDEWAYS;
+            }
+
+            BigDecimal difference = shortMA.subtract(longMA);
+            BigDecimal threshold = longMA.multiply(TREND_THRESHOLD_PERCENTAGE);
+
+            if (difference.compareTo(threshold) > 0) return Trend.UPTREND;
+            if (difference.compareTo(threshold.negate()) < 0) return Trend.DOWNTREND;
+            return Trend.SIDEWAYS;
+        } catch (Exception e) {
+            log.warn("Error detecting trend, falling back to basic detection", e);
+            return detectTrendBasic(candles);
+        }
+    }
+
+    private BigDecimal calculateSMA(List<PricesIndex> candles, int period) {
+        if (candles.size() < period) {
+            period = candles.size();
+        }
+
+        List<PricesIndex> recentCandles = candles.subList(candles.size() - period, candles.size());
+        BigDecimal sum = recentCandles.stream()
+                .map(PricesIndex::getClose)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return sum.divide(BigDecimal.valueOf(recentCandles.size()), 8, RoundingMode.HALF_UP);
+    }
+
+    private Trend detectTrendBasic(List<PricesIndex> candles) {
+        if (candles.size() < 5) return Trend.UNKNOWN;
+        
+        long upCount = candles.stream()
+                .filter(c -> c.getClose() != null && c.getOpen() != null)
+                .filter(c -> c.getClose().compareTo(c.getOpen()) > 0)
+                .count();
+        
+        long downCount = candles.stream()
+                .filter(c -> c.getClose() != null && c.getOpen() != null)
+                .filter(c -> c.getClose().compareTo(c.getOpen()) < 0)
+                .count();
+        
+        if (upCount > downCount * 1.5) return Trend.UPTREND;
+        if (downCount > upCount * 1.5) return Trend.DOWNTREND;
         return Trend.SIDEWAYS;
     }
 }

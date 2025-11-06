@@ -343,6 +343,88 @@
         transform: translate(-50%, 0);
       }
     }
+    #signalPanel {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      z-index: 30;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      min-width: 280px;
+      display: none;
+      animation: slideUp 0.3s ease;
+    }
+    #signalPanel.visible {
+      display: block;
+    }
+    #signalPanel .signal-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    #signalPanel .signal-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #signalPanel .signal-value.buy {
+      color: #22c55e;
+    }
+    #signalPanel .signal-value.sell {
+      color: #ef4444;
+    }
+    #signalPanel .signal-value.hold {
+      color: #f59e0b;
+    }
+    #signalPanel .signal-value.neutral {
+      color: #6b7280;
+    }
+    #signalPanel .confidence-bar {
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    #signalPanel .confidence-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: all 0.3s ease;
+    }
+    #signalPanel .confidence-fill.high {
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+    }
+    #signalPanel .confidence-fill.medium {
+      background: linear-gradient(90deg, #f59e0b, #d97706);
+    }
+    #signalPanel .confidence-fill.low {
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+    }
+    #signalPanel .confidence-text {
+      font-size: 11px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    #signalPanel .reason-text {
+      font-size: 13px;
+      color: #444;
+      line-height: 1.5;
+      padding: 10px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border-left: 3px solid #4a5568;
+    }
   </style>
 </head>
 <body>
@@ -374,6 +456,16 @@
     </div>
     
     <div id="drawingModeIndicator">Click on chart to draw line</div>
+    
+    <div id="signalPanel">
+      <div class="signal-header">Final Signal</div>
+      <div class="signal-value" id="signalValue">-</div>
+      <div class="confidence-bar">
+        <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
+      </div>
+      <div class="confidence-text" id="confidenceText">Confidence: -</div>
+      <div class="reason-text" id="reasonText">No signal data available</div>
+    </div>
     
     <div id="chart"></div>
     <div id="loader">
@@ -428,6 +520,12 @@
   const clearDrawBtn = document.getElementById('clearDrawBtn');
   const colorPicker = document.getElementById('colorPicker');
   const drawingModeIndicator = document.getElementById('drawingModeIndicator');
+  
+  const signalPanel = document.getElementById('signalPanel');
+  const signalValue = document.getElementById('signalValue');
+  const confidenceFill = document.getElementById('confidenceFill');
+  const confidenceText = document.getElementById('confidenceText');
+  const reasonText = document.getElementById('reasonText');
   
   let selectedSymbol = settings.symbol;
   let selectedTimeFrame = settings.timeframe;
@@ -604,6 +702,12 @@
       }
       
       if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+      
+      // Restore signal panel if data exists
+      if (lastData) {
+        updateSignalPanel(lastData);
+      }
+      
       chartEl.style.display = 'block';
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
@@ -755,6 +859,16 @@
   toggleSignalsCheckbox.addEventListener('change', () => {
     updateSettings();
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+    
+    // Toggle signal panel visibility based on checkbox
+    if (toggleSignalsCheckbox.checked && lastData) {
+      updateSignalPanel(lastData);
+    } else {
+      signalPanel.classList.remove('visible');
+      signalPanel.style.display = 'none';
+      console.log('Signal panel manually hidden via checkbox');
+    }
+    
     saveChartState();
   });
   toggleGridCheckbox.addEventListener('change', () => {
@@ -806,6 +920,8 @@
       });
       if (candleSeries) candleSeries.setMarkers([]);
     }
+    // Hide signal panel when signals are unchecked
+    signalPanel.classList.remove('visible');
     updateLiveStatus();
     saveChartState();
   });
@@ -1062,6 +1178,71 @@
       }));
     }
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+    
+    // Update signal panel
+    updateSignalPanel(data);
+  }
+  
+  function updateSignalPanel(data) {
+    // Check if signals checkbox is enabled
+    if (!toggleSignalsCheckbox.checked) {
+      signalPanel.classList.remove('visible');
+      signalPanel.style.display = 'none';
+      console.log('Signal panel hidden - Signals checkbox is unchecked');
+      return;
+    }
+    
+    // Try different possible field name formats
+    const finalSignal = data.final_signal || data.finalSignal || data.FINAL_SIGNAL;
+    const finalConfidence = data.final_confidence || data.finalConfidence || data.FINAL_CONFIDENCE;
+    const finalReason = data.final_reason || data.finalReason || data.FINAL_REASON;
+    
+    console.log('Signal Panel Data:', { finalSignal, finalConfidence, finalReason });
+    console.log('Full API Response:', data);
+    console.log('Signals Checkbox Checked:', toggleSignalsCheckbox.checked);
+    
+    if (finalSignal && finalConfidence && finalReason) {
+      // Show panel
+      signalPanel.classList.add('visible');
+      signalPanel.style.display = 'block';
+      
+      // Update signal value
+      const signal = finalSignal.toLowerCase();
+      signalValue.textContent = finalSignal.toUpperCase();
+      signalValue.className = 'signal-value ' + signal;
+      
+      // Add emoji based on signal
+      const emoji = signal === 'buy' ? '📈' : signal === 'sell' ? '📉' : signal === 'hold' ? '⏸️' : '➖';
+      signalValue.innerHTML = `${emoji} ${finalSignal.toUpperCase()}`;
+      
+      // Update confidence
+      const confidence = finalConfidence.toLowerCase();
+      let confidencePercent = 0;
+      let confidenceClass = 'low';
+      
+      if (confidence.includes('high')) {
+        confidencePercent = 85;
+        confidenceClass = 'high';
+      } else if (confidence.includes('medium')) {
+        confidencePercent = 60;
+        confidenceClass = 'medium';
+      } else if (confidence.includes('low')) {
+        confidencePercent = 35;
+        confidenceClass = 'low';
+      }
+      
+      confidenceFill.style.width = confidencePercent + '%';
+      confidenceFill.className = 'confidence-fill ' + confidenceClass;
+      confidenceText.textContent = `Confidence: ${finalConfidence}`;
+      
+      // Update reason
+      reasonText.textContent = finalReason;
+    } else {
+      // Hide panel if no signal data
+      signalPanel.classList.remove('visible');
+      signalPanel.style.display = 'none';
+      console.log('Signal panel hidden - missing data');
+    }
   }
 
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {

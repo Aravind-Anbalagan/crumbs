@@ -70,6 +70,13 @@ public class PriceActionResult {
     private List<PricesIndex> priceList;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Min/Max Data (NEW)
+    private BigDecimal maxHigh;
+    private BigDecimal minLow;
+    private BigDecimal maxVolume;
+    private BigDecimal minVolume;
+    private BigDecimal priceRange;
+    
     public void serializeListsToJson() {
         this.sr_nearestSupportsJson = toJson(this.sr_nearestSupports);
         this.sr_nearestResistancesJson = toJson(this.sr_nearestResistances);

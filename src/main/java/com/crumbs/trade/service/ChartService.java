@@ -953,8 +953,8 @@ public class ChartService {
 
 			if (!testFlag) {
 				// Normal Flow
-				currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
-						strategy.getSymbol(), strategy.getToken());
+				currentPrice = angelOneService.getcurrentPrice(smartconnect, resultVix.getExchange(),
+						resultVix.getSymbol(), resultVix.getToken());
 			} else {
 				// Back Test
 				currentPrice = vix.getClose();
