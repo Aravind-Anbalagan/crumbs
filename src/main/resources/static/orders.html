@@ -420,8 +420,6 @@
                             <th>Exit Time</th>
                             <th onclick="sortTable('exitPrice')">Exit ↕</th>
                             <th onclick="sortTable('points')">Points ↕</th>
-                            <th>High</th>
-                            <th>Low</th>
                             <th onclick="sortTable('result')">Result ↕</th>
                         </tr>
                     </thead>
@@ -621,8 +619,6 @@
                     <td>${formatValue(order.exitTime)}</td>
                     <td>${formatValue(order.exitPrice, 'price')}</td>
                     <td>${formatValue(order.points)}</td>
-                    <td>${formatValue(order.maxHigh, 'price')}</td>
-                    <td>${formatValue(order.maxLow, 'price')}</td>
                     <td>${formatValue(order.result, 'result')}</td>
                 `;
                 tbody.appendChild(row);
