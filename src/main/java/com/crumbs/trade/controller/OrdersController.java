@@ -43,8 +43,8 @@ public class OrdersController {
         dto.setExitPrice(order.getExitPrice());
         dto.setPoints(order.getPoints());
         dto.setLotSize(order.getLotSize());
-        dto.setMaxHigh(order.getMaxHigh());
-        dto.setMaxLow(order.getMaxLow());
+       // dto.setMaxHigh(order.getMaxHigh());
+        //dto.setMaxLow(order.getMaxLow());
         dto.setExchange(order.getExchange());
         dto.setToken(order.getToken());
         dto.setSymbol(order.getSymbol());

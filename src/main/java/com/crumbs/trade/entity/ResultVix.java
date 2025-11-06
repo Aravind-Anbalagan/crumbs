@@ -52,10 +52,10 @@ public class ResultVix {
 	int points;
 	@Column(name="lotSize")
 	int lotSize;
-	@Column(name="maxHigh")
+	/*@Column(name="maxHigh")
 	int maxHigh;
 	@Column(name="maxLow")
-	int maxLow;
+	int maxLow;*/
 	@Column(name="exchange")
 	String exchange;
 	@Column(name="token")

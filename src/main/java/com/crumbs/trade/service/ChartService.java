@@ -698,13 +698,14 @@ public class ChartService {
 				resultVix.setFibo(pr.getFibo_signal());
 				resultVix.setCombine(pr.getConsolidatedDecision());
 			}*/
-			if (resultVix.getType().equalsIgnoreCase("BUY")) {
+			// Remove Max High and Low 
+			/*if (resultVix.getType().equalsIgnoreCase("BUY")) {
 				resultVix.setMaxHigh(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
 						resultVix.getType()));
 			} else if (resultVix.getType().equalsIgnoreCase("SELL")) {
 				resultVix.setMaxLow(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
 						resultVix.getType()));
-			}
+			}*/
 
 			Token token =triggerExitOrder(resultVix, tradeFlag);
 			if (testFlag) {
@@ -1049,13 +1050,15 @@ public class ChartService {
 	@Transactional
 	public void closeOrder(ResultVix resultVix, Token token, BigDecimal currentPrice, Vix vix, boolean testFlag, String result) {
 		String currentDate = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(Calendar.getInstance().getTime());
-		if (resultVix.getType().equalsIgnoreCase("BUY")) {
+		
+		// Max High and Low
+		/*if (resultVix.getType().equalsIgnoreCase("BUY")) {
 			resultVix.setMaxHigh(
 					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
 		} else if (resultVix.getType().equalsIgnoreCase("SELL")) {
 			resultVix.setMaxLow(
 					findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(), resultVix.getType()));
-		}
+		}*/
 
 		// For BackTest
 		if (testFlag) {
