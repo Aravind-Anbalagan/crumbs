@@ -2,6 +2,7 @@ package com.crumbs.trade.service;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -760,13 +761,12 @@ public class ChartService {
 	}
 
 	public int calculatePoints(ResultVix resultVix) {
-		if (resultVix.getType().equalsIgnoreCase("BUY") && resultVix.getExitPrice() != null) {
-			return resultVix.getExitPrice().subtract(resultVix.getEntryPrice()).intValue();
-		} else if (resultVix.getType().equalsIgnoreCase("SELL") && resultVix.getEntryPrice() != null) {
-			return resultVix.getEntryPrice().subtract(resultVix.getExitPrice()).intValue();
+		if (resultVix.getEntryPrice() == null || resultVix.getExitPrice() == null) {
+			return 0;
 		}
-		return 0;
 
+		BigDecimal points = resultVix.getExitPrice().subtract(resultVix.getEntryPrice());
+		return points.setScale(0, RoundingMode.HALF_UP).intValue();
 	}
 
 	public int findMaxAndLowPrice(ResultVix resultVix, String startTimeStamp, String endTimeStamp, String type) {
@@ -981,42 +981,32 @@ public class ChartService {
 	}
 
 	// Check for SL and Target
-	public String checkPrice(BigDecimal currentPrice, BigDecimal executedPrice, String transactionType,String name) {
+	public String checkPrice(BigDecimal currentPrice, BigDecimal executedPrice, String transactionType, String name) {
+	    BigDecimal targetThreshold;
+	    BigDecimal stopLossThreshold;
 
-		BigDecimal targetThreshold;
-		BigDecimal stopLossThreshold;
+	    // instrument-based thresholds
+	    if ("SILVERM".equalsIgnoreCase(name)) {
+	        targetThreshold = new BigDecimal("1000.00");
+	        stopLossThreshold = new BigDecimal("250.00");
+	    } else { // Default: Nifty or others
+	        targetThreshold = new BigDecimal("40.00");
+	        stopLossThreshold = new BigDecimal("10.00");
+	    }
 
-		if ("SILVERM".equalsIgnoreCase(name)) {
-		    targetThreshold = new BigDecimal("1000.00");
-		    stopLossThreshold = new BigDecimal("-250.00");
-		} else { // Default: Nifty
-		    targetThreshold = new BigDecimal("40.00");
-		    stopLossThreshold = new BigDecimal("-10.00");
-		}
-		BigDecimal difference = currentPrice.subtract(executedPrice);
+	    // difference = how much premium moved
+	    BigDecimal difference = currentPrice.subtract(executedPrice);
 
-		if ("BUY".equalsIgnoreCase(transactionType)) {
+	    // Since both CE and PE are BUY positions, same logic applies
+	    if (difference.compareTo(targetThreshold) >= 0) {
+	        return "TARGET";
+	    } else if (difference.compareTo(stopLossThreshold.negate()) <= 0) {
+	        return "SL";
+	    }
 
-			if (difference.compareTo(targetThreshold) > 0) {
-				//logger.info("Target reached (BUY position)!");
-				return "TARGET";
-			} else if (difference.compareTo(stopLossThreshold) <= 0) {
-				//logger.info("Stop-loss triggered (BUY position)!");
-				return "SL";
-			}
-		} else if ("SELL".equalsIgnoreCase(transactionType)) {
-			if (difference.compareTo(stopLossThreshold) < 0) {
-				//logger.info("Target reached (SELL position)!");
-				return "TARGET";
-			} else if (difference.compareTo(targetThreshold) >= 0) {
-				//logger.info("Stop-loss triggered (SELL position)!");
-				return "SL";
-			}
-		}
-
-		return null;
-
+	    return null; // still active
 	}
+
 
 	public StrategyDTO setValues(ResultVix resultVix) {
 		StrategyDTO strategy = new StrategyDTO();
