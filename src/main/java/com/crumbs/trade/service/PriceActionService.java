@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -127,44 +129,123 @@ public class PriceActionService {
         return result;
     }
 
-    // ---------------------- FINAL MERGE ----------------------
+    // ---------------------- IMPROVED FINAL MERGE WITH SOLID SIGNALS ----------------------
     private void mergeFinalSignal(PriceActionResult result) {
         Signal srSignal = Signal.valueOf(result.getSr_signal());
         Signal fiboSignal = Signal.valueOf(result.getFibo_signal());
         Trend trend = Trend.valueOf(result.getSr_trend());
 
         Signal finalSignal = Signal.HOLD;
-        String finalReason = "HOLD - No strong confluence detected.";
+        String finalReason = "";
         String finalConfidence = "LOW";
 
-        // Determine final_signal based on SR and Fibonacci
+        // CASE 1: Perfect Confluence (Both SR and Fibo agree)
         if (srSignal == fiboSignal && srSignal != Signal.HOLD) {
             finalSignal = srSignal;
-            finalReason = "Strong confluence: " + srSignal + " from both SR & Fibonacci.";
-            finalConfidence = "HIGH";
-        } else if ((srSignal != Signal.HOLD && fiboSignal == Signal.HOLD) ||
-                   (fiboSignal != Signal.HOLD && srSignal == Signal.HOLD)) {
-            finalSignal = srSignal != Signal.HOLD ? srSignal : fiboSignal;
-            finalReason = "Signal from " + (srSignal != Signal.HOLD ? "Price Action SR" : "Fibonacci SR") +
-                          " while other is neutral.";
-            finalConfidence = "MEDIUM";
-        } else if (srSignal != fiboSignal && srSignal != Signal.HOLD && fiboSignal != Signal.HOLD) {
-            finalSignal = Signal.HOLD;
-            finalReason = "Conflict between SR (" + srSignal + ") and Fibo (" + fiboSignal + "). Staying aside.";
-            finalConfidence = "LOW";
+            finalReason = "STRONG CONFLUENCE: Both SR & Fibonacci align on " + srSignal;
+            finalConfidence = "VERY_HIGH";
+            
+            // Further boost if trend aligns
+            if ((finalSignal == Signal.BUY && trend == Trend.UPTREND) ||
+                (finalSignal == Signal.SELL && trend == Trend.DOWNTREND)) {
+                finalConfidence = "VERY_HIGH";
+                finalReason += " + Trend confirmation";
+            }
         }
-
-        // Adjust confidence based on trend
-        if (finalSignal == Signal.BUY && trend == Trend.UPTREND) {
-            finalConfidence = "VERY_HIGH";
-            finalReason += " Supported by uptrend.";
-        } else if (finalSignal == Signal.SELL && trend == Trend.DOWNTREND) {
-            finalConfidence = "VERY_HIGH";
-            finalReason += " Supported by downtrend.";
-        } else if (trend == Trend.SIDEWAYS || trend == Trend.UNKNOWN) {
-            if (!finalSignal.equals(Signal.HOLD)) {
+        
+        // CASE 2: SR Signal with Trend Support (Prioritize SR over Fibo)
+        else if (srSignal != Signal.HOLD) {
+            // SR BUY with supportive trend
+            if (srSignal == Signal.BUY && (trend == Trend.UPTREND || trend == Trend.SIDEWAYS)) {
+                finalSignal = Signal.BUY;
+                finalConfidence = trend == Trend.UPTREND ? "HIGH" : "MEDIUM";
+                finalReason = "SR BUY signal" + (trend == Trend.UPTREND ? " + Uptrend support" : " in sideways market");
+                
+                // Override HOLD from Fibo if trend is strong
+                if (fiboSignal == Signal.HOLD && trend == Trend.UPTREND) {
+                    finalConfidence = "HIGH";
+                }
+            }
+            // SR SELL with supportive trend
+            else if (srSignal == Signal.SELL && (trend == Trend.DOWNTREND || trend == Trend.SIDEWAYS)) {
+                finalSignal = Signal.SELL;
+                finalConfidence = trend == Trend.DOWNTREND ? "HIGH" : "MEDIUM";
+                finalReason = "SR SELL signal" + (trend == Trend.DOWNTREND ? " + Downtrend support" : " in sideways market");
+                
+                // Override HOLD from Fibo if trend is strong
+                if (fiboSignal == Signal.HOLD && trend == Trend.DOWNTREND) {
+                    finalConfidence = "HIGH";
+                }
+            }
+            // SR signal against trend - reduce confidence but still trade
+            else if (srSignal == Signal.BUY && trend == Trend.DOWNTREND) {
+                finalSignal = Signal.BUY;
                 finalConfidence = "MEDIUM";
-                finalReason += " But trend is sideways/unclear.";
+                finalReason = "SR BUY signal (counter-trend trade, use tight stop-loss)";
+            }
+            else if (srSignal == Signal.SELL && trend == Trend.UPTREND) {
+                finalSignal = Signal.SELL;
+                finalConfidence = "MEDIUM";
+                finalReason = "SR SELL signal (counter-trend trade, use tight stop-loss)";
+            }
+        }
+        
+        // CASE 3: Only Fibo Signal (SR is HOLD)
+        else if (fiboSignal != Signal.HOLD && srSignal == Signal.HOLD) {
+            // Fibo signal with trend support
+            if ((fiboSignal == Signal.BUY && trend == Trend.UPTREND) ||
+                (fiboSignal == Signal.SELL && trend == Trend.DOWNTREND)) {
+                finalSignal = fiboSignal;
+                finalConfidence = "HIGH";
+                finalReason = "Fibonacci " + fiboSignal + " with trend alignment";
+            }
+            // Fibo signal in sideways market
+            else if (trend == Trend.SIDEWAYS) {
+                finalSignal = fiboSignal;
+                finalConfidence = "MEDIUM";
+                finalReason = "Fibonacci " + fiboSignal + " in range-bound market";
+            }
+            // Fibo signal against trend
+            else {
+                finalSignal = fiboSignal;
+                finalConfidence = "LOW";
+                finalReason = "Fibonacci " + fiboSignal + " (weak, against trend)";
+            }
+        }
+        
+        // CASE 4: Conflicting Signals (SR says BUY, Fibo says SELL or vice versa)
+        else if (srSignal != fiboSignal && srSignal != Signal.HOLD && fiboSignal != Signal.HOLD) {
+            // Let trend be the tie-breaker
+            if (trend == Trend.UPTREND) {
+                finalSignal = Signal.BUY;
+                finalConfidence = "MEDIUM";
+                finalReason = "Conflict resolved: BUY based on uptrend (SR: " + srSignal + ", Fibo: " + fiboSignal + ")";
+            } else if (trend == Trend.DOWNTREND) {
+                finalSignal = Signal.SELL;
+                finalConfidence = "MEDIUM";
+                finalReason = "Conflict resolved: SELL based on downtrend (SR: " + srSignal + ", Fibo: " + fiboSignal + ")";
+            } else {
+                // In sideways, prefer SR over Fibo
+                finalSignal = srSignal;
+                finalConfidence = "LOW";
+                finalReason = "Conflict: Prioritizing SR " + srSignal + " over Fibo " + fiboSignal + " in sideways market";
+            }
+        }
+        
+        // CASE 5: Both HOLD but trend is strong - generate trend-following signal
+        else if (srSignal == Signal.HOLD && fiboSignal == Signal.HOLD) {
+            if (trend == Trend.UPTREND) {
+                finalSignal = Signal.BUY;
+                finalConfidence = "LOW";
+                finalReason = "Trend-following BUY (no SR/Fibo triggers, but strong uptrend)";
+            } else if (trend == Trend.DOWNTREND) {
+                finalSignal = Signal.SELL;
+                finalConfidence = "LOW";
+                finalReason = "Trend-following SELL (no SR/Fibo triggers, but strong downtrend)";
+            } else {
+                finalSignal = Signal.HOLD;
+                finalConfidence = "LOW";
+                finalReason = "NO SIGNAL: No triggers and unclear trend";
             }
         }
 
@@ -172,19 +253,31 @@ public class PriceActionService {
         result.setFinal_reason(finalReason);
         result.setFinal_confidence(finalConfidence);
 
-        // Consolidated decision for DB storage
+        // CONSOLIDATED DECISION - More aggressive
         String consolidatedDecision;
-        if ("BUY".equals(result.getFinal_signal()) &&
-            ("UPTREND".equals(result.getSr_trend()) || "SIDEWAYS".equals(result.getSr_trend())) &&
-            ("VERY_HIGH".equals(result.getFinal_confidence()) || "HIGH".equals(result.getFinal_confidence()))) {
-            consolidatedDecision = "BUY";
-        } else if ("SELL".equals(result.getFinal_signal()) &&
-                   ("DOWNTREND".equals(result.getSr_trend()) || "SIDEWAYS".equals(result.getSr_trend())) &&
-                   ("VERY_HIGH".equals(result.getFinal_confidence()) || "HIGH".equals(result.getFinal_confidence()))) {
-            consolidatedDecision = "SELL";
+        
+        if ("BUY".equals(result.getFinal_signal())) {
+            // Accept BUY if confidence is MEDIUM or higher, or if trend supports
+            if ("VERY_HIGH".equals(result.getFinal_confidence()) || 
+                "HIGH".equals(result.getFinal_confidence()) ||
+                ("MEDIUM".equals(result.getFinal_confidence()) && "UPTREND".equals(result.getSr_trend()))) {
+                consolidatedDecision = "BUY";
+            } else {
+                consolidatedDecision = "NO_TRADE";
+            }
+        } else if ("SELL".equals(result.getFinal_signal())) {
+            // Accept SELL if confidence is MEDIUM or higher, or if trend supports
+            if ("VERY_HIGH".equals(result.getFinal_confidence()) || 
+                "HIGH".equals(result.getFinal_confidence()) ||
+                ("MEDIUM".equals(result.getFinal_confidence()) && "DOWNTREND".equals(result.getSr_trend()))) {
+                consolidatedDecision = "SELL";
+            } else {
+                consolidatedDecision = "NO_TRADE";
+            }
         } else {
             consolidatedDecision = "NO_TRADE";
         }
+        
         result.setConsolidatedDecision(consolidatedDecision);
     }
 
