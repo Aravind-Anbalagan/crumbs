@@ -424,6 +424,19 @@
       background: #f9fafb;
       border-radius: 8px;
       border-left: 3px solid #4a5568;
+      margin-bottom: 12px;
+    }
+    #signalPanel .timestamp {
+      font-size: 11px;
+      color: #888;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #signalPanel .timestamp::before {
+      content: '🕐';
+      font-size: 14px;
     }
   </style>
 </head>
@@ -465,6 +478,7 @@
       </div>
       <div class="confidence-text" id="confidenceText">Confidence: -</div>
       <div class="reason-text" id="reasonText">No signal data available</div>
+      <div class="timestamp" id="signalTimestamp">Updated: -</div>
     </div>
     
     <div id="chart"></div>
@@ -526,6 +540,7 @@
   const confidenceFill = document.getElementById('confidenceFill');
   const confidenceText = document.getElementById('confidenceText');
   const reasonText = document.getElementById('reasonText');
+  const signalTimestamp = document.getElementById('signalTimestamp');
   
   let selectedSymbol = settings.symbol;
   let selectedTimeFrame = settings.timeframe;
@@ -654,7 +669,6 @@
       isFirstLoad = false;
       redrawLines();
       
-      // Restore drawn lines with improved cleanup
       if (savedState.savedDrawnLines && Array.isArray(savedState.savedDrawnLines)) {
         savedState.savedDrawnLines.forEach(lineData => {
           try {
@@ -703,7 +717,6 @@
       
       if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
       
-      // Restore signal panel if data exists
       if (lastData) {
         updateSignalPanel(lastData);
       }
@@ -781,20 +794,17 @@
   function redrawUserLines() {
     if (!candleSeries || !chart) return;
     
-    // Create a new array to store valid lines
     const validLines = [];
     
     drawnLines.forEach(lineData => {
       try {
         if (lineData.type === 'hline' && lineData.price != null) {
-          // Remove old line reference if it exists
           if (lineData.line) {
             try {
               candleSeries.removePriceLine(lineData.line);
             } catch (e) {}
           }
           
-          // Create new line
           const newLine = candleSeries.createPriceLine({
             price: lineData.price, 
             color: lineData.color || selectedColor,
@@ -811,14 +821,12 @@
             color: lineData.color || selectedColor
           });
         } else if (lineData.type === 'vline' && lineData.time != null) {
-          // Remove old series if it exists
           if (lineData.series) {
             try {
               chart.removeSeries(lineData.series);
             } catch (e) {}
           }
           
-          // Create new series
           const vLineSeries = chart.addHistogramSeries({
             color: lineData.color || selectedColor,
             priceFormat: { type: 'price' },
@@ -848,7 +856,6 @@
       }
     });
     
-    // Replace drawnLines with only valid lines
     drawnLines = validLines;
   }
 
@@ -860,7 +867,6 @@
     updateSettings();
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
     
-    // Toggle signal panel visibility based on checkbox
     if (toggleSignalsCheckbox.checked && lastData) {
       updateSignalPanel(lastData);
     } else {
@@ -920,7 +926,6 @@
       });
       if (candleSeries) candleSeries.setMarkers([]);
     }
-    // Hide signal panel when signals are unchecked
     signalPanel.classList.remove('visible');
     updateLiveStatus();
     saveChartState();
@@ -934,7 +939,6 @@
   });
 
   function clearChart() {
-    // Improved cleanup for drawn lines
     if (chart && candleSeries) {
       drawnLines.forEach(lineData => {
         try {
@@ -1125,7 +1129,6 @@
   clearDrawBtn.addEventListener('click', () => {
     if (!chart || !candleSeries) return;
     
-    // Improved cleanup
     drawnLines.forEach(lineData => {
       try {
         if (lineData.type === 'hline' && lineData.line) {
@@ -1179,12 +1182,10 @@
     }
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
     
-    // Update signal panel
     updateSignalPanel(data);
   }
   
   function updateSignalPanel(data) {
-    // Check if signals checkbox is enabled
     if (!toggleSignalsCheckbox.checked) {
       signalPanel.classList.remove('visible');
       signalPanel.style.display = 'none';
@@ -1192,7 +1193,6 @@
       return;
     }
     
-    // Try different possible field name formats
     const finalSignal = data.final_signal || data.finalSignal || data.FINAL_SIGNAL;
     const finalConfidence = data.final_confidence || data.finalConfidence || data.FINAL_CONFIDENCE;
     const finalReason = data.final_reason || data.finalReason || data.FINAL_REASON;
@@ -1202,20 +1202,16 @@
     console.log('Signals Checkbox Checked:', toggleSignalsCheckbox.checked);
     
     if (finalSignal && finalConfidence && finalReason) {
-      // Show panel
       signalPanel.classList.add('visible');
       signalPanel.style.display = 'block';
       
-      // Update signal value
       const signal = finalSignal.toLowerCase();
       signalValue.textContent = finalSignal.toUpperCase();
       signalValue.className = 'signal-value ' + signal;
       
-      // Add emoji based on signal
       const emoji = signal === 'buy' ? '📈' : signal === 'sell' ? '📉' : signal === 'hold' ? '⏸️' : '➖';
       signalValue.innerHTML = `${emoji} ${finalSignal.toUpperCase()}`;
       
-      // Update confidence
       const confidence = finalConfidence.toLowerCase();
       let confidencePercent = 0;
       let confidenceClass = 'low';
@@ -1235,10 +1231,21 @@
       confidenceFill.className = 'confidence-fill ' + confidenceClass;
       confidenceText.textContent = `Confidence: ${finalConfidence}`;
       
-      // Update reason
       reasonText.textContent = finalReason;
+      
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: true 
+      });
+      const dateString = now.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      signalTimestamp.textContent = `Updated: ${dateString} at ${timeString}`;
     } else {
-      // Hide panel if no signal data
       signalPanel.classList.remove('visible');
       signalPanel.style.display = 'none';
       console.log('Signal panel hidden - missing data');
@@ -1246,7 +1253,7 @@
   }
 
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
-    const url = `/api/intraday?timeFrame=${timeFrame}&name=${name}`;
+    const url = `/api/newIntraday?timeFrame=${timeFrame}&name=${name}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
     return resp.json();

@@ -15,12 +15,15 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.crumbs.trade.dto.CandleDTO;
+import com.crumbs.trade.dto.CandleRequestDto;
 import com.crumbs.trade.dto.ChartDataDTO;
 import com.crumbs.trade.dto.FibonacciLevel;
 import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SignalDTO;
 import com.crumbs.trade.entity.PricesIndex;
+import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.service.PredictivePriceActionService;
 import com.crumbs.trade.service.SRService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -35,6 +38,14 @@ public class ChartController {
 	
 	@Autowired
 	StrategyRepo strategyRepo;
+	
+	@Autowired
+	PredictivePriceActionService predictivePriceActionService;
+	
+	@Autowired
+	PricesIndexRepo pricesIndexRepo;
+	
+
 	
 	private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
 	
@@ -195,6 +206,41 @@ public class ChartController {
         
         //dto.setSignals(signals);
 
+        return dto;
+    }
+    
+    @GetMapping("/newIntraday")
+    public ChartDataDTO getAnalysis(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
+			@RequestParam(name = "name") String name) {
+        // Get candles from your repository
+    	 ChartDataDTO dto = new ChartDataDTO();
+    	pricesIndexRepo.deleteAll();
+    	 String symbol = strategyRepo.findByName(name).getTradingsymbol();
+         String exchange = srService.getExchange(name);
+		
+		 //Step : 1 Time Period of the given stock/index
+		CandleRequestDto candle = srService.getCandleTiming(timeFrame,exchange);
+
+		//Step 2 : Read candle data
+		List<PricesIndex> candles = srService.getCandleData(candle, name, symbol);
+        BigDecimal currentPrice = candles.get(candles.size() - 1).getClose();
+       
+        //Step 3: 
+    
+        // Call predictive analysis
+        PriceActionResult priceActionResult =predictivePriceActionService.analyzePredictive(currentPrice, candles, timeFrame);
+        dto.setPriceActionSupport(priceActionResult.getSr_nearestSupports());
+        dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
+        dto.setFiboSupport(priceActionResult.getFibo_supports());
+        dto.setFiboResistance(priceActionResult.getFibo_resistances());
+        CandleDTO candleDto = getPreviousDayCandle(name, exchange, symbol);
+        dto.setPreviousDayCandle(candleDto);
+        dto.setFinal_confidence(priceActionResult.getFinal_confidence());
+        dto.setFinal_reason(priceActionResult.getFinal_reason());
+        dto.setFinal_signal(priceActionResult.getFinal_signal());
+        List<CandleDTO> candleList = srService.getcandleList();
+        candleList = srService.getcandleList();
+        dto.setCandles(candleList);
         return dto;
     }
     

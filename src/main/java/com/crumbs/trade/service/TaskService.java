@@ -460,6 +460,7 @@ public class TaskService {
 						prices.setTimeframe(candle.getTimeFrame());
 						prices.setCpr(calculateCpr(high, low, close).toString());
 						prices.setCurrentprice(index_CurrentPrice);
+						prices.setExchange(index.getExchange());
 						pricesList.add(prices);
 					});
 
