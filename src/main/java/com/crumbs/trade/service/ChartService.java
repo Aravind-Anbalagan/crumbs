@@ -513,8 +513,49 @@ public class ChartService {
 	 * Heikin + Psar+ MA + Super Trend
 	 * All 4 condition should be satisfied
 	 */
-	
 	public boolean buyEntrySignal(Vix vix) {
+	    String name = vix.getName(); // assuming Vix has a field like "NIFTY" or "SILVERM"
+	    
+	    if ("NIFTY".equalsIgnoreCase(name)) {
+	        // Conditions for NIFTY BUY
+	        return "BUY".equalsIgnoreCase(vix.getHeikinachi())
+	            && "BUY".equalsIgnoreCase(vix.getSupertrendSignal())
+	            && "BUY".equalsIgnoreCase(vix.getPsar())
+	            && "BUY".equalsIgnoreCase(vix.getVwapSignal());
+	            // PSAR maybe ignored for NIFTY for faster signals
+	    } 
+	    else if ("SILVERM".equalsIgnoreCase(name)) {
+	        // Conditions for SILVERM BUY
+	        return "BUY".equalsIgnoreCase(vix.getHeikinachi())
+	            && "BUY".equalsIgnoreCase(vix.getPsar())
+	            && "BUY".equalsIgnoreCase(vix.getSupertrendSignal());
+	            // VWAP may be optional for commodities
+	    }
+
+	    // Default (fallback)
+	    return false;
+	}
+
+	public boolean sellEntrySignal(Vix vix) {
+	    String name = vix.getName();
+	    
+	    if ("NIFTY".equalsIgnoreCase(name)) {
+	        // Conditions for NIFTY SELL
+	        return "SELL".equalsIgnoreCase(vix.getHeikinachi())
+	            && "SELL".equalsIgnoreCase(vix.getPsar())
+	            && "SELL".equalsIgnoreCase(vix.getSupertrendSignal())
+	            && "SELL".equalsIgnoreCase(vix.getVwapSignal());
+	    } 
+	    else if ("SILVERM".equalsIgnoreCase(name)) {
+	        // Conditions for SILVERM SELL
+	        return "SELL".equalsIgnoreCase(vix.getHeikinachi())
+	            && "SELL".equalsIgnoreCase(vix.getPsar())
+	            && "SELL".equalsIgnoreCase(vix.getSupertrendSignal());
+	    }
+
+	    return false;
+	}
+	/*public boolean buyEntrySignal(Vix vix) {
 	    return //"BUY".equalsIgnoreCase(vix.getType())
 	           "BUY".equalsIgnoreCase(vix.getHeikinachi())
 	        && "BUY".equalsIgnoreCase(vix.getPsar())
@@ -530,7 +571,7 @@ public class ChartService {
 	        //&& "SELL".equalsIgnoreCase(vix.getMasignal())
 	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal())
 	        && "SELL".equalsIgnoreCase(vix.getVwapSignal());
-	}
+	}*/
 	
 	public boolean buyExitSignal(Vix vix) {
 		if (vix.getType().equalsIgnoreCase("BUY") && vix.getHeikinachi().equalsIgnoreCase("BUY")
