@@ -519,8 +519,8 @@ public class ChartService {
 	           "BUY".equalsIgnoreCase(vix.getHeikinachi())
 	        && "BUY".equalsIgnoreCase(vix.getPsar())
 	        //&& "BUY".equalsIgnoreCase(vix.getMasignal())
-	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal());
-	        //&& "BUY".equalsIgnoreCase(vix.getVwapSignal());
+	        && "BUY".equalsIgnoreCase(vix.getSupertrendSignal())
+	        && "BUY".equalsIgnoreCase(vix.getVwapSignal());
 	}
 	
 	public boolean sellEntrySignal(Vix vix) {
@@ -528,8 +528,8 @@ public class ChartService {
 	           "SELL".equalsIgnoreCase(vix.getHeikinachi())
 	        && "SELL".equalsIgnoreCase(vix.getPsar())
 	        //&& "SELL".equalsIgnoreCase(vix.getMasignal())
-	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal());
-	        //&& "SELL".equalsIgnoreCase(vix.getVwapSignal());
+	        && "SELL".equalsIgnoreCase(vix.getSupertrendSignal())
+	        && "SELL".equalsIgnoreCase(vix.getVwapSignal());
 	}
 	
 	public boolean buyExitSignal(Vix vix) {
@@ -998,10 +998,10 @@ public class ChartService {
 
 	    // instrument-based thresholds
 	    if ("SILVERM".equalsIgnoreCase(name)) {
-	        targetThreshold = new BigDecimal("1000.00");
+	        targetThreshold = new BigDecimal("750.00");
 	        stopLossThreshold = new BigDecimal("250.00");
 	    } else { // Default: Nifty or others
-	        targetThreshold = new BigDecimal("40.00");
+	        targetThreshold = new BigDecimal("30.00");
 	        stopLossThreshold = new BigDecimal("10.00");
 	    }
 
