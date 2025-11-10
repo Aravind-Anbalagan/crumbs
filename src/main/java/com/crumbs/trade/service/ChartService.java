@@ -520,8 +520,8 @@ public class ChartService {
 	        // Conditions for NIFTY BUY
 	        return "BUY".equalsIgnoreCase(vix.getHeikinachi())
 	            && "BUY".equalsIgnoreCase(vix.getSupertrendSignal())
-	            && "BUY".equalsIgnoreCase(vix.getPsar())
-	            && "BUY".equalsIgnoreCase(vix.getVwapSignal());
+	            && "BUY".equalsIgnoreCase(vix.getPsar());
+	            //&& "BUY".equalsIgnoreCase(vix.getVwapSignal());
 	            // PSAR maybe ignored for NIFTY for faster signals
 	    } 
 	    else if ("SILVERM".equalsIgnoreCase(name)) {
@@ -543,8 +543,8 @@ public class ChartService {
 	        // Conditions for NIFTY SELL
 	        return "SELL".equalsIgnoreCase(vix.getHeikinachi())
 	            && "SELL".equalsIgnoreCase(vix.getPsar())
-	            && "SELL".equalsIgnoreCase(vix.getSupertrendSignal())
-	            && "SELL".equalsIgnoreCase(vix.getVwapSignal());
+	            && "SELL".equalsIgnoreCase(vix.getSupertrendSignal());
+	            //&& "SELL".equalsIgnoreCase(vix.getVwapSignal());
 	    } 
 	    else if ("SILVERM".equalsIgnoreCase(name)) {
 	        // Conditions for SILVERM SELL
