@@ -914,36 +914,76 @@ public class ChartService {
 	}
 
 	public StrategyDTO getNameAndTradingSymbol(StrategyDTO strategy, String type)
-			throws AddressException, MessagingException, IOException {
-		SmartConnect smartconnect = angelOne.signIn();
-		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
-				strategy.getTradingsymbol(), strategy.getToken());
+	        throws AddressException, MessagingException, IOException {
 
-		if (currentPrice != null) {
-			int base = 0;
-			if ("NIFTY".equalsIgnoreCase(strategy.getName()) || "CRUDEOIL".equalsIgnoreCase(strategy.getName())) {
-				base = 50; // Change this to 100 or any other number as needed
-			}
-			else if ("SILVERM".equalsIgnoreCase(strategy.getName()))
-			{
-				base = 500;
-			}
+	    if (strategy == null || strategy.getName() == null || strategy.getExchange() == null) {
+	        logger.warn("Invalid strategy data provided");
+	        return strategy;
+	    }
 
-			int nearestPrice = findNearestMultiple(currentPrice.intValue(), base);
+	    SmartConnect smartconnect = angelOne.signIn();
+	    BigDecimal currentPrice = angelOneService.getcurrentPrice(
+	            smartconnect,
+	            strategy.getExchange(),
+	            strategy.getTradingsymbol(),
+	            strategy.getToken()
+	    );
 
-			String tradingSymbol = strategy.getName().concat(strategy.getExpiry()).concat(String.valueOf(nearestPrice))
-					.concat("BUY".equalsIgnoreCase(type) == true ? "CE" : "PE");
-			logger.info("Trading Symbol : " + tradingSymbol);
-			strategy.setTradingsymbol(tradingSymbol);
-			strategy.setName(strategy.getName());
-		}
+	    if (currentPrice == null) {
+	        logger.warn("Unable to fetch current price for {}", strategy.getName());
+	        return strategy;
+	    }
 
-		return strategy;
+	    String name = strategy.getName().toUpperCase();
+	    int strikeInterval;
+
+	    switch (name) {
+	        case "NIFTY":
+	        case "CRUDEOIL":
+	            strikeInterval = 50;
+	            break;
+	        case "SILVERM":
+	            strikeInterval = 500;
+	            break;
+	        default:
+	            logger.warn("Unknown symbol name: {}", strategy.getName());
+	            return strategy;
+	    }
+
+	    int nearestStrike = findNearestMultiple(currentPrice.intValue(), strikeInterval);
+	    String optionType = "BUY".equalsIgnoreCase(type) ? "CE" : "PE";
+
+	    // --- NIFTY specific logic: in-the-money adjustment ---
+	    if ("NIFTY".equalsIgnoreCase(name)) {
+	        if ("CE".equalsIgnoreCase(optionType)) {
+	            nearestStrike = nearestStrike - 150; // CE → 150 points below
+	        } else {
+	            nearestStrike = nearestStrike + 150; // PE → 150 points above
+	        }
+	    }
+
+	    String tradingSymbol = String.format("%s%s%d%s",
+	            strategy.getName(),
+	            strategy.getExpiry(),
+	            nearestStrike,
+	            optionType
+	    );
+
+	    logger.info("Generated Trading Symbol: {} | CurrentPrice: {} | Type: {} | Strike: {}",
+	            tradingSymbol, currentPrice, optionType, nearestStrike);
+
+	    strategy.setTradingsymbol(tradingSymbol);
+	    return strategy;
 	}
 
-	public int findNearestMultiple(int number, int base) {
-		return Math.round(number / (float) base) * base;
+	/**
+	 * Rounds a number to the nearest multiple of base (e.g., 22447 → 22450)
+	 */
+	private int findNearestMultiple(int number, int base) {
+	    int remainder = number % base;
+	    return remainder < base / 2 ? number - remainder : number + (base - remainder);
 	}
+
 
 	public Token placeOrder(StrategyDTO strategy, String transactionType, String flatTradeType, boolean tradeFlag) {
 		SmartConnect smartconnect = angelOne.signIn();

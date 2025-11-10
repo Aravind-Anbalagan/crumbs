@@ -1,6 +1,5 @@
 package com.crumbs.trade;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.TimeZone;
 
@@ -16,50 +15,52 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
-import com.crumbs.trade.controller.CommonController;
-import com.crumbs.trade.service.DownloadService;
+
 @EnableScheduling
 @EnableJpaAuditing
 @EntityScan("com.crumbs.trade.entity")
 @SpringBootApplication
 public class CrumbsNewApplication {
-	private AngelOne angelOne;
-	
-	private DownloadService downloadService;
 
-	public static void main(String[] args) {
-		TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
-		SpringApplication.run(CrumbsNewApplication.class, args);
-	}
+    private static final Logger log = LoggerFactory.getLogger(CrumbsNewApplication.class);
 
-	@Bean
-	public RestTemplate getRestTemplate() {
-		RestTemplate restTemplate = new RestTemplateBuilder().setReadTimeout(Duration.ofSeconds(20)).build();
-		return restTemplate;
-	}
+    @Autowired
+    private AngelOne angelOne;
 
-	@Bean
-	public static PropertySourcesPlaceholderConfigurer propertySourcesPlaceholderConfigurer() {
-		return new PropertySourcesPlaceholderConfigurer();
-	}
+    public static void main(String[] args) {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
+        SpringApplication.run(CrumbsNewApplication.class, args);
+    }
 
-	@Bean
-	public TaskScheduler taskScheduler() {
-	    ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-	    scheduler.setPoolSize(10); // ✅ Try 10 or even 4
-	    scheduler.setThreadNamePrefix("ThreadPoolTaskScheduler-");
-	    scheduler.initialize(); // Good practice
-	    return scheduler;
-	}
+    @Bean
+    public RestTemplate getRestTemplate() {
+        return new RestTemplateBuilder()
+                .setReadTimeout(Duration.ofSeconds(20))
+                .build();
+    }
 
-	@Bean
-	public SmartConnect getSmartConnect() {
-		return angelOne.signIn();
+    @Bean
+    public static PropertySourcesPlaceholderConfigurer propertySourcesPlaceholderConfigurer() {
+        return new PropertySourcesPlaceholderConfigurer();
+    }
 
-	}
+    @Bean
+    public TaskScheduler taskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(10);
+        scheduler.setThreadNamePrefix("crumbs-scheduler-");
+        scheduler.setErrorHandler(t -> log.error("Scheduler error", t));
+        scheduler.initialize();
+        return scheduler;
+    }
 
-	
+    @Bean
+    public SmartConnect getSmartConnect() {
+        return angelOne.signIn();
+    }
 }
