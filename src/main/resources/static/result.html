@@ -218,6 +218,26 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes slideOut {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
     .pagination {
       display: flex;
       justify-content: center;
@@ -387,7 +407,7 @@
             <th data-key="currentltp">Current LTP</th>
             <th data-key="sl">SL</th>
             <th data-key="returnPercent">Return %</th>
-            <th data-key="result">Status</th>
+            <th data-key="status">Status</th>
           </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -435,7 +455,7 @@
     function renderStats() {
       const stats = document.getElementById("stats");
       const totalTrades = stockData.length;
-      const activeTrades = stockData.filter(i => (i.result || "").toUpperCase() === "ACTIVE").length;
+      const activeTrades = stockData.filter(i => (i.status || "").toUpperCase() === "ACTIVE").length;
       const closedTrades = totalTrades - activeTrades;
       const totalReturn = stockData.reduce((sum, item) => sum + (item.returnPercent || 0), 0);
       const avgReturn = totalTrades > 0 ? totalReturn / totalTrades : 0;
@@ -484,7 +504,7 @@
 
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
-        const displayStatus = (item.result || "").toUpperCase();
+        const displayStatus = (item.status || "").toUpperCase();
         const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
@@ -531,7 +551,7 @@
           const returnPercentClass = returnPercent >= 0 ? "return-positive" : "return-negative";
           const returnText = `${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%`;
           let statusClass = "";
-          let statusText = item.result || "";
+          let statusText = item.status || "";
           if (statusText.toUpperCase() === "ACTIVE") statusClass = "status-active";
           else if (statusText.toUpperCase() === "SL HIT") statusClass = "status-sl-hit";
           const optionsDisplay = item.hasOption === "Y" ? '<span class="has-option-badge">Y</span>' : '<span class="has-option-badge">N</span>';
@@ -547,7 +567,7 @@
             <td data-label="Type"><span class="badge ${badgeClass}">${displayType}</span></td>
             <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
             <td data-label="Current LTP">${item.currentltp ?? ""}</td>
-            <td data-label="SL">${item.sl ?? ""}</td>
+            <td data-label="SL"><span class="badge ${badgeClass}">${item.sl ?? ""}</span></td>
             <td data-label="Return %" class="${returnPercentClass}">${returnText}</td>
             <td data-label="Status"><span class="${statusClass}">${statusText}</span></td>
           `;
@@ -745,39 +765,13 @@
       }, 3000);
     }
 
-    // Add animation keyframes
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes slideIn {
-        from {
-          transform: translateX(400px);
-          opacity: 0;
-        }
-        to {
-          transform: translateX(0);
-          opacity: 1;
-        }
-      }
-      @keyframes slideOut {
-        from {
-          transform: translateX(0);
-          opacity: 1;
-        }
-        to {
-          transform: translateX(400px);
-          opacity: 0;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-
     function exportToCSV() {
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
       const statusVal = document.getElementById("statusFilter").value;
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
-        const displayStatus = (item.result || "").toUpperCase();
+        const displayStatus = (item.status || "").toUpperCase();
         const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
@@ -798,7 +792,7 @@
           item.currentltp || "",
           item.sl || "",
           (item.returnPercent || 0).toFixed(2),
-          item.result || ""
+          item.status || ""
         ].join(","))
       ].join("\n");
       const blob = new Blob([csvContent], { type: "text/csv" });
