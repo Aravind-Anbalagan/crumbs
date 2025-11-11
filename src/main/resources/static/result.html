@@ -547,7 +547,7 @@
             <td data-label="Type"><span class="badge ${badgeClass}">${displayType}</span></td>
             <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
             <td data-label="Current LTP">${item.currentltp ?? ""}</td>
-            <td data-label="SL">${item.result ?? ""}</td>
+            <td data-label="SL">${item.sl ?? ""}</td>
             <td data-label="Return %" class="${returnPercentClass}">${returnText}</td>
             <td data-label="Status"><span class="${statusClass}">${statusText}</span></td>
           `;
@@ -796,7 +796,7 @@
           item.type || "",
           item.executedltp || "",
           item.currentltp || "",
-          item.result || "",
+          item.sl || "",
           (item.returnPercent || 0).toFixed(2),
           item.result || ""
         ].join(","))
