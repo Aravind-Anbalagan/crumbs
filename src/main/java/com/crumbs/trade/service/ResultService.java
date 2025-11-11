@@ -259,12 +259,12 @@ public class ResultService {
 				    String entryType = result.getType();      // e.g., BUY or SELL
 				    String currentTrend = indicator.getSl();  // e.g., BUY, SELL, or SIDEWAYS
 
-				    if ("BUY".equalsIgnoreCase(entryType)) {
+				    if ("UP".equalsIgnoreCase(entryType)) {
 				        // SL hits when current trend turns SELL
-				        slHit = "SELL".equalsIgnoreCase(currentTrend);
-				    } else if ("SELL".equalsIgnoreCase(entryType)) {
+				        slHit = "DOWN".equalsIgnoreCase(currentTrend);
+				    } else if ("DOWN".equalsIgnoreCase(entryType)) {
 				        // SL hits when current trend turns BUY
-				        slHit = "BUY".equalsIgnoreCase(currentTrend);
+				        slHit = "UP".equalsIgnoreCase(currentTrend);
 				    }
 				    result.setSl(currentTrend);
 				    result.setStatus(slHit ? "SL HIT" : "ACTIVE");
