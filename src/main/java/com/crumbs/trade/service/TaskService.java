@@ -1463,6 +1463,13 @@ public class TaskService {
 	        indicator.setSector("Unknown");
 	        //indicator.setIndustry("Unknown");
 	    }
+	    
+	    //Current Trend
+		String currentTrend =
+			    ("BUY".equalsIgnoreCase(indicator.getHeikinAshiDay()) && "BUY".equalsIgnoreCase(indicator.getPsarFlagDay())) ? "UP" :
+			    ("SELL".equalsIgnoreCase(indicator.getHeikinAshiDay()) && "SELL".equalsIgnoreCase(indicator.getPsarFlagDay())) ? "DOWN" :
+			    "SIDEWAYS";
+		indicator.setSl(currentTrend);
 	    // Save indicator to DB
 		indicatorRepo.save(indicator);
 	}

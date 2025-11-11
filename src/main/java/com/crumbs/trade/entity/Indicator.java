@@ -321,5 +321,7 @@ public class Indicator {
 
 	@Column(precision = 30, scale = 10)
 	private String cpr1W;
+	@Column(name = "sl")
+	String sl;
 
 }

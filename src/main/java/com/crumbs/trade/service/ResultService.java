@@ -25,6 +25,7 @@ import com.crumbs.trade.entity.PricesHeikinAshiNifty;
 import com.crumbs.trade.entity.Result;
 import com.crumbs.trade.entity.ResultMcx;
 import com.crumbs.trade.entity.ResultNifty;
+import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.ResultMcxRepo;
 import com.crumbs.trade.repo.ResultNiftyRepo;
 import com.crumbs.trade.repo.ResultRepo;
@@ -47,6 +48,9 @@ public class ResultService {
 	
 	@Autowired
 	SRService srService;
+	
+	@Autowired
+	IndicatorRepo indicatorRepo;
 	
 	@Transactional
 	public void saveNiftyResult(Indicator stock) {
@@ -72,12 +76,13 @@ public class ResultService {
 			result.setCurrentltp(stock.getCurrentPrice());
 			result.setType(stock.getIntraday()); // common field indicate buy /sell
 			result.setHasOption(Objects.nonNull(stock.getOptions()) ? "Y" : "N");
-			if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
+			/*if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
 
 			} else if ("DOWN".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
-			}
+			}*/
+			result.setSl(stock.getSl());
 			resultRepo.save(result);
 		}
 
@@ -245,16 +250,30 @@ public class ResultService {
 
 	        result.setComment("Return: " + returnPercent.setScale(2, RoundingMode.HALF_UP) + "%");
 
-	        // Check SL
-	        if (result.getSl() != null) {
-	            boolean slHit = false;
-	            if ("UP".equalsIgnoreCase(result.getType())) {
-	                slHit = currentPrice.compareTo(result.getSl()) <= 0;
-	            } else if ("DOWN".equalsIgnoreCase(result.getType())) {
-	                slHit = currentPrice.compareTo(result.getSl()) >= 0;
-	            }
-	            result.setResult(slHit ? "SL HIT" : "ACTIVE");
-	        }
+	     // Check Stop Loss (trend reversal based)
+	   
+				Indicator indicator = indicatorRepo.findByname(result.getName());
+				
+				if(indicator!=null)
+				{
+					  boolean slHit = false;
+			            String entryType = result.getType();         // BUY or SELL
+			            String currentTrend = indicator.getSl();  // current signal/trend, e.g. BUY/SELL/SIDEWAYS
+
+			            if ("BUY".equalsIgnoreCase(entryType)) {
+			                slHit = "SELL".equalsIgnoreCase(currentTrend);
+			            } else if ("SELL".equalsIgnoreCase(entryType)) {
+			                slHit = "BUY".equalsIgnoreCase(currentTrend);
+			            }
+
+			            result.setResult(slHit ? "SL HIT" : "ACTIVE");
+				}
+				else
+				{
+					result.setResult("ERROR");
+				}
+	          
+	        
 
 	        updatedResults.add(result);
 	    }

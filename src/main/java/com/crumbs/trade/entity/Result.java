@@ -53,7 +53,7 @@ public class Result {
 	@Column(name = "exitTime")
 	String exitTime;
 	@Column(name="sl")
-	BigDecimal sl;
+	String sl;
 	@Column(name="hasOption")
 	String hasOption;
 }
