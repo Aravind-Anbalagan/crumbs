@@ -50,14 +50,26 @@ public class CrumbsNewApplication {
     }
 
     @Bean
-    public TaskScheduler taskScheduler() {
+    public ThreadPoolTaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(10);
         scheduler.setThreadNamePrefix("crumbs-scheduler-");
-        scheduler.setErrorHandler(t -> log.error("Scheduler error", t));
+        scheduler.setWaitForTasksToCompleteOnShutdown(true);
+        scheduler.setAwaitTerminationSeconds(10);
+
+        scheduler.setErrorHandler(t -> {
+            log.error("⚠️ Uncaught scheduler exception", t);
+            // optional: you could notify Telegram or alert here safely
+        });
+
+        scheduler.setRejectedExecutionHandler((r, e) -> 
+            log.error("⚠️ Scheduler rejected task: {}", r)
+        );
+
         scheduler.initialize();
         return scheduler;
     }
+
 
     @Bean
     public SmartConnect getSmartConnect() {

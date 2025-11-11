@@ -13,18 +13,16 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
-import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.Vix;
 import com.crumbs.trade.repo.PricesNiftyRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.ChartService;
-import com.crumbs.trade.service.OIDataService;
 import com.crumbs.trade.service.OIService;
 import com.crumbs.trade.service.SRService;
 import com.crumbs.trade.service.TaskService;
-import com.crumbs.trade.service.ChartService.CandleRange;
 
 import jakarta.mail.internet.AddressException;
 
@@ -32,161 +30,189 @@ import jakarta.mail.internet.AddressException;
 @RequestMapping(value = "/heikinpsar")
 public class HeikinPsarController {
 
-	private static final Logger logger = LogManager.getLogger(HeikinPsarController.class);
-	@Autowired
-	ChartService chartService;
+    private static final Logger logger = LogManager.getLogger(HeikinPsarController.class);
 
-	@Autowired
-	VixRepo vixRepo;
+    @Autowired private ChartService chartService;
+    @Autowired private VixRepo vixRepo;
+    @Autowired private PricesNiftyRepo pricesNiftyRepo;
+    @Autowired private TaskService taskService;
+    @Autowired private StrategyRepo strategyRepo;
+    @Autowired private OIService oiService;
+    @Autowired private SRService srService;
 
-	@Autowired
-	PricesNiftyRepo pricesNiftyRepo;
+    private static final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-	@Autowired
-	TaskService taskService;
+    // ---------------------------- SCHEDULED TASKS ----------------------------
 
-	@Autowired
-	StrategyRepo strategyRepo;
-	
-	@Autowired
-	OIService oiService;
-	
-	@Autowired
-	SRService srService;
+    // For 9:20:05 AM to 9:55:05 AM
+    @Scheduled(cron = "5 20-55/5 9 * * MON-FRI", zone = "Asia/Kolkata")
+    public void scheduledTask1() {
+        runSafely("scheduledTask1", () -> {
+            try {
+                commonExecution_2();
+            } catch (Exception | SmartAPIException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	// For 9:20:05 AM to 9:55:05 AM AM:
-	@Scheduled(cron = "5 20-55/5 9 * * MON-FRI", zone = "Asia/Kolkata")
-	public void scheduledTask1() throws SmartAPIException, AddressException, MessagingException, IOException {
-		//logger.info("First");
-		// commonExecution_1();
-		commonExecution_2();
-	}
+    // For 10:00:05 AM to 2:55:05 PM
+    @Scheduled(cron = "5 0/5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
+    public void scheduledTask2() {
+        runSafely("scheduledTask2", () -> {
+            try {
+                commonExecution_2();
+            } catch (Exception | SmartAPIException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	// For 10:00:05 AM to 2:55:05 PM
-	@Scheduled(cron = "5 0/5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
-	public void scheduledTask2() throws SmartAPIException, AddressException, MessagingException, IOException {
-		// Your task logic here
-		//logger.info("Second");
-		// commonExecution_1();
-		commonExecution_2();
-	}
+    // For 3:00:05 PM to 3:15:05 PM
+    @Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = "Asia/Kolkata")
+    public void scheduledTask3() {
+        runSafely("scheduledTask3", () -> {
+            try {
+                commonExecution_2();
+            } catch (Exception | SmartAPIException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	// For 3:00:05 PM to 3:15:05 PM
-	@Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = "Asia/Kolkata")
-	public void scheduledTask3() throws SmartAPIException, AddressException, MessagingException, IOException {
-		// Your task logic here
-		//logger.info("Third");
-		// commonExecution_1();
-		commonExecution_2();
-	}
+    // For 4:00:05 PM to 10:55:05 PM and 11:00–11:15 PM
+    @Scheduled(cron = "5 0/5 16-22 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "5 0-15/5 23 * * MON-FRI", zone = "Asia/Kolkata")
+    public void scheduledTask4() {
+        runSafely("scheduledTask4", () -> {
+            try {
+                commonExecution_3();
+            } catch (Exception | SmartAPIException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	// 16:00 → 22:55
-	// 23:00, 23:05, 23:10, 23:15
-	// @Scheduled(fixedRate = 10000)
-	@Scheduled(cron = "5 0/5 16-22 * * MON-FRI", zone = "Asia/Kolkata")
-	@Scheduled(cron = "5 0-15/5 23 * * MON-FRI", zone = "Asia/Kolkata")
-	public void scheduledTask4() throws SmartAPIException, AddressException, MessagingException, IOException {
-		//logger.info("Crude");
-		commonExecution_3();
+    // Every 10 seconds – check for executed orders
+    @Scheduled(cron = "*/10 * * * * MON-FRI")
+    public void monitorExecutedOrders() {
+        runSafely("monitorExecutedOrders", () -> {
+            try {
+                if (chartService.getName().equalsIgnoreCase("NIFTY")
+                        && "Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY").getActive())) {
+                    List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc("NIFTY");
+                    if (vixList != null && !vixList.isEmpty()) {
+                        chartService.lookForExecutedOrder("NIFTY", "NFO", vixList.get(0), false);
+                    }
+                } else if ("Y".equalsIgnoreCase(strategyRepo.findByName("SILVERM").getActive())) {
+                    List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc("SILVERM");
+                    if (vixList != null && !vixList.isEmpty()) {
+                        chartService.lookForExecutedOrder("SILVERM", "MCX", vixList.get(0), false);
+                    }
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	}
+    // Exit for Nifty
+    @Scheduled(cron = "0 20 15 ? * MON-FRI", zone = "Asia/Kolkata")
+    public void nfoExit() {
+        runSafely("nfoExit", () -> {
+            try {
+                chartService.exitFromTrade("NIFTY", "NFO");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	// Strategy 1
-	public void commonExecution_1() throws SmartAPIException {
-		if (strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
-			pricesNiftyRepo.deleteAll();
-			taskService.getVolumeData("FIVE_MINUTE", "NFO", false);
-		}
-	}
+    // Exit for Crude
+    @Scheduled(cron = "0 20 23 ? * MON-FRI", zone = "Asia/Kolkata")
+    public void mcxExit() {
+        runSafely("mcxExit", () -> {
+            try {
+                chartService.exitFromTrade("SILVERM", "MCX");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-	// Strategy 2
-	public void commonExecution_2() throws SmartAPIException, AddressException, MessagingException, IOException {
+    // Optional heartbeat to detect scheduler health
+ // Runs every 5 minutes between 9:00 AM and 11:30 PM, Monday–Friday
+    @Scheduled(cron = "0 */5 9-22 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0-30/5 23 * * MON-FRI", zone = "Asia/Kolkata")
+    public void schedulerHeartbeat() {
+        logger.info("🩵 Scheduler heartbeat OK at {}", LocalDateTime.now().format(timeFormat));
+    }
 
-		// It reads VIX and Nifty
-		String fromDate = chartService.getDate("FROM", "NSE");
-		String toDate = chartService.getDate("TO", "NSE");
-		vixRepo.deleteAll();// Must delete
-		// VIX
-		if (strategyRepo.findByName("VIX").getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "NSE", false, "VIX", fromDate, toDate,strategyRepo.findByName("VIX").getTradingsymbol());
-		}
+    // ---------------------------- STRATEGY EXECUTION ----------------------------
 
-		// NIFTY
-		if (strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,strategyRepo.findByName("NIFTY").getTradingsymbol());
-			chartService.monitorSignal("NIFTY", "NFO", false, 0);
-			//srService.getSignals("NIFTY", "NFO");
-		}
-		//NIFTY OI
-		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
-			oiService.getOptionChain("NIFTY_OI");
-		}
+    // Strategy 1 (not scheduled)
+    public void commonExecution_1() throws SmartAPIException {
+        if ("Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY").getActive())) {
+            pricesNiftyRepo.deleteAll();
+            taskService.getVolumeData("FIVE_MINUTE", "NFO", false);
+        }
+    }
 
-	}
+    // Strategy 2 (NIFTY + VIX)
+    public void commonExecution_2() throws SmartAPIException, AddressException, MessagingException, IOException {
+        String fromDate = chartService.getDate("FROM", "NSE");
+        String toDate = chartService.getDate("TO", "NSE");
+        vixRepo.deleteAll();
 
-	// Strategy 3 - CRUDEOIL
-	public void commonExecution_3() throws SmartAPIException, AddressException, MessagingException, IOException {
+        if ("Y".equalsIgnoreCase(strategyRepo.findByName("VIX").getActive())) {
+            chartService.readChartData("FIVE_MINUTE", "NSE", false, "VIX", fromDate, toDate,
+                    strategyRepo.findByName("VIX").getTradingsymbol());
+        }
 
-		String fromDate = chartService.getDate("FROM", "MCX");
-		String toDate = chartService.getDate("TO", "MCX");
-		vixRepo.deleteAll();
-		String name = "SILVERM";
-        //FUT
-		if (strategyRepo.findByName(name).getActive().equals("Y")) {
-			chartService.readChartData("FIVE_MINUTE", "MCX", false, name, fromDate, toDate,strategyRepo.findByName(name).getTradingsymbol());
-			chartService.monitorSignal(name, "MCX", false, 0);
-			//srService.getSignals("CRUDEOIL", "MCX");
-		}
-		//OI
-		if (strategyRepo.findByName(name).getActive().equals("Y")) {
-			//oiService.getOptionChain(name);
-		}
+        if ("Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY").getActive())) {
+            chartService.readChartData("FIVE_MINUTE", "NFO", false, "NIFTY", fromDate, toDate,
+                    strategyRepo.findByName("NIFTY").getTradingsymbol());
+            chartService.monitorSignal("NIFTY", "NFO", false, 0);
+        }
 
-	}
+        if ("Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY_OI").getActive())) {
+            oiService.getOptionChain("NIFTY_OI");
+        }
+    }
 
-	/*
-	 * Its a common method to entry and exist order for Vix
-	 */
-	@Scheduled(cron = "*/10 * * * * MON-FRI")
-	public void monitorExecutedOrders() {
+    // Strategy 3 (MCX)
+    public void commonExecution_3() throws SmartAPIException, AddressException, MessagingException, IOException {
+        String fromDate = chartService.getDate("FROM", "MCX");
+        String toDate = chartService.getDate("TO", "MCX");
+        vixRepo.deleteAll();
 
-		if (chartService.getName().equalsIgnoreCase("NIFTY")
-				&& strategyRepo.findByName("NIFTY").getActive().equals("Y")) {
-			List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc("NIFTY");
-			Vix vix = new Vix();
-			if (vixList != null && !vixList.isEmpty()) {
-				// Get Last candle
-				vix = vixList.get(0);
-				chartService.lookForExecutedOrder("NIFTY", "NFO", vix, false);
-			}
+        String name = "SILVERM";
+        if ("Y".equalsIgnoreCase(strategyRepo.findByName(name).getActive())) {
+            chartService.readChartData("FIVE_MINUTE", "MCX", false, name, fromDate, toDate,
+                    strategyRepo.findByName(name).getTradingsymbol());
+            chartService.monitorSignal(name, "MCX", false, 0);
+        }
+    }
 
-		} else if(strategyRepo.findByName("SILVERM").getActive().equals("Y")){
-			List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc("SILVERM");
-			Vix vix = new Vix();
-			if (vixList != null && !vixList.isEmpty()) {
-				// Get Last candle
-				vix = vixList.get(0);
-				chartService.lookForExecutedOrder("SILVERM", "MCX", vix, false); // 
-			}
+    // ---------------------------- UTILITIES ----------------------------
 
-		}
+    @GetMapping("/getCandleList")
+    public List<Vix> getCandleData() {
+        return vixRepo.findByName("CRUDEOIL");
+    }
 
-	}
-	
-	@GetMapping("/getCandleList")
-	public List<Vix> getCandleData() {
-		return vixRepo.findByName("CRUDEOIL");
-	}
-	
-	//Exit for Nifty
-	@Scheduled(cron = "0 20 15 ? * MON-FRI", zone = "Asia/Kolkata")
-	public void nfoExit() throws AddressException, MessagingException, IOException {
-		chartService.exitFromTrade("NIFTY", "NFO");
-	}
-
-	// Exit for Crude
-	@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = "Asia/Kolkata")
-	public void mcxExit() throws AddressException, MessagingException, IOException {
-		chartService.exitFromTrade("SILVERM", "MCX");
-	}
+    /**
+     * Safely runs a scheduled or repeated task.
+     * Logs any exception but does not stop scheduler threads.
+     */
+    private void runSafely(String taskName, Runnable runnable) {
+        try {
+            logger.info("▶️ {} started at {}", taskName, LocalDateTime.now().format(timeFormat));
+            runnable.run();
+            logger.info("✅ {} completed at {}", taskName, LocalDateTime.now().format(timeFormat));
+        } catch (Exception e) {
+            logger.error("❌ {} failed at {} with error: {}", 
+                    taskName, LocalDateTime.now().format(timeFormat), e.getMessage(), e);
+        }
+    }
 }

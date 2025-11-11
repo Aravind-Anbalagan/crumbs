@@ -938,7 +938,7 @@ public class TaskService {
 	        prices.setType(getPriceType(prices.getOpen(), prices.getClose()));
 	        prices.setRange(prices.getHigh().subtract(prices.getLow()));
 	        prices.setCurrentprice(currentPrice);
-
+	        prices.setExchange(index.getExchange());
 	        result.add(prices);
 	    }
 
