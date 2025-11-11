@@ -56,5 +56,7 @@ public class Result {
 	String sl;
 	@Column(name="hasOption")
 	String hasOption;
+	@Column(name="status")
+	String status;
 }
 

@@ -254,23 +254,22 @@ public class ResultService {
 	   
 				Indicator indicator = indicatorRepo.findByname(result.getName());
 				
-				if(indicator!=null)
-				{
-					  boolean slHit = false;
-			            String entryType = result.getType();         // BUY or SELL
-			            String currentTrend = indicator.getSl();  // current signal/trend, e.g. BUY/SELL/SIDEWAYS
+				if (indicator != null) {
+				    boolean slHit = false;
+				    String entryType = result.getType();      // e.g., BUY or SELL
+				    String currentTrend = indicator.getSl();  // e.g., BUY, SELL, or SIDEWAYS
 
-			            if ("BUY".equalsIgnoreCase(entryType)) {
-			                slHit = "SELL".equalsIgnoreCase(currentTrend);
-			            } else if ("SELL".equalsIgnoreCase(entryType)) {
-			                slHit = "BUY".equalsIgnoreCase(currentTrend);
-			            }
-
-			            result.setResult(slHit ? "SL HIT" : "ACTIVE");
-				}
-				else
-				{
-					result.setResult("ERROR");
+				    if ("BUY".equalsIgnoreCase(entryType)) {
+				        // SL hits when current trend turns SELL
+				        slHit = "SELL".equalsIgnoreCase(currentTrend);
+				    } else if ("SELL".equalsIgnoreCase(entryType)) {
+				        // SL hits when current trend turns BUY
+				        slHit = "BUY".equalsIgnoreCase(currentTrend);
+				    }
+				    result.setSl(currentTrend);
+				    result.setStatus(slHit ? "SL HIT" : "ACTIVE");
+				} else {
+				    result.setStatus("ERROR");
 				}
 	          
 	        

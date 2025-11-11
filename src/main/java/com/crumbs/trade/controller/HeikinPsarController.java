@@ -207,9 +207,9 @@ public class HeikinPsarController {
      */
     private void runSafely(String taskName, Runnable runnable) {
         try {
-            logger.info("▶️ {} started at {}", taskName, LocalDateTime.now().format(timeFormat));
+            //logger.info("▶️ {} started at {}", taskName, LocalDateTime.now().format(timeFormat));
             runnable.run();
-            logger.info("✅ {} completed at {}", taskName, LocalDateTime.now().format(timeFormat));
+            //logger.info("✅ {} completed at {}", taskName, LocalDateTime.now().format(timeFormat));
         } catch (Exception e) {
             logger.error("❌ {} failed at {} with error: {}", 
                     taskName, LocalDateTime.now().format(timeFormat), e.getMessage(), e);
