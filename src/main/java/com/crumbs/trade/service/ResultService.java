@@ -261,10 +261,10 @@ public class ResultService {
 
 				    if ("UP".equalsIgnoreCase(entryType)) {
 				        // SL hits when current trend turns SELL
-				        slHit = "DOWN".equalsIgnoreCase(currentTrend);
+				        slHit = "SELL".equalsIgnoreCase(currentTrend);
 				    } else if ("DOWN".equalsIgnoreCase(entryType)) {
 				        // SL hits when current trend turns BUY
-				        slHit = "UP".equalsIgnoreCase(currentTrend);
+				        slHit = "BUY".equalsIgnoreCase(currentTrend);
 				    }
 				    result.setSl(currentTrend);
 				    result.setStatus(slHit ? "SL HIT" : "ACTIVE");
