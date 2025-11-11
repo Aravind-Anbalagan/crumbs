@@ -163,6 +163,13 @@
       cursor: pointer;
       transition: background-color 0.2s ease;
     }
+    tbody tr.sl-hit-row {
+      background-color: var(--red-bg) !important;
+      border-left: 4px solid var(--red);
+    }
+    tbody tr.sl-hit-row:hover {
+      background-color: #fecaca !important;
+    }
     .badge {
       padding: 6px 12px;
       border-radius: 12px;
@@ -180,6 +187,10 @@
     .badge.down {
       background: var(--red-bg);
       color: var(--red);
+    }
+    .badge.sideway {
+      background: #fef3c7;
+      color: #92400e;
     }
     .return-positive { color: var(--green); font-weight: 700; }
     .return-negative { color: var(--red); font-weight: 700; }
@@ -377,6 +388,7 @@
         <option value="ALL">All Types</option>
         <option value="UP">UP</option>
         <option value="DOWN">DOWN</option>
+        <option value="SIDEWAY">SIDEWAY</option>
       </select>
       <select id="statusFilter">
         <option value="ALL">All Status</option>
@@ -463,6 +475,7 @@
       const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
       const upTrades = stockData.filter(i => (i.type || "").toUpperCase() === "UP").length;
       const downTrades = stockData.filter(i => (i.type || "").toUpperCase() === "DOWN").length;
+      const sidewayTrades = stockData.filter(i => (i.type || "").toUpperCase() === "SIDEWAY").length;
       stats.innerHTML = `
         <div class="stat-card">
           <div class="stat-label">Total Trades</div>
@@ -491,6 +504,10 @@
         <div class="stat-card">
           <div class="stat-label">DOWN Trades</div>
           <div class="stat-value">${downTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">SIDEWAY Trades</div>
+          <div class="stat-value">${sidewayTrades}</div>
         </div>
       `;
     }
@@ -546,18 +563,22 @@
       } else {
         paginated.forEach((item) => {
           const displayType = (item.type || "").toUpperCase();
-          const badgeClass = displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : "";
+          const badgeClass = displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : displayType === "SIDEWAY" ? "sideway" : "";
           const returnPercent = item.returnPercent || 0;
           const returnPercentClass = returnPercent >= 0 ? "return-positive" : "return-negative";
           const returnText = `${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%`;
           let statusClass = "";
           let statusText = item.status || "";
+          const isSlHit = statusText.toUpperCase() === "SL HIT";
           if (statusText.toUpperCase() === "ACTIVE") statusClass = "status-active";
-          else if (statusText.toUpperCase() === "SL HIT") statusClass = "status-sl-hit";
+          else if (isSlHit) statusClass = "status-sl-hit";
           const optionsDisplay = item.hasOption === "Y" ? '<span class="has-option-badge">Y</span>' : '<span class="has-option-badge">N</span>';
 
           const activeFlag = item.active === "Y";
           const row = document.createElement("tr");
+          if (isSlHit) {
+            row.classList.add("sl-hit-row");
+          }
           row.innerHTML = `
             <td data-label="Trade"></td>
             <td data-label="Options">${optionsDisplay}</td>
