@@ -74,6 +74,39 @@
       font-size: 16px;
       box-shadow: 0 4px 12px rgba(204,0,0,0.3);
     }
+    #apiErrorToast {
+      position: absolute;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(239, 68, 68, 0.95);
+      color: white;
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-weight: 600;
+      display: none;
+      z-index: 40;
+      font-size: 14px;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+      backdrop-filter: blur(10px);
+      animation: slideDown 0.3s ease;
+    }
+    #apiErrorToast.show {
+      display: block;
+    }
+    #apiErrorToast.fade-out {
+      animation: fadeOut 0.5s ease forwards;
+    }
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+      }
+    }
     #toolbar {
       position: absolute;
       top: 24px; left: 50%;
@@ -488,6 +521,7 @@
       <div id="retryCount"></div>
     </div>
     <div id="error"></div>
+    <div id="apiErrorToast">⚠️ API Error - Retrying...</div>
     <div id="settingsDropdown">
       <button id="settingsButton">Settings ▼</button>
       <div id="settingsMenu">
@@ -515,6 +549,7 @@
   const loaderText = document.getElementById('loaderText');
   const retryCountEl = document.getElementById('retryCount');
   const errorEl = document.getElementById('error');
+  const apiErrorToast = document.getElementById('apiErrorToast');
   const settingsButton = document.getElementById('settingsButton');
   const settingsMenu = document.getElementById('settingsMenu');
   const togglePASupportCheckbox = document.getElementById('togglePASupport');
@@ -1252,6 +1287,19 @@
     }
   }
 
+  function showApiErrorToast(message) {
+    apiErrorToast.textContent = `⚠️ ${message}`;
+    apiErrorToast.classList.remove('fade-out');
+    apiErrorToast.classList.add('show');
+    
+    setTimeout(() => {
+      apiErrorToast.classList.add('fade-out');
+      setTimeout(() => {
+        apiErrorToast.classList.remove('show', 'fade-out');
+      }, 500);
+    }, 3000);
+  }
+
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
     const url = `/api/newIntraday?timeFrame=${timeFrame}&name=${name}`;
     const resp = await fetch(url);
@@ -1287,14 +1335,18 @@
         loaderText.textContent = 'Connection failed. Retrying...';
         retryCountEl.textContent = `Attempt ${retryCount} of ${MAX_RETRIES}`;
         setTimeout(() => refresh(true), RETRY_DELAY);
-      } else {
+      } else if (firstLoad) {
+        // Only show full error screen on first load after all retries
         loaderEl.style.display = 'none';
         chartEl.style.display = 'none';
-        errorEl.textContent = retryCount >= MAX_RETRIES 
-          ? `Failed after ${MAX_RETRIES} attempts: ${e.message}` 
-          : e.message;
+        errorEl.textContent = `Failed after ${MAX_RETRIES} attempts: ${e.message}`;
         errorEl.style.display = 'block';
         retryCount = 0;
+      } else {
+        // For subsequent updates, just show toast and keep chart visible
+        showApiErrorToast('API Error - Retrying...');
+        console.error('API update failed:', e.message);
+        // Chart remains visible with previous data
       }
     }
   }
