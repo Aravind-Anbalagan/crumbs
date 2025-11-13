@@ -27,13 +27,24 @@ public class SuperTrendIndicator {
 
     /**
      * Calculate SuperTrend with custom parameters
-     * @param candles List of candlesticks
+     * Recommended: Pass 2 previous days + current day data for accurate intraday signals
+     * 
+     * @param candles List of candlesticks (should include historical data for warmup)
      * @param period ATR period (length) - typically 7-14
      * @param multiplier ATR multiplier (factor) - typically 2-4
      */
     public List<Candlestick> calculateSuperTrend(List<Candlestick> candles, int period, BigDecimal multiplier) {
-        if (candles == null || candles.size() < period + 1) {
+        if (candles == null || candles.isEmpty()) {
             return new ArrayList<>();
+        }
+        
+        if (candles.size() < period + 1) {
+            // Not enough data - mark all as NA
+            for (Candlestick c : candles) {
+                c.setSuperTrend(null);
+                c.setSuperTrendSignal("NA");
+            }
+            return candles;
         }
 
         List<BigDecimal> atr = calculateATR(candles, period);
@@ -47,6 +58,13 @@ public class SuperTrendIndicator {
             
             // Need ATR to be available
             if (i < period || atr.get(i) == null) {
+                c.setSuperTrend(null);
+                c.setSuperTrendSignal("NA");
+                continue;
+            }
+
+            // Validate OHLC data
+            if (c.getHigh() == null || c.getLow() == null || c.getClose() == null) {
                 c.setSuperTrend(null);
                 c.setSuperTrendSignal("NA");
                 continue;
@@ -96,13 +114,14 @@ public class SuperTrendIndicator {
             BigDecimal superTrendValue;
 
             if (prevDirection == null) {
-                // Initial direction: compare close to both bands
-                if (c.getClose().compareTo(finalUpperBand) <= 0) {
-                    direction = -1; // Downtrend
-                    superTrendValue = finalUpperBand;
-                } else {
+                // Initial direction: compare close to lower band (more reliable)
+                // If close is above lower band, we're in uptrend
+                if (c.getClose().compareTo(finalLowerBand) > 0) {
                     direction = 1; // Uptrend
                     superTrendValue = finalLowerBand;
+                } else {
+                    direction = -1; // Downtrend
+                    superTrendValue = finalUpperBand;
                 }
             } else {
                 direction = prevDirection;
@@ -138,11 +157,65 @@ public class SuperTrendIndicator {
     }
 
     /**
+     * Calculate SuperTrend for intraday with historical warmup data
+     * This method combines historical + current data, calculates SuperTrend, and returns only current day candles
+     * 
+     * @param historicalCandles Previous 2 days of candle data (for ATR warmup)
+     * @param currentDayCandles Today's candles
+     * @param period ATR period
+     * @param multiplier ATR multiplier
+     * @return Only today's candles with SuperTrend calculated
+     */
+    public List<Candlestick> calculateIntradaySuperTrend(
+            List<Candlestick> historicalCandles,
+            List<Candlestick> currentDayCandles,
+            int period,
+            BigDecimal multiplier) {
+        
+        if (historicalCandles == null || historicalCandles.isEmpty()) {
+            throw new IllegalArgumentException("Historical candles required for warmup. Provide at least 2 days of data.");
+        }
+        
+        if (currentDayCandles == null || currentDayCandles.isEmpty()) {
+            throw new IllegalArgumentException("Current day candles cannot be empty.");
+        }
+        
+        // Combine historical + current data
+        List<Candlestick> allCandles = new ArrayList<>(historicalCandles);
+        allCandles.addAll(currentDayCandles);
+        
+        // Validate minimum data requirement
+        int minimumRequired = period * 2;
+        if (allCandles.size() < minimumRequired) {
+            throw new IllegalArgumentException(
+                String.format("Need at least %d candles for accurate calculation. Provided: %d. Use 2 full days of data.",
+                    minimumRequired, allCandles.size())
+            );
+        }
+        
+        // Calculate SuperTrend on all data
+        calculateSuperTrend(allCandles, period, multiplier);
+        
+        // Return only current day candles with SuperTrend
+        return new ArrayList<>(allCandles.subList(historicalCandles.size(), allCandles.size()));
+    }
+    
+    /**
+     * Calculate SuperTrend for intraday with default parameters
+     */
+    public List<Candlestick> calculateIntradaySuperTrend(
+            List<Candlestick> historicalCandles,
+            List<Candlestick> currentDayCandles) {
+        return calculateIntradaySuperTrend(historicalCandles, currentDayCandles, 
+                                          DEFAULT_PERIOD, DEFAULT_MULTIPLIER);
+    }
+
+    /**
      * Identify if the market is flat/sideways or trending
      * @param candles List of candlesticks with SuperTrend already calculated
      * @param lookback Number of candles to analyze (default: 5)
      * @param changeThresholdPercent Maximum % change to consider flat (default: 0.5%)
-     * @return "FLAT", "TRENDING_UP", or "TRENDING_DOWN"
+     * @return "FLAT", "TRENDING_UP", "TRENDING_DOWN", or "UNKNOWN"
      */
     public String identifyTrendState(List<Candlestick> candles, int lookback, BigDecimal changeThresholdPercent) {
         if (candles == null || candles.isEmpty()) {
@@ -190,7 +263,7 @@ public class SuperTrendIndicator {
         }
         
         // Determine state
-        // Flat if: minimal price change AND multiple signal flips (choppy)
+        // Flat if: minimal price change OR multiple signal flips (choppy market)
         if (percentChange.compareTo(changeThresholdPercent) < 0 || signalChanges >= 2) {
             return "FLAT";
         }
@@ -218,7 +291,7 @@ public class SuperTrendIndicator {
      * @param candles List of candlesticks
      * @param period ATR period
      * @param multiplier ATR multiplier
-     * @param detectFlat If true, adds "FLAT" prefix to signal when market is sideways
+     * @param detectFlat If true, adds "FLAT_" prefix to signal when market is sideways
      */
     public List<Candlestick> calculateSuperTrendWithFlatDetection(
             List<Candlestick> candles, int period, BigDecimal multiplier, boolean detectFlat) {
@@ -236,7 +309,10 @@ public class SuperTrendIndicator {
             
             Candlestick c = result.get(i);
             if ("FLAT".equals(trendState)) {
-                c.setSuperTrendSignal("FLAT_" + c.getSuperTrendSignal());
+                String currentSignal = c.getSuperTrendSignal();
+                if (currentSignal != null && !currentSignal.equals("NA")) {
+                    c.setSuperTrendSignal("FLAT_" + currentSignal);
+                }
             }
         }
         
@@ -245,8 +321,9 @@ public class SuperTrendIndicator {
 
     /**
      * Calculate market volatility using ATR
-     * @param candles List of candlesticks with SuperTrend calculated
-     * @return "LOW", "MEDIUM", "HIGH" volatility
+     * @param candles List of candlesticks
+     * @param period ATR period
+     * @return "LOW", "MEDIUM", "HIGH", or "UNKNOWN" volatility
      */
     public String calculateVolatility(List<Candlestick> candles, int period) {
         if (candles == null || candles.size() < period + 1) {
@@ -262,12 +339,15 @@ public class SuperTrendIndicator {
         
         // Get current price for comparison
         BigDecimal currentPrice = candles.get(candles.size() - 1).getClose();
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return "UNKNOWN";
+        }
         
         // Calculate ATR as percentage of price
         BigDecimal atrPercent = currentATR.divide(currentPrice, SCALE, RoundingMode.HALF_UP)
                 .multiply(new BigDecimal("100"));
         
-        // Classify volatility
+        // Classify volatility (thresholds for intraday trading)
         if (atrPercent.compareTo(new BigDecimal("1.0")) < 0) {
             return "LOW";
         } else if (atrPercent.compareTo(new BigDecimal("2.5")) < 0) {
@@ -277,6 +357,10 @@ public class SuperTrendIndicator {
         }
     }
 
+    /**
+     * Calculate Average True Range (ATR)
+     * Uses Wilder's smoothing method
+     */
     private List<BigDecimal> calculateATR(List<Candlestick> candles, int period) {
         List<BigDecimal> atr = new ArrayList<>();
         BigDecimal prevATR = null;
@@ -289,6 +373,13 @@ public class SuperTrendIndicator {
 
             Candlestick curr = candles.get(i);
             Candlestick prev = candles.get(i - 1);
+
+            // Null checks for OHLC data
+            if (curr.getHigh() == null || curr.getLow() == null || 
+                curr.getClose() == null || prev.getClose() == null) {
+                atr.add(null);
+                continue;
+            }
 
             // Calculate True Range
             BigDecimal tr1 = curr.getHigh().subtract(curr.getLow()).abs();
@@ -307,6 +398,12 @@ public class SuperTrendIndicator {
                 for (int j = 1; j <= period; j++) {
                     Candlestick c = candles.get(j);
                     Candlestick p = candles.get(j - 1);
+                    
+                    // Null checks
+                    if (c.getHigh() == null || c.getLow() == null || 
+                        c.getClose() == null || p.getClose() == null) {
+                        continue;
+                    }
                     
                     BigDecimal t1 = c.getHigh().subtract(c.getLow()).abs();
                     BigDecimal t2 = c.getHigh().subtract(p.getClose()).abs();
@@ -327,5 +424,43 @@ public class SuperTrendIndicator {
         }
         
         return atr;
+    }
+    
+    /**
+     * Check if there was a signal change (crossover) in the last N candles
+     * Useful for detecting recent trend reversals
+     * 
+     * @param candles List of candlesticks with SuperTrend calculated
+     * @param lookback Number of candles to check (default 1 for immediate crossover)
+     * @return true if signal changed within lookback period
+     */
+    public boolean hasRecentSignalChange(List<Candlestick> candles, int lookback) {
+        if (candles == null || candles.size() < lookback + 1) {
+            return false;
+        }
+        
+        int size = candles.size();
+        String currentSignal = candles.get(size - 1).getSuperTrendSignal();
+        
+        if (currentSignal == null || currentSignal.equals("NA")) {
+            return false;
+        }
+        
+        // Check for signal change in lookback period
+        for (int i = size - 2; i >= Math.max(0, size - lookback - 1); i--) {
+            String signal = candles.get(i).getSuperTrendSignal();
+            if (signal != null && !signal.equals("NA") && !signal.equals(currentSignal)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Check for immediate signal change (last candle vs previous candle)
+     */
+    public boolean hasRecentSignalChange(List<Candlestick> candles) {
+        return hasRecentSignalChange(candles, 1);
     }
 }
