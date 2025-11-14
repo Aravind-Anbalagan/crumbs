@@ -2309,29 +2309,24 @@ public class TaskService {
 	}
 
 	public List<String> calculateCpr(BigDecimal high, BigDecimal low, BigDecimal close) {
-		// Calculate CPR values
-		BigDecimal pivotPoint = calculatePivotPoint(high, low, close);
-		BigDecimal bottomCentralPivot = calculateBottomCentralPivot(high, low);
-		BigDecimal topCentralPivot = calculateTopCentralPivot(pivotPoint, bottomCentralPivot);
+	    // Pivot = (High + Low + Close) / 3
+	    BigDecimal pivot = high.add(low).add(close)
+	            .divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP);
 
-		return Arrays.asList(String.valueOf(topCentralPivot.intValue()), String.valueOf(pivotPoint.intValue()),
-				String.valueOf(bottomCentralPivot.intValue()));
+	    // Top CPR = (High + Low) / 2
+	    BigDecimal topCpr = high.add(low)
+	            .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+
+	    // Bottom CPR = Pivot - (Top CPR - Pivot)
+	    BigDecimal bottomCpr = pivot.subtract(topCpr.subtract(pivot));
+
+	    return Arrays.asList(
+	        bottomCpr.toPlainString(),
+	        pivot.toPlainString(),
+	        topCpr.toPlainString()
+	    );
 	}
 
-	public static BigDecimal calculatePivotPoint(BigDecimal high, BigDecimal low, BigDecimal close) {
-		// Formula: PP = (High + Low + Close) / 3
-		return high.add(low).add(close).divide(new BigDecimal("3"), RoundingMode.HALF_UP);
-	}
-
-	public static BigDecimal calculateBottomCentralPivot(BigDecimal high, BigDecimal low) {
-		// Formula: BC = (High + Low) / 2
-		return high.add(low).divide(new BigDecimal("2"), RoundingMode.HALF_UP);
-	}
-
-	public static BigDecimal calculateTopCentralPivot(BigDecimal pivotPoint, BigDecimal bottomCentralPivot) {
-		// Formula: TC = (PP - BC) + PP
-		return pivotPoint.subtract(bottomCentralPivot).add(pivotPoint);
-	}
 
 	public PricesIndex createModifiedList(BigDecimal open, BigDecimal close, List<BigDecimal> highList,
 			List<BigDecimal> lowList, List<BigDecimal> volumeList, String timeStamp, String name) {
@@ -2845,7 +2840,7 @@ public class TaskService {
 		if (type.equalsIgnoreCase("MCX") && time.equalsIgnoreCase("FROM")) {
 			return " 23:25";
 		} else if ((type.equalsIgnoreCase("NFO") || type.equalsIgnoreCase("NSE")) && time.equalsIgnoreCase("FROM")) {
-			return " 12:50"; //Adjust for Smoothing
+			return " 09:20"; //Adjust for Smoothing
 		}
 
 		if (time.equalsIgnoreCase("FROM")) {

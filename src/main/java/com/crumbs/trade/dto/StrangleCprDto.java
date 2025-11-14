@@ -16,4 +16,8 @@ public class StrangleCprDto {
 	private BigDecimal close;
 	private BigDecimal firstFiveMinHigh;
 	private BigDecimal firstFiveMinLow;
+	private BigDecimal CprWidth;
+	private String CprType;
+	private BigDecimal cprPercent;
+	
 }

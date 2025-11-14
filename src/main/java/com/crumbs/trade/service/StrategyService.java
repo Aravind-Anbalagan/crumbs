@@ -2,11 +2,13 @@ package com.crumbs.trade.service;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -369,31 +371,66 @@ public class StrategyService {
 	}
 	
 	//Calculate CPR
-	public StrangleCprDto getCPR(SmartConnect smartconnect, Strategy strategy, StrangleCprDto strangleCprDto)
-			throws IOException, SmartAPIException {
-		LocalDate today = LocalDate.now();
-		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
-		String toDate = lastWorkingDay.toString().concat(" 09:15");
-		LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(lastWorkingDay);
-		String fromDate = previousWorkingDay.toString().concat(" 09:15");
-		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "ONE_DAY", fromDate,
-				toDate);
-		if (!ohlcArray.isEmpty()) {
-			strangleCprDto.setOpen(new BigDecimal(String.valueOf(ohlcArray.getDouble(1))));
-			strangleCprDto.setHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
-			strangleCprDto.setLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
-			strangleCprDto.setClose(new BigDecimal(String.valueOf(ohlcArray.getDouble(4))));
-			List<String> cprList = taskService.calculateCpr(strangleCprDto.getHigh(), strangleCprDto.getLow(),
-					strangleCprDto.getClose());
-			if (!cprList.isEmpty()) {
-				strangleCprDto.setBottom_pivot(new BigDecimal(cprList.get(0)));
-				strangleCprDto.setPivot(new BigDecimal(cprList.get(1)));
-				strangleCprDto.setTop_pivot(new BigDecimal(cprList.get(2)));
-			}
-			return strangleCprDto;
-		}
-		return null;
+	public StrangleCprDto getCPR(SmartConnect smartconnect, Strategy strategy, StrangleCprDto dto)
+	        throws IOException, SmartAPIException {
+
+	    LocalDate today = LocalDate.now();
+	    LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
+	    LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(lastWorkingDay);
+
+	    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+	    String fromDate = previousWorkingDay.atTime(9, 15).format(formatter);
+	    String toDate = lastWorkingDay.atTime(9, 15).format(formatter);
+
+	    JSONArray candles = getCandleDataByChoice(smartconnect, strategy, dto, "ONE_DAY", fromDate, toDate);
+	    if (candles.isEmpty()) {
+	        return dto;
+	    }
+
+	    Object first = candles.get(0);
+	    if (first instanceof JSONArray candle) {
+	        dto.setOpen(BigDecimal.valueOf(candle.getDouble(1)));
+	        dto.setHigh(BigDecimal.valueOf(candle.getDouble(2)));
+	        dto.setLow(BigDecimal.valueOf(candle.getDouble(3)));
+	        dto.setClose(BigDecimal.valueOf(candle.getDouble(4)));
+	    } else {
+	        dto.setOpen(BigDecimal.valueOf(candles.getDouble(1)));
+	        dto.setHigh(BigDecimal.valueOf(candles.getDouble(2)));
+	        dto.setLow(BigDecimal.valueOf(candles.getDouble(3)));
+	        dto.setClose(BigDecimal.valueOf(candles.getDouble(4)));
+	    }
+
+	    List<String> cprList = taskService.calculateCpr(dto.getHigh(), dto.getLow(), dto.getClose());
+	    if (!cprList.isEmpty() && cprList.size() >= 3) {
+	        dto.setBottom_pivot(new BigDecimal(cprList.get(0)));
+	        dto.setPivot(new BigDecimal(cprList.get(1)));
+	        dto.setTop_pivot(new BigDecimal(cprList.get(2)));
+	    }
+
+	    BigDecimal cprWidth = dto.getTop_pivot().subtract(dto.getBottom_pivot());
+	    BigDecimal cprPercent = cprWidth
+	            .divide(dto.getPivot(), 6, RoundingMode.HALF_UP)
+	            .multiply(BigDecimal.valueOf(100))
+	            .setScale(2, RoundingMode.HALF_UP);
+
+	    String cprType;
+	    if (cprPercent.compareTo(BigDecimal.valueOf(0.25)) < 0) {
+	        cprType = "Narrow Range";
+	    } else if (cprPercent.compareTo(BigDecimal.valueOf(0.50)) < 0) {
+	        cprType = "Medium Range";
+	    } else {
+	        cprType = "Wide Range";
+	    }
+
+	    dto.setCprWidth(cprWidth);
+	    dto.setCprPercent(cprPercent);
+	    dto.setCprType(cprType);
+
+	    return dto;
 	}
+
+
+
 	
 	public StrangleCprDto getFirstCandleData(SmartConnect smartconnect, Strategy strategy,
 			StrangleCprDto strangleCprDto) {
@@ -403,8 +440,8 @@ public class StrategyService {
 		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "FIVE_MINUTE", fromDate,
 				toDate);
 		if (!ohlcArray.isEmpty()) {
-			strangleCprDto.setHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
-			strangleCprDto.setLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
+			strangleCprDto.setFirstFiveMinHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
+			strangleCprDto.setFirstFiveMinLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
 		}
 		return strangleCprDto;
 
@@ -430,41 +467,63 @@ public class StrategyService {
 	    // 2️⃣ Get first 5-minute candle data
 	    strangleCprDto = getFirstCandleData(smartconnect, strategy, strangleCprDto);
 
+	    // 3 - save the CPR
+	    saveCPR(strangleCprDto);
+	    
 	    // Print reference values
 	    System.out.println("CPR & Candle Data: " + strangleCprDto);
 	    getCPRStrategySignal(strangleCprDto,strategy,smartconnect);
 	   
 	}
 
-    public void getCPRStrategySignal(StrangleCprDto strangleCprDto, Strategy strategy, SmartConnect smartconnect)
-    {
-    	 // Extract required fields
+	private void saveCPR(StrangleCprDto strangleCprDto) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	public void getCPRStrategySignal(StrangleCprDto strangleCprDto, Strategy strategy, SmartConnect smartconnect) {
+	    // Extract fields safely
 	    BigDecimal topPivot = strangleCprDto.getTop_pivot();
 	    BigDecimal bottomPivot = strangleCprDto.getBottom_pivot();
 	    BigDecimal first5High = strangleCprDto.getFirstFiveMinHigh();
 	    BigDecimal first5Low = strangleCprDto.getFirstFiveMinLow();
 
-	    // 3️⃣ Fetch current LTP
-	    BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect,
-				strategy.getExchange(), strategy.getTradingsymbol(),
-				strategy.getToken(),"ltp");
+	    if (topPivot == null || bottomPivot == null) {
+	        System.out.println("⚠️ CPR data missing — skipping signal generation.");
+	        return;
+	    }
+
+	    if (first5High == null || first5Low == null) {
+	        System.out.println("⚠️ First 5-min candle data missing — skipping signal generation.");
+	        return;
+	    }
+
+	    // Fetch current LTP
+	    BigDecimal currentPrice = angelOneService.getcurrentPrice(
+	            smartconnect,
+	            strategy.getExchange(),
+	            strategy.getTradingsymbol(),
+	            strategy.getToken(),
+	            "ltp"
+	    );
+
 	    System.out.println("Current Price: " + currentPrice);
 
-	    // 4️⃣ Decision logic
 	    String signal;
 	    if (currentPrice.compareTo(bottomPivot) > 0 && currentPrice.compareTo(topPivot) < 0) {
-	        signal = "NO TRADE";  // between CPR
+	        signal = "NO TRADE"; // Between CPR
 	    } else if (currentPrice.compareTo(first5High) > 0 && currentPrice.compareTo(topPivot) > 0) {
-	        signal = "BUY";
+	        signal = "BUY"; // Bullish breakout
 	    } else if (currentPrice.compareTo(first5Low) < 0 && currentPrice.compareTo(bottomPivot) < 0) {
-	        signal = "SELL";
+	        signal = "SELL"; // Bearish breakout
 	    } else {
-	        signal = "WAIT";
+	        signal = "WAIT"; // Not yet confirmed
 	    }
 
 	    System.out.println("Signal: " + signal);
 	    executeCPRStrategyOrders(signal);
-    }
+	}
+
     
     public void executeCPRStrategyOrders(String signal)
     {
