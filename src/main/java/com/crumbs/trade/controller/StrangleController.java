@@ -126,6 +126,11 @@ public class StrangleController {
 	//@Scheduled(fixedRate = 10000)
 	public void Strangle_CPR() throws IOException, SmartAPIException
 	{
-		strategyService.strangle_CPR();
+		strategyService.getCPRDetails();
+	}
+	
+	public void monitor_CPR_Strategy() throws IOException, SmartAPIException
+	{
+		strategyService.executeCPRStrategy();
 	}
 }

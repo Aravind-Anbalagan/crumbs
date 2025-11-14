@@ -36,6 +36,7 @@ import com.crumbs.trade.dto.StrangleCprDto;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Stoploss;
 import com.crumbs.trade.entity.Strategy;
+import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.PriceRepo;
 import com.crumbs.trade.repo.StrategyRepo;
@@ -70,6 +71,9 @@ public class StrategyService {
 	
 	@Autowired
 	ChartService chartService;
+	
+	@Autowired
+	CPRRepo cprRepo;
 	
 	public static int MAX;
 	public static int MIN;
@@ -447,7 +451,7 @@ public class StrategyService {
 
 	}
 	
-	public void strangle_CPR() throws IOException, SmartAPIException {
+	public void getCPRDetails() throws IOException, SmartAPIException {
 	    StrangleCprDto strangleCprDto = new StrangleCprDto();
 	    Strategy strategy = strategyRepo.findByName("STRANGLE");
 	   
@@ -468,17 +472,38 @@ public class StrategyService {
 	    strangleCprDto = getFirstCandleData(smartconnect, strategy, strangleCprDto);
 
 	    // 3 - save the CPR
-	    saveCPR(strangleCprDto);
+	    saveCPR(strangleCprDto, strategy.getName(), now.toString());
 	    
-	    // Print reference values
-	    System.out.println("CPR & Candle Data: " + strangleCprDto);
-	    getCPRStrategySignal(strangleCprDto,strategy,smartconnect);
+	
+	   
+	}
+	
+	public void executeCPRStrategy()
+	{
+		SmartConnect smartconnect = angelOne.signIn();
+		com.crumbs.trade.entity.CPR cprDetails = cprRepo.findByName("NIFTY");
+	    if(cprDetails!=null)
+	    {
+	    	//getCPRStrategySignal(strangleCprDto,strategy,smartconnect);
+	    }
 	   
 	}
 
-	private void saveCPR(StrangleCprDto strangleCprDto) {
-		// TODO Auto-generated method stub
-		
+	public com.crumbs.trade.entity.CPR saveCPR(StrangleCprDto dto, String name, String date) {
+
+		com.crumbs.trade.entity.CPR cpr = new com.crumbs.trade.entity.CPR();
+		cpr.setName(name);
+		cpr.setDate(date);
+
+		cpr.setPivot(dto.getPivot());
+		cpr.setTop(dto.getTop_pivot());
+		cpr.setBottom(dto.getBottom_pivot());
+
+		// Optional fields if needed
+		cpr.setHigh(dto.getHigh());
+		cpr.setLow(dto.getLow());
+
+		return cprRepo.save(cpr);
 	}
 
 	public void getCPRStrategySignal(StrangleCprDto strangleCprDto, Strategy strategy, SmartConnect smartconnect) {

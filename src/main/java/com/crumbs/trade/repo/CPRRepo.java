@@ -8,4 +8,6 @@ import com.crumbs.trade.entity.CPR;
 @Repository
 public interface CPRRepo extends JpaRepository<CPR, Long> {
 
+	CPR findByName(String name);
+
 }
