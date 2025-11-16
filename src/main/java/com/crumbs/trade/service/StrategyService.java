@@ -75,6 +75,8 @@ public class StrategyService {
 	@Autowired
 	CPRRepo cprRepo;
 	
+	@Autowired OrderService orderService;
+	
 	public static int MAX;
 	public static int MIN;
 	
@@ -92,7 +94,7 @@ public class StrategyService {
 		strategy = strategyRepo.findByName("STRANGLE");
 		String signal;
 		//getNiftyPrice();
-		List<Orders> orderList = orderRepository.findByNameAndActive("NIFTY", 1);
+		Orders order = orderRepository.findByNameAndActive("NIFTY", 1);
 		SmartConnect smartconnect = angelOne.signIn();
 		//CPR
 		//CPR cpr = calculate_CPR(smartconnect,strategy);
@@ -105,7 +107,7 @@ public class StrategyService {
 		
 		if(strategy.getActive().equalsIgnoreCase("Y"))
 		{
-			if (orderList.size() == 0 && !firstOrder) {
+			if (order==null && !firstOrder) {
 				// Based on gap up and gap down, order trigger time will be changed
 				if (analysePrice(nifty_ClosePrice, nifty_OpenPrice)) {
 					niftyPrice = getNiftyPrice("15","30",strategy,35);// first 4 candle
@@ -145,13 +147,13 @@ public class StrategyService {
 					}*/
 				}
 				
-			} else if (orderList.size() == 1 && !secondOrder) {
+			} else if (order!=null && !secondOrder) {
 
 				BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
 						strategy.getTradingsymbol(), strategy.getToken(), "ltp");
 				String tradeType = readPriceFromTable("NIFTY", currentPrice);
 				
-				String type = orderList.get(0).getType();
+				String type = order.getType();
 				logger.info("Waiting for Signal @ " + " :  Buy/Sell = " + tradeType);
 				
 				if (tradeType != null && tradeType.equalsIgnoreCase("SELL") && !type.equalsIgnoreCase("SELL")) {
@@ -404,11 +406,11 @@ public class StrategyService {
 	        dto.setClose(BigDecimal.valueOf(candles.getDouble(4)));
 	    }
 
-	    List<String> cprList = taskService.calculateCpr(dto.getHigh(), dto.getLow(), dto.getClose());
-	    if (!cprList.isEmpty() && cprList.size() >= 3) {
-	        dto.setBottom_pivot(new BigDecimal(cprList.get(0)));
-	        dto.setPivot(new BigDecimal(cprList.get(1)));
-	        dto.setTop_pivot(new BigDecimal(cprList.get(2)));
+	    CPR cpr = taskService.calculateCpr(dto.getHigh(), dto.getLow(), dto.getClose());
+	    if (cpr!=null ) {
+	        dto.setBottom_pivot(cpr.getBottom_pivot());
+	        dto.setPivot(cpr.getPivot());
+	        dto.setTop_pivot(cpr.getTop_pivot());
 	    }
 
 	    BigDecimal cprWidth = dto.getTop_pivot().subtract(dto.getBottom_pivot());
@@ -434,8 +436,6 @@ public class StrategyService {
 	}
 
 
-
-	
 	public StrangleCprDto getFirstCandleData(SmartConnect smartconnect, Strategy strategy,
 			StrangleCprDto strangleCprDto) {
 		LocalDate today = LocalDate.now();
@@ -443,125 +443,152 @@ public class StrategyService {
 		String toDate = today.toString().concat(" 09:20");
 		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "FIVE_MINUTE", fromDate,
 				toDate);
-		if (!ohlcArray.isEmpty()) {
+		if (ohlcArray != null) {
 			strangleCprDto.setFirstFiveMinHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
 			strangleCprDto.setFirstFiveMinLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
+			return strangleCprDto;
 		}
-		return strangleCprDto;
 
+		return null;
 	}
 	
 	public void getCPRDetails() throws IOException, SmartAPIException {
-	    StrangleCprDto strangleCprDto = new StrangleCprDto();
-	    Strategy strategy = strategyRepo.findByName("STRANGLE");
-	   
+		StrangleCprDto strangleCprDto = new StrangleCprDto();
+		Strategy strategy = strategyRepo.findByName("STRANGLE");
 
-	    SmartConnect smartconnect = angelOne.signIn();
+		SmartConnect smartconnect = angelOne.signIn();
 
-	    // Ensure we start after 09:20 (first 5-min candle closed)
-	    LocalTime now = LocalTime.now();
-	    if (now.isBefore(LocalTime.of(9, 20))) {
-	        System.out.println("⏰ Wait until 09:20 AM for first 5-min candle to close.");
-	        return;
-	    }
+		// Ensure we start after 09:20 (first 5-min candle closed)
+		LocalTime now = LocalTime.now();
+		if (now.isBefore(LocalTime.of(9, 20))) {
+			System.out.println("⏰ Wait until 09:20 AM for first 5-min candle to close.");
+			return;
+		}
 
-	    // 1️⃣ Get CPR (top, bottom, pivot)
-	    strangleCprDto = getCPR(smartconnect, strategy, strangleCprDto);
+		// 1️⃣ Get CPR (top, bottom, pivot)
+		strangleCprDto = getCPR(smartconnect, strategy, strangleCprDto);
 
-	    // 2️⃣ Get first 5-minute candle data
-	    strangleCprDto = getFirstCandleData(smartconnect, strategy, strangleCprDto);
+		// 2️⃣ Get first 5-minute candle data
+		strangleCprDto = getFirstCandleData(smartconnect, strategy, strangleCprDto);
 
-	    // 3 - save the CPR
-	    saveCPR(strangleCprDto, strategy.getName(), now.toString());
-	    
-	
-	   
+		// 3 - save the CPR
+		if (strangleCprDto != null) {
+			saveCPR(strangleCprDto, strategy.getName(), now.toString());
+		} else {
+			logger.error("Unable to fetch CPR Details");
+		}
+
 	}
 	
 	public void executeCPRStrategy()
 	{
 		SmartConnect smartconnect = angelOne.signIn();
-		com.crumbs.trade.entity.CPR cprDetails = cprRepo.findByName("NIFTY");
+		com.crumbs.trade.entity.CPR cprDetails = cprRepo.findByName("STRANGLE");
 	    if(cprDetails!=null)
 	    {
-	    	//getCPRStrategySignal(strangleCprDto,strategy,smartconnect);
+	    	getCPRStrategySignal(cprDetails,smartconnect);
 	    }
 	   
 	}
 
 	public com.crumbs.trade.entity.CPR saveCPR(StrangleCprDto dto, String name, String date) {
 
-		com.crumbs.trade.entity.CPR cpr = new com.crumbs.trade.entity.CPR();
-		cpr.setName(name);
-		cpr.setDate(date);
+		if (dto != null) {
+			com.crumbs.trade.entity.CPR cpr = new com.crumbs.trade.entity.CPR();
+			cpr.setName(name);
+			cpr.setDate(date);
 
-		cpr.setPivot(dto.getPivot());
-		cpr.setTop(dto.getTop_pivot());
-		cpr.setBottom(dto.getBottom_pivot());
+			cpr.setPivot(dto.getPivot());
+			cpr.setTop(dto.getTop_pivot());
+			cpr.setBottom(dto.getBottom_pivot());
 
-		// Optional fields if needed
-		cpr.setHigh(dto.getHigh());
-		cpr.setLow(dto.getLow());
+			// Optional fields if needed
+			cpr.setHigh(dto.getHigh());
+			cpr.setLow(dto.getLow());
+			logger.info("Fetched CPR Strategy Details");
+			return cprRepo.save(cpr);
+		} else {
+			logger.error("Unable to fetch CPR Details");
+		}
+		return null;
 
-		return cprRepo.save(cpr);
 	}
 
-	public void getCPRStrategySignal(StrangleCprDto strangleCprDto, Strategy strategy, SmartConnect smartconnect) {
-	    // Extract fields safely
-	    BigDecimal topPivot = strangleCprDto.getTop_pivot();
-	    BigDecimal bottomPivot = strangleCprDto.getBottom_pivot();
-	    BigDecimal first5High = strangleCprDto.getFirstFiveMinHigh();
-	    BigDecimal first5Low = strangleCprDto.getFirstFiveMinLow();
+	public void getCPRStrategySignal(com.crumbs.trade.entity.CPR cprDetails, SmartConnect smartconnect) {
 
-	    if (topPivot == null || bottomPivot == null) {
-	        System.out.println("⚠️ CPR data missing — skipping signal generation.");
-	        return;
-	    }
+		Strategy strategy = strategyRepo.findByName("STRANGLE");
 
-	    if (first5High == null || first5Low == null) {
-	        System.out.println("⚠️ First 5-min candle data missing — skipping signal generation.");
-	        return;
-	    }
+		// Extract fields correctly
+		BigDecimal topPivot = cprDetails.getTop();
+		BigDecimal bottomPivot = cprDetails.getBottom();
+		BigDecimal first5High = cprDetails.getHigh();
+		BigDecimal first5Low = cprDetails.getLow();
 
-	    // Fetch current LTP
-	    BigDecimal currentPrice = angelOneService.getcurrentPrice(
-	            smartconnect,
-	            strategy.getExchange(),
-	            strategy.getTradingsymbol(),
-	            strategy.getToken(),
-	            "ltp"
-	    );
+		// ---------------------------
+		// VALIDATION
+		// ---------------------------
+		if (topPivot == null || bottomPivot == null) {
+			logger.warn("⚠️ CPR data missing — skipping signal generation.");
+			return;
+		}
 
-	    System.out.println("Current Price: " + currentPrice);
+		if (first5High == null || first5Low == null) {
+			logger.warn("⚠️ First 5-min candle missing — skipping.");
+			return;
+		}
 
-	    String signal;
-	    if (currentPrice.compareTo(bottomPivot) > 0 && currentPrice.compareTo(topPivot) < 0) {
-	        signal = "NO TRADE"; // Between CPR
-	    } else if (currentPrice.compareTo(first5High) > 0 && currentPrice.compareTo(topPivot) > 0) {
-	        signal = "BUY"; // Bullish breakout
-	    } else if (currentPrice.compareTo(first5Low) < 0 && currentPrice.compareTo(bottomPivot) < 0) {
-	        signal = "SELL"; // Bearish breakout
-	    } else {
-	        signal = "WAIT"; // Not yet confirmed
-	    }
+		// ---------------------------
+		// FETCH MARKET PRICE
+		// ---------------------------
+		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
+				strategy.getTradingsymbol(), strategy.getToken(), "ltp");
 
-	    System.out.println("Signal: " + signal);
-	    executeCPRStrategyOrders(signal);
+		if (currentPrice == null) {
+			logger.warn("⚠️ Current price is NULL — skipping signal.");
+			return;
+		}
+
+		logger.info("CPR Current Price: {}", currentPrice);
+
+		// ---------------------------
+		// SIGNAL GENERATION
+		// ---------------------------
+		String signal;
+
+		if (currentPrice.compareTo(bottomPivot) > 0 && currentPrice.compareTo(topPivot) < 0) {
+			signal = "NO TRADE"; // Price inside CPR band
+		} else if (currentPrice.compareTo(first5High) > 0 && currentPrice.compareTo(topPivot) > 0) {
+			signal = "BUY"; // Bullish breakout → PE SELL
+		} else if (currentPrice.compareTo(first5Low) < 0 && currentPrice.compareTo(bottomPivot) < 0) {
+			signal = "SELL"; // Bearish breakout → CE SELL
+		} else {
+			signal = "WAIT"; // Not confirmed
+		}
+
+		executeCPRStrategyOrders(signal);
 	}
 
-    
-    public void executeCPRStrategyOrders(String signal)
-    {
-    	  SmartConnect smartconnect = angelOne.signIn();
-    	 List<Orders> orderList = orderRepository.findByNameAndActive("NIFTY", 1);
-	    // 5️⃣ Optional: Execute trades
-	    if ("BUY".equals(signal)) {
-	        //placeBuyOrder(orderList, smartconnect);
-	    } else if ("SELL".equals(signal)) {
-	        //placeSellOrder(orderList, smartconnect);
-	    } else {
-	        System.out.println("No trade executed. Signal = " + signal);
+
+	public void executeCPRStrategyOrders(String signal) {
+
+	    try {
+
+	        if ("BUY".equals(signal)) {
+	            // BUY signal → SELL PE
+	            orderService.orderPlace("STRANGLE", 0, "BUY");
+	        }
+	        else if ("SELL".equals(signal)) {
+	            // SELL signal → SELL CE
+	            orderService.orderPlace("STRANGLE", 0, "SELL");
+	        }
+	        else {
+	            logger.info("⏸ No trade executed. Signal = {}", signal);
+	        }
+
+	    } catch (Exception | SmartAPIException e) {
+	        logger.error("Order error while placing order", e);
 	    }
-    }
+	}
+
 
 }

@@ -121,16 +121,36 @@ public class StrangleController {
 		return jdata;
 		
 	}
-	
-	//Take Entry at 9:20 based on CPR
-	//@Scheduled(fixedRate = 10000)
-	public void Strangle_CPR() throws IOException, SmartAPIException
-	{
-		strategyService.getCPRDetails();
+	/*
+	 * CPR Strategy
+	 * STEP 1 - Get CPR Data
+	 * Take Entry at 9:20 based on CPR
+	 */
+	@Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
+	public void Strangle_CPR() throws IOException, SmartAPIException {
+		if ("Y".equalsIgnoreCase(strategyRepo.findByName("STRANGLE").getActive())) {
+			logger.info("CPR Strategy Execeuted");
+			strategyService.getCPRDetails();
+		}
+	}
+	/*
+	 *  STEP 2 - Look for Signal
+	 *  Run Every 1 min
+	 */
+	@Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
+	public void runBetween921And320() {
+
+	    LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+	    LocalTime start = LocalTime.of(9, 21);
+	    LocalTime end   = LocalTime.of(15, 20);
+
+	    // Run only between 9:21 AM and 3:20 PM
+	    if (now.isBefore(start) || now.isAfter(end)) {
+	        return; // skip execution
+	    }
+
+	    // 💥 Your logic here
+	    strategyService.executeCPRStrategy();
 	}
 	
-	public void monitor_CPR_Strategy() throws IOException, SmartAPIException
-	{
-		strategyService.executeCPRStrategy();
-	}
 }

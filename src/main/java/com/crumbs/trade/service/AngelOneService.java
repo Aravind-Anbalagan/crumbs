@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -203,7 +204,7 @@ public class AngelOneService {
 					tokenCE.setExch_seg("NFO");
 					//Live
 					if (strategy.getLive().equalsIgnoreCase("Y")) {
-						placeOrder(smartConnect, tokenCE,strategy);
+						placeOrder(smartConnect, tokenCE);
 						//insertOrder(tokenCE, StrategyService.MAX);
 						if (tokenCE.getPrice() != 0) {
 							tokenCE.setTriggerPrice((((double) 45) / 100) * tokenCE.getPrice() + tokenCE.getPrice());
@@ -212,7 +213,7 @@ public class AngelOneService {
 							tokenCE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
 							tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
 							insertOrder(tokenCE, StrategyService.MAX);
-							placeOrder(smartConnect, tokenCE, strategy);
+							placeOrder(smartConnect, tokenCE);
 							// Finvasia
 							//createStrategy(smartConnect, "NIFTY", 0, "CE");
 
@@ -244,7 +245,7 @@ public class AngelOneService {
 					tokenPE.setExch_seg("NFO");
 					//Live
 					if (strategy.getLive().equalsIgnoreCase("Y")) {
-						placeOrder(smartConnect, tokenPE, strategy);
+						placeOrder(smartConnect, tokenPE);
 						//insertOrder(tokenPE, StrategyService.MIN);
 						if (tokenPE.getPrice() != 0) {
 							tokenPE.setTriggerPrice((((double) 45) / 100) * tokenPE.getPrice() + tokenPE.getPrice());
@@ -253,7 +254,7 @@ public class AngelOneService {
 							tokenPE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
 							tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
 							insertOrder(tokenPE, StrategyService.MIN);
-							placeOrder(smartConnect, tokenPE, strategy);
+							placeOrder(smartConnect, tokenPE);
 							// Finvasia
 							//createStrategy(smartConnect, "NIFTY", 0, "PE");
 
@@ -285,32 +286,52 @@ public class AngelOneService {
 	
 	@Transactional
 	public Orders insertOrder(Token token, int breakEven) throws Exception {
-		Orders orders = new Orders();
-		if(token.getOrderId()!=null)
-		{
-			orders.setOrderid(token.getOrderId());
-		}
-		else
-		{
-			orders.setOrderid("1");
-			token.setPrice(new Double("0"));
-		}
-		
-		orders.setCreatedOn(new Date().toString());
-		orders.setAskPrice(token.getPrice().intValue());
-		orders.setSl(token.getTriggerPrice().intValue());
-		orders.setSymbol(token.getSymbol());
-		orders.setToken(token.getToken());
-		orders.setName(token.getName());
-		//orders.setType(token.getSymbol().substring( token.getSymbol().length()-2, token.getSymbol().length()));
-		orders.setType(token.getType());
-		orders.setActive(1);
-		orders.setBreakeven(breakEven);
-		
-		orderRepository.save(orders);
-		return orders;
 
+		Orders orders = new Orders();
+
+		// ORDER ID
+		orders.setOrderid(token.getOrderId() != null ? token.getOrderId() : "1");
+
+		// CREATED DATE
+		orders.setCreatedOn(LocalDateTime.now().toString());
+
+		// ASK PRICE
+		Double ask = token.getPrice();
+		orders.setAskPrice(ask != null ? ask.intValue() : 0);
+
+		// SL
+		Double sl = token.getTriggerPrice();
+		orders.setSl(sl != null ? sl.intValue() : 0);
+
+		// BASIC DETAILS
+		orders.setSymbol(safe(token.getSymbol()));
+		orders.setToken(safe(token.getToken()));
+		orders.setName(safe(token.getName()));
+		orders.setType(safe(token.getType()));
+		orders.setExchange(safe(token.getExch_seg()));
+
+		// ACTIVE TRADE
+		orders.setActive(1);
+
+		// BREAKEVEN
+		orders.setBreakeven(breakEven);
+
+		// QUANTITY – works for int **or** Integer
+		try {
+			orders.setQuantity(token.getQuantity());
+		} catch (Exception e) {
+			orders.setQuantity(0);
+		}
+
+		return orderRepository.save(orders);
 	}
+
+	// small helper
+	private String safe(String value) {
+	    return value == null ? "" : value;
+	}
+
+
 	public Token createSymbol(BigDecimal currentPrice, String type, SmartConnect smartConnect, String expiry,int spotPrice, Strategy strategy,String buyer) throws JsonProcessingException, IOException, AddressException, MessagingException
 	{
 		//Take Complete Option Chain Price
@@ -339,7 +360,7 @@ public class AngelOneService {
 			//NIFTY21NOV2424250CE
 			String symbol=strategy.getSymbol() + expiry + roundPrice +type;
 			token.setSymbol(symbol);
-		
+			token.setExch_seg(strategy.getExchange());
 	  		getTokenBasedOnStrikePrice(token);
 			String exchange=strategy.getExchange();
 			String tradingSymbol=token.getSymbol();
@@ -431,7 +452,7 @@ public class AngelOneService {
 		return token;
 
 	}
-	public Token placeOrder(SmartConnect smartConnect, Token token,Strategy strategy) throws SmartAPIException, IOException {
+	public Token placeOrder(SmartConnect smartConnect, Token token) throws SmartAPIException, IOException {
 		boolean result = false;
 		
 		try {

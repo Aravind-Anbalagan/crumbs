@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import com.crumbs.trade.entity.Orders;
 
 public interface OrderRepository extends JpaRepository<Orders, Long> {
-	List<Orders> findByNameAndActive(String name, int active);
+	Orders findByNameAndActive(String name, int active);
 
 	@Modifying
 	@Query("delete from Orders o")

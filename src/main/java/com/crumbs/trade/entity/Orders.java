@@ -39,4 +39,8 @@ public class Orders {
 	int breakeven;
 	@Column(name="signal")
 	String signal;
+	@Column(name="exchange")
+	String exchange;
+	@Column(name="quantity")
+	int quantity;
 }

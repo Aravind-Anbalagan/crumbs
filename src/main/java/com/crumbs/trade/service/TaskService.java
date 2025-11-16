@@ -2308,24 +2308,25 @@ public class TaskService {
 
 	}
 
-	public List<String> calculateCpr(BigDecimal high, BigDecimal low, BigDecimal close) {
-	    // Pivot = (High + Low + Close) / 3
+	public com.crumbs.trade.dto.CPR calculateCpr(BigDecimal high, BigDecimal low, BigDecimal close) {
+
 	    BigDecimal pivot = high.add(low).add(close)
 	            .divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP);
 
-	    // Top CPR = (High + Low) / 2
-	    BigDecimal topCpr = high.add(low)
+	    BigDecimal bc = high.add(low)
 	            .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
 
-	    // Bottom CPR = Pivot - (Top CPR - Pivot)
-	    BigDecimal bottomCpr = pivot.subtract(topCpr.subtract(pivot));
+	    BigDecimal tc = pivot.multiply(BigDecimal.valueOf(2)).subtract(bc);
 
-	    return Arrays.asList(
-	        bottomCpr.toPlainString(),
-	        pivot.toPlainString(),
-	        topCpr.toPlainString()
-	    );
+	    com.crumbs.trade.dto.CPR cpr = new com.crumbs.trade.dto.CPR();
+	    cpr.setPivot(pivot);
+	    cpr.setBottom_pivot(bc);   // BC
+	    cpr.setTop_pivot(tc);      // TC
+
+	    return cpr;
 	}
+
+
 
 
 	public PricesIndex createModifiedList(BigDecimal open, BigDecimal close, List<BigDecimal> highList,
