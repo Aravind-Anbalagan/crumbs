@@ -63,6 +63,7 @@ public class ResultService {
 		if (optionalResult.isPresent()) {
 			result = optionalResult.get();
 			result.setResult(stock.getResult());
+			result.setSl(stock.getSl());
 			resultRepo.save(result);
 		} else {
 			// Make New Entry
@@ -255,19 +256,19 @@ public class ResultService {
 				Indicator indicator = indicatorRepo.findByname(result.getName());
 				
 				if (indicator != null) {
-				    boolean slHit = false;
-				    String entryType = result.getType();      // e.g., BUY or SELL
-				    String currentTrend = indicator.getSl();  // e.g., BUY, SELL, or SIDEWAYS
+					  boolean slHit = false;
+					    String entryType = result.getType();     
+					    String currentTrend = indicator.getSl(); 
 
-				    if ("UP".equalsIgnoreCase(entryType)) {
-				        // SL hits when current trend turns SELL
-				        slHit = "SELL".equalsIgnoreCase(currentTrend);
-				    } else if ("DOWN".equalsIgnoreCase(entryType)) {
-				        // SL hits when current trend turns BUY
-				        slHit = "BUY".equalsIgnoreCase(currentTrend);
-				    }
-				    result.setSl(currentTrend);
-				    result.setStatus(slHit ? "SL HIT" : "ACTIVE");
+					    if ("UP".equalsIgnoreCase(entryType)) {
+					        slHit = "DOWN".equalsIgnoreCase(currentTrend);
+					    } 
+					    else if ("DOWN".equalsIgnoreCase(entryType)) {
+					        slHit = "UP".equalsIgnoreCase(currentTrend);
+					    }
+
+					    result.setSl(currentTrend);
+					    result.setStatus(slHit ? "SL HIT" : "ACTIVE");
 				} else {
 				    result.setStatus("ERROR");
 				}

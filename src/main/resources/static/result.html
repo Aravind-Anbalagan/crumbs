@@ -180,6 +180,19 @@
       user-select: none;
       display: inline-block;
     }
+    .badge.UP {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+    .badge.DOWN {
+      background: var(--red-bg);
+      color: var(--red);
+    }
+    .badge.SIDEWAY {
+      background: #fef08a;
+      color: #854d0e;
+    }
+    /* Legacy lowercase support */
     .badge.up {
       background: var(--green-bg);
       color: var(--green);
@@ -189,8 +202,8 @@
       color: var(--red);
     }
     .badge.sideway {
-      background: #fef3c7;
-      color: #92400e;
+      background: #fef08a;
+      color: #854d0e;
     }
     .return-positive { color: var(--green); font-weight: 700; }
     .return-negative { color: var(--red); font-weight: 700; }
@@ -388,12 +401,17 @@
         <option value="ALL">All Types</option>
         <option value="UP">UP</option>
         <option value="DOWN">DOWN</option>
-        <option value="SIDEWAY">SIDEWAY</option>
+        <option value="SIDEWAYS">SIDEWAYS</option>
       </select>
       <select id="statusFilter">
         <option value="ALL">All Status</option>
         <option value="ACTIVE">Active</option>
         <option value="SL HIT">SL Hit</option>
+      </select>
+      <select id="optionsFilter">
+        <option value="ALL">All Options</option>
+        <option value="Y">Has Options (Y)</option>
+        <option value="N">No Options (N)</option>
       </select>
       <select id="periodFilter">
         <option value="current" selected>Current Month</option>
@@ -475,7 +493,7 @@
       const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
       const upTrades = stockData.filter(i => (i.type || "").toUpperCase() === "UP").length;
       const downTrades = stockData.filter(i => (i.type || "").toUpperCase() === "DOWN").length;
-      const sidewayTrades = stockData.filter(i => (i.type || "").toUpperCase() === "SIDEWAY").length;
+      const sidewaysTrades = stockData.filter(i => (i.type || "").toUpperCase().includes("SIDEWAY")).length;
       stats.innerHTML = `
         <div class="stat-card">
           <div class="stat-label">Total Trades</div>
@@ -506,8 +524,8 @@
           <div class="stat-value">${downTrades}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">SIDEWAY Trades</div>
-          <div class="stat-value">${sidewayTrades}</div>
+          <div class="stat-label">SIDEWAYS Trades</div>
+          <div class="stat-value">${sidewaysTrades}</div>
         </div>
       `;
     }
@@ -517,15 +535,18 @@
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
       const statusVal = document.getElementById("statusFilter").value;
+      const optionsVal = document.getElementById("optionsFilter").value;
       tbody.innerHTML = "";
 
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
         const displayStatus = (item.status || "").toUpperCase();
+        const hasOption = (item.hasOption || "N").toUpperCase();
         const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
-        return matchesSearch && matchesType && matchesStatus;
+        const matchesOptions = optionsVal === "ALL" || hasOption === optionsVal;
+        return matchesSearch && matchesType && matchesStatus && matchesOptions;
       });
 
       if (currentSort.key) {
@@ -562,8 +583,19 @@
         tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px;">No records found</td></tr>`;
       } else {
         paginated.forEach((item) => {
-          const displayType = (item.type || "").toUpperCase();
-          const badgeClass = displayType === "UP" ? "up" : displayType === "DOWN" ? "down" : displayType === "SIDEWAY" ? "sideway" : "";
+          const displayType = (item.type || "").toUpperCase().trim();
+          let badgeClass = "";
+          if (displayType === "UP") badgeClass = "up";
+          else if (displayType === "DOWN") badgeClass = "down";
+          else if (displayType.includes("SIDE")) badgeClass = "sideways";
+          
+          // Get SL value and determine its badge class
+          const slValue = (item.sl || "").toString().toUpperCase().trim();
+          let slBadgeClass = "";
+          if (slValue === "UP") slBadgeClass = "up";
+          else if (slValue === "DOWN") slBadgeClass = "down";
+          else if (slValue.includes("SIDE")) slBadgeClass = "sideways";
+          
           const returnPercent = item.returnPercent || 0;
           const returnPercentClass = returnPercent >= 0 ? "return-positive" : "return-negative";
           const returnText = `${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%`;
@@ -588,7 +620,7 @@
             <td data-label="Type"><span class="badge ${badgeClass}">${displayType}</span></td>
             <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
             <td data-label="Current LTP">${item.currentltp ?? ""}</td>
-            <td data-label="SL"><span class="badge ${badgeClass}">${item.sl ?? ""}</span></td>
+            <td data-label="SL"><span class="badge ${slBadgeClass}">${item.sl ?? ""}</span></td>
             <td data-label="Return %" class="${returnPercentClass}">${returnText}</td>
             <td data-label="Status"><span class="${statusClass}">${statusText}</span></td>
           `;
@@ -790,13 +822,16 @@
       const searchVal = document.getElementById("searchBox").value.toLowerCase();
       const typeVal = document.getElementById("typeFilter").value;
       const statusVal = document.getElementById("statusFilter").value;
+      const optionsVal = document.getElementById("optionsFilter").value;
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
         const displayStatus = (item.status || "").toUpperCase();
+        const hasOption = (item.hasOption || "N").toUpperCase();
         const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
-        return matchesSearch && matchesType && matchesStatus;
+        const matchesOptions = optionsVal === "ALL" || hasOption === optionsVal;
+        return matchesSearch && matchesType && matchesStatus && matchesOptions;
       });
       const headers = ["Trade", "Options", "Name", "Exchange", "Entry Time", "Type", 
                        "Executed LTP", "Current LTP", "SL", "Return %", "Status"];
@@ -829,6 +864,7 @@
       document.getElementById("searchBox").value = "";
       document.getElementById("typeFilter").value = "ALL";
       document.getElementById("statusFilter").value = "ALL";
+      document.getElementById("optionsFilter").value = "ALL";
       document.getElementById("periodFilter").value = "current";
       currentPage = 1;
       currentSort = { key: null, asc: true };
@@ -848,6 +884,11 @@
     });
 
     document.getElementById("statusFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("optionsFilter").addEventListener("change", () => {
       currentPage = 1;
       renderTable();
     });
