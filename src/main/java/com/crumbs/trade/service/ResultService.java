@@ -75,7 +75,16 @@ public class ResultService {
 			result.setExchange(stock.getExchange());
 			result.setExecutedltp(stock.getPrevdaycloseprice());
 			result.setCurrentltp(stock.getCurrentPrice());
-			result.setType(stock.getIntraday()); // common field indicate buy /sell
+			String psar = stock.getPsarFlagDay();
+			String ha = stock.getHeikinAshiDay();
+
+			if ("FIRST BUY".equalsIgnoreCase(psar) && "FIRST BUY".equalsIgnoreCase(ha)) {
+				result.setType("UP");
+			} else if ("FIRST SELL".equalsIgnoreCase(psar) && "FIRST SELL".equalsIgnoreCase(ha)) {
+				result.setType("DOWN");
+			} else {
+				result.setType("ERROR");
+			}
 			result.setHasOption(Objects.nonNull(stock.getOptions()) ? "Y" : "N");
 			/*if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
 				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
