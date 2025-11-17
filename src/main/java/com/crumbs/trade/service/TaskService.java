@@ -29,6 +29,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -2745,28 +2747,39 @@ public class TaskService {
 
 	// Get CPR
 	public String getCprFlag(Indicator stock) {
-	    if (stock == null || stock.getCpr() == null) return null;
 
-	    // Convert CPR string "[271.31, 272.42, 273.53]" → List<BigDecimal>
-	    List<BigDecimal> cprValues = Arrays.stream(
-	                stock.getCpr().replace("[", "").replace("]", "").split(","))
-	            .map(String::trim)
-	            .map(BigDecimal::new)
-	            .collect(Collectors.toList());
+	    String cpr = stock.getCpr();
+	    if (cpr == null) return null;
 
-	    if (cprValues.size() < 2) return null; // safety check
+	    // Extract all decimal numbers from the string
+	    List<BigDecimal> values = new ArrayList<>();
+	    Matcher matcher = Pattern.compile("\\d+\\.\\d+").matcher(cpr);
 
-	    BigDecimal pivot = cprValues.get(1);
-	    BigDecimal currentPrice = stock.getCurrentPrice();
+	    while (matcher.find()) {
+	        values.add(new BigDecimal(matcher.group()));
+	    }
 
-	    if (currentPrice == null) return null;
+	    if (values.size() < 3) {
+	        logger.error("CPR parse error for {}: {}", stock.getName(), cpr);
+	        return null;
+	    }
 
-	    int cmp = currentPrice.compareTo(pivot);
+	    // Order: pivot, bottom, top
+	    BigDecimal pivot = values.get(0);
+	    BigDecimal bottom = values.get(1);
+	    BigDecimal top = values.get(2);
+
+	    BigDecimal price = stock.getCurrentPrice();
+	    if (price == null) return null;
+
+	    // Compare with pivot
+	    int cmp = price.compareTo(pivot);
 
 	    if (cmp > 0) return "UP";
 	    if (cmp < 0) return "DOWN";
-	    return "EQUAL";  // instead of null
+	    return "EQUAL";
 	}
+
 
 
 	/*
