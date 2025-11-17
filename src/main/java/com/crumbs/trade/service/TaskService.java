@@ -2745,17 +2745,29 @@ public class TaskService {
 
 	// Get CPR
 	public String getCprFlag(Indicator stock) {
-		List<Integer> numberList1 = Arrays.stream(stock.getCpr().replaceAll("\\[|\\]", "").split(",")).map(String::trim)
-				.map(Integer::parseInt).collect(Collectors.toList());
+	    if (stock == null || stock.getCpr() == null) return null;
 
-		if (stock.getCurrentPrice().compareTo(new BigDecimal(numberList1.get(1))) > 0) {
-			return "UP";
-		}
-		if (stock.getCurrentPrice().compareTo(new BigDecimal(numberList1.get(1))) < 0) {
-			return "DOWN";
-		}
-		return null;
+	    // Convert CPR string "[271.31, 272.42, 273.53]" → List<BigDecimal>
+	    List<BigDecimal> cprValues = Arrays.stream(
+	                stock.getCpr().replace("[", "").replace("]", "").split(","))
+	            .map(String::trim)
+	            .map(BigDecimal::new)
+	            .collect(Collectors.toList());
+
+	    if (cprValues.size() < 2) return null; // safety check
+
+	    BigDecimal pivot = cprValues.get(1);
+	    BigDecimal currentPrice = stock.getCurrentPrice();
+
+	    if (currentPrice == null) return null;
+
+	    int cmp = currentPrice.compareTo(pivot);
+
+	    if (cmp > 0) return "UP";
+	    if (cmp < 0) return "DOWN";
+	    return "EQUAL";  // instead of null
 	}
+
 
 	/*
 	 * Get current price

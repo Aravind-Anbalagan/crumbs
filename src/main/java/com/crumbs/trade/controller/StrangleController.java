@@ -23,6 +23,7 @@ import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.FlatTradeService;
 import com.crumbs.trade.service.StrategyService;
 import com.crumbs.trade.service.TaskService;
+import com.crumbs.trade.utility.AppConstant;
 import com.crumbs.trade.utility.Utility;
 
 @RestController
@@ -128,7 +129,7 @@ public class StrangleController {
 	 */
 	@Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
 	public void Strangle_CPR() throws IOException, SmartAPIException {
-		if ("Y".equalsIgnoreCase(strategyRepo.findByName("STRANGLE").getActive())) {
+		if ("Y".equalsIgnoreCase(strategyRepo.findByName(AppConstant.CPR_STRATEGY).getActive())) {
 			logger.info("CPR Strategy Execeuted");
 			strategyService.getCPRDetails();
 		}
@@ -140,17 +141,22 @@ public class StrangleController {
 	@Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
 	public void runBetween921And320() {
 
+	    Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
+
+	    if (strategy == null || !"Y".equalsIgnoreCase(strategy.getActive())) {
+	        return;
+	    }
+
 	    LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
 	    LocalTime start = LocalTime.of(9, 21);
 	    LocalTime end   = LocalTime.of(15, 20);
 
-	    // Run only between 9:21 AM and 3:20 PM
 	    if (now.isBefore(start) || now.isAfter(end)) {
-	        return; // skip execution
+	        return;
 	    }
 
-	    // 💥 Your logic here
 	    strategyService.executeCPRStrategy();
 	}
+
 	
 }

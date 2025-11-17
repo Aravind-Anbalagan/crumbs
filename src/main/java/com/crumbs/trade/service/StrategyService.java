@@ -40,6 +40,7 @@ import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.PriceRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.AppConstant;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
 import jakarta.transaction.Transactional;
@@ -454,7 +455,7 @@ public class StrategyService {
 	
 	public void getCPRDetails() throws IOException, SmartAPIException {
 		StrangleCprDto strangleCprDto = new StrangleCprDto();
-		Strategy strategy = strategyRepo.findByName("STRANGLE");
+		Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
 
 		SmartConnect smartconnect = angelOne.signIn();
 
@@ -483,7 +484,7 @@ public class StrategyService {
 	public void executeCPRStrategy()
 	{
 		SmartConnect smartconnect = angelOne.signIn();
-		com.crumbs.trade.entity.CPR cprDetails = cprRepo.findByName("STRANGLE");
+		com.crumbs.trade.entity.CPR cprDetails = cprRepo.findByName(AppConstant.CPR_STRATEGY);
 	    if(cprDetails!=null)
 	    {
 	    	getCPRStrategySignal(cprDetails,smartconnect);
@@ -516,7 +517,7 @@ public class StrategyService {
 
 	public void getCPRStrategySignal(com.crumbs.trade.entity.CPR cprDetails, SmartConnect smartconnect) {
 
-		Strategy strategy = strategyRepo.findByName("STRANGLE");
+		Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
 
 		// Extract fields correctly
 		BigDecimal topPivot = cprDetails.getTop();
@@ -575,11 +576,11 @@ public class StrategyService {
 
 	        if ("BUY".equals(signal)) {
 	            // BUY signal → SELL PE
-	            orderService.orderPlace("STRANGLE", 0, "BUY");
+	            orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "BUY");
 	        }
 	        else if ("SELL".equals(signal)) {
 	            // SELL signal → SELL CE
-	            orderService.orderPlace("STRANGLE", 0, "SELL");
+	            orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "SELL");
 	        }
 	        else {
 	            logger.info("⏸ No trade executed. Signal = {}", signal);
