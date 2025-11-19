@@ -59,4 +59,6 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
 	Indexes findBySymbol(String symbol);
 	
 	List<Indexes> findBySymbolIn(List<String> names);
+	
+	List<Indexes> findByNameAndExpiry(String name, String expiry);
 }

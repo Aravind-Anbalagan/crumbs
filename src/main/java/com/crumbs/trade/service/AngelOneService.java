@@ -26,6 +26,7 @@ import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Strategy;
+import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.OrderRepository;
@@ -113,6 +114,9 @@ public class AngelOneService {
 	@Autowired
 	SignalsRepo signalsRepo;
 	
+	@Autowired
+	CPRRepo cprRepo;
+	
 	/*
 	 * Get current price
 	 */
@@ -155,6 +159,7 @@ public class AngelOneService {
 		orderRepository.deleteAll();
 		priceRepo.deleteAll();
 		signalsRepo.deleteAll();
+		cprRepo.deleteAll();
 	}
 	/*
 	 * Get current price

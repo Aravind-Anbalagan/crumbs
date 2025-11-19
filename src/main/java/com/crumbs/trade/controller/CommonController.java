@@ -29,6 +29,7 @@ import org.springframework.web.client.RestTemplate;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.repo.IndexesRepo;
+import com.crumbs.trade.repo.NiftyRepo;
 import com.crumbs.trade.service.AngelOneService;
 import com.crumbs.trade.utility.JVMRestarter;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -43,7 +44,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class CommonController {
 	Logger logger = LoggerFactory.getLogger(CommonController.class);
 	
-	
+	@Autowired
+	NiftyRepo niftyRepo;
 
 	@Autowired
 	RestTemplate restTemplate;
@@ -155,13 +157,13 @@ public class CommonController {
 		ObjectMapper objectMapper = new ObjectMapper();
 		deleteFile("/alltokens.txt", true);
 		indexesRepo.deleteAll();
+		List<String> optionNameList = niftyRepo.getAllNames();
 		PrintWriter pw = new PrintWriter(new FileWriter(System.getProperty("user.dir") + "/alltokens.txt"));
 		JsonNode rootNode = objectMapper.readTree(new File(System.getProperty("user.dir") + "/Intruments.txt"));
 		List<String> inputList = new ArrayList<>();
 		rootNode.forEach(node -> {
 
-			
-			if (!node.path("name").asText().matches("[a-zA-Z ]*\\d+.*") 
+				if (!node.path("name").asText().matches("[a-zA-Z ]*\\d+.*") 
 				&& node.path("symbol").asText().contains("-EQ")
 				&& node.path("exch_seg").asText().equals("NSE") ||
 				node.path("exch_seg").asText().equals("BSE") ||(node.path("name").asText().equals("NIFTY") || node.path("name").asText().equals("CRUDEOIL")
@@ -169,7 +171,8 @@ public class CommonController {
 						//|| node.path("name").asText().equals("FINNIFTY")
 						//|| node.path("name").asText().equals("BANKNIFTY") || node.path("name").asText().equals("BANKNIFTY")
 						//|| node.path("name").asText().equals("MIDCPNIFTY")|| node.path("name").asText().equals("SENSEX")
-						|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("SILVERM")) ) {
+						|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("SILVERM"))
+				        || optionNameList.contains(node.path("name").asText()) ) {
 				inputList.add(node.toString());
 
 				//Save Index Values

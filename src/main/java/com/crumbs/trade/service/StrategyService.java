@@ -473,7 +473,8 @@ public class StrategyService {
 		strangleCprDto = getFirstCandleData(smartconnect, strategy, strangleCprDto);
 
 		// 3 - save the CPR
-		if (strangleCprDto != null) {
+		if (strangleCprDto != null && strangleCprDto.getFirstFiveMinHigh() != null
+				&& strangleCprDto.getFirstFiveMinLow() != null) {
 			saveCPR(strangleCprDto, strategy.getName(), now.toString());
 		} else {
 			logger.error("Unable to fetch CPR Details");
