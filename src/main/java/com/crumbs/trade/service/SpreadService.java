@@ -13,9 +13,14 @@ import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Expiry;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Indicator;
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.ExpiryRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
+import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.AppConstant;
+
+import groovy.transform.AutoClone;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -44,12 +49,40 @@ public class SpreadService {
     @Autowired private AngelOne angelOne;
     @Autowired private ExpiryRepo expiryRepo;
     @Autowired private IndexesRepo indexesRepo;
+    @Autowired private StrategyRepo strategyRepo;
 
     public enum SpreadType {
         BULL_CALL,
         BEAR_CALL,
         BULL_PUT,
         BEAR_PUT
+    }
+
+    /**
+     * POP levels (Option A: enum-based). Default will be POP50 (ATM).
+     * Mapping of steps (see getStepsFromPOP).
+     */
+    public enum POPLevel {
+        POP50,
+        POP55,
+        POP60,
+        POP65,
+        POP70,
+        POP75,
+        POP80
+    }
+
+    private int getStepsFromPOP(POPLevel pop) {
+        switch (pop) {
+            case POP50: return 0;   // ATM sell
+            case POP55: return 0;   // treat as near-ATM
+            case POP60: return 1;
+            case POP65: return 1;
+            case POP70: return 2;
+            case POP75: return 2;
+            case POP80: return 3;
+            default: return 0;
+        }
     }
 
     /**
@@ -64,7 +97,7 @@ public class SpreadService {
 
         indicatorList.forEach(indicator -> {
             try {
-                processIndicator(smartConnect, indicator);
+                processIndicator(smartConnect, indicator); // default behaviour (BULL_PUT + POP50)
             } catch (Exception e) {
                 log.error("Failed processing {}: {}", indicator.getTradingSymbol(), e.getMessage());
             }
@@ -73,16 +106,24 @@ public class SpreadService {
     
     /**
      * Convenience: default strategy = BULL_PUT (as requested).
+     * Kept signature unchanged; delegates to new overload with default POP50.
      */
     public void processIndicator(SmartConnect smartConnect, Indicator indicator) {
-        processIndicator(smartConnect, indicator, SpreadType.BULL_PUT);
+        processIndicator(smartConnect, indicator, SpreadType.BULL_PUT, POPLevel.POP50);
     }
 
     /**
-     * Main entry: process indicator with explicit spread type.
-     * Always attempts BUY first then SELL for margin benefits.
+     * Kept signature unchanged; delegates to new overload with default POP50.
      */
     public void processIndicator(SmartConnect smartConnect, Indicator indicator, SpreadType spreadType) {
+        processIndicator(smartConnect, indicator, spreadType, POPLevel.POP55);
+    }
+
+    /**
+     * Main entry: process indicator with explicit spread type and POP level.
+     * Always attempts BUY first then SELL (buy-first for margin benefits).
+     */
+    public void processIndicator(SmartConnect smartConnect, Indicator indicator, SpreadType spreadType, POPLevel popLevel) {
 
         // 1) get LTP
         BigDecimal ltp = angelOneService.getcurrentPrice(
@@ -120,9 +161,16 @@ public class SpreadService {
             return;
         }
 
-        // Derive common strike references
-        BigDecimal otmUp = atmStrike.add(stepSize);       // next higher strike
-        BigDecimal otmDown = atmStrike.subtract(stepSize);// next lower strike
+        // Determine POP steps
+        int steps = getStepsFromPOP(popLevel);
+
+        // Derive POP-aware sell strikes
+        BigDecimal sellStrikePut = atmStrike.subtract(stepSize.multiply(BigDecimal.valueOf(steps)));
+        BigDecimal sellStrikeCall = atmStrike.add(stepSize.multiply(BigDecimal.valueOf(steps)));
+
+        // Default hedge (1-step protective leg relative to the sell strike)
+        BigDecimal hedgeLower = sellStrikePut.subtract(stepSize); // for put spreads (buy lower)
+        BigDecimal hedgeUpper = sellStrikeCall.add(stepSize);    // for call spreads (buy higher)
 
         Token buyLeg = null;
         Token sellLeg = null;
@@ -130,34 +178,33 @@ public class SpreadService {
         // Build appropriate legs based on spreadType.
         switch (spreadType) {
             case BULL_CALL:
-                // BUY ATM CE, SELL OTM CE  (debit)
+                // BUY ATM CE, SELL OTM CE  (debit) — preserve original behaviour
                 buyLeg  = buildToken(indicator, expiry, atmStrike, "CE", Constants.TRANSACTION_TYPE_BUY);
-                sellLeg = buildToken(indicator, expiry, otmUp,   "CE", Constants.TRANSACTION_TYPE_SELL);
-                log.info("Preparing BULL_CALL: BUY {} CE, SELL {} CE", atmStrike, otmUp);
+                sellLeg = buildToken(indicator, expiry, atmStrike.add(stepSize),   "CE", Constants.TRANSACTION_TYPE_SELL);
+                log.info("Preparing BULL_CALL: BUY {} CE, SELL {} CE", atmStrike, atmStrike.add(stepSize));
                 break;
 
             case BEAR_CALL:
-                // BEAR CALL (credit spread): SELL ATM CE, BUY OTM CE
-                // For margin place BUY first (OTM CE) then SELL (ATM CE)
-                buyLeg  = buildToken(indicator, expiry, otmUp,   "CE", Constants.TRANSACTION_TYPE_BUY); // buy protection
-                sellLeg = buildToken(indicator, expiry, atmStrike,"CE", Constants.TRANSACTION_TYPE_SELL);
-                log.info("Preparing BEAR_CALL: BUY {} CE, SELL {} CE (buy-first order)", otmUp, atmStrike);
+                // BEAR CALL (credit spread): SELL OTM CE, BUY OTM protection (buy-first)
+                // We use POP-aware sellStrikeCall (which will be ATM when pop=50)
+                buyLeg  = buildToken(indicator, expiry, hedgeUpper, "CE", Constants.TRANSACTION_TYPE_BUY); // buy protection
+                sellLeg = buildToken(indicator, expiry, sellStrikeCall, "CE", Constants.TRANSACTION_TYPE_SELL);
+                log.info("Preparing BEAR_CALL: BUY {} CE, SELL {} CE (buy-first order) [POP={}]", hedgeUpper, sellStrikeCall, popLevel);
                 break;
 
             case BULL_PUT:
-                // BULL PUT (credit spread): SELL OTM PE (higher strike), BUY lower PE
-                // To ensure BUY-first for margin, we BUY the lower PE (atm or lower) then SELL the higher PE.
-                // Sensibull example: SELL 372.5 PE, BUY 367.5 PE -> we will BUY 367.5 then SELL 372.5
-                buyLeg  = buildToken(indicator, expiry, otmDown, "PE", Constants.TRANSACTION_TYPE_BUY);  // lower strike protection
-                sellLeg = buildToken(indicator, expiry, atmStrike,"PE", Constants.TRANSACTION_TYPE_SELL); // higher strike sold
-                log.info("Preparing BULL_PUT: BUY {} PE, SELL {} PE (buy-first order)", otmDown, atmStrike);
+                // BULL PUT (credit spread): SELL OTM PE, BUY lower PE (buy-first for margin)
+                // Use POP-aware sellStrikePut (ATM if pop=50)
+                buyLeg  = buildToken(indicator, expiry, hedgeLower, "PE", Constants.TRANSACTION_TYPE_BUY);  // lower strike protection
+                sellLeg = buildToken(indicator, expiry, sellStrikePut,"PE", Constants.TRANSACTION_TYPE_SELL); // sold strike
+                log.info("Preparing BULL_PUT: BUY {} PE, SELL {} PE (buy-first order) [POP={}]", hedgeLower, sellStrikePut, popLevel);
                 break;
 
             case BEAR_PUT:
-                // BEAR PUT (debit spread): BUY ATM PE, SELL LOWER PE
+                // BEAR PUT (debit spread): BUY ATM PE, SELL LOWER PE — preserve original behaviour
                 buyLeg  = buildToken(indicator, expiry, atmStrike, "PE", Constants.TRANSACTION_TYPE_BUY);
-                sellLeg = buildToken(indicator, expiry, otmDown,   "PE", Constants.TRANSACTION_TYPE_SELL);
-                log.info("Preparing BEAR_PUT: BUY {} PE, SELL {} PE", atmStrike, otmDown);
+                sellLeg = buildToken(indicator, expiry, atmStrike.subtract(stepSize),   "PE", Constants.TRANSACTION_TYPE_SELL);
+                log.info("Preparing BEAR_PUT: BUY {} PE, SELL {} PE", atmStrike, atmStrike.subtract(stepSize));
                 break;
         }
 
@@ -168,20 +215,31 @@ public class SpreadService {
 
         prepareCommonFields(buyLeg);
         prepareCommonFields(sellLeg);
+        placeOrder(smartConnect,buyLeg,sellLeg);
 
-        // Place BUY first, ensure it succeeded before SELL.
-        boolean buyOk = placeSingleOrderChecked(smartConnect, buyLeg);
-        if (!buyOk) {
-            log.error("Buy leg failed for {} - aborting spread placement", buyLeg.getSymbol());
-            return;
-        }
-
-        boolean sellOk = placeSingleOrderChecked(smartConnect, sellLeg);
-        if (!sellOk) {
-            log.error("Sell leg failed for {}. Consider manual intervention or cancel buy leg: {}", sellLeg.getSymbol(), buyLeg.getSymbol());
-            // Optional: consider cancelling the buy leg if your workflow requires it.
-        }
+    
     }
+    
+	public void placeOrder(SmartConnect smartConnect, Token buyLeg, Token sellLeg) {
+		Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
+
+		if ("Y".equalsIgnoreCase(strategy.getLive())) {
+			// Place BUY first, ensure it succeeded before SELL.
+			boolean buyOk = placeSingleOrderChecked(smartConnect, buyLeg);
+			if (!buyOk) {
+				log.error("Buy leg failed for {} - aborting spread placement", buyLeg.getSymbol());
+				return;
+			}
+
+			boolean sellOk = placeSingleOrderChecked(smartConnect, sellLeg);
+			if (!sellOk) {
+				log.error("Sell leg failed for {}. Consider manual intervention or cancel buy leg: {}",
+						sellLeg.getSymbol(), buyLeg.getSymbol());
+				// Optional: consider cancelling the buy leg if your workflow requires it.
+			}
+		}
+
+	}
 
     // ------------------------------------------------------------------------
     // Fetch strikes as BigDecimal and normalize (divide by 100)
