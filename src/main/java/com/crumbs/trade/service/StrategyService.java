@@ -81,7 +81,9 @@ public class StrategyService {
 	public static int MAX;
 	public static int MIN;
 	
-	
+	// Prevent multiple CPR entries in same direction
+	private boolean cprBuyTradeTaken = false;
+	private boolean cprSellTradeTaken = false;
 	public static boolean timeCheck = false;
 	public static boolean firstOrder = false;
 	public static boolean secondOrder = false;
@@ -574,23 +576,41 @@ public class StrategyService {
 	public void executeCPRStrategyOrders(String signal) {
 
 	    try {
-
 	        if ("BUY".equals(signal)) {
-	            // BUY signal → SELL PE
+
+	            if (cprBuyTradeTaken) {
+	                logger.info("🚫 CPR BUY already executed today — skipping.");
+	                return;
+	            }
+
+	            logger.info("🔥 CPR BUY → Sell PE");
 	            orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "BUY");
+
+	            cprBuyTradeTaken = true;
 	        }
+
 	        else if ("SELL".equals(signal)) {
-	            // SELL signal → SELL CE
+
+	            if (cprSellTradeTaken) {
+	                logger.info("🚫 CPR SELL already executed today — skipping.");
+	                return;
+	            }
+
+	            logger.info("🔥 CPR SELL → Sell CE");
 	            orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "SELL");
+
+	            cprSellTradeTaken = true;
 	        }
+
 	        else {
 	            logger.info("⏸ No trade executed. Signal = {}", signal);
 	        }
 
 	    } catch (Exception | SmartAPIException e) {
-	        logger.error("Order error while placing order", e);
+	        logger.error("Order error while placing CPR order", e);
 	    }
 	}
+
 
 
 }

@@ -748,7 +748,7 @@ public class ChartService {
 				resultVix.setMaxLow(findMaxAndLowPrice(resultVix, resultVix.getTimestamp(), vix.getTimestamp(),
 						resultVix.getType()));
 			}*/
-
+			tradeFlag = "Y".equals(strategy.getLive()); // Take Trade In Flat Trade
 			Token token =triggerExitOrder(resultVix, tradeFlag);
 			if (testFlag) {
 				resultVix.setExitPrice(vix.getOpen());
