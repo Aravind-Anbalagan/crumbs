@@ -125,4 +125,7 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
     
     List<Indicator> findByLast3daycandleflag(String up);
 
+	List<Indicator> findByHeikinAshiDayInAndPsarFlagDayInAndOptions(List<String> signals, List<String> signals2,
+			String option);
+
 }

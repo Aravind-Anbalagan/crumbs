@@ -505,8 +505,8 @@ public class StrategyService {
 			cpr.setBottom(dto.getBottom_pivot());
 
 			// Optional fields if needed
-			cpr.setHigh(dto.getHigh());
-			cpr.setLow(dto.getLow());
+			cpr.setHigh(dto.getFirstFiveMinHigh());
+			cpr.setLow(dto.getFirstFiveMinLow());
 			logger.info("Fetched CPR Strategy Details");
 			return cprRepo.save(cpr);
 		} else {
