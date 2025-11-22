@@ -434,7 +434,7 @@ public class SpreadService {
             JSONObject rms = smartConnect.getRMS();
             double availableCash = Double.parseDouble(rms.getString("availablecash"));
 
-            double required = 10000.0; // 1 lakh (placeholder)
+            double required = 100000.0; // 1 lakh (placeholder)
             if (availableCash >= required) {
                 log.info("Sufficient margin available. AvailableCash = {}", availableCash);
                 return true;
