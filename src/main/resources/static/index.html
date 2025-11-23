@@ -115,14 +115,8 @@
       100% { background-position: 0% 50%; }
     }
     @keyframes fadeInScale {
-      from { 
-        opacity: 0;
-        transform: scale(0.9);
-      }
-      to { 
-        opacity: 1;
-        transform: scale(1);
-      }
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
     }
     @keyframes pulseError {
       0%, 100% { transform: scale(1); }
@@ -141,7 +135,7 @@
       max-width: 90%;
       text-align: center;
       position: relative;
-      animation: fadeInScale 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      animation: fadeInScale 0.5s;
     }
     
     .lock-icon {
@@ -194,12 +188,10 @@
       font-size: 1rem;
       border-radius: 50px;
       border: 2px solid rgba(255, 255, 255, 0.3);
-      box-sizing: border-box;
-      transition: all 0.3s ease;
       background: rgba(255, 255, 255, 0.2);
       color: #ffffff;
-      font-family: inherit;
       font-weight: 500;
+      transition: all 0.3s ease;
     }
     .login-modal input[type="password"]::placeholder {
       color: rgba(255, 255, 255, 0.6);
@@ -228,18 +220,10 @@
       font-weight: 700;
       transition: all 0.3s ease;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-      position: relative;
-      overflow: hidden;
-      text-transform: uppercase;
-      letter-spacing: 1px;
     }
     .login-modal button:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 30px rgba(0, 0, 0, 0.2);
-      background: linear-gradient(135deg, #ffffff, #ffffff);
-    }
-    .login-modal button:active {
-      transform: translateY(0);
     }
     
     .login-modal .error {
@@ -294,7 +278,7 @@
     <div class="particles" id="particles"></div>
     <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
       <div class="lock-icon">🔐</div>
-      <h2 id="loginTitle">Secure Access</h2>
+      <h2 id="loginTitle">CRUMBS</h2>
       <p>Please authenticate to continue</p>
       <div class="input-wrapper">
         <span class="input-icon">🔑</span>
@@ -340,22 +324,29 @@
     const loginError = document.getElementById('loginError');
     const body = document.body;
 
-    async function fetchSecretCode() {
+    // NEW: Validate API instead of fetching secret
+    async function validateKey(secretValue) {
       try {
-        const response = await fetch('/key/1');
-        if (!response.ok) throw new Error('Network response was not ok');
-        const data = await response.json();
-        return data.secret;
+        const response = await fetch('/key/1/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: secretValue })
+        });
+
+        if (!response.ok) throw new Error("Validation error");
+
+        return await response.json(); // boolean true/false
       } catch (error) {
-        console.error('Error fetching secret:', error);
-        return null;
+        console.error("Error validating key:", error);
+        return false;
       }
     }
 
     loginBtn.onclick = async function() {
       const inputCode = loginCodeInput.value.trim();
-      const apiSecret = await fetchSecretCode();
-      if (apiSecret && inputCode === apiSecret) {
+      const isValid = await validateKey(inputCode);
+
+      if (isValid) {
         body.classList.add('authenticated');
         loginPopup.style.display = 'none';
         loginError.style.display = 'none';
