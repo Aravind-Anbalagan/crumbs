@@ -1,3 +1,4 @@
+--SCRIPT TO 'C:/backup/backup.sql';
 -- H2 2.2.224;
 SET CACHE_SIZE 65536;         
 ;             
