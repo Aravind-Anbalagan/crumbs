@@ -439,21 +439,35 @@ public class StrategyService {
 	}
 
 
-	public StrangleCprDto getFirstCandleData(SmartConnect smartconnect, Strategy strategy,
-			StrangleCprDto strangleCprDto) {
+	public StrangleCprDto getFirstCandleData(SmartConnect smartConnect, Strategy strategy, StrangleCprDto dto) {
 		LocalDate today = LocalDate.now();
-		String fromDate = today.toString().concat(" 09:15");
-		String toDate = today.toString().concat(" 09:20");
-		JSONArray ohlcArray = getCandleDataByChoice(smartconnect, strategy, strangleCprDto, "FIVE_MINUTE", fromDate,
-				toDate);
-		if (ohlcArray != null) {
-			strangleCprDto.setFirstFiveMinHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
-			strangleCprDto.setFirstFiveMinLow(new BigDecimal(String.valueOf(ohlcArray.getDouble(3))));
-			return strangleCprDto;
+
+		String fromDate = today + " 09:15";
+		String toDate = today + " 09:20";
+
+		JSONArray ohlc = getCandleDataByChoice(smartConnect, strategy, dto, "FIVE_MINUTE", fromDate, toDate);
+
+		if (ohlc == null || ohlc.length() < 4) {
+			return null;
 		}
 
-		return null;
+		// Extract values
+		BigDecimal high = BigDecimal.valueOf(ohlc.getDouble(2));
+		BigDecimal low = BigDecimal.valueOf(ohlc.getDouble(3));
+
+		// Apply buffer of 5 points
+		BigDecimal buffer = BigDecimal.valueOf(5);
+
+		BigDecimal bufferedHigh = high.add(buffer);
+		BigDecimal bufferedLow = low.subtract(buffer);
+
+		// Set buffered values
+		dto.setFirstFiveMinHigh(bufferedHigh);
+		dto.setFirstFiveMinLow(bufferedLow);
+
+		return dto;
 	}
+
 	
 	public void getCPRDetails() throws IOException, SmartAPIException {
 		StrangleCprDto strangleCprDto = new StrangleCprDto();
