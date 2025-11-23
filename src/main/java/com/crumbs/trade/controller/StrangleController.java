@@ -58,12 +58,13 @@ public class StrangleController {
 	public void runTask() {
 		// Code to run every 30 minutes from 9:45 AM to 3:30 PM
 		//logger.info("30 MINUTES Candle Reading..");
-
-		DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
-		LocalDateTime now = LocalDateTime.now();
-		Strategy strategy = new Strategy();
-		strategy = strategyRepo.findByName("NIFTY");
-		taskService.saveChartPrice(strategy, "THIRTY_MINUTE");
+		if (strategyRepo.findByName("STRANGLE").getActive().equals("Y")) {
+			DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
+			LocalDateTime now = LocalDateTime.now();
+			Strategy strategy = new Strategy();
+			strategy = strategyRepo.findByName("NIFTY");
+			taskService.saveChartPrice(strategy, "THIRTY_MINUTE");
+		}
 	}
 
 	// Run every 30 sec from 9.15 AM to 3:30 PM

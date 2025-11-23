@@ -53,7 +53,6 @@
       font-weight: 600;
       box-shadow: inset 0 -3px 0 #0077b6;
     }
-    /* Disabled menu item style */
     .menu-item.disabled-menu .menu-link {
       pointer-events: none;
       opacity: 0.5;
@@ -94,6 +93,7 @@
       0% { transform: translate(-50%, -50%) rotate(0deg);}
       100% { transform: translate(-50%, -50%) rotate(360deg);}
     }
+    
     /* Login Popup Overlay Styles */
     #loginPopup {
       display: flex;
@@ -103,47 +103,139 @@
       top: 0;
       width: 100vw;
       height: 100vh;
-      background: rgba(30,39,46,0.82);
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
       align-items: center;
       justify-content: center;
+      animation: fadeIn 0.3s ease;
     }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { 
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+      }
+      to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
     .login-modal {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-      padding: 28px 32px;
-      min-width: 320px;
+      background: linear-gradient(145deg, #ffffff, #f8f9fa);
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1);
+      padding: 48px 40px;
+      min-width: 380px;
       max-width: 90%;
       text-align: center;
       position: relative;
+      animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .login-modal::before {
+      content: '🔒';
+      font-size: 3rem;
+      display: block;
+      margin-bottom: 16px;
+      animation: float 3s ease-in-out infinite;
+    }
+    .login-modal h2 {
+      margin-bottom: 8px;
+      font-size: 1.75rem;
+      color: #1e272e;
+      font-weight: 600;
+    }
+    .login-modal p {
+      color: #7f8c8d;
+      margin-bottom: 28px;
+      font-size: 0.95rem;
+    }
+    .input-wrapper {
+      position: relative;
+      margin-bottom: 24px;
     }
     .login-modal input[type="password"] {
       width: 100%;
-      max-width: 400px;
-      padding: 12px 16px;
-      font-size: 1.1rem;
-      border-radius: 6px;
-      border: 1px solid #c3c7cb;
+      padding: 16px 20px;
+      font-size: 1.05rem;
+      border-radius: 12px;
+      border: 2px solid #e1e8ed;
       box-sizing: border-box;
+      transition: all 0.3s ease;
+      background: #fff;
+      font-family: inherit;
+    }
+    .login-modal input[type="password"]:focus {
+      outline: none;
+      border-color: #00a8ff;
+      box-shadow: 0 0 0 4px rgba(0, 168, 255, 0.1);
+      transform: translateY(-2px);
+    }
+    .login-modal input[type="password"].error-shake {
+      animation: shake 0.4s ease;
+      border-color: #e84118;
     }
     .login-modal button {
-      padding: 10px 24px;
-      background: #00a8ff;
+      width: 100%;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, #00a8ff, #0077b6);
       color: #fff;
       border: none;
-      border-radius: 6px;
-      font-size: 1rem;
+      border-radius: 12px;
+      font-size: 1.05rem;
       cursor: pointer;
-      margin-top: 10px;
-      font-weight: 500;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    .login-modal button::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+    .login-modal button:hover::before {
+      width: 300px;
+      height: 300px;
+    }
+    .login-modal button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 168, 255, 0.4);
+    }
+    .login-modal button:active {
+      transform: translateY(0);
     }
     .login-modal .error {
       color: #e84118;
-      margin-top: 10px;
-      margin-bottom: 5px;
-      font-size: .95rem;
+      margin-top: 16px;
+      font-size: 0.9rem;
       display: none;
+      background: #ffe5e5;
+      padding: 10px;
+      border-radius: 8px;
+      animation: fadeIn 0.3s ease;
     }
+    
     /* Enable content when authenticated */
     .authenticated #iframeContainer,
     .authenticated nav {
@@ -158,27 +250,31 @@
 <body>
   <div id="loginPopup">
     <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
-      <h2 id="loginTitle">Enter Login Code</h2>
-      <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Login code" aria-label="Login Code" />
-      <button id="loginBtn" type="button">Login</button>
-      <div class="error" id="loginError">Invalid code. Try again.</div>
+      <h2 id="loginTitle">Welcome Back</h2>
+      <p>Enter your access code to continue</p>
+      <div class="input-wrapper">
+        <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Enter code" aria-label="Login Code" />
+      </div>
+      <button id="loginBtn" type="button">Access Dashboard</button>
+      <div class="error" id="loginError">❌ Invalid code. Please try again.</div>
     </div>
   </div>
+  
   <nav aria-label="Main navigation">
     <ul class="menu">
       <li class="menu-item" data-url="stock.html"><button class="menu-link" type="button">Stocks</button></li>
       <li class="menu-item" data-url="result.html"><button class="menu-link" type="button">Result</button></li>
-      <!--<li class="menu-item disabled-menu" data-url="chart.html"><button class="menu-link" type="button">Chart</button></li>-->
       <li class="menu-item" data-url="intraday.html"><button class="menu-link" type="button">Intraday</button></li>
-      <!--<li class="menu-item" data-url="oi-daily.html"><button class="menu-link" type="button">OI - Daily</button></li>-->
       <li class="menu-item" data-url="orders.html"><button class="menu-link" type="button">Orders</button></li>
       <li class="menu-item" data-url="log.html"><button class="menu-link" type="button">Log</button></li>
     </ul>
   </nav>
+  
   <div id="iframeContainer">
     <div id="spinner" role="status" aria-label="Loading"></div>
     <iframe id="contentFrame" src="stock.html" title="Main Content"></iframe>
   </div>
+  
   <script>
     const loginPopup = document.getElementById('loginPopup');
     const loginBtn = document.getElementById('loginBtn');
@@ -188,7 +284,7 @@
 
     async function fetchSecretCode() {
       try {
-        const response = await fetch('/key/1'); // Replace with actual API URL
+        const response = await fetch('/key/1');
         if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
         return data.secret;
@@ -205,10 +301,15 @@
         body.classList.add('authenticated');
         loginPopup.style.display = 'none';
         loginError.style.display = 'none';
+        loginCodeInput.classList.remove('error-shake');
       } else {
         loginError.style.display = 'block';
+        loginCodeInput.classList.add('error-shake');
         loginCodeInput.value = '';
         loginCodeInput.focus();
+        setTimeout(() => {
+          loginCodeInput.classList.remove('error-shake');
+        }, 400);
       }
     };
 
@@ -237,7 +338,6 @@
     }
 
     menuItems.forEach(item => {
-      // Prevent click on disabled menu item
       if (!item.classList.contains('disabled-menu')) {
         item.querySelector('.menu-link').addEventListener('click', () => {
           loadPage(item.dataset.url);
