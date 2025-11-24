@@ -61,8 +61,10 @@ public class OrderService {
             // Opposite → exit only, do not lose control
             logger.info("Opposite Signal → EXIT current trade");
 
-            placeExitOrder(activeTrade);
-
+            if ("Y".equalsIgnoreCase(strategy.getLive())) {
+            	 placeExitOrder(activeTrade);
+            }
+           
             // Mark inactive AFTER exit
             activeTrade.setActive(0);
             ordersRepo.save(activeTrade);

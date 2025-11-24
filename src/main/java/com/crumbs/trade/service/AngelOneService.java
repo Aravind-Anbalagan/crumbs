@@ -202,7 +202,7 @@ public class AngelOneService {
 					tokenCE.setVariety(Constants.VARIETY_NORMAL);
 					tokenCE.setOrderType(Constants.ORDER_TYPE_MARKET);
 					tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
-					tokenCE.setName(strategyName);
+					tokenCE.setName("STRANGLE");
 					tokenCE.setType(type);
 					tokenCE.setTriggerPrice(new Double(0));
 					tokenCE.setSignal(signal);
@@ -243,7 +243,7 @@ public class AngelOneService {
 					tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
 					tokenPE.setVariety(Constants.VARIETY_NORMAL);
 					tokenPE.setOrderType(Constants.ORDER_TYPE_MARKET);
-					tokenPE.setName(strategyName);
+					tokenPE.setName("STRANGLE");
 					tokenPE.setType(type);
 					tokenPE.setTriggerPrice(new Double(0));
 					tokenPE.setSignal(signal);

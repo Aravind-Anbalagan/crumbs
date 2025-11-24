@@ -449,7 +449,6 @@ public class ChartService {
 		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
 				strategy.getSymbol(), strategy.getToken());
 		List<Vix> vixList = vixRepo.findAllByNameContainingOrderByIdDesc(name);
-		List<ResultVix> resultVixList = resultVixRepo.findByName(name);
 		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(name);
 		/*if (!resultVixList.isEmpty()) {
 			resultVix = resultVixList.get(resultVixList.size() - 1);
