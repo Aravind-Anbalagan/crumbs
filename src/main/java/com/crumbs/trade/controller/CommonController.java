@@ -35,7 +35,8 @@ import com.crumbs.trade.utility.JVMRestarter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 
 
 
@@ -103,29 +104,34 @@ public class CommonController {
 	 */
 	@GetMapping("/getTokens/{includeAll}")
 	public String downloadFile(@PathVariable("includeAll") boolean includeAll) throws IOException {
-		String url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json";
-		// Optional Accept header
-		RequestCallback requestCallback = request -> request.getHeaders()
-				.setAccept(Arrays.asList(MediaType.APPLICATION_OCTET_STREAM, MediaType.ALL));
 
-		// Streams the response instead of loading it all in memory
-		ResponseExtractor<Void> responseExtractor = response -> {
-			// Here you can write the inputstream to a file or any other place
+	    String url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json";
 
-			Files.copy(response.getBody(), deleteFile("/Intruments.txt", false));
-			if (includeAll) {
-				getAllIndexToken();
-			} else {
-				getIndexToken();
-			}
+	    // Add browser-like headers to bypass server blocking Fly.io
+	    RequestCallback requestCallback = request -> {
+	        HttpHeaders headers = request.getHeaders();
+	        headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON, MediaType.ALL));
+	        headers.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+	        headers.add("Accept", "application/json");
+	    };
 
-			return null;
-		};
+	    ResponseExtractor<Void> responseExtractor = response -> {
+	        Files.copy(response.getBody(), deleteFile("/Intruments.txt", false));
 
-		restTemplate.execute(url, HttpMethod.GET, requestCallback, responseExtractor);
-        logger.info("Downloaded");
-		return "Downloaded..";
+	        if (includeAll) {
+	            getAllIndexToken();
+	        } else {
+	            getIndexToken();
+	        }
+
+	        return null;
+	    };
+
+	    restTemplate.execute(url, HttpMethod.GET, requestCallback, responseExtractor);
+	    logger.info("Downloaded");
+	    return "Downloaded..";
 	}
+
 
 	public String getIndexToken() throws JsonProcessingException, IOException {
 		ObjectMapper objectMapper = new ObjectMapper();
