@@ -942,7 +942,7 @@ public class ChartService {
 	            strikeInterval = 50;
 	            break;
 	        case "SILVERM":
-	            strikeInterval = 500;
+	            strikeInterval = 1000;
 	            break;
 	        default:
 	            logger.warn("Unknown symbol name: {}", strategy.getName());
