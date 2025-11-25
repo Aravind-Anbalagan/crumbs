@@ -17,6 +17,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -83,16 +84,6 @@ public class CommonController {
 		angelOneService.deleteOrders();
 	}
 
-	/*
-	 * 9 AM restart the JVM
-	 * 
-	 * @Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata") // Works public
-	 * void restartJVM() { // Trigger JVM restart in a new thread to allow HTTP
-	 * response new Thread(() -> { try { // Optional: short delay for response to be
-	 * sent Thread.sleep(100); } catch (InterruptedException e) {
-	 * Thread.currentThread().interrupt(); } JVMRestarter.restartJVM(); }).start();
-	 * }
-	 */
 
 	// Execute every FRI at 11 PM
 	@Scheduled(cron = "0 0 23 * * FRI", zone = "Asia/Kolkata")
@@ -122,158 +113,112 @@ public class CommonController {
 	
 	public String downloadScriptFromAngelOne() {
 
-	    // Store in project directory (works locally + in Fly Docker)
-	    String projectDir = System.getProperty("user.dir");
-	    Path localTarget = Paths.get(projectDir, "Intruments.txt");
+	    log.info("⬇️ Starting download of AngelOne Script File...");
+
+	    // Write to src/main/resources (only on local machine)
+	    Path localTarget = Paths.get("src/main/resources/Intruments.txt");
+	    log.info("📁 Local resource output path: {}", localTarget.toAbsolutePath());
 
 	    try {
 	        Path parent = localTarget.getParent();
 	        if (parent != null && Files.notExists(parent)) {
 	            Files.createDirectories(parent);
+	            log.info("📂 Created directory: {}", parent.toAbsolutePath());
 	        }
 
-	        Path tmpTarget = parent.resolve(localTarget.getFileName().toString() + ".tmp");
+	        Path tmpTarget = parent.resolve("Intruments.txt.tmp");
+	        log.info("📝 Temporary write target: {}", tmpTarget.toAbsolutePath());
 
 	        RequestCallback requestCallback = request -> {
 	            HttpHeaders headers = request.getHeaders();
-	            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+	            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0");
 	            headers.setAccept(List.of(MediaType.APPLICATION_JSON, MediaType.ALL));
+	            log.info("🌐 AngelOne request headers set.");
 	        };
 
-	        ResponseExtractor<Void> responseExtractor = clientHttpResponse -> {
-	            HttpStatus status = HttpStatus.resolve(clientHttpResponse.getRawStatusCode());
+	        ResponseExtractor<Void> responseExtractor = response -> {
+	            HttpStatus status = HttpStatus.resolve(response.getRawStatusCode());
+	            log.info("🌐 AngelOne API HTTP Status: {}", status);
+
 	            if (status == null || !status.is2xxSuccessful()) {
-	                throw new IOException("Remote returned non-2xx: " + clientHttpResponse.getRawStatusCode());
+	                throw new IOException("❌ AngelOne returned non-2xx: " + response.getRawStatusCode());
 	            }
 
-	            try (InputStream is = clientHttpResponse.getBody()) {
+	            try (InputStream is = response.getBody()) {
 	                if (is == null)
-	                    throw new IOException("Remote response body is null");
+	                    throw new IOException("❌ AngelOne response body is NULL");
 
+	                log.info("⬇️ Copying downloaded file into temporary file...");
 	                Files.copy(is, tmpTarget, StandardCopyOption.REPLACE_EXISTING);
 
+	                log.info("🔄 Moving temp file to final location...");
 	                Files.move(tmpTarget, localTarget,
 	                        StandardCopyOption.REPLACE_EXISTING,
 	                        StandardCopyOption.ATOMIC_MOVE);
+
+	                log.info("✅ AngelOne Script downloaded successfully.");
 	            }
 	            return null;
 	        };
 
 	        restTemplate.execute(
-	                "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json",
-	                HttpMethod.GET,
-	                requestCallback,
-	                responseExtractor);
+	            "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json",
+	            HttpMethod.GET,
+	            requestCallback,
+	            responseExtractor);
 
-	        String msg = "Saved to Project Folder: " + localTarget.toAbsolutePath();
+	        String msg = "✅ Saved to Resources Folder: " + localTarget.toAbsolutePath();
 	        log.info(msg);
-	      
 	        return msg;
 
 	    } catch (Exception ex) {
-	        log.error("Error downloading file", ex);
+	        log.error("❌ Error downloading file from AngelOne", ex);
 	        return ex.getMessage();
 	    }
 	}
 
-
-	/*
-	 * Used to get the instrument details
-	 */
-	// @GetMapping("/getTokens/{includeAll}")
-	public String downloadFile(@PathVariable("includeAll") boolean includeAll) throws IOException {
-
-		String url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json";
-
-		// Add browser-like headers to bypass server blocking Fly.io
-		RequestCallback requestCallback = request -> {
-			HttpHeaders headers = request.getHeaders();
-			headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON, MediaType.ALL));
-			headers.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-			headers.add("Accept", "application/json");
-		};
-
-		ResponseExtractor<Void> responseExtractor = response -> {
-			Files.copy(response.getBody(), deleteFile("/Intruments.txt", false));
-
-			if (includeAll) {
-				getAllIndexToken();
-			} else {
-				getIndexToken();
-			}
-
-			return null;
-		};
-
-		restTemplate.execute(url, HttpMethod.GET, requestCallback, responseExtractor);
-		logger.info("Downloaded");
-		return "Downloaded..";
-	}
-
-	public String getIndexToken() throws JsonProcessingException, IOException {
-		ObjectMapper objectMapper = new ObjectMapper();
-		deleteFile("/tokens.txt", true);
-
-		PrintWriter pw = new PrintWriter(new FileWriter(System.getProperty("user.dir") + "/tokens.txt"));
-		JsonNode rootNode = objectMapper.readTree(new File(System.getProperty("user.dir") + "/Intruments.txt"));
-		List<String> inputList = new ArrayList<>();
-		rootNode.forEach(node -> {
-
-			if (node.path("name").asText().equals("NIFTY") || node.path("name").asText().equals("CRUDEOIL")
-			// || node.path("name").asText().equals("NATURALGAS") ||
-			// node.path("name").asText().equals("FINNIFTY")
-			// || node.path("name").asText().equals("BANKNIFTY") ||
-			// node.path("name").asText().equals("BANKNIFTY")
-			// || node.path("name").asText().equals("MIDCPNIFTY")||
-			// node.path("name").asText().equals("SENSEX")
-					|| node.path("name").asText().equals("INDIA VIX") || node.path("name").asText().equals("SILVERM")) {
-				inputList.add(node.toString());
-
-			}
-
-		});
-		pw.write(inputList.toString());
-		pw.flush();
-		pw.close();
-		deleteFile("/Intruments.txt", false);
-		return "Created";
-	}
+	
 
 	public String getAllIndexToken() throws JsonProcessingException, IOException {
 
-	    // 0️⃣ Read from common location (LOCAL + FLY.IO)
+	    log.info("📖 Starting extraction + DB insert from /app/data/Intruments.txt");
+
 	    Path inputPath = Paths.get("/app/data/Intruments.txt");
 
 	    if (!Files.exists(inputPath)) {
+	        log.error("❌ Input file NOT found: {}", inputPath.toAbsolutePath());
 	        return "Input file not found at: " + inputPath.toAbsolutePath();
 	    }
 
+	    log.info("📁 Reading file: {}", inputPath.toAbsolutePath());
+
 	    ObjectMapper objectMapper = new ObjectMapper();
 
-	    // 1️⃣ Clear DB table
+	    // Clear DB
+	    log.info("🗑️ Clearing Indexes table...");
 	    indexesRepo.deleteAll();
 
 	    List<String> optionNameList = niftyRepo.getAllNames();
 	    List<String> inputList = new ArrayList<>();
 
-	    // 2️⃣ Read the file
 	    JsonNode rootNode = objectMapper.readTree(inputPath.toFile());
+	    log.info("📄 Total records found in JSON: {}", rootNode.size());
 
-	    // 3️⃣ Process all nodes
 	    rootNode.forEach(node -> {
+	        boolean shouldInsert =
+	                ((!node.path("name").asText().matches("[a-zA-Z ]*\\d+.*")
+	                        && node.path("symbol").asText().contains("-EQ")
+	                        && node.path("exch_seg").asText().equals("NSE"))
+	                        || node.path("exch_seg").asText().equals("BSE")
+	                        || node.path("name").asText().equals("NIFTY")
+	                        || node.path("name").asText().equals("CRUDEOIL")
+	                        || node.path("name").asText().equals("NATURALGAS")
+	                        || node.path("name").asText().equals("INDIA VIX")
+	                        || node.path("name").asText().equals("SILVERM")
+	                        || optionNameList.contains(node.path("name").asText()));
 
-	        if ((!node.path("name").asText().matches("[a-zA-Z ]*\\d+.*")
-	                && node.path("symbol").asText().contains("-EQ")
-	                && node.path("exch_seg").asText().equals("NSE"))
-	                || node.path("exch_seg").asText().equals("BSE")
-	                || node.path("name").asText().equals("NIFTY")
-	                || node.path("name").asText().equals("CRUDEOIL")
-	                || node.path("name").asText().equals("NATURALGAS")
-	                || node.path("name").asText().equals("INDIA VIX")
-	                || node.path("name").asText().equals("SILVERM")
-	                || optionNameList.contains(node.path("name").asText())) {
-
-	            inputList.add(node.toString());
+	        if (shouldInsert) {
+	            //log.debug("➕ Adding: {}", node.path("name").asText());
 
 	            Indexes indexes = new Indexes();
 	            indexes.setName(node.path("name").asText());
@@ -288,37 +233,46 @@ public class CommonController {
 	        }
 	    });
 
-	    // 4️⃣ Delete file after processing
+	    log.info("🗑️ Deleting source file after processing...");
 	    deleteFile(inputPath.toString(), false);
 
+	    log.info("✅ Completed JSON extraction + DB storage.");
 	    return "Created";
 	}
 
 
+
 	public String moveIntrumentsFileToFlyVolume() throws IOException {
 
-		// 1️⃣ Source file: project directory
-		String projectDir = System.getProperty("user.dir");
-		Path source = Paths.get(projectDir, "Intruments.txt");
+	    log.info("📦 Starting copy of Intruments.txt from resources to /app/data/...");
 
-		if (!Files.exists(source)) {
-			return "Source file not found: " + source.toAbsolutePath();
-		}
+	    // Load file from resources
+	    ClassPathResource resource = new ClassPathResource("Intruments.txt");
 
-		// 2️⃣ Target file: Fly volume
-		Path target = Paths.get("/app/data/Intruments.txt");
+	    if (!resource.exists()) {
+	        log.error("❌ Intruments.txt NOT found inside resources!");
+	        return "Intruments.txt not found in resources!";
+	    }
 
-		// ensure target folder exists
-		Files.createDirectories(target.getParent());
+	    log.info("📁 Found resource Intruments.txt inside JAR");
 
-		// 3️⃣ Move / copy file
-		Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+	    // Target path
+	    Path target = Paths.get("/app/data/Intruments.txt");
+	    log.info("📌 Target path: {}", target.toAbsolutePath());
 
-		// 4️⃣ Delete the source file after moving (optional)
-		//Files.deleteIfExists(source);
+	    Files.createDirectories(target.getParent());
+	    log.info("📂 Ensured /app/data folder exists.");
 
-		return "File moved to: " + target.toAbsolutePath();
+	    try (InputStream is = resource.getInputStream()) {
+	        log.info("🔄 Copying resource file to Fly volume...");
+	        Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+	    }
+
+	    log.info("✅ Copied Intruments.txt to Fly volume: {}", target.toAbsolutePath());
+	    return "Copied Intruments.txt from resources to: " + target.toAbsolutePath();
 	}
+
+
 
 	public Path deleteFile(String fileName, boolean isCreate) throws IOException {
 		Path path = Paths.get(System.getProperty("user.dir") + fileName);
