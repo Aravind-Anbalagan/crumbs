@@ -128,6 +128,7 @@ public class StrangleController {
 	 * STEP 1 - Get CPR Data
 	 * Take Entry at 9:20 based on CPR
 	 */
+	@GetMapping("/getCPR")
 	@Scheduled(cron = "10 20 9 ? * MON-FRI", zone = "Asia/Kolkata")
 	public void Strangle_CPR() throws IOException, SmartAPIException {
 		if ("Y".equalsIgnoreCase(strategyRepo.findByName(AppConstant.CPR_STRATEGY).getActive())) {

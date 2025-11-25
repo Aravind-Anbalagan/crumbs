@@ -2312,21 +2312,92 @@ public class TaskService {
 
 	public com.crumbs.trade.dto.CPR calculateCpr(BigDecimal high, BigDecimal low, BigDecimal close) {
 
+	    // -------------------------------------------
+	    // 1️⃣ Correct high/low if mistakenly reversed
+	    // -------------------------------------------
+	    if (high.compareTo(low) < 0) {
+	        BigDecimal tmp = high;
+	        high = low;
+	        low = tmp;
+	    }
+
+	    // -------------------------------------------
+	    // 2️⃣ Standard CPR formula (using raw BC / raw TC)
+	    // -------------------------------------------
 	    BigDecimal pivot = high.add(low).add(close)
 	            .divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP);
 
-	    BigDecimal bc = high.add(low)
+	    BigDecimal bc_raw = high.add(low)
 	            .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
 
-	    BigDecimal tc = pivot.multiply(BigDecimal.valueOf(2)).subtract(bc);
+	    BigDecimal tc_raw = pivot.multiply(BigDecimal.valueOf(2)).subtract(bc_raw);
 
+	    // -------------------------------------------
+	    // 3️⃣ Determine CPR Type based on RAW values
+	    // -------------------------------------------
+	    String type;
+	    String desc;
+
+	    if (tc_raw.compareTo(bc_raw) > 0) {
+	        type = "ASCENDING CPR";
+	        desc = "Bullish CPR structure (TC > BC) — Positive bias.";
+	    } else if (bc_raw.compareTo(tc_raw) > 0) {
+	        type = "DESCENDING CPR";
+	        desc = "Bearish CPR structure (BC > TC) — Negative bias.";
+	    } else {
+	        type = "INSIDE CPR";
+	        desc = "Balanced CPR structure — Neutral bias.";
+	    }
+
+	    // -------------------------------------------
+	    // 4️⃣ TradingView-style DISPLAY CPR (Top always > Bottom)
+	    // -------------------------------------------
+	    BigDecimal topDisplay = bc_raw.max(tc_raw);     // numerically higher
+	    BigDecimal bottomDisplay = bc_raw.min(tc_raw);  // numerically lower
+
+	    // -------------------------------------------
+	    // 5️⃣ CPR Width Classification (use DISPLAY width)
+	    // -------------------------------------------
+	    BigDecimal width = topDisplay.subtract(bottomDisplay).abs();
+	    BigDecimal widthPercent = width
+	            .divide(pivot, 6, RoundingMode.HALF_UP)
+	            .multiply(BigDecimal.valueOf(100))
+	            .abs()
+	            .setScale(2, RoundingMode.HALF_UP);
+
+	    String widthType;
+
+	    if (widthPercent.compareTo(BigDecimal.valueOf(0.25)) < 0) {
+	        widthType = "NARROW CPR";
+	        desc += " Narrow CPR — Trending move likely.";
+	    } else if (widthPercent.compareTo(BigDecimal.valueOf(0.50)) < 0) {
+	        widthType = "MEDIUM CPR";
+	        desc += " Medium CPR — Moderate volatility expected.";
+	    } else {
+	        widthType = "WIDE CPR";
+	        desc += " Wide CPR — Possible sideways/choppy market.";
+	    }
+
+	    // -------------------------------------------
+	    // 6️⃣ Build CPR DTO
+	    // -------------------------------------------
 	    com.crumbs.trade.dto.CPR cpr = new com.crumbs.trade.dto.CPR();
+
 	    cpr.setPivot(pivot);
-	    cpr.setBottom_pivot(bc);   // BC
-	    cpr.setTop_pivot(tc);      // TC
+
+	    // DISPLAY CPR (TradingView style)
+	    cpr.setTop_pivot(topDisplay);        // always highest
+	    cpr.setBottom_pivot(bottomDisplay);  // always lowest
+
+	    // CPR Type, Width, Description
+	    cpr.setCprType(type);
+	    cpr.setWidthType(widthType);
+	    cpr.setDescription(desc);
 
 	    return cpr;
 	}
+
+
 
 
 
