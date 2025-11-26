@@ -107,11 +107,15 @@ public class SpreadService {
      * Entry point - fetch indicators and attempt spread placements
      */
     public void getStockList() {
-        List<String> signals = List.of("FIRST BUY", "FIRST SELL");
+    	List<String> signals = List.of("FIRST BUY", "FIRST SELL");
 
-        List<Indicator> indicatorList = indicatorRepo.findByHeikinAshiDayInAndPsarFlagDayInAndOptions(
-            signals, signals, "Y"
-        );
+    	List<Indicator> rawList =
+    	        indicatorRepo.findByHeikinAshiDayInAndPsarFlagDayInAndOptions(
+    	            signals, signals, "Y");
+
+    	List<Indicator> indicatorList = rawList.stream()
+    	        .filter(i -> i.getHeikinAshiDay().equals(i.getPsarFlagDay()))
+    	        .toList();
 
         SmartConnect smartConnect = angelOne.signIn();
 

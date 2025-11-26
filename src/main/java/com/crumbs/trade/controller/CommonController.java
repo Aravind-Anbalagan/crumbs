@@ -102,20 +102,6 @@ public class CommonController {
     }
 
     /**
-     * Scheduled job: Fetch tokens every Friday at 11 PM IST
-     */
-    @Scheduled(cron = "0 0 23 * * FRI", zone = "Asia/Kolkata")
-    public void fetchTokensScheduled() {
-        try {
-            log.info("Scheduled job: Fetching tokens");
-            getAllIndexToken();
-            log.info("Scheduled token fetch completed successfully");
-        } catch (Exception e) {
-            log.error("Error in scheduled token fetch", e);
-        }
-    }
-
-    /**
      * Download scripts from AngelOne, move to volume, and extract to DB
      */
     @PostMapping("/download-script-locally")
