@@ -1,30 +1,28 @@
 package com.crumbs.trade.controller;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintWriter;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,251 +35,402 @@ import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.NiftyRepo;
 import com.crumbs.trade.service.AngelOneService;
-import com.crumbs.trade.utility.JVMRestarter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-
 @RestController
 @RequestMapping(value = "/common")
 public class CommonController {
-	Logger logger = LoggerFactory.getLogger(CommonController.class);
+    
+    private static final Logger log = LoggerFactory.getLogger(CommonController.class);
+    private static final String INSTRUMENTS_FILENAME = "Instruments.txt";
+    private static final long MAX_FILE_SIZE_MB = 100;
+    private static final int BATCH_SIZE = 1000;
 
-	@Autowired
-	NiftyRepo niftyRepo;
+    @Value("${angelone.api.url:https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json}")
+    private String angelOneApiUrl;
 
-	@Autowired
-	RestTemplate restTemplate;
+    @Value("${app.data.path:/app/data}")
+    private String appDataPath;
 
-	@Autowired
-	IndexesRepo indexesRepo;
+    @Value("${app.local.resources.path:src/main/resources}")
+    private String localResourcesPath;
 
-	@Autowired
-	AngelOneService angelOneService;
+    @Autowired
+    private NiftyRepo niftyRepo;
 
-	private static final Logger log = LoggerFactory.getLogger(CommonController.class);
+    @Autowired
+    private RestTemplate restTemplate;
 
+    @Autowired
+    private IndexesRepo indexesRepo;
 
-	// DeActivate the Strategy
-	@GetMapping(value = "/clear")
-	public String deleteOrders() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {
-		logger.info("Delete All Data");
-		angelOneService.deleteOrders();
-		return "Completed";
+    @Autowired
+    private AngelOneService angelOneService;
 
-	}
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-	/*
-	 * 9.10 AM clear DB
-	 */
-	@Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
-	public void clear() throws InterruptedException, URISyntaxException, IOException, SmartAPIException {
-		logger.info("Delete All Data");
-		angelOneService.deleteOrders();
-	}
-
-
-	// Execute every FRI at 11 PM
-	@Scheduled(cron = "0 0 23 * * FRI", zone = "Asia/Kolkata")
-	public String fetchTokensScheduled() throws IOException {
-		return getAllIndexToken();
-	}
-
-    /*
-     *  1. Download the file from the Angelone
-     *  2. Store in the DB
+    /**
+     * Manually trigger deletion of all orders
      */
-	@PostMapping("/download-script-locally")
-	public String downloadScriptsLocal() throws JsonProcessingException, IOException {
-		  downloadScriptFromAngelOne();
-		  moveIntrumentsFileToFlyVolume();
-		  getAllIndexToken();
-		  return "Completed";
-	}
+    @GetMapping(value = "/clear")
+    public ResponseEntity<String> deleteOrders() {
+        try {
+            log.info("Manual trigger: Delete All Data");
+            angelOneService.deleteOrders();
+            return ResponseEntity.ok("Completed successfully");
+        } catch (Exception e) {
+            log.error("Error deleting orders", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
 
-	@PostMapping("/extract-script-OnFly")
-	public void extractScript() throws JsonProcessingException, IOException {
-		// Copy the file
-		moveIntrumentsFileToFlyVolume();
-		// Extract the file and store in DB
-		getAllIndexToken();
-	}
-	
-	public String downloadScriptFromAngelOne() {
+    /**
+     * Scheduled job: Clear DB every weekday at 9:10 AM IST
+     */
+    @Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
+    public void clearScheduled() {
+        try {
+            log.info("Scheduled job: Delete All Data");
+            angelOneService.deleteOrders();
+            log.info("Scheduled clear completed successfully");
+        } catch (Exception e) {
+            log.error("Error in scheduled clear job", e);
+        }
+    }
 
-	    log.info("⬇️ Starting download of AngelOne Script File...");
+    /**
+     * Scheduled job: Fetch tokens every Friday at 11 PM IST
+     */
+    @Scheduled(cron = "0 0 23 * * FRI", zone = "Asia/Kolkata")
+    public void fetchTokensScheduled() {
+        try {
+            log.info("Scheduled job: Fetching tokens");
+            getAllIndexToken();
+            log.info("Scheduled token fetch completed successfully");
+        } catch (Exception e) {
+            log.error("Error in scheduled token fetch", e);
+        }
+    }
 
-	    // Write to src/main/resources (only on local machine)
-	    Path localTarget = Paths.get("src/main/resources/Intruments.txt");
-	    log.info("📁 Local resource output path: {}", localTarget.toAbsolutePath());
+    /**
+     * Download scripts from AngelOne, move to volume, and extract to DB
+     */
+    @PostMapping("/download-script-locally")
+    public ResponseEntity<String> downloadScriptsLocal() {
+        try {
+            log.info("Starting full download");
+            
+            // Step 1: Download
+            String downloadResult = downloadScriptFromAngelOne();
+            if (downloadResult.contains("Error") || downloadResult.contains("❌")) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(downloadResult);
+            }
+            
+          
+            
+            log.info("Full process completed successfully");
+            return ResponseEntity.ok("Completed: " + downloadResult);
+            
+        } catch (Exception e) {
+            log.error("Error in download script locally process", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+    /**
+     * Download scripts from AngelOne, move to volume, and extract to DB
+     */
+    @PostMapping("/extract-script-locally")
+    public ResponseEntity<String> extractScriptLocally() {
+        try {
+            log.info("Starting extraction process");
+           
+            
+            // Step 1: Move to volume
+            String moveResult = moveInstrumentsFileToFlyVolume();
+            if (moveResult.contains("not found")) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(moveResult);
+            }
+            
+            // Step 2: Extract and save to DB
+            String extractResult = getAllIndexToken();
+            
+            log.info("Extracted successfully");
+            return ResponseEntity.ok("Completed: " + extractResult);
+            
+        } catch (Exception e) {
+            log.error("Error in download script locally process", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+    
+    
+    
 
-	    try {
-	        Path parent = localTarget.getParent();
-	        if (parent != null && Files.notExists(parent)) {
-	            Files.createDirectories(parent);
-	            log.info("📂 Created directory: {}", parent.toAbsolutePath());
-	        }
+    /**
+     * Extract scripts from existing file on Fly volume
+     */
+    @PostMapping("/extract-script-OnFly")
+    public ResponseEntity<String> extractScript() {
+        try {
+            log.info("Starting extraction from Fly volume");
+            
+            // Copy the file
+            String moveResult = moveInstrumentsFileToFlyVolume();
+            if (moveResult.contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(moveResult);
+            }
+            
+            // Extract the file and store in DB
+            String extractResult = getAllIndexToken();
+            
+            return ResponseEntity.ok("Extraction completed: " + extractResult);
+            
+        } catch (Exception e) {
+            log.error("Error in extract script process", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
 
-	        Path tmpTarget = parent.resolve("Intruments.txt.tmp");
-	        log.info("📝 Temporary write target: {}", tmpTarget.toAbsolutePath());
+    /**
+     * Download the instruments file from AngelOne API
+     */
+    private String downloadScriptFromAngelOne() {
+        log.info("⬇️ Starting download of AngelOne Script File...");
 
-	        RequestCallback requestCallback = request -> {
-	            HttpHeaders headers = request.getHeaders();
-	            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0");
-	            headers.setAccept(List.of(MediaType.APPLICATION_JSON, MediaType.ALL));
-	            log.info("🌐 AngelOne request headers set.");
-	        };
+        Path localTarget = Paths.get(localResourcesPath, INSTRUMENTS_FILENAME);
+        log.info("📁 Local resource output path: {}", localTarget.toAbsolutePath());
 
-	        ResponseExtractor<Void> responseExtractor = response -> {
-	            HttpStatus status = HttpStatus.resolve(response.getRawStatusCode());
-	            log.info("🌐 AngelOne API HTTP Status: {}", status);
+        try {
+            // Ensure parent directory exists
+            Path parent = localTarget.getParent();
+            if (parent != null && Files.notExists(parent)) {
+                Files.createDirectories(parent);
+                log.info("📂 Created directory: {}", parent.toAbsolutePath());
+            }
 
-	            if (status == null || !status.is2xxSuccessful()) {
-	                throw new IOException("❌ AngelOne returned non-2xx: " + response.getRawStatusCode());
-	            }
+            Path tmpTarget = parent.resolve(INSTRUMENTS_FILENAME + ".tmp");
+            log.info("📝 Temporary write target: {}", tmpTarget.toAbsolutePath());
 
-	            try (InputStream is = response.getBody()) {
-	                if (is == null)
-	                    throw new IOException("❌ AngelOne response body is NULL");
+            // Request callback to set headers
+            RequestCallback requestCallback = request -> {
+                HttpHeaders headers = request.getHeaders();
+                headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0");
+                headers.setAccept(List.of(MediaType.APPLICATION_JSON, MediaType.ALL));
+                log.debug("🌐 AngelOne request headers set.");
+            };
 
-	                log.info("⬇️ Copying downloaded file into temporary file...");
-	                Files.copy(is, tmpTarget, StandardCopyOption.REPLACE_EXISTING);
+            // Response extractor to handle download
+            ResponseExtractor<Void> responseExtractor = response -> {
+                HttpStatus status = HttpStatus.resolve(response.getRawStatusCode());
+                log.info("🌐 AngelOne API HTTP Status: {}", status);
 
-	                log.info("🔄 Moving temp file to final location...");
-	                Files.move(tmpTarget, localTarget,
-	                        StandardCopyOption.REPLACE_EXISTING,
-	                        StandardCopyOption.ATOMIC_MOVE);
+                if (status == null || !status.is2xxSuccessful()) {
+                    throw new IOException("❌ AngelOne returned non-2xx: " + response.getRawStatusCode());
+                }
 
-	                log.info("✅ AngelOne Script downloaded successfully.");
-	            }
-	            return null;
-	        };
+                try (InputStream is = response.getBody()) {
+                    if (is == null) {
+                        throw new IOException("❌ AngelOne response body is NULL");
+                    }
 
-	        restTemplate.execute(
-	            "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json",
-	            HttpMethod.GET,
-	            requestCallback,
-	            responseExtractor);
+                    log.info("⬇️ Copying downloaded file into temporary file...");
+                    long bytesCopied = Files.copy(is, tmpTarget, StandardCopyOption.REPLACE_EXISTING);
+                    
+                    // Validate file size
+                    long fileSizeMB = bytesCopied / (1024 * 1024);
+                    log.info("📊 Downloaded file size: {} MB", fileSizeMB);
+                    
+                    if (fileSizeMB > MAX_FILE_SIZE_MB) {
+                        Files.deleteIfExists(tmpTarget);
+                        throw new IOException("❌ File size exceeds maximum allowed: " + fileSizeMB + " MB");
+                    }
 
-	        String msg = "✅ Saved to Resources Folder: " + localTarget.toAbsolutePath();
-	        log.info(msg);
-	        return msg;
+                    log.info("🔄 Moving temp file to final location...");
+                    Files.move(tmpTarget, localTarget,
+                            StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
 
-	    } catch (Exception ex) {
-	        log.error("❌ Error downloading file from AngelOne", ex);
-	        return ex.getMessage();
-	    }
-	}
+                    log.info("✅ AngelOne Script downloaded successfully.");
+                }
+                return null;
+            };
 
-	
+            // Execute download
+            restTemplate.execute(
+                angelOneApiUrl,
+                HttpMethod.GET,
+                requestCallback,
+                responseExtractor);
 
-	public String getAllIndexToken() throws JsonProcessingException, IOException {
+            String msg = "✅ Saved to Resources Folder: " + localTarget.toAbsolutePath();
+            log.info(msg);
+            return msg;
 
-	    log.info("📖 Starting extraction + DB insert from /app/data/Intruments.txt");
+        } catch (Exception ex) {
+            log.error("❌ Error downloading file from AngelOne", ex);
+            return "Error: " + ex.getMessage();
+        }
+    }
 
-	    Path inputPath = Paths.get("/app/data/Intruments.txt");
+    /**
+     * Extract instruments from JSON file and save to database using batch insert
+     */
+    @Transactional
+    private String getAllIndexToken() throws JsonProcessingException, IOException {
+        log.info("📖 Starting extraction + DB insert from {}/{}", appDataPath, INSTRUMENTS_FILENAME);
 
-	    if (!Files.exists(inputPath)) {
-	        log.error("❌ Input file NOT found: {}", inputPath.toAbsolutePath());
-	        return "Input file not found at: " + inputPath.toAbsolutePath();
-	    }
+        Path inputPath = Paths.get(appDataPath, INSTRUMENTS_FILENAME);
 
-	    log.info("📁 Reading file: {}", inputPath.toAbsolutePath());
+        if (!Files.exists(inputPath)) {
+            log.error("❌ Input file NOT found: {}", inputPath.toAbsolutePath());
+            throw new IOException("Input file not found at: " + inputPath.toAbsolutePath());
+        }
 
-	    ObjectMapper objectMapper = new ObjectMapper();
+        // Validate file size
+        long fileSizeBytes = Files.size(inputPath);
+        long fileSizeMB = fileSizeBytes / (1024 * 1024);
+        log.info("📁 Reading file: {} (Size: {} MB)", inputPath.toAbsolutePath(), fileSizeMB);
 
-	    // Clear DB
-	    log.info("🗑️ Clearing Indexes table...");
-	    indexesRepo.deleteAll();
+        if (fileSizeMB > MAX_FILE_SIZE_MB) {
+            throw new IOException("File size exceeds maximum allowed: " + fileSizeMB + " MB");
+        }
 
-	    List<String> optionNameList = niftyRepo.getAllNames();
-	    List<String> inputList = new ArrayList<>();
+        // Clear DB
+        log.info("🗑️ Clearing Indexes table...");
+        indexesRepo.deleteAll();
 
-	    JsonNode rootNode = objectMapper.readTree(inputPath.toFile());
-	    log.info("📄 Total records found in JSON: {}", rootNode.size());
+        // Get option names for filtering
+        List<String> optionNameList = niftyRepo.getAllNames();
+        log.info("📋 Found {} option names for filtering", optionNameList.size());
 
-	    rootNode.forEach(node -> {
-	        boolean shouldInsert =
-	                ((!node.path("name").asText().matches("[a-zA-Z ]*\\d+.*")
-	                        && node.path("symbol").asText().contains("-EQ")
-	                        && node.path("exch_seg").asText().equals("NSE"))
-	                        || node.path("exch_seg").asText().equals("BSE")
-	                        || node.path("name").asText().equals("NIFTY")
-	                        || node.path("name").asText().equals("CRUDEOIL")
-	                        || node.path("name").asText().equals("NATURALGAS")
-	                        || node.path("name").asText().equals("INDIA VIX")
-	                        || node.path("name").asText().equals("SILVERM")
-	                        || optionNameList.contains(node.path("name").asText()));
+        // Parse JSON
+        JsonNode rootNode = objectMapper.readTree(inputPath.toFile());
+        log.info("📄 Total records found in JSON: {}", rootNode.size());
 
-	        if (shouldInsert) {
-	            //log.debug("➕ Adding: {}", node.path("name").asText());
+        // Collect all indexes to save (batch insert)
+        List<Indexes> indexesToSave = new ArrayList<>();
+        int processedCount = 0;
 
-	            Indexes indexes = new Indexes();
-	            indexes.setName(node.path("name").asText());
-	            indexes.setToken(node.path("token").asText());
-	            indexes.setSymbol(node.path("symbol").asText());
-	            indexes.setExchange(node.path("exch_seg").asText());
-	            indexes.setExpiry(node.path("expiry").asText());
-	            indexes.setStrike(node.path("strike").asText());
-	            indexes.setLotsize(node.path("lotsize").asInt());
+        for (JsonNode node : rootNode) {
+            boolean shouldInsert = shouldIncludeIndex(node, optionNameList);
 
-	            indexesRepo.save(indexes);
-	        }
-	    });
+            if (shouldInsert) {
+                Indexes indexes = createIndexFromNode(node);
+                indexesToSave.add(indexes);
+                processedCount++;
 
-	    log.info("🗑️ Deleting source file after processing...");
-	    deleteFile(inputPath.toString(), false);
+                // Batch insert every BATCH_SIZE records
+                if (indexesToSave.size() >= BATCH_SIZE) {
+                    indexesRepo.saveAll(indexesToSave);
+                    log.info("💾 Saved batch of {} records (Total: {})", indexesToSave.size(), processedCount);
+                    indexesToSave.clear();
+                }
+            }
+        }
 
-	    log.info("✅ Completed JSON extraction + DB storage.");
-	    return "Created";
-	}
+        // Save remaining records
+        if (!indexesToSave.isEmpty()) {
+            indexesRepo.saveAll(indexesToSave);
+            log.info("💾 Saved final batch of {} records", indexesToSave.size());
+        }
 
+        log.info("✅ Total records processed: {}, Total records saved: {}", rootNode.size(), processedCount);
 
+        // Delete source file after processing
+        log.info("🗑️ Deleting source file after processing...");
+        deleteFile(inputPath);
 
-	public String moveIntrumentsFileToFlyVolume() throws IOException {
+        log.info("✅ Completed JSON extraction + DB storage.");
+        return "Created " + processedCount + " records";
+    }
 
-	    log.info("📦 Starting copy of Intruments.txt from resources to /app/data/...");
+    /**
+     * Determine if an index should be included based on business rules
+     */
+    private boolean shouldIncludeIndex(JsonNode node, List<String> optionNameList) {
+        String name = node.path("name").asText();
+        String symbol = node.path("symbol").asText();
+        String exchSeg = node.path("exch_seg").asText();
 
-	    // Load file from resources
-	    ClassPathResource resource = new ClassPathResource("Intruments.txt");
+        return (!name.matches("[a-zA-Z ]*\\d+.*") 
+                && symbol.contains("-EQ") 
+                && exchSeg.equals("NSE"))
+                || exchSeg.equals("BSE")
+                || name.equals("NIFTY")
+                || name.equals("CRUDEOIL")
+                || name.equals("NATURALGAS")
+                || name.equals("INDIA VIX")
+                || name.equals("SILVERM")
+                || optionNameList.contains(name);
+    }
 
-	    if (!resource.exists()) {
-	        log.error("❌ Intruments.txt NOT found inside resources!");
-	        return "Intruments.txt not found in resources!";
-	    }
+    /**
+     * Create Indexes entity from JSON node
+     */
+    private Indexes createIndexFromNode(JsonNode node) {
+        Indexes indexes = new Indexes();
+        indexes.setName(node.path("name").asText());
+        indexes.setToken(node.path("token").asText());
+        indexes.setSymbol(node.path("symbol").asText());
+        indexes.setExchange(node.path("exch_seg").asText());
+        indexes.setExpiry(node.path("expiry").asText());
+        indexes.setStrike(node.path("strike").asText());
+        indexes.setLotsize(node.path("lotsize").asInt());
+        return indexes;
+    }
 
-	    log.info("📁 Found resource Intruments.txt inside JAR");
+    /**
+     * Move instruments file from resources to Fly volume
+     */
+    private String moveInstrumentsFileToFlyVolume() throws IOException {
+        log.info("📦 Starting copy of {} from resources to {}/...", INSTRUMENTS_FILENAME, appDataPath);
 
-	    // Target path
-	    Path target = Paths.get("/app/data/Intruments.txt");
-	    log.info("📌 Target path: {}", target.toAbsolutePath());
+        // Load file from resources
+        ClassPathResource resource = new ClassPathResource(INSTRUMENTS_FILENAME);
 
-	    Files.createDirectories(target.getParent());
-	    log.info("📂 Ensured /app/data folder exists.");
+        if (!resource.exists()) {
+            log.error("❌ {} NOT found inside resources!", INSTRUMENTS_FILENAME);
+            throw new IOException(INSTRUMENTS_FILENAME + " not found in resources!");
+        }
 
-	    try (InputStream is = resource.getInputStream()) {
-	        log.info("🔄 Copying resource file to Fly volume...");
-	        Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
-	    }
+        log.info("📁 Found resource {} inside JAR", INSTRUMENTS_FILENAME);
 
-	    log.info("✅ Copied Intruments.txt to Fly volume: {}", target.toAbsolutePath());
-	    return "Copied Intruments.txt from resources to: " + target.toAbsolutePath();
-	}
+        // Target path
+        Path target = Paths.get(appDataPath, INSTRUMENTS_FILENAME);
+        log.info("📌 Target path: {}", target.toAbsolutePath());
 
+        // Ensure directory exists
+        Files.createDirectories(target.getParent());
+        log.info("📂 Ensured {} folder exists.", appDataPath);
 
+        // Copy file
+        try (InputStream is = resource.getInputStream()) {
+            log.info("🔄 Copying resource file to Fly volume...");
+            long bytesCopied = Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+            log.info("📊 Copied {} bytes", bytesCopied);
+        }
 
-	public Path deleteFile(String fileName, boolean isCreate) throws IOException {
-		Path path = Paths.get(System.getProperty("user.dir") + fileName);
-		Files.deleteIfExists(path);
+        log.info("✅ Copied {} to Fly volume: {}", INSTRUMENTS_FILENAME, target.toAbsolutePath());
+        return "Copied " + INSTRUMENTS_FILENAME + " from resources to: " + target.toAbsolutePath();
+    }
 
-		if (isCreate) {
-			Files.createFile(path);
-		}
-		return path;
-	}
-
+    /**
+     * Delete a file if it exists
+     */
+    private void deleteFile(Path path) throws IOException {
+        if (Files.deleteIfExists(path)) {
+            log.info("🗑️ Deleted file: {}", path.toAbsolutePath());
+        } else {
+            log.warn("⚠️ File not found for deletion: {}", path.toAbsolutePath());
+        }
+    }
 }
