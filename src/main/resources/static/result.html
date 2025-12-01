@@ -413,6 +413,11 @@
         <option value="Y">Has Options (Y)</option>
         <option value="N">No Options (N)</option>
       </select>
+      <select id="tradeFilter">
+        <option value="Y" selected>Active Trades Only</option>
+        <option value="N">Inactive Trades Only</option>
+        <option value="ALL">All Trades</option>
+      </select>
       <select id="periodFilter">
         <option value="current" selected>Current Month</option>
         <option value="previous">Previous Month</option>
@@ -536,17 +541,20 @@
       const typeVal = document.getElementById("typeFilter").value;
       const statusVal = document.getElementById("statusFilter").value;
       const optionsVal = document.getElementById("optionsFilter").value;
+      const tradeVal = document.getElementById("tradeFilter").value;
       tbody.innerHTML = "";
 
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
         const displayStatus = (item.status || "").toUpperCase();
         const hasOption = (item.hasOption || "N").toUpperCase();
+        const isActive = (item.active || "N").toUpperCase();
         const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
         const matchesOptions = optionsVal === "ALL" || hasOption === optionsVal;
-        return matchesSearch && matchesType && matchesStatus && matchesOptions;
+        const matchesTrade = tradeVal === "ALL" || isActive === tradeVal;
+        return matchesSearch && matchesType && matchesStatus && matchesOptions && matchesTrade;
       });
 
       if (currentSort.key) {
@@ -823,15 +831,18 @@
       const typeVal = document.getElementById("typeFilter").value;
       const statusVal = document.getElementById("statusFilter").value;
       const optionsVal = document.getElementById("optionsFilter").value;
+      const tradeVal = document.getElementById("tradeFilter").value;
       let filtered = stockData.filter((item) => {
         const displayType = (item.type || "").toUpperCase();
         const displayStatus = (item.status || "").toUpperCase();
         const hasOption = (item.hasOption || "N").toUpperCase();
+        const isActive = (item.active || "N").toUpperCase();
         const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
         const matchesType = typeVal === "ALL" || displayType === typeVal;
         const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
         const matchesOptions = optionsVal === "ALL" || hasOption === optionsVal;
-        return matchesSearch && matchesType && matchesStatus && matchesOptions;
+        const matchesTrade = tradeVal === "ALL" || isActive === tradeVal;
+        return matchesSearch && matchesType && matchesStatus && matchesOptions && matchesTrade;
       });
       const headers = ["Trade", "Options", "Name", "Exchange", "Entry Time", "Type", 
                        "Executed LTP", "Current LTP", "SL", "Return %", "Status"];
@@ -865,6 +876,7 @@
       document.getElementById("typeFilter").value = "ALL";
       document.getElementById("statusFilter").value = "ALL";
       document.getElementById("optionsFilter").value = "ALL";
+      document.getElementById("tradeFilter").value = "Y";
       document.getElementById("periodFilter").value = "current";
       currentPage = 1;
       currentSort = { key: null, asc: true };
@@ -889,6 +901,11 @@
     });
 
     document.getElementById("optionsFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("tradeFilter").addEventListener("change", () => {
       currentPage = 1;
       renderTable();
     });
