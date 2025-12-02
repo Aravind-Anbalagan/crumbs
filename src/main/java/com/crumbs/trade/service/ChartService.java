@@ -725,9 +725,9 @@ public class ChartService {
 				resultVix.setEntryPrice(token.getCurrentPrice());
 			}
 			resultVixRepo.save(resultVix);
-			String message = "Entry :" + strategy.getName() + " -> " + type;
-			boolean ok = telegramService.sendMessage(message);
-			logger.info("Signal has Sent : ", ok);
+			
+			//Notification
+			notifyTelegram(strategy,type);
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (resultVix.getType().equalsIgnoreCase(resultVix.getMa()))) {
@@ -794,13 +794,53 @@ public class ChartService {
 			//logger.info("Execute the Next Trade for {} ", resultVix.getName());
 			//monitorSignal(resultVix.getName(), resultVix.getExchange(), false, 0);
 			
-			String message = "Exit :" + strategy.getName() + " -> " + type;
-			boolean ok = telegramService.sendMessage(message);
-			logger.info("Signal has Sent : ", ok);
+			//Notification
+			notifyTelegram(strategy,type);
+			
 		}
 		
 	}
+	private void notifyTelegram(Strategy strategy, String type) {
+	    try {
+	        String message = String.format("%s: %s -> %s", 
+	            type, 
+	            strategy.getName(), 
+	            type
+	        );
+	        
+	        logger.info("📤 Attempting to send Telegram message: " + message);
+	        
+	        boolean ok = telegramService.sendMessage(message);
+	        
+	        if (ok) {
+	            logger.info("✅ Telegram notification sent successfully");
+	        } else {
+	            logger.error("❌ Telegram notification FAILED for: " + message);
+	            // Optional: retry logic
+	            retryTelegramMessage(message, 3);
+	        }
+	    } catch (Exception e) {
+	        logger.error("💥 Exception while sending Telegram message: " + e.getMessage(), e);
+	    }
+	}
 
+	// Optional retry method
+	private void retryTelegramMessage(String message, int maxRetries) {
+	    for (int i = 1; i <= maxRetries; i++) {
+	        try {
+	            logger.info("🔄 Retry attempt " + i + "/" + maxRetries);
+	            Thread.sleep(1000 * i); // Exponential backoff
+	            
+	            if (telegramService.sendMessage(message)) {
+	                logger.info("✅ Retry successful on attempt " + i);
+	                return;
+	            }
+	        } catch (Exception e) {
+	            logger.error("❌ Retry " + i + " failed: " + e.getMessage());
+	        }
+	    }
+	    logger.error("💀 All retry attempts exhausted for message: " + message);
+	}
 	public Token triggerExitOrder(ResultVix resultVix, boolean tradeFlag) {
 		StrategyDTO strategyModified = new StrategyDTO();
 		strategyModified.setName(resultVix.getName().equalsIgnoreCase("NIFTY") == true ? "NIFTY" : resultVix.getName());

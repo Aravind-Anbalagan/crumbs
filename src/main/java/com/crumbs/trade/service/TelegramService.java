@@ -12,7 +12,7 @@ import java.util.Map;
 
 @Service
 public class TelegramService {
-	 static Logger logger = LoggerFactory.getLogger(TelegramService.class);
+    static Logger logger = LoggerFactory.getLogger(TelegramService.class);
     private final RestTemplate restTemplate = new RestTemplate();
     
     @Value("${telegram.bot-token}")
@@ -40,8 +40,8 @@ public class TelegramService {
         try {
             fetchAndCacheChatId();
         } catch (Exception e) {
-        	logger.error("⚠️ Could not fetch chat_id: " + e.getMessage());
-        	logger.error("💡 Send a message to your bot or configure telegram.chat-id in properties");
+            logger.error("⚠️ Could not fetch chat_id: " + e.getMessage());
+            logger.error("💡 Send a message to your bot or configure telegram.chat-id in properties");
         }
     }
     
@@ -55,13 +55,21 @@ public class TelegramService {
                 List<Map<String, Object>> result = (List<Map<String, Object>>) response.getBody().get("result");
                 
                 if (result != null && !result.isEmpty()) {
-                    Map<String, Object> latestUpdate = result.get(result.size() - 1);
-                    updateOffset = ((Number) latestUpdate.get("update_id")).longValue() + 1;
+                    // Process ALL updates to find the most recent chat_id
+                    for (Map<String, Object> update : result) {
+                        Long currentUpdateId = ((Number) update.get("update_id")).longValue();
+                        updateOffset = Math.max(updateOffset, currentUpdateId + 1);
+                        
+                        Map<String, Object> message = (Map<String, Object>) update.get("message");
+                        if (message != null) {
+                            Map<String, Object> chat = (Map<String, Object>) message.get("chat");
+                            if (chat != null && chat.get("id") != null) {
+                                cachedChatId = chat.get("id").toString();
+                            }
+                        }
+                    }
                     
-                    Map<String, Object> message = (Map<String, Object>) latestUpdate.get("message");
-                    if (message != null) {
-                        Map<String, Object> chat = (Map<String, Object>) message.get("chat");
-                        cachedChatId = chat.get("id").toString();
+                    if (cachedChatId != null) {
                         logger.info("✅ Chat ID fetched and cached: " + cachedChatId);
                         logger.info("💡 Add this to application.properties: telegram.chat-id=" + cachedChatId);
                         return;
@@ -90,7 +98,8 @@ public class TelegramService {
             
             Map<String, Object> body = Map.of(
                 "chat_id", chatId,
-                "text", text
+                "text", text,
+                "parse_mode", "HTML" // Optional: enables HTML formatting
             );
             
             HttpHeaders headers = new HttpHeaders();
@@ -98,10 +107,18 @@ public class TelegramService {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-            return response.getStatusCode().is2xxSuccessful();
+            
+            if (response.getStatusCode().is2xxSuccessful()) {
+                logger.info("✅ Message sent successfully: " + text.substring(0, Math.min(50, text.length())));
+                return true;
+            } else {
+                logger.error("❌ Failed to send message. Status: " + response.getStatusCode());
+                return false;
+            }
             
         } catch (Exception e) {
-        	logger.error("❌ Failed to send message: " + e.getMessage());
+            logger.error("❌ Failed to send message: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
