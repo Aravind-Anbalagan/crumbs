@@ -34,7 +34,7 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 
 	List<Indicator> findBymailsentIsNotNull();
 	
-	List<Indicator> findByIntradayIsNotNull();
+	List<Indicator> findByIntradayIsNotNullAndTradetype(String tradetype);
 
 	List<Indicator> findByMailsentIsNotNullOrderByMailsentAsc();
 

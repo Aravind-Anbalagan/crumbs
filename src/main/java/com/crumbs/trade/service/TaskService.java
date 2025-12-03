@@ -2895,7 +2895,7 @@ public class TaskService {
 	@Transactional
 	public void getResult() {
 		// TODO Auto-generated method stub
-		List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNull();
+		List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNullAndTradetype("DAILY");
 
 		logger.info("Getting result count : {}", indicatorList.size());
 

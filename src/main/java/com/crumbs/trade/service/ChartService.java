@@ -982,8 +982,8 @@ public class ChartService {
 	            strikeInterval = 50;
 	            break;
 	        case "SILVERM":
-	            strikeInterval = 1000;
-	            break;
+	            strikeInterval = 1000; 
+	            return strategy;// for Commodity trade will be taken on future
 	        default:
 	            logger.warn("Unknown symbol name: {}", strategy.getName());
 	            return strategy;
