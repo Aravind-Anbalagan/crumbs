@@ -3,655 +3,854 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stock Indicators Dashboard</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
-    :root {
-      /* Modern color palette - cool blues & clean greys */
-      --primary: #0ea5e9;
-      --primary-dark: #0284c7;
-      --primary-light: #0fc5ff;
-      --secondary: #64748b;
-      --accent: #06b6d4;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      
-      /* Backgrounds */
-      --bg-0: #fafbff;
-      --bg-1: #ffffff;
-      --bg-2: #f8fafc;
-      --bg-3: #f1f5f9;
-      --bg-glass: rgba(255, 255, 255, 0.85);
-      --bg-glass-dark: rgba(15, 23, 42, 0.9);
-      
-      /* Text */
-      --text-1: #0f172a;
-      --text-2: #334155;
-      --text-3: #64748b;
-      
-      /* Borders & Shadows */
-      --border: #e2e8f0;
-      --border-hover: #cbd5e1;
-      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 10px 15px -3px rgb(0 0 0 / 0.1);
-      --shadow-glass: 0 8px 32px 0 rgb(31 38 135 / 0.15);
-      
-      /* Gradients */
-      --gradient-primary: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-      --gradient-accent: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-    }
-    
-    [data-theme="dark"] {
-      --bg-0: #0f172a;
-      --bg-1: #1e293b;
-      --bg-2: #334155;
-      --bg-3: #475569;
-      --bg-glass: rgba(30, 41, 59, 0.95);
-      --text-1: #f8fafc;
-      --text-2: #e2e8f0;
-      --text-3: #cbd5e1;
-      --border: #334155;
-      --border-hover: #475569;
-      --shadow-glass: 0 8px 32px 0 rgb(0 0 0 / 0.5);
-    }
-    
-    * {
-      box-sizing: border-box;
-    }
-    
+  <title>Stock Indicators Table with Dynamic Numeric Range Filters</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  
+  :root {
+    /* Base colors */
+    --primary-color: #000000;       /* Black */
+    --primary-hover: #222222;       /* Dark grey */
+    --success-color: #4b4b4b;       /* Medium grey as success */
+    --warning-color: #7a7a7a;       /* Grey for warnings */
+    --danger-color: #999999;        /* Light grey for danger */
+    --info-color: #6e6e6e;          /* Grey for info */
+    /* Background colors */
+    --bg-primary: #ffffff;          /* White */
+    --bg-secondary: #f0f0f0;        /* Very light grey */
+    --bg-tertiary: #dcdcdc;         /* Light grey */
+    /* Text colors */
+    --text-primary: #000000;        /* Black */
+    --text-secondary: #4d4d4d;      /* Dark grey */
+    --text-muted: #7a7a7a;          /* Medium grey */
+    /* Borders and shadows */
+    --border-primary: #d0d0d0;      /* Light grey */
+    --border-secondary: #bbbbbb;    /* Slightly darker grey */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    /* Column backgrounds with grey shades (linear gradients subtly different) */
+    --bg-col-name: linear-gradient(135deg, #e0e0e0 0%, #cfcfcf 100%);
+    --bg-col-price: linear-gradient(135deg, #f9f9f9 0%, #e5e5e5 100%);
+    --bg-col-dailysr: linear-gradient(135deg, #d9d9d9 0%, #c4c4c4 100%);
+    --bg-col-sr: linear-gradient(135deg, #cccccc 0%, #b6b6b6 100%);
+    --bg-col-fibo: linear-gradient(135deg, #e9e9e9 0%, #d9d9d9 100%);
+    --bg-col-ma: linear-gradient(135deg, #f6f6f6 0%, #e0e0e0 100%);
+    --bg-col-ai: linear-gradient(135deg, #d0d0d0 0%, #bfbfbf 100%);
+    --bg-col-combine: linear-gradient(135deg, #ededed 0%, #dcdcdc 100%);
+  }
+  body.dark-mode {
+    /* Backgrounds */
+    --bg-primary: #111111;          /* Almost black */
+    --bg-secondary: #222222;        /* Dark grey */
+    --bg-tertiary: #333333;         /* Medium dark grey */
+    /* Text */
+    --text-primary: #f0f0f0;        /* Light grey / almost white */
+    --text-secondary: #cccccc;
+    --text-muted: #999999;
+    /* Borders */
+    --border-primary: #444444;
+    --border-secondary: #555555;
+    /* Column backgrounds also in grey scale */
+    --bg-col-name: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%);
+    --bg-col-price: linear-gradient(135deg, #1f1f1f 0%, #141414 100%);
+    --bg-col-dailysr: linear-gradient(135deg, #383838 0%, #2e2e2e 100%);
+    --bg-col-sr: linear-gradient(135deg, #444444 0%, #3a3a3a 100%);
+    --bg-col-fibo: linear-gradient(135deg, #262626 0%, #1c1c1c 100%);
+    --bg-col-ma: linear-gradient(135deg, #383838 0%, #2e2e2e 100%);
+    --bg-col-ai: linear-gradient(135deg, #5a5a5a 0%, #4a4a4a 100%);
+    --bg-col-combine: linear-gradient(135deg, #222222 0%, #111111 100%);
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 24px;
+    margin: 0;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    line-height: 1.5;
+    transition: all 0.3s ease;
+  }
+  
+  .toolbar {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+  }
+  
+  .toolbar:hover {
+    box-shadow: var(--shadow-md);
+  }
+  
+  .toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .toolbar-row:last-child {
+    margin-bottom: 0;
+  }
+  
+  .controls {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .control-group label {
+    font-weight: 500;
+    color: var(--text-secondary);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  
+  .radio-group {
+    display: flex;
+    gap: 12px;
+    background: var(--bg-tertiary);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--border-primary);
+  }
+  
+  .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  
+  .radio-group input[type="radio"] {
+    margin: 0;
+    accent-color: var(--primary-color);
+  }
+  
+  .radio-group label:hover {
+    background: var(--bg-primary);
+  }
+  
+  .column-dropdown {
+    position: relative;
+    display: inline-block;
+  }
+  
+  .btn {
+    padding: 10px 16px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  
+  .btn:hover {
+    background: var(--bg-tertiary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .btn-primary {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+  }
+  
+  .btn-primary:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
+  
+  .column-dropdown-content {
+    display: none;
+    position: absolute;
+    background: var(--bg-primary);
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: 12px;
+    z-index: 10;
+    padding: 16px;
+    box-shadow: var(--shadow-lg);
+    top: 100%;
+    left: 0;
+    margin-top: 8px;
+  }
+  
+  .column-dropdown.show .column-dropdown-content {
+    display: block;
+    animation: dropdownFadeIn 0.2s ease;
+  }
+  
+  @keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .column-dropdown-content label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    font-size: 14px;
+  }
+  
+  .column-dropdown-content label:hover {
+    background: var(--bg-tertiary);
+    padding-left: 8px;
+  }
+  
+  .column-dropdown-content input[type="checkbox"] {
+    accent-color: var(--primary-color);
+    width: 16px;
+    height: 16px;
+  }
+  
+  input[type="text"],
+  select {
+    padding: 10px 16px;
+    min-width: 160px;
+    border-radius: 10px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+  
+  input[type="text"]:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
+  }
+  
+  .table-container {
+    width: 100%;
+    max-width: 100vw;
+    padding: 0 12px;
+    overflow-x: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+  }
+  
+  .table-container:hover {
+    box-shadow: var(--shadow-md);
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto; /* Change from fixed to auto */
+  }
+  
+  th,
+  td {
+    border: none;
+    border-bottom: 1px solid var(--border-primary);
+    padding: 8px 12px; /* Reduced from 16px 20px */
+    text-align: left;
+    font-size: var(--table-font-size);
+    word-break: break-word;
+    white-space: normal;
+    transition: all 0.2s ease;
+  }
+  
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-tertiary);
+    z-index: 2;
+    vertical-align: bottom;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-secondary);
+  }
+  
+  th {
+    cursor: pointer;
+    position: relative;
+    padding-right: 32px;
+    user-select: none;
+  }
+  
+  th:hover {
+    background: var(--bg-secondary);
+  }
+  
+  th.sort-asc::after {
+    content: " ↑";
+    color: var(--primary-color);
+    font-weight: bold;
+  }
+  
+  th.sort-desc::after {
+    content: " ↓";
+    color: var(--primary-color);
+    font-weight: bold;
+  }
+  
+  tbody tr {
+    transition: all 0.2s ease;
+  }
+  
+  tbody tr:hover {
+    background: var(--bg-tertiary);
+    transform: scale(1.001);
+  }
+  
+  tbody tr:nth-child(even) {
+    background: var(--bg-secondary);
+  }
+  
+  tbody tr:nth-child(even):hover {
+    background: var(--bg-tertiary);
+  }
+  
+  td.col-name, th.col-name {
+    max-width: 180px;
+    white-space: normal; /* allow wrapping */
+    overflow-wrap: break-word;
+  }
+  
+  th.col-price,
+  td.col-price {
+    background: var(--bg-col-price) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  th.col-dailysr,
+  td.col-dailysr {
+    background: var(--bg-col-dailysr) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  th.sr,
+  td.sr {
+    background: var(--bg-col-sr) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  th.fibo,
+  td.fibo {
+    background: var(--bg-col-fibo) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  th.ma,
+  td.ma {
+    background: var(--bg-col-ma) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  th.ai,
+  td.ai {
+    background: var(--bg-col-ai) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  th.combine,
+  td.combine {
+    background: var(--bg-col-combine) !important;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  
+  .chart-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--primary-color) !important;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(37, 99, 235, 0.1);
+    transition: all 0.2s ease;
+    font-size: 13px;
+  }
+  
+  .chart-link:hover {
+    background: var(--primary-color);
+    color: white !important;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .chart-link::after {
+    content: "📊";
+    font-size: 12px;
+  }
+  
+  #pagination {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .page-link {
+    cursor: pointer;
+    padding: 10px 16px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+    border-radius: 10px;
+    user-select: none;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    min-width: 44px;
+    text-align: center;
+  }
+  
+  .page-link:hover {
+    background: var(--bg-tertiary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .page-link.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+  }
+  
+  #loader {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-size: 16px;
+    color: white;
+  }
+  
+  .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top: 4px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .toolbar-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .zoom-controls {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--border-primary);
+  }
+  
+  .zoom-btn {
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    min-width: 40px;
+  }
+  
+  .zoom-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+  
+  .theme-toggle {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    padding: 10px 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 48px;
+  }
+  
+  .theme-toggle:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: scale(1.05);
+  }
+  
+  #errorMessage {
+    color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: none;
+    border-radius: 12px;
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+  }
+  
+  /* Mobile Responsiveness */
+  @media (max-width: 700px) {
     body {
-      font-family: 'Inter', -apple-system, sans-serif;
-      background: var(--bg-0);
-      color: var(--text-1);
-      margin: 0;
-      padding: 0;
-      min-height: 100vh;
-      line-height: 1.6;
-      font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-      transition: background-color 0.3s ease, color 0.3s ease;
+      padding: 16px;
     }
     
-    .container {
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 2rem;
-      min-height: 100vh;
+    .toolbar {
+      padding: 16px;
     }
     
-    /* Header Toolbar */
-    .header {
-      background: var(--bg-glass);
-      backdrop-filter: blur(20px);
-      border-radius: 24px;
-      padding: 2rem;
-      margin-bottom: 2rem;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-md);
-      position: sticky;
-      top: 1rem;
-      z-index: 100;
+    .toolbar-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
     }
     
-    .header-grid {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 2rem;
-      align-items: start;
-    }
-    
-    .controls-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1.5rem;
+    .controls {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
     }
     
     .control-group {
-      display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      align-items: stretch;
+      gap: 6px;
     }
     
-    .control-label {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-2);
-      letter-spacing: 0.025em;
-      text-transform: uppercase;
+    .toolbar-actions {
+      margin-left: 0;
+      justify-content: center;
     }
     
-    /* Modern Select & Input */
-    .select, .input {
-      appearance: none;
-      background: var(--bg-1);
-      border: 2px solid var(--border);
-      border-radius: 16px;
-      padding: 1rem 1.25rem;
-      font-size: 0.95rem;
-      font-weight: 500;
-      color: var(--text-1);
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      min-height: 52px;
-    }
-    
-    .select:focus, .input:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 4px rgb(14 165 233 / 0.15);
-      transform: translateY(-1px);
-    }
-    
-    /* Segmented Controls */
-    .segmented-control {
-      display: flex;
-      background: var(--bg-2);
-      border-radius: 16px;
-      padding: 4px;
-      border: 2px solid var(--border);
-      overflow: hidden;
-    }
-    
-    .segmented-option {
-      flex: 1;
-      background: transparent;
-      border: none;
-      padding: 0.75rem 1.25rem;
-      border-radius: 12px;
-      cursor: pointer;
-      font-weight: 600;
-      font-size: 0.875rem;
-      color: var(--text-2);
-      transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    
-    .segmented-option:checked,
-    .segmented-option.active {
-      background: var(--gradient-primary);
-      color: white;
-      box-shadow: var(--shadow-sm);
-    }
-    
-    /* Buttons */
-    .btn {
-      background: var(--gradient-primary);
-      color: white;
-      border: none;
-      padding: 0.875rem 1.5rem;
-      border-radius: 16px;
-      font-weight: 600;
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      box-shadow: var(--shadow-sm);
-      text-decoration: none;
-      position: relative;
-      overflow: hidden;
-    }
-    
-    .btn::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
+    table, thead, tbody, th, td, tr {
+      display: block;
       width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-      transition: left 0.5s;
     }
     
-    .btn:hover::before {
-      left: 100%;
+    thead {
+      display: none;
     }
     
-    .btn:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-lg);
-    }
-    
-    .btn-secondary {
-      background: var(--bg-2);
-      color: var(--text-1);
-      box-shadow: var(--shadow-sm);
-    }
-    
-    .btn-secondary:hover {
-      background: var(--bg-1);
-      color: var(--text-1);
-    }
-    
-    .btn-ghost {
-      background: transparent;
-      color: var(--primary);
-      border: 2px solid var(--primary);
-    }
-    
-    /* Dropdown Menu */
-    .dropdown {
-      position: relative;
-    }
-    
-    .dropdown-menu {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      min-width: 280px;
-      background: var(--bg-glass);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 1.25rem;
-      margin-top: 0.75rem;
-      box-shadow: var(--shadow-xl);
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-10px);
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      z-index: 1000;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    
-    .dropdown.open .dropdown-menu {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }
-    
-    .dropdown-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
+    tr {
+      margin-bottom: 16px;
+      border: 1px solid var(--border-primary);
       border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-weight: 500;
-    }
-    
-    .dropdown-item:hover {
-      background: var(--bg-2);
-      transform: translateX(4px);
-    }
-    
-    .dropdown-item input[type="checkbox"] {
-      width: 20px;
-      height: 20px;
-      accent-color: var(--primary);
-      flex-shrink: 0;
-    }
-    
-    /* Main Table */
-    .table-container {
-      background: var(--bg-glass);
-      backdrop-filter: blur(20px);
-      border-radius: 24px;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-lg);
-      overflow: hidden;
-      margin-bottom: 2rem;
-    }
-    
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.925rem;
-      font-feature-settings: 'tnum' 1, 'lnum' 1;
-    }
-    
-    th {
-      background: var(--gradient-primary);
-      color: white;
-      padding: 1.25rem 1.5rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-size: 0.8rem;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      cursor: pointer;
-      user-select: none;
-      transition: all 0.2s ease;
-    }
-    
-    th:hover {
-      filter: brightness(1.1);
-    }
-    
-    th.sort-asc::after {
-      content: ' ↑';
-      margin-left: 0.25rem;
-    }
-    
-    th.sort-desc::after {
-      content: ' ↓';
-      margin-left: 0.25rem;
+      padding: 16px;
+      background: var(--bg-primary);
+      box-shadow: var(--shadow-sm);
+      min-width: 0;
     }
     
     td {
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      transition: all 0.2s ease;
-    }
-    
-    tr:hover td {
-      background: var(--bg-2);
-      transform: scale(1.002);
-    }
-    
-    tr:nth-child(even) td {
-      background: var(--bg-1);
-    }
-    
-    /* Column specific backgrounds */
-    .col-price { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important; }
-    .col-dailysr { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%) !important; }
-    .col-sr { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important; }
-    .col-fibo { background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important; }
-    .col-ma { background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%) !important; }
-    .col-ai { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%) !important; }
-    .col-combine { background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%) !important; }
-    
-    th.col-price, th.col-dailysr, th.col-sr, th.col-fibo, th.col-ma, th.col-ai, th.col-combine {
-      background: var(--gradient-primary) !important;
-      color: white !important;
-    }
-    
-    /* Chart Link */
-    .chart-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: var(--gradient-primary);
-      color: white !important;
-      padding: 0.75rem 1.25rem;
-      border-radius: 12px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.875rem;
-      box-shadow: var(--shadow-sm);
-      transition: all 0.2s ease;
-    }
-    
-    .chart-link:hover {
-      transform: translateY(-2px) scale(1.05);
-      box-shadow: var(--shadow-lg);
-    }
-    
-    /* Pagination */
-    .pagination {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      padding: 2rem;
-    }
-    
-    .page-btn {
-      padding: 0.75rem 1rem;
-      border: 2px solid var(--border);
-      background: var(--bg-1);
-      border-radius: 12px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: all 0.2s ease;
-      min-width: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .page-btn:hover:not(.active),
-    .page-btn:focus {
-      border-color: var(--primary);
-      background: var(--primary);
-      color: white;
-      transform: translateY(-1px);
-    }
-    
-    .page-btn.active {
-      background: var(--gradient-primary);
-      color: white;
-      border-color: var(--primary);
-      box-shadow: var(--shadow-md);
-    }
-    
-    /* Theme Toggle */
-    .theme-toggle {
-      width: 52px;
-      height: 52px;
+      padding-left: 50%;
+      position: relative;
       border: none;
-      background: var(--bg-2);
-      border-radius: 50%;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
+      border-bottom: 1px solid var(--border-primary);
+      padding-top: 12px;
+      padding-bottom: 12px;
+      font-size: 15px;
+      white-space: normal;
+      word-break: break-word;
+      min-width: 0;
+    }
+    
+    td:last-child {
+      border-bottom: none;
+    }
+    
+    td::before {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      width: 45%;
+      font-weight: 600;
+      white-space: nowrap;
+      content: attr(data-label);
+      color: var(--text-secondary);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      text-align: left;
+      pointer-events: none;
+      line-height: 1.3;
+    }
+
+    .chart-link,
+    .btn {
+      font-size: 15px;
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: flex-start;
+    }
+    
+    #pagination {
+      gap: 4px;
+      flex-wrap: wrap;
       justify-content: center;
-      font-size: 1.25rem;
-      transition: all 0.3s ease;
-      box-shadow: var(--shadow-sm);
     }
     
-    .theme-toggle:hover {
-      background: var(--primary);
-      transform: rotate(180deg) scale(1.1);
+    .page-link {
+      padding: 10px 0;
+      width: 44px;
+      font-size: 15px;
     }
-    
-    /* Loader */
-    .loader {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.8);
-      backdrop-filter: blur(20px);
-      z-index: 9999;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 1rem;
-      color: white;
-    }
-    
-    .spinner {
-      width: 56px;
-      height: 56px;
-      border: 4px solid rgba(255, 255, 255, 0.2);
-      border-top: 4px solid var(--primary);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    /* Error Message */
-    .error {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: var(--danger);
-      padding: 1.5rem;
-      border-radius: 16px;
-      margin-bottom: 2rem;
-      font-weight: 500;
-      display: none;
-    }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-      .container {
-        padding: 1rem;
-      }
-      
-      .header {
-        padding: 1.5rem;
-        border-radius: 20px;
-      }
-      
-      .header-grid {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-      }
-      
-      .controls-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-      }
-      
-      .table-container {
-        border-radius: 20px;
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      table {
-        min-width: 800px;
-      }
-      
-      th, td {
-        padding: 1rem 0.75rem;
-        font-size: 0.9rem;
-      }
-    }
-    
-    /* Custom Scrollbars */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-      background: var(--bg-2);
-      border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-      background: var(--text-3);
-      border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--secondary);
-    }
-  </style>
+  }
+  
+  h1, h2 {
+    margin: 8px 0;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  
+  /* Scrollbar Styling */
+  .table-container::-webkit-scrollbar,
+  .column-dropdown-content::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  
+  .table-container::-webkit-scrollbar-track,
+  .column-dropdown-content::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+  }
+  
+  .table-container::-webkit-scrollbar-thumb,
+  .column-dropdown-content::-webkit-scrollbar-thumb {
+    background: var(--border-secondary);
+    border-radius: 4px;
+  }
+  
+  .table-container::-webkit-scrollbar-thumb:hover,
+  .column-dropdown-content::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+</style>
+
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="header-grid">
-        <div class="controls-grid">
-          <div class="control-group">
-            <label class="control-label">Market</label>
-            <div class="segmented-control">
-              <input type="radio" id="nifty" name="market" value="ALL" class="segmented-option" checked>
-              <label for="nifty">Nifty 500</label>
-              <input type="radio" id="options" name="market" value="OPTIONS" class="segmented-option">
-              <label for="options">Options</label>
-            </div>
-          </div>
-          
-          <div class="control-group">
-            <label class="control-label" for="timeframe">Timeframe</label>
-            <select id="timeframe" class="select">
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-              <option value="COMBINE">Combine</option>
-              <option value="INTRADAY" selected>Intraday</option>
-            </select>
-          </div>
-          
-          <div class="control-group">
-            <label class="control-label" id="secondaryFilterLabel" for="secondaryFilter">Trend</label>
-            <select id="secondaryFilter" class="select">
-              <option value="ALL">All</option>
-              <option value="UP">Up</option>
-              <option value="DOWN">Down</option>
-            </select>
-          </div>
-          
-          <div class="control-group">
-            <label class="control-label" for="search">Search</label>
-            <input type="text" id="search" class="input" placeholder="Search stocks..." autocomplete="off">
-          </div>
-          
-          <div class="control-group">
-            <a href="#" class="btn" onclick="resetTable();">🧹 Reset</a>
-          </div>
-          
-          <div class="control-group dropdown" id="columnDropdown">
-            <a href="#" class="btn btn-secondary" onclick="toggleColumnDropdown();">Columns</a>
-            <div class="dropdown-menu" id="columnTogglePanel"></div>
+  <div class="toolbar">
+    <div class="toolbar-row">
+      <div class="controls">
+        <div class="control-group">
+          <label>Filter:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="optionFilter" value="ALL" checked /> Nifty 500</label>
+            <label><input type="radio" name="optionFilter" value="OPTIONS" /> Options</label>
           </div>
         </div>
         
-        <div style="display: flex; gap: 1rem; align-items: center;">
-          <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">🌙</button>
+        <div class="control-group">
+          <label for="timeframe">Timeframe:</label>
+          <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
+            <option value="DAILY">Daily</option>
+            <option value="WEEKLY">Weekly</option>
+            <option value="COMBINE">Combine</option>
+            <option value="INTRADAY" selected>Intraday</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
+          <select id="secondaryFilter" onchange="loadTable()">
+            <option value="ALL">All</option>
+            <option value="FIRST BUY">First Buy</option>
+            <option value="FIRST SELL">First Sell</option>
+          </select>
+        </div>
+        
+        <button class="btn" onclick="resetTable()">🧹 Reset</button>
+        
+        <div class="column-dropdown" id="columnDropdown">
+          <button class="btn" onclick="toggleColumnDropdown()">☰ Columns</button>
+          <div class="column-dropdown-content" id="columnTogglePanel"></div>
+        </div>
+        
+        <div class="control-group">
+          <label for="search">Search:</label>
+          <input
+            type="text"
+            id="search"
+            placeholder="Filter stocks..."
+            onkeyup="filterTable()"
+            autocomplete="off"
+          />
         </div>
       </div>
+      
+      <div class="toolbar-actions">
+        <div class="zoom-controls">
+          <button class="zoom-btn" onclick="zoomIn()" title="Increase font size">A+</button>
+          <button class="zoom-btn" onclick="zoomOut()" title="Decrease font size">A-</button>
+          <button class="zoom-btn" onclick="resetZoom()" title="Reset font size">A</button>
+        </div>
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+      </div>
     </div>
-    
-    <div id="errorMessage" class="error" role="alert"></div>
-    
-    <div class="table-container">
-      <table id="stocksTable">
-        <thead>
-          <tr id="tableHead"></tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-      </table>
-    </div>
-    
-    <div id="pagination" class="pagination"></div>
   </div>
   
-  <div id="loader" class="loader">
-    <div class="spinner"></div>
-    <div style="font-size: 1.125rem; font-weight: 500;">Loading market data...</div>
+  <div id="errorMessage" role="alert"></div>
+  
+  <div class="table-container">
+    <table id="stocksTable">
+      <thead>
+        <tr id="tableHead"></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
   </div>
-
+  
+  <div id="pagination"></div>
+  
+  <div id="loader">
+    <div class="spinner"></div>
+    <div>Loading stock data...</div>
+  </div>
+  
   <script>
-    // All existing JavaScript functionality preserved exactly as provided
-    let tableData = [], filteredData = [], visibleKeys = [];
+    let tableData = [],
+      filteredData = [],
+      visibleKeys = [];
     let sortState = { column: null, order: null };
-    let currentPage = 1, currentFontSize = 14;
+    let currentPage = 1,
+      currentFontSize = 14;
     const rowsPerPage = 10;
     let columnVisibility = {};
-
-    // Update radio button listeners for new segmented control
-    function updateRadioListeners() {
-      document.querySelectorAll('input[name="market"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-          currentPage = 1;
-          loadTable();
-        });
-      });
-    }
-
-    // Rest of your JavaScript remains exactly the same...
-    // [All existing functions: updateSecondaryFilter, loadTable, generateColumnToggles, etc.]
     
+    // Columns considered numeric for range filtering (keys normalized uppercase)
+    const numericColsForRange = new Set([
+      "PRICE",
+      "DAILY_SR",
+      "DAILYSR",
+      "SR",
+      "FIBO",
+      "MA",
+      "RSI",
+      "AI",
+      "COMBINE",
+      "20MA",
+      "50MA",
+      "200MA",
+      // Add other numeric keys as needed
+    ]);
+    
+    // Store dynamic ranges per column
+    const dynamicRanges = {};
+    
+    // --- FONT SIZE / ZOOM ---
+    function updateFontSize() {
+      document.documentElement.style.setProperty(
+        "--table-font-size",
+        `${currentFontSize}px`
+      );
+      localStorage.setItem("tableFontSize", currentFontSize);
+    }
+    
+    function zoomIn() {
+      if (currentFontSize < 24) {
+        currentFontSize++;
+        updateFontSize();
+      }
+    }
+    
+    function zoomOut() {
+      if (currentFontSize > 8) {
+        currentFontSize--;
+        updateFontSize();
+      }
+    }
+    
+    function resetZoom() {
+      currentFontSize = 14;
+      updateFontSize();
+    }
+    
+    // --- LOAD TABLE DATA ---
     function updateSecondaryFilter() {
       const tf = document.getElementById("timeframe").value;
       const label = document.getElementById("secondaryFilterLabel");
       const select = document.getElementById("secondaryFilter");
-      select.innerHTML = "";
+      select.innerHTML = ""; // clear old options
       
       if (tf === "INTRADAY") {
         label.textContent = "Trend:";
         ["ALL", "UP", "DOWN"].forEach((val) => {
           const opt = document.createElement("option");
           opt.value = val;
-          opt.textContent = val === "ALL" ? "All" : val;
+          opt.textContent = val.charAt(0) + val.slice(1).toLowerCase();
           select.appendChild(opt);
         });
       } else {
@@ -659,16 +858,21 @@
         ["ALL", "FIRST BUY", "FIRST SELL"].forEach((val) => {
           const opt = document.createElement("option");
           opt.value = val;
-          opt.textContent = val.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+          opt.textContent = val
+            .split(" ")
+            .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+            .join(" ");
           select.appendChild(opt);
         });
       }
     }
-
+    
     async function loadTable() {
       const timeframe = document.getElementById("timeframe").value;
       const filter = document.getElementById("secondaryFilter").value;
-      const selected = document.querySelector('input[name="market"]:checked').value;
+      const selected = document.querySelector(
+        'input[name="optionFilter"]:checked'
+      ).value;
       const optionFlag = selected === "OPTIONS";
       
       const loader = document.getElementById("loader");
@@ -680,38 +884,46 @@
       try {
         let url;
         if (timeframe === "INTRADAY") {
-          url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
+          url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(
+            filter
+          )}&optionFlag=${optionFlag}`;
         } else {
-          url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(filter)}&optionFlag=${optionFlag}`;
+          url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(
+            filter
+          )}&optionFlag=${optionFlag}`;
         }
         
         const res = await fetch(url);
         if (!res.ok) throw new Error(await res.text());
         
         const data = await res.json();
-        if (!data.length) throw new Error("No stock data found for the selected filters.");
-        
+        if (!data.length)
+          throw new Error("No stock data found for the selected filters.");
+          
         visibleKeys = Object.entries(data[0].headers)
-          .filter(([_, val]) => val[1])
-          .map(([key]) => key);
+  .filter(([_, val]) => val[1])
+  .map(([key]) => key);
 
-        visibleKeys.forEach((key) => {
-          if (/reason/i.test(key)) {
-            columnVisibility[key] = false;
-          } else {
-            if (!(key in columnVisibility)) columnVisibility[key] = true;
-          }
-        });
-        
+visibleKeys.forEach((key) => {
+  if (/reason/i.test(key)) {
+    columnVisibility[key] = false;
+  } else {
+    if (!(key in columnVisibility)) columnVisibility[key] = true;
+  }
+});
+          
+        // Add chart column key manually if not present
         if (!visibleKeys.includes("chart")) {
           visibleKeys.push("chart");
-          columnVisibility["chart"] = false;
+          columnVisibility["chart"] = false; // Disable the chart
         }
         
         tableData = data.map((row) => {
+          // Start with visible keys data
           const base = Object.fromEntries(
             visibleKeys.map((k) => [k, row.headers[k] ? row.headers[k][0] : ""])
           );
+          // Add exchange and symbol explicitly if present
           if ("exchange" in row.headers) base["exchange"] = row.headers["exchange"][0];
           if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
           return base;
@@ -729,7 +941,8 @@
         loader.style.display = "none";
       }
     }
-
+    
+    // --- COLUMN TOGGLE PANEL ---
     function generateColumnToggles() {
       const panel = document.getElementById("columnTogglePanel");
       panel.innerHTML = "";
@@ -737,8 +950,7 @@
       visibleKeys.forEach((key) => {
         if (!(key in columnVisibility)) columnVisibility[key] = true;
         
-        const div = document.createElement("div");
-        div.className = "dropdown-item";
+        const label = document.createElement("label");
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = columnVisibility[key];
@@ -747,25 +959,28 @@
           renderTable();
         };
         
-        div.appendChild(checkbox);
-        div.appendChild(document.createTextNode(formatHeader(key)));
-        panel.appendChild(div);
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(formatHeader(key)));
+        panel.appendChild(label);
       });
     }
-
+    
+    // --- COLUMN CLASS HELPER ---
     function getColumnClass(key) {
       const lowerKey = key.toLowerCase();
       if (lowerKey === "name") return "col-name";
       if (lowerKey === "price") return "col-price";
       if (["daily s/r", "daily_sr", "dailysr"].includes(lowerKey)) return "col-dailysr";
-      if (lowerKey.includes("sr")) return "col-sr";
-      if (lowerKey.includes("fibo")) return "col-fibo";
-      if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "col-ma";
-      if (lowerKey.includes("ai")) return "col-ai";
-      if (lowerKey.includes("combine")) return "col-combine";
+      if (lowerKey.includes("sr")) return "sr";
+      if (lowerKey.includes("fibo")) return "fibo";
+      if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
+      if (lowerKey.includes("ai")) return "ai";
+      if (lowerKey.includes("combine")) return "combine";
+      if (lowerKey === "chart") return ""; // no special class for chart column
       return "";
     }
-
+    
+    // --- FILTER BY SEARCH BOX ---
     function filterTable() {
       const keyword = document.getElementById("search").value.toLowerCase();
       filteredData = tableData.filter((row) =>
@@ -774,49 +989,65 @@
       currentPage = 1;
       renderTable();
     }
-
+    
+    // --- RESET TABLE ---
     function resetTable() {
       document.getElementById("timeframe").value = "DAILY";
       document.getElementById("secondaryFilter").value = "ALL";
       document.getElementById("search").value = "";
       document.getElementById("errorMessage").style.display = "none";
-      document.querySelector('input[name="market"][value="ALL"]').checked = true;
       currentPage = 1;
-      updateSecondaryFilter();
       loadTable();
     }
-
+    
+    // --- ERROR MESSAGE ---
     function showError(msg) {
       const errDiv = document.getElementById("errorMessage");
-      errDiv.textContent = msg;
+      errDiv.innerText = msg;
       errDiv.style.display = "block";
     }
-
+    
+    // --- FORMAT HEADER ---
     function formatHeader(key) {
       return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
     }
-
+    
+    // --- COLUMN DROPDOWN ---
     function toggleColumnDropdown() {
-      document.getElementById("columnDropdown").classList.toggle("open");
+      document.getElementById("columnDropdown").classList.toggle("show");
     }
-
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+      const dropdown = document.getElementById("columnDropdown");
+      if (!dropdown.contains(event.target)) {
+        dropdown.classList.remove("show");
+      }
+    });
+    
+    // --- THEME ---
     function toggleTheme() {
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-      localStorage.setItem('theme', isDark ? 'light' : 'dark');
+      document.body.classList.toggle("dark-mode");
+      localStorage.setItem(
+        "theme",
+        document.body.classList.contains("dark-mode") ? "dark" : "light"
+      );
     }
-
+    
+    // --- RENDER TABLE ---
     function renderTable() {
       const head = document.getElementById("tableHead");
       const body = document.getElementById("tableBody");
       head.innerHTML = body.innerHTML = "";
       
+      // HEADERS without filter dropdowns
       visibleKeys.forEach((key) => {
         if (!columnVisibility[key]) return;
         
         const th = document.createElement("th");
         const headerText = document.createElement("div");
         headerText.textContent = formatHeader(key);
+        headerText.style.cursor = "pointer";
         headerText.onclick = () => sortTableByColumn(key);
         
         if (sortState.column === key) {
@@ -834,14 +1065,13 @@
         const tr = document.createElement("tr");
         const td = document.createElement("td");
         td.colSpan = visibleKeys.filter((k) => columnVisibility[k]).length || 1;
-        td.textContent = "No records found";
+        td.textContent = "No records found.";
         td.style.textAlign = "center";
-        td.style.padding = "4rem 2rem";
-        td.style.color = "var(--text-3)";
+        td.style.padding = "40px";
+        td.style.color = "var(--text-muted)";
         td.style.fontStyle = "italic";
         tr.appendChild(td);
         body.appendChild(tr);
-        renderPagination();
         return;
       }
       
@@ -866,7 +1096,9 @@
             const symbol = row["symbol"] || "";
             
             const link = document.createElement("a");
-            link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(stockName)}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
+            link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(
+              stockName
+            )}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
             link.className = "chart-link";
             link.textContent = "View Chart";
             
@@ -883,7 +1115,8 @@
       
       renderPagination();
     }
-
+    
+    // --- PAGINATION ---
     function renderPagination() {
       const totalPages = Math.ceil(filteredData.length / rowsPerPage);
       const container = document.getElementById("pagination");
@@ -894,10 +1127,11 @@
       const createLink = (label, page, active = false) => {
         const btn = document.createElement("button");
         btn.textContent = label;
-        btn.className = `page-btn ${active ? "active" : ""}`;
+        btn.className = "page-link" + (active ? " active" : "");
         btn.onclick = () => {
           currentPage = page;
           renderTable();
+          // Smooth scroll to top of table
           document.querySelector('.table-container').scrollIntoView({ 
             behavior: 'smooth', 
             block: 'start' 
@@ -921,91 +1155,92 @@
         if (start > 2) {
           const span = document.createElement("span");
           span.textContent = "...";
-          span.style.color = "var(--text-3)";
-          span.style.fontWeight = "500";
+          span.style.margin = "0 8px";
+          span.style.color = "var(--text-muted)";
           container.appendChild(span);
         }
       }
       
       for (let i = start; i <= end; i++) {
-        container.append(createLink(i.toString(), i, i === currentPage));
+        container.append(createLink(i, i, i === currentPage));
       }
       
       if (end < totalPages) {
         if (end < totalPages - 1) {
           const span = document.createElement("span");
           span.textContent = "...";
-          span.style.color = "var(--text-3)";
-          span.style.fontWeight = "500";
+          span.style.margin = "0 8px";
+          span.style.color = "var(--text-muted)";
           container.appendChild(span);
         }
-        container.append(createLink(totalPages.toString(), totalPages));
+        container.append(createLink(totalPages, totalPages));
       }
       
       if (currentPage < totalPages) {
         container.append(createLink("Next ›", currentPage + 1), createLink("Last »", totalPages));
       }
     }
-
+    
+    // --- SORT ---
     function sortTableByColumn(col) {
       const isAsc = sortState.column === col && sortState.order === "asc";
       sortState = { column: col, order: isAsc ? "desc" : "asc" };
       
       filteredData.sort((a, b) => {
-        let valA = a[col]?.toString().trim() || "";
-        let valB = b[col]?.toString().trim() || "";
+        let valA = a[col] != null ? a[col].toString().trim() : "";
+        let valB = b[col] != null ? b[col].toString().trim() : "";
         
         const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
         const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
         
         return !isNaN(numA) && !isNaN(numB)
-          ? sortState.order === "asc" ? numA - numB : numB - numA
-          : sortState.order === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+          ? isAsc
+            ? numA - numB
+            : numB - numA
+          : isAsc
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
       });
       
       currentPage = 1;
       renderTable();
     }
-
-    // Event Listeners
+    
+    // --- INITIAL SETTINGS ---
     document.addEventListener("DOMContentLoaded", () => {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
+      const storedFont = parseInt(localStorage.getItem("tableFontSize"));
+      if (storedFont) {
+        currentFontSize = storedFont;
+        updateFontSize();
       }
       
-      updateRadioListeners();
+      const theme = localStorage.getItem("theme");
+      if (theme === "dark") document.body.classList.add("dark-mode");
+      
+      document.querySelectorAll('input[name="optionFilter"]').forEach((radio) => {
+        radio.addEventListener("change", () => {
+          currentPage = 1;
+          loadTable();
+        });
+      });
+      
+      // Initialize secondary filter
       updateSecondaryFilter();
       loadTable();
-      
-      // Search input
-      document.getElementById("search").addEventListener("input", filterTable);
-      document.getElementById("timeframe").addEventListener("change", () => {
-        updateSecondaryFilter();
-        loadTable();
-      });
-      document.getElementById("secondaryFilter").addEventListener("change", loadTable);
-      
-      // Close dropdown on outside click
-      document.addEventListener('click', (e) => {
-        const dropdown = document.getElementById("columnDropdown");
-        if (!dropdown.contains(e.target)) {
-          dropdown.classList.remove("open");
+    });
+    
+    // --- CHART LINK CLICK HANDLER ---
+    document.addEventListener("click", function (event) {
+      const target = event.target;
+      if (target.classList.contains("chart-link")) {
+        event.preventDefault();
+        const url = target.href;
+        if (window.parent && window.parent !== window) {
+          window.parent.document.getElementById("contentFrame").src = url;
+        } else {
+          window.location.href = url;
         }
-      });
-      
-      // Chart link handler
-      document.addEventListener("click", function (event) {
-        if (event.target.classList.contains("chart-link")) {
-          event.preventDefault();
-          const url = event.target.href;
-          if (window.parent && window.parent !== window) {
-            window.parent.document.getElementById("contentFrame").src = url;
-          } else {
-            window.location.href = url;
-          }
-        }
-      });
+      }
     });
   </script>
 </body>
