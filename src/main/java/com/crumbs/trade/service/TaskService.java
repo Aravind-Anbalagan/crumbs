@@ -1121,21 +1121,28 @@ public class TaskService {
 		// Stop loss / buy-sell SL
 		indicator.setHourlysellsl(convertStringToList(indicator.getLast3HourCandleHigh(), "SELL"));
 		indicator.setHourlybuysl(convertStringToList(indicator.getLast3Hourcandlelow(), "BUY"));
-		if(indicator.getHeikinAshiHourly().equalsIgnoreCase("FIRST BUY") 
-				&& indicator.getPsarFlagHourly().equalsIgnoreCase("FIRST BUY"))
-		{
-			indicator.setIntraday("UP");
-			indicator.setTradetype("HOURLY");
+		boolean changed = false;
+
+		if ("FIRST BUY".equalsIgnoreCase(indicator.getHeikinAshiHourly()) &&
+		    "FIRST BUY".equalsIgnoreCase(indicator.getPsarFlagHourly())) {
+
+		    indicator.setIntraday("UP");
+		    indicator.setTradetype("HOURLY");
+		    changed = true;
 		}
-		if(indicator.getHeikinAshiHourly().equalsIgnoreCase("FIRST SELL") 
-				&& indicator.getPsarFlagHourly().equalsIgnoreCase("FIRST SELL"))
-		{
-			indicator.setIntraday("DOWN");
-			indicator.setTradetype("HOURLY");
+
+		if ("FIRST SELL".equalsIgnoreCase(indicator.getHeikinAshiHourly()) &&
+		    "FIRST SELL".equalsIgnoreCase(indicator.getPsarFlagHourly())) {
+
+		    indicator.setIntraday("DOWN");
+		    indicator.setTradetype("HOURLY");
+		    changed = true;
 		}
-		
-		// Save
-		indicatorRepo.save(indicator);
+
+		// Save only if changed
+		if (changed) {
+		    indicatorRepo.save(indicator);
+		}
 	}
 
 
