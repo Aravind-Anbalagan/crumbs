@@ -99,7 +99,7 @@ public class StockController {
 	}
 	
 	@GetMapping("/hourlyStock")
-	//@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
+	@Scheduled(cron = "0 15 8-14 ? * MON-FRI", zone = "Asia/Kolkata")
 	public String getHourlyStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			logger.info("Hourly Stock");
@@ -243,6 +243,7 @@ public class StockController {
 
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {
+			dto.addHeader("UPDATED_AT", formatTimestamp(ind.getModifiedDate().toString()), true);
 			dto.addHeader("OPTION", ind.getOptions() != null ? ind.getOptions() : "N", true);
 			dto.addHeader("TYPE", ind.getTradetype(), true);
 			dto.addHeader("D_HEIKIN", ind.getHeikinAshiDay() , true);
@@ -255,6 +256,11 @@ public class StockController {
 
 	}
 
+	public static String formatTimestamp(String isoTime) {
+		LocalDateTime dateTime = LocalDateTime.parse(isoTime);
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+		return dateTime.format(formatter);
+	}
 	public List<Indicator> getIndicators(String flag, String heikinPsarFilter) {
 		heikinPsarFilter = heikinPsarFilter.equalsIgnoreCase("ALL") ? null : heikinPsarFilter.toUpperCase();
 
