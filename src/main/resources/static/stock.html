@@ -723,6 +723,14 @@
           </select>
         </div>
         
+        <div class="control-group" id="intradayTypeGroup" style="display:none;">
+          <label>Intraday Type:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="intradayType" value="HOURLY"> Hourly</label>
+            <label><input type="radio" name="intradayType" value="DAILY"> Daily</label>
+          </div>
+        </div>
+        
         <div class="control-group">
           <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
           <select id="secondaryFilter" onchange="loadTable()">
@@ -781,6 +789,7 @@
   </div>
   
   <script>
+    // ====== State ======
     let tableData = [],
       filteredData = [],
       visibleKeys = [];
@@ -789,7 +798,10 @@
       currentFontSize = 14;
     const rowsPerPage = 10;
     let columnVisibility = {};
-    
+
+    // Persisted intraday type (HOURLY/DAILY)
+    let intradayType = localStorage.getItem("intradayType") || "HOURLY";
+
     // Columns considered numeric for range filtering (keys normalized uppercase)
     const numericColsForRange = new Set([
       "PRICE",
@@ -865,6 +877,17 @@
           select.appendChild(opt);
         });
       }
+
+      // Show intraday HOURLY/DAILY toggle only when timeframe = INTRADAY
+      const typeGroup = document.getElementById("intradayTypeGroup");
+      if (tf === "INTRADAY") {
+        typeGroup.style.display = "flex";
+        // ensure a radio is selected according to saved intradayType
+        const radios = document.querySelectorAll('input[name="intradayType"]');
+        radios.forEach(r => r.checked = (r.value === intradayType));
+      } else {
+        typeGroup.style.display = "none";
+      }
     }
     
     async function loadTable() {
@@ -896,7 +919,20 @@
         const res = await fetch(url);
         if (!res.ok) throw new Error(await res.text());
         
-        const data = await res.json();
+        let data = await res.json();
+
+        // If timeframe is INTRADAY, filter by TYPE (HOURLY/DAILY)
+if (timeframe === "INTRADAY") {
+  data = data.filter(row => {
+    try {
+      const t = row.headers?.TYPE?.[0];
+      return t === intradayType;
+    } catch (e) {
+      return false;
+    }
+  });
+}
+
         if (!data.length)
           throw new Error("No stock data found for the selected filters.");
           
@@ -1219,6 +1255,19 @@ visibleKeys.forEach((key) => {
       
       document.querySelectorAll('input[name="optionFilter"]').forEach((radio) => {
         radio.addEventListener("change", () => {
+          currentPage = 1;
+          loadTable();
+        });
+      });
+
+      // initialize intradayType radios
+      document.querySelectorAll('input[name="intradayType"]').forEach(radio => {
+        // set checked from saved value
+        if (radio.value === intradayType) radio.checked = true;
+
+        radio.addEventListener('change', () => {
+          intradayType = radio.value;
+          localStorage.setItem('intradayType', intradayType);
           currentPage = 1;
           loadTable();
         });
