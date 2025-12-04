@@ -1216,28 +1216,50 @@
     }
     
     function sortTableByColumn(col) {
-      const isAsc = sortState.column === col && sortState.order === "asc";
-      sortState = { column: col, order: isAsc ? "desc" : "asc" };
-      
-      filteredData.sort((a, b) => {
-        let valA = a[col] != null ? a[col].toString().trim() : "";
-        let valB = b[col] != null ? b[col].toString().trim() : "";
-        
-        const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
-        const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
-        
-        return !isNaN(numA) && !isNaN(numB)
-          ? isAsc
-            ? numA - numB
-            : numB - numA
-          : isAsc
-          ? valA.localeCompare(valB)
-          : valB.localeCompare(valA);
-      });
-      
-      currentPage = 1;
-      renderTable();
+  const isAsc = sortState.column === col && sortState.order === "asc";
+  sortState = { column: col, order: isAsc ? "desc" : "asc" };
+  
+  filteredData.sort((a, b) => {
+    let valA = a[col] != null ? a[col].toString().trim() : "";
+    let valB = b[col] != null ? b[col].toString().trim() : "";
+    
+    // Handle datetime sorting for "UPDATED AT" and similar columns
+    if (col.toUpperCase().includes("UPDATED") || col.toUpperCase().includes("TIME")) {
+      const timeA = parseDateTime(valA);
+      const timeB = parseDateTime(valB);
+      return isAsc ? timeA - timeB : timeB - timeA;
     }
+    
+    // Handle numeric sorting
+    const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
+    const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
+    
+    return !isNaN(numA) && !isNaN(numB)
+      ? isAsc ? numA - numB : numB - numA
+      : isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+  });
+  
+  currentPage = 1;
+  renderTable();
+}
+
+// Add this helper function before sortTableByColumn
+function parseDateTime(dateStr) {
+  if (!dateStr || dateStr === "") return Infinity;
+  
+  // Handle DD-MM-YYYY HH:MM:SS format (like 04-12-2025 17:24:44)
+  const dateTimeMatch = dateStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (dateTimeMatch) {
+    const [, day, month, year, hour, minute, second] = dateTimeMatch;
+    const date = new Date(year, month - 1, day, hour, minute, second);
+    return isNaN(date) ? Infinity : date.getTime();
+  }
+  
+  // Fallback to standard Date parsing
+  const date = new Date(dateStr);
+  return isNaN(date) ? Infinity : date.getTime();
+}
+
     
     document.addEventListener("DOMContentLoaded", () => {
       const storedFont = parseInt(localStorage.getItem("tableFontSize"));
