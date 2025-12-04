@@ -15,6 +15,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.crumbs.trade.entity.Indicator;
@@ -37,6 +40,8 @@ import jakarta.transaction.Transactional;
 @Service
 public class ResultService {
 
+	Logger logger = LoggerFactory.getLogger(ResultService.class);
+	
 	@Autowired
 	ResultNiftyRepo resultNiftyRepo;
 	
@@ -93,7 +98,12 @@ public class ResultService {
 				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
 			}*/
 			result.setSl(stock.getSl());
-			resultRepo.save(result);
+			if ("Y".equalsIgnoreCase(result.getHasOption()) || "UP".equalsIgnoreCase(result.getType())) {
+				resultRepo.save(result);
+			} else {
+				logger.info("Skip Stock: {} into result table", result.getName());
+			}
+			
 		}
 
 	}

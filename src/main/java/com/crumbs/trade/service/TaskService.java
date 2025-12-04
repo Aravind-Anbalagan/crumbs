@@ -1108,7 +1108,7 @@ public class TaskService {
 		indicator.setLast3Hourcandlelow(getSignal_eq("low", name));
 		indicator.setCpr(cprData);
 		indicator.setCurrentPrice(index_CurrentPrice);
-
+		indicator.setExecutedPrice(index_CurrentPrice);
 		// Support/Resistance signal
 		indicator = checkForHourlySignal(indicator, supportList, resistanceList, index_CurrentPrice,
 				new BigDecimal(avgRange));
@@ -1337,6 +1337,7 @@ public class TaskService {
 		indicator.setTradingSymbol(indexes.getSymbol());
 		indicator.setCreatedDate(LocalDateTime.now());
 		indicator.setCurrentPrice(index_CurrentPrice);
+		indicator.setExecutedPrice(index_CurrentPrice);
 		indicator.setLast3daycandlehigh(getSignal_eq("high",name));
 		indicator.setLast3daycandlelow(getSignal_eq("low",name));
 		indicator.setLast3daycandleflag(get3DaysHighAndLow(indicator));
@@ -2902,14 +2903,14 @@ public class TaskService {
 	@Transactional
 	public void getResult() {
 		// TODO Auto-generated method stub
-		List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNullAndTradetype("DAILY");
+		List<Indicator> indicatorList = indicatorRepo.findByIntradayIsNotNullAndTradetypeIn(Arrays.asList("DAILY", "HOURLY"));
 
 		logger.info("Getting result count : {}", indicatorList.size());
 
 		// Get Current price and Update the table
 		SmartConnect smartConnect = angelOne.signIn();
 		indicatorList.stream().forEach(stock -> {
-			BigDecimal openPrice = getPrice(smartConnect,stock, "open");
+			BigDecimal openPrice = stock.getExecutedPrice();
 			BigDecimal ltp = getPrice(smartConnect,stock, "ltp");
 			if ("UP".equalsIgnoreCase(stock.getIntraday())) {
 				if (ltp.compareTo(openPrice) > 0) {

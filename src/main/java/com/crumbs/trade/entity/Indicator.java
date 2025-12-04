@@ -43,6 +43,8 @@ public class Indicator {
 	BigDecimal avgrange;
 	@Column(name = "currentPrice")
 	BigDecimal currentPrice;
+	@Column(name = "executedPrice")
+	BigDecimal executedPrice;
 	@Column(name = "openPrice")
 	BigDecimal openPrice;
 	@Column(name = "prevdaycloseprice")
