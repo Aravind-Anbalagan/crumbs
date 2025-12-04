@@ -69,7 +69,7 @@
   
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    padding: 24px;
+    padding: 16px;
     margin: 0;
     background: var(--bg-secondary);
     color: var(--text-primary);
@@ -81,10 +81,11 @@
     background: var(--bg-primary);
     border: 1px solid var(--border-primary);
     border-radius: 16px;
-    padding: 24px;
-    margin-bottom: 24px;
+    padding: 16px;
+    margin-bottom: 16px;
     box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
+    max-width: 100%;
   }
   
   .toolbar:hover {
@@ -96,52 +97,60 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 16px;
-    margin-bottom: 16px;
-  }
-  
-  .toolbar-row:last-child {
-    margin-bottom: 0;
+    width: 100%;
   }
   
   .controls {
     display: flex;
-    gap: 16px;
     flex-wrap: wrap;
     align-items: center;
+    gap: 16px;
+    flex: 1 1 auto;
+    min-width: 0;
   }
   
   .control-group {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 1 1 200px;
+    min-width: 160px;
+    max-width: 280px;
   }
   
   .control-group label {
     font-weight: 500;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   
   .radio-group {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     background: var(--bg-tertiary);
     padding: 4px;
     border-radius: 12px;
     border: 1px solid var(--border-primary);
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
   }
   
   .radio-group label {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
+    gap: 4px;
+    padding: 6px 10px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
     font-weight: 500;
-    font-size: 13px;
+    font-size: 12px;
+    flex: 1;
+    justify-content: center;
+    white-space: nowrap;
   }
   
   .radio-group input[type="radio"] {
@@ -159,19 +168,20 @@
   }
   
   .btn {
-    padding: 10px 16px;
+    padding: 8px 12px;
     border: 1px solid var(--border-primary);
     background: var(--bg-primary);
     border-radius: 10px;
     cursor: pointer;
     font-weight: 500;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-primary);
     transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     white-space: nowrap;
+    flex: 1;
   }
   
   .btn:hover {
@@ -242,15 +252,17 @@
   
   input[type="text"],
   select {
-    padding: 10px 16px;
-    min-width: 160px;
+    padding: 8px 10px;
+    min-width: 130px;
     border-radius: 10px;
     border: 1px solid var(--border-primary);
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    max-width: 100%;
+    flex: 1;
   }
   
   input[type="text"]:focus,
@@ -260,10 +272,68 @@
     box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
   }
   
+  .toolbar-actions {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+  }
+  
+  .zoom-controls {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--border-primary);
+  }
+  
+  .zoom-btn {
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    min-width: 36px;
+  }
+  
+  .zoom-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+  
+  .theme-toggle {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    padding: 8px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+  }
+  
+  .theme-toggle:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: scale(1.05);
+  }
+  
   .table-container {
     width: 100%;
     max-width: 100vw;
-    padding: 0 12px;
+    padding: 0 8px;
     overflow-x: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border-primary);
@@ -272,21 +342,17 @@
     transition: all 0.3s ease;
   }
   
-  .table-container:hover {
-    box-shadow: var(--shadow-md);
-  }
-  
   table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: auto; /* Change from fixed to auto */
+    table-layout: auto;
   }
   
   th,
   td {
     border: none;
     border-bottom: 1px solid var(--border-primary);
-    padding: 8px 12px; /* Reduced from 16px 20px */
+    padding: 8px 12px;
     text-align: left;
     font-size: var(--table-font-size);
     word-break: break-word;
@@ -347,7 +413,7 @@
   
   td.col-name, th.col-name {
     max-width: 180px;
-    white-space: normal; /* allow wrapping */
+    white-space: normal;
     overflow-wrap: break-word;
   }
   
@@ -427,7 +493,7 @@
   }
   
   #pagination {
-    margin-top: 24px;
+    margin-top: 16px;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -437,7 +503,7 @@
   
   .page-link {
     cursor: pointer;
-    padding: 10px 16px;
+    padding: 8px 14px;
     border: 1px solid var(--border-primary);
     background: var(--bg-primary);
     border-radius: 10px;
@@ -447,6 +513,7 @@
     transition: all 0.2s ease;
     min-width: 44px;
     text-align: center;
+    font-size: 13px;
   }
   
   .page-link:hover {
@@ -472,7 +539,6 @@
     background: rgba(15, 23, 42, 0.8);
     backdrop-filter: blur(8px);
     z-index: 1000;
-    display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
@@ -495,104 +561,61 @@
     100% { transform: rotate(360deg); }
   }
   
-  .toolbar-actions {
-    margin-left: auto;
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  
-  .zoom-controls {
-    display: flex;
-    gap: 4px;
-    background: var(--bg-tertiary);
-    padding: 4px;
-    border-radius: 12px;
-    border: 1px solid var(--border-primary);
-  }
-  
-  .zoom-btn {
-    padding: 8px 12px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 14px;
-    color: var(--text-secondary);
-    transition: all 0.2s ease;
-    min-width: 40px;
-  }
-  
-  .zoom-btn:hover {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-  
-  .theme-toggle {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-primary);
-    padding: 10px 16px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 48px;
-  }
-  
-  .theme-toggle:hover {
-    background: var(--primary-color);
-    color: white;
-    transform: scale(1.05);
-  }
-  
   #errorMessage {
     color: var(--danger-color);
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid rgba(239, 68, 68, 0.2);
-    padding: 16px 20px;
-    margin-bottom: 24px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
     display: none;
     border-radius: 12px;
     font-weight: 500;
     box-shadow: var(--shadow-sm);
   }
   
-  /* Mobile Responsiveness */
-  @media (max-width: 700px) {
-    body {
-      padding: 16px;
-    }
-    
-    .toolbar {
-      padding: 16px;
-    }
-    
+  h1, h2 {
+    margin: 8px 0;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  /* Mobile / narrow windows: stack toolbar better */
+  @media (max-width: 900px) {
     .toolbar-row {
       flex-direction: column;
       align-items: stretch;
-      gap: 12px;
+      gap: 16px;
     }
-    
     .controls {
       flex-direction: column;
       align-items: stretch;
-      gap: 12px;
+      gap: 16px;
     }
-    
     .control-group {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 6px;
+      flex-direction: row;
+      justify-content: space-between;
+      max-width: 100%;
+      min-width: 0;
     }
-    
+    .control-group label {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
     .toolbar-actions {
+      justify-content: flex-start;
       margin-left: 0;
-      justify-content: center;
+      gap: 16px;
+    }
+  }
+
+  /* Existing table mobile behaviour */
+  @media (max-width: 700px) {
+    .toolbar {
+      padding: 12px;
+    }
+
+    .table-container {
+      padding: 0;
     }
     
     table, thead, tbody, th, td, tr {
@@ -650,7 +673,7 @@
 
     .chart-link,
     .btn {
-      font-size: 15px;
+      font-size: 14px;
       width: 100%;
       box-sizing: border-box;
       justify-content: flex-start;
@@ -665,14 +688,8 @@
     .page-link {
       padding: 10px 0;
       width: 44px;
-      font-size: 15px;
+      font-size: 14px;
     }
-  }
-  
-  h1, h2 {
-    margin: 8px 0;
-    font-weight: 700;
-    color: var(--text-primary);
   }
   
   /* Scrollbar Styling */
@@ -698,8 +715,6 @@
   .column-dropdown-content::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
   }
-  
-  
 </style>
 
 </head>
@@ -742,11 +757,15 @@
           </select>
         </div>
         
-        <button class="btn" onclick="resetTable()">🧹 Reset</button>
+        <div class="control-group">
+          <button class="btn" onclick="resetTable()">🧹 Reset</button>
+        </div>
         
-        <div class="column-dropdown" id="columnDropdown">
-          <button class="btn" onclick="toggleColumnDropdown()">☰ Columns</button>
-          <div class="column-dropdown-content" id="columnTogglePanel"></div>
+        <div class="control-group">
+          <div class="column-dropdown" id="columnDropdown">
+            <button class="btn" onclick="toggleColumnDropdown()">☰ Columns</button>
+            <div class="column-dropdown-content" id="columnTogglePanel"></div>
+          </div>
         </div>
         
         <div class="control-group">
@@ -818,13 +837,10 @@
       "20MA",
       "50MA",
       "200MA",
-      // Add other numeric keys as needed
     ]);
     
-    // Store dynamic ranges per column
     const dynamicRanges = {};
     
-    // --- FONT SIZE / ZOOM ---
     function updateFontSize() {
       document.documentElement.style.setProperty(
         "--table-font-size",
@@ -852,12 +868,11 @@
       updateFontSize();
     }
     
-    // --- LOAD TABLE DATA ---
     function updateSecondaryFilter() {
       const tf = document.getElementById("timeframe").value;
       const label = document.getElementById("secondaryFilterLabel");
       const select = document.getElementById("secondaryFilter");
-      select.innerHTML = ""; // clear old options
+      select.innerHTML = "";
       
       if (tf === "INTRADAY") {
         label.textContent = "Trend:";
@@ -880,11 +895,9 @@
         });
       }
 
-      // Show intraday HOURLY/DAILY toggle only when timeframe = INTRADAY
       const typeGroup = document.getElementById("intradayTypeGroup");
       if (tf === "INTRADAY") {
         typeGroup.style.display = "flex";
-        // ensure a radio is selected according to saved intradayType
         const radios = document.querySelectorAll('input[name="intradayType"]');
         radios.forEach(r => r.checked = (r.value === intradayType));
       } else {
@@ -923,45 +936,41 @@
         
         let data = await res.json();
 
-        // If timeframe is INTRADAY, filter by TYPE (HOURLY/DAILY)
-if (timeframe === "INTRADAY") {
-  data = data.filter(row => {
-    try {
-      const t = row.headers?.TYPE?.[0];
-      return t === intradayType;
-    } catch (e) {
-      return false;
-    }
-  });
-}
+        if (timeframe === "INTRADAY") {
+          data = data.filter(row => {
+            try {
+              const t = row.headers?.TYPE?.[0];
+              return t === intradayType;
+            } catch (e) {
+              return false;
+            }
+          });
+        }
 
         if (!data.length)
           throw new Error("No stock data found for the selected filters.");
           
         visibleKeys = Object.entries(data[0].headers)
-  .filter(([_, val]) => val[1])
-  .map(([key]) => key);
+          .filter(([_, val]) => val[1])
+          .map(([key]) => key);
 
-visibleKeys.forEach((key) => {
-  if (/reason/i.test(key)) {
-    columnVisibility[key] = false;
-  } else {
-    if (!(key in columnVisibility)) columnVisibility[key] = true;
-  }
-});
+        visibleKeys.forEach((key) => {
+          if (/reason/i.test(key)) {
+            columnVisibility[key] = false;
+          } else {
+            if (!(key in columnVisibility)) columnVisibility[key] = true;
+          }
+        });
           
-        // Add chart column key manually if not present
         if (!visibleKeys.includes("chart")) {
           visibleKeys.push("chart");
-          columnVisibility["chart"] = false; // Disable the chart
+          columnVisibility["chart"] = false;
         }
         
         tableData = data.map((row) => {
-          // Start with visible keys data
           const base = Object.fromEntries(
             visibleKeys.map((k) => [k, row.headers[k] ? row.headers[k][0] : ""])
           );
-          // Add exchange and symbol explicitly if present
           if ("exchange" in row.headers) base["exchange"] = row.headers["exchange"][0];
           if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
           return base;
@@ -980,7 +989,6 @@ visibleKeys.forEach((key) => {
       }
     }
     
-    // --- COLUMN TOGGLE PANEL ---
     function generateColumnToggles() {
       const panel = document.getElementById("columnTogglePanel");
       panel.innerHTML = "";
@@ -1003,7 +1011,6 @@ visibleKeys.forEach((key) => {
       });
     }
     
-    // --- COLUMN CLASS HELPER ---
     function getColumnClass(key) {
       const lowerKey = key.toLowerCase();
       if (lowerKey === "name") return "col-name";
@@ -1014,11 +1021,10 @@ visibleKeys.forEach((key) => {
       if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
       if (lowerKey.includes("ai")) return "ai";
       if (lowerKey.includes("combine")) return "combine";
-      if (lowerKey === "chart") return ""; // no special class for chart column
+      if (lowerKey === "chart") return "";
       return "";
     }
     
-    // --- FILTER BY SEARCH BOX ---
     function filterTable() {
       const keyword = document.getElementById("search").value.toLowerCase();
       filteredData = tableData.filter((row) =>
@@ -1028,7 +1034,6 @@ visibleKeys.forEach((key) => {
       renderTable();
     }
     
-    // --- RESET TABLE ---
     function resetTable() {
       document.getElementById("timeframe").value = "DAILY";
       document.getElementById("secondaryFilter").value = "ALL";
@@ -1038,24 +1043,20 @@ visibleKeys.forEach((key) => {
       loadTable();
     }
     
-    // --- ERROR MESSAGE ---
     function showError(msg) {
       const errDiv = document.getElementById("errorMessage");
       errDiv.innerText = msg;
       errDiv.style.display = "block";
     }
     
-    // --- FORMAT HEADER ---
     function formatHeader(key) {
       return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
     }
     
-    // --- COLUMN DROPDOWN ---
     function toggleColumnDropdown() {
       document.getElementById("columnDropdown").classList.toggle("show");
     }
     
-    // Close dropdown when clicking outside
     document.addEventListener('click', function(event) {
       const dropdown = document.getElementById("columnDropdown");
       if (!dropdown.contains(event.target)) {
@@ -1063,7 +1064,6 @@ visibleKeys.forEach((key) => {
       }
     });
     
-    // --- THEME ---
     function toggleTheme() {
       document.body.classList.toggle("dark-mode");
       localStorage.setItem(
@@ -1072,13 +1072,11 @@ visibleKeys.forEach((key) => {
       );
     }
     
-    // --- RENDER TABLE ---
     function renderTable() {
       const head = document.getElementById("tableHead");
       const body = document.getElementById("tableBody");
       head.innerHTML = body.innerHTML = "";
       
-      // HEADERS without filter dropdowns
       visibleKeys.forEach((key) => {
         if (!columnVisibility[key]) return;
         
@@ -1154,7 +1152,6 @@ visibleKeys.forEach((key) => {
       renderPagination();
     }
     
-    // --- PAGINATION ---
     function renderPagination() {
       const totalPages = Math.ceil(filteredData.length / rowsPerPage);
       const container = document.getElementById("pagination");
@@ -1169,7 +1166,6 @@ visibleKeys.forEach((key) => {
         btn.onclick = () => {
           currentPage = page;
           renderTable();
-          // Smooth scroll to top of table
           document.querySelector('.table-container').scrollIntoView({ 
             behavior: 'smooth', 
             block: 'start' 
@@ -1219,7 +1215,6 @@ visibleKeys.forEach((key) => {
       }
     }
     
-    // --- SORT ---
     function sortTableByColumn(col) {
       const isAsc = sortState.column === col && sortState.order === "asc";
       sortState = { column: col, order: isAsc ? "desc" : "asc" };
@@ -1244,7 +1239,6 @@ visibleKeys.forEach((key) => {
       renderTable();
     }
     
-    // --- INITIAL SETTINGS ---
     document.addEventListener("DOMContentLoaded", () => {
       const storedFont = parseInt(localStorage.getItem("tableFontSize"));
       if (storedFont) {
@@ -1262,9 +1256,7 @@ visibleKeys.forEach((key) => {
         });
       });
 
-      // initialize intradayType radios
       document.querySelectorAll('input[name="intradayType"]').forEach(radio => {
-        // set checked from saved value
         if (radio.value === intradayType) radio.checked = true;
 
         radio.addEventListener('change', () => {
@@ -1275,12 +1267,10 @@ visibleKeys.forEach((key) => {
         });
       });
       
-      // Initialize secondary filter
       updateSecondaryFilter();
       loadTable();
     });
     
-    // --- CHART LINK CLICK HANDLER ---
     document.addEventListener("click", function (event) {
       const target = event.target;
       if (target.classList.contains("chart-link")) {
