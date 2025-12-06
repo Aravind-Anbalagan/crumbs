@@ -6,12 +6,14 @@ import java.time.ZoneId;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.entity.PredictionHistory;
 import com.crumbs.trade.repo.PredictionHistoryRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.PredictionService;
 
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,8 @@ public class PredictionScheduler {
     private final PredictionHistoryRepo historyRepo;
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+    
+    @Autowired StrategyRepo strategyRepo;
 
     // --------------------------------------------------------
     // Runs ONLY 15-min intervals within market hours (Mon–Fri):
@@ -45,34 +49,36 @@ public class PredictionScheduler {
     @Scheduled(cron = "0 0,15,30,45 10-14 * * MON-FRI", zone = "Asia/Kolkata")
     // 15:00, 15:15, 15:30
     @Scheduled(cron = "0 0,15,30 15 * * MON-FRI", zone = "Asia/Kolkata")
-    public void runMarketPrediction() throws SmartAPIException {
+	public void runMarketPrediction() throws SmartAPIException {
 
-        LocalDateTime now = LocalDateTime.now(IST);
-        log.info("▶ Running scheduled prediction at {}", now);
+		if ("Y".equalsIgnoreCase(strategyRepo.findByName("WEIGHTAGE").getActive())) {
 
-        try {
-            // Use advanced version with confidence & sentiment
-            PredictionService.AdvancedPredictionResult result =
-                    predictionService.predictNiftyAdvanced();
+			LocalDateTime now = LocalDateTime.now(IST);
+			log.info("▶ Running scheduled prediction at {}", now);
 
-            PredictionHistory hist = new PredictionHistory();
-            hist.setTimestamp(now);
-            hist.setCurrentPrice(result.currentPrice);
-            hist.setPredictedPrice(result.predictedPrice);
-            hist.setDifference(result.difference);
-            hist.setPercentageMove(result.percentageMove);
-            hist.setValidStocks(result.validStocks);
-            hist.setTotalStocks(result.totalStocks);
-            hist.setConfidenceScore(new BigDecimal(result.confidenceScore));
-            hist.setSentiment(result.sentiment);
-            hist.setNotes("Scheduled 15-min market run");
+			try {
+				// Use advanced version with confidence & sentiment
+				PredictionService.AdvancedPredictionResult result = predictionService.predictNiftyAdvanced();
 
-            historyRepo.save(hist);
+				PredictionHistory hist = new PredictionHistory();
+				hist.setTimestamp(now);
+				hist.setCurrentPrice(result.currentPrice);
+				hist.setPredictedPrice(result.predictedPrice);
+				hist.setDifference(result.difference);
+				hist.setPercentageMove(result.percentageMove);
+				hist.setValidStocks(result.validStocks);
+				hist.setTotalStocks(result.totalStocks);
+				hist.setConfidenceScore(new BigDecimal(result.confidenceScore));
+				hist.setSentiment(result.sentiment);
+				hist.setNotes("Scheduled 15-min market run");
 
-            log.info("✔ Prediction saved at {} → Predicted: {}", now, result.predictedPrice);
+				historyRepo.save(hist);
 
-        } catch (Exception ex) {
-            log.error("❌ Error executing scheduled market prediction: {}", ex.getMessage(), ex);
-        }
-    }
+				log.info("✔ Prediction saved at {} → Predicted: {}", now, result.predictedPrice);
+
+			} catch (Exception ex) {
+				log.error("❌ Error executing scheduled market prediction: {}", ex.getMessage(), ex);
+			}
+		}
+	}
 }
