@@ -976,14 +976,19 @@ public class ChartService {
 	    String name = strategy.getName().toUpperCase();
 	    int strikeInterval;
 
-	    switch (name) {
+	    String key = name.trim().toUpperCase();
+
+	    switch (key) {
 	        case "NIFTY":
+	        case "CPR_STRATEGY":
 	        case "CRUDEOIL":
 	            strikeInterval = 50;
 	            break;
+
 	        case "SILVERM":
-	            strikeInterval = 1000; 
-	            return strategy;// for Commodity trade will be taken on future
+	            strikeInterval = 1000;
+	            return strategy;
+
 	        default:
 	            logger.warn("Unknown symbol name: {}", strategy.getName());
 	            return strategy;
@@ -1018,7 +1023,7 @@ public class ChartService {
 	/**
 	 * Rounds a number to the nearest multiple of base (e.g., 22447 → 22450)
 	 */
-	private int findNearestMultiple(int number, int base) {
+	int findNearestMultiple(int number, int base) {
 	    int remainder = number % base;
 	    return remainder < base / 2 ? number - remainder : number + (base - remainder);
 	}

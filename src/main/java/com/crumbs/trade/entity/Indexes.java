@@ -8,7 +8,17 @@ import java.time.format.DateTimeFormatter;
 
 @Data
 @Entity
-@Table(name = "Indexes")
+@Table(
+	    name = "Indexes",
+	    indexes = {
+	        @Index(name = "idx_name", columnList = "name"),
+	        @Index(name = "idx_symbol", columnList = "symbol"),
+	        @Index(name = "idx_name_symbol", columnList = "name, symbol"),  // ⭐ NEW
+	        @Index(name = "idx_exchange", columnList = "exchange"),
+	        @Index(name = "idx_expiry", columnList = "expiry"),
+	        @Index(name = "idx_volume", columnList = "volume")
+	    }
+	)
 public class Indexes {
 
     @Id

@@ -98,7 +98,9 @@ public class ResultService {
 				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
 			}*/
 			result.setSl(stock.getSl());
-			if ("Y".equalsIgnoreCase(result.getHasOption()) || "UP".equalsIgnoreCase(result.getType())) {
+			if ("Y".equalsIgnoreCase(result.getHasOption())
+					|| ("UP".equalsIgnoreCase(result.getType()) 
+							&& "DAILY".equalsIgnoreCase(stock.getTradetype()))) {
 				resultRepo.save(result);
 			} else {
 				logger.info("Skip Stock: {} into result table", result.getName());

@@ -6,17 +6,23 @@ import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.MessagingException;
 import org.springframework.stereotype.Service;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Token;
+import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Strategy;
+import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.StrategyRepo;
+
+import jakarta.mail.internet.AddressException;
 
 @Service
 public class OrderService {
@@ -27,8 +33,9 @@ public class OrderService {
     @Autowired StrategyRepo strategyRepo;
     @Autowired AngelOneService angelOneService;
     @Autowired OrderRepository ordersRepo;
-
-
+    @Autowired TaskService taskService;
+    @Autowired ChartService chartService;
+    @Autowired IndexesRepo indexesRepo;
     // ========================================================================
     // ENTRY point (strategy signal triggers)
     // ========================================================================
@@ -97,15 +104,7 @@ public class OrderService {
         logger.info("LTP: {}", ltp);
 
         // SELL CE when SELL signal. SELL PE when BUY signal.
-        Token token = angelOneService.createSymbol(
-                ltp,
-                signal.equalsIgnoreCase("SELL") ? "CE" : "PE",
-                smartConnect,
-                strategy.getExpiry(),
-                spotPrice,
-                strategy,
-                "SELLER"
-        );
+        Token token = createToken(strategy,signal);
 
         prepareSellOrder(token, strategyName, signal);
 
@@ -117,8 +116,82 @@ public class OrderService {
         );
     }
 
+	public Token createToken(Strategy strategy, String signal) {
+		// Get Name and Trading Symbol
+        Token token = new Token();
+		try {
+			StrategyDTO strategyModified = taskService.getStrategyDetails(strategy.getName(), strategy.getExchange());
+			strategyModified = getNameAndTradingSymbol(strategyModified, signal);
+			token.setSymbol(strategyModified.getTradingsymbol());
+			token.setToken(strategyModified.getToken());
+			token.setExch_seg(strategyModified.getExchange());
+		} catch (AddressException | MessagingException | IOException e) {
+			// TODO Auto-generated catch block
+			logger.error("Error Found during Token Creation");
+		}
+		return token;
+	}
+
+	public StrategyDTO getNameAndTradingSymbol(StrategyDTO strategy, String type)
+			throws AddressException, MessagingException, IOException {
+
+		if (strategy == null || strategy.getName() == null || strategy.getExchange() == null) {
+			logger.warn("Invalid strategy data provided");
+			return strategy;
+		}
+
+		SmartConnect smartconnect = angelOne.signIn();
+		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
+				strategy.getTradingsymbol(), strategy.getToken());
+
+		if (currentPrice == null) {
+			logger.warn("Unable to fetch current price for {}", strategy.getName());
+			return strategy;
+		}
+
+		String name = strategy.getName().toUpperCase();
+		int strikeInterval;
+
+		String key = name.trim().toUpperCase();
+
+		switch (key) {
+		case "NIFTY":
+		case "CPR_STRATEGY":
+		case "CRUDEOIL":
+			strikeInterval = 50;
+			break;
+
+		case "SILVERM":
+			strikeInterval = 1000;
+			return strategy;
+
+		default:
+			logger.warn("Unknown symbol name: {}", strategy.getName());
+			return strategy;
+		}
+
+		int nearestStrike = chartService.findNearestMultiple(currentPrice.intValue(), strikeInterval);
+		//BUY mean PE - Option seller perspective
+		String optionType = "BUY".equalsIgnoreCase(type) ? "PE" : "CE";
 
 
+		String tradingSymbol = String.format("%s%s%d%s", strategy.getName(), strategy.getExpiry(), nearestStrike,
+				optionType);
+
+		logger.info("Generated Trading Symbol: {} | CurrentPrice: {} | Type: {} | Strike: {}", tradingSymbol,
+				currentPrice, optionType, nearestStrike);
+
+		strategy.setTradingsymbol(tradingSymbol);
+		Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), strategy.getTradingsymbol());
+		if (indexes != null) {
+			strategy.setToken(indexes.getToken());
+			strategy.setExchange(indexes.getExchange());
+			// symbol added
+		} else {
+			logger.error("Unable to find the Index Value for symbol {}", tradingSymbol);
+		}
+		return strategy;
+	}
     // ========================================================================
     // EXIT (BUY)
     // ========================================================================
