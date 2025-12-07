@@ -92,22 +92,24 @@
     box-shadow: var(--shadow-md);
   }
   
-  .toolbar-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 16px;
-    width: 100%;
-  }
+ .toolbar-row {
+  display: flex;
+  flex-wrap: nowrap;       /* Important: do not wrap row */
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  overflow-x: hidden;      /* Row itself should not scroll */
+}
   
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 16px;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
+ .controls {
+  display: flex;
+  flex-wrap: nowrap;       /* Prevent wrapping */
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;        /* Horizontal scroll if too long */
+  overflow-y: hidden;      /* Hide vertical overflow */
+  -webkit-overflow-scrolling: touch; /* Smooth scroll on mobile */
+}
   
   .control-group {
     display: flex;
@@ -678,6 +680,10 @@
       box-sizing: border-box;
       justify-content: flex-start;
     }
+    #resultBtn {
+  flex: 0 0 auto !important;
+  white-space: nowrap;
+}
     
     #pagination {
       gap: 4px;
@@ -722,6 +728,7 @@
   <div class="toolbar">
     <div class="toolbar-row">
       <div class="controls">
+      <button id="resultBtn" class="btn btn-primary">📊 Results</button>
         <div class="control-group">
           <label>Filter:</label>
           <div class="radio-group">
@@ -766,6 +773,7 @@
             <button class="btn" onclick="toggleColumnDropdown()">☰ Columns</button>
             <div class="column-dropdown-content" id="columnTogglePanel"></div>
           </div>
+          
         </div>
         
         <div class="control-group">
@@ -1057,6 +1065,10 @@
       document.getElementById("columnDropdown").classList.toggle("show");
     }
     
+    document.getElementById("resultBtn").addEventListener("click", () => {
+  window.location.href = "result.html";
+});
+
     document.addEventListener('click', function(event) {
       const dropdown = document.getElementById("columnDropdown");
       if (!dropdown.contains(event.target)) {

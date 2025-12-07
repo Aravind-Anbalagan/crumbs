@@ -426,6 +426,7 @@
       </select>
       <button id="resetBtn" class="primary-btn">Reset</button>
       <button id="exportBtn" class="export-btn">Export CSV</button>
+      <button id="backBtn" class="primary-btn">⬅ Back</button>
     </div>
     <div id="loader" class="loader"></div>
     <div class="table-container">
@@ -457,7 +458,9 @@
     let currentSort = { key: null, asc: true };
     let currentPage = 1;
     const rowsPerPage = 10;
-
+document.getElementById("backBtn").addEventListener("click", () => {
+  window.location.href = "stock.html";
+});
     async function loadData() {
       const loader = document.getElementById("loader");
       const table = document.getElementById("data-table");
