@@ -136,6 +136,15 @@
       flex-wrap:wrap;
       max-width:100%;
     }
+
+    select {
+      background:rgba(15,23,42,0.8);
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:8px;
+      padding:8px 10px;
+      font-size:14px;
+    }
     
     button {
       background:rgba(59,130,246,0.1);
@@ -157,7 +166,6 @@
       transform:translateY(1px);
     }
     
-    /* Toggle Switch Styles */
     .toggle-container {
       display:flex;
       align-items:center;
@@ -341,6 +349,17 @@
             <span class="toggle-label">Show Crossovers</span>
             <div class="toggle-switch" id="toggle-switch"></div>
           </div>
+
+          <!-- Dropdowns -->
+          <label for="name-select">Name</label>
+          <select id="name-select"></select>
+          <label for="expiry-select">Expiry</label>
+          <select id="expiry-select"></select>
+          <label for="ce-strike-select">CE</label>
+          <select id="ce-strike-select"></select>
+          <label for="pe-strike-select">PE</label>
+          <select id="pe-strike-select"></select>
+
           <button id="btn-reset">Reset Chart</button>
         </div>
       </div>
@@ -373,8 +392,9 @@
   </div>
 
   <script>
-    // API Configuration
-    const API_URL = 'http://localhost:8080/api/straddle/straddle/combined-chart';
+    const API_URL = '/api/straddle/combined-chart';
+    const GROUPED_API_URL = '/api/straddle/grouped';
+
     const API_PARAMS = {
       name: 'NIFTY',
       expiry: '16DEC25',
@@ -382,6 +402,7 @@
       peStrike: '26000'
     };
     
+    let groupedData = [];
     let apiData = [];
 
     function toUnixSeconds(isoString) {
@@ -395,7 +416,6 @@
 
       for (const row of apiArray) {
         const t = toUnixSeconds(row.time);
-        // Skip invalid rows or rows with 0 spot value
         if (!isFinite(t) || typeof row.spot !== 'number' || row.spot === 0) continue;
         spotSeries.push({ time: t, value: Number(row.spot) });
         ceSeries.push({ time: t, value: Number(row.ce) });
@@ -405,79 +425,106 @@
       return { spotSeries, ceSeries, peSeries };
     }
 
-    // Fetch data from API
     async function fetchDataFromAPI() {
       try {
         const params = new URLSearchParams(API_PARAMS);
         const response = await fetch(`${API_URL}?${params}`);
-        
         if (!response.ok) {
           throw new Error(`API request failed: ${response.status}`);
         }
-        
         const result = await response.json();
         return result.data || [];
       } catch (error) {
         console.error('Error fetching data from API:', error);
-        // Return empty array on error
         return [];
       }
     }
 
-    // Detect convergence/divergence between CE and PE
-    function detectConvergenceDivergence(ceSeries, peSeries) {
-      const events = [];
-      
-      if (ceSeries.length < 5 || peSeries.length < 5) return events;
-      
-      for (let i = 4; i < ceSeries.length && i < peSeries.length; i++) {
-        const currGap = Math.abs(peSeries[i].value - ceSeries[i].value);
-        const prevGap = Math.abs(peSeries[i-1].value - ceSeries[i-1].value);
-        const prev4Gap = Math.abs(peSeries[i-4].value - ceSeries[i-4].value);
-        
-        // Skip if any value is invalid
-        if (!isFinite(currGap) || !isFinite(prevGap) || !isFinite(prev4Gap)) continue;
-        
-        // Calculate trend over last 5 points
-        const gapChange = currGap - prev4Gap;
-        const percentChange = (gapChange / prev4Gap) * 100;
-        
-        // Significant convergence (gap narrowing by >5% over 5 points)
-        if (percentChange < -5) {
-          events.push({
-            time: ceSeries[i].time,
-            gap: currGap,
-            type: 'Convergence - CE & PE getting closer',
-            pair: 'CE-PE',
-            direction: 'converging',
-            percentChange: percentChange.toFixed(2),
-            ceValue: ceSeries[i].value,
-            peValue: peSeries[i].value
-          });
-        }
-        // Significant divergence (gap widening by >5% over 5 points)
-        else if (percentChange > 5) {
-          events.push({
-            time: ceSeries[i].time,
-            gap: currGap,
-            type: 'Divergence - CE & PE moving apart',
-            pair: 'CE-PE',
-            direction: 'diverging',
-            percentChange: percentChange.toFixed(2),
-            ceValue: ceSeries[i].value,
-            peValue: peSeries[i].value
-          });
-        }
+    async function loadGroupedData() {
+      try {
+        const res = await fetch(GROUPED_API_URL);
+        if (!res.ok) throw new Error('Grouped API failed: ' + res.status);
+        groupedData = await res.json();
+        populateNameSelect();
+      } catch (err) {
+        console.error('Error loading grouped data', err);
       }
-      
-      return events;
     }
 
-    // Detect crossovers between two series (kept for potential future use)
+    function populateNameSelect() {
+      const nameSel = document.getElementById('name-select');
+      nameSel.innerHTML = '';
+
+      groupedData.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.name;
+        opt.textContent = item.name;
+        nameSel.appendChild(opt);
+      });
+
+      if (nameSel.value) {
+        API_PARAMS.name = nameSel.value;
+      }
+
+      populateExpirySelect();
+    }
+
+    function populateExpirySelect() {
+      const nameSel   = document.getElementById('name-select');
+      const expirySel = document.getElementById('expiry-select');
+
+      const selected = groupedData.find(x => x.name === nameSel.value);
+      expirySel.innerHTML = '';
+
+      const expiries = selected ? Object.keys(selected.expiries) : [];
+      expiries.forEach(exp => {
+        const opt = document.createElement('option');
+        opt.value = exp;
+        opt.textContent = exp;
+        expirySel.appendChild(opt);
+      });
+
+      if (expirySel.value) {
+        API_PARAMS.expiry = expirySel.value;
+      }
+
+      populateStrikeSelects();
+    }
+
+    function populateStrikeSelects() {
+      const nameSel   = document.getElementById('name-select');
+      const expirySel = document.getElementById('expiry-select');
+      const ceSel     = document.getElementById('ce-strike-select');
+      const peSel     = document.getElementById('pe-strike-select');
+
+      const selected = groupedData.find(x => x.name === nameSel.value);
+      const strikes = selected ? (selected.expiries[expirySel.value] || []) : [];
+
+      ceSel.innerHTML = '';
+      peSel.innerHTML = '';
+
+      strikes.forEach(strike => {
+        const opt1 = document.createElement('option');
+        opt1.value = strike;
+        opt1.textContent = strike;
+        ceSel.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = strike;
+        opt2.textContent = strike;
+        peSel.appendChild(opt2);
+      });
+
+      if (strikes.length > 0) {
+        ceSel.value = strikes[0];
+        peSel.value = strikes[0];
+        API_PARAMS.ceStrike = String(ceSel.value);
+        API_PARAMS.peStrike = String(peSel.value);
+      }
+    }
+
     function detectCrossovers(series1, series2, name1, name2) {
       const crossings = [];
-      
-      // Need at least 2 points to detect a crossing
       if (series1.length < 2 || series2.length < 2) return crossings;
       
       for (let i = 1; i < series1.length && i < series2.length; i++) {
@@ -486,15 +533,12 @@
         const prev2 = series2[i - 1].value;
         const curr2 = series2[i].value;
         
-        // Skip if any value is invalid
         if (!isFinite(prev1) || !isFinite(curr1) || !isFinite(prev2) || !isFinite(curr2)) continue;
         
-        // Check if lines crossed
         const wasBelowNowAbove = prev1 < prev2 && curr1 > curr2;
         const wasAboveNowBelow = prev1 > prev2 && curr1 < curr2;
         
         if (wasBelowNowAbove || wasAboveNowBelow) {
-          // Linear interpolation to find intersection point
           const t1 = series1[i - 1].time;
           const t2 = series1[i].time;
           const ratio = Math.abs(prev2 - prev1) / (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1));
@@ -544,7 +588,6 @@
       },
     });
 
-    // Spot line - on LEFT scale
     const spotLine = chart.addLineSeries({ 
       priceLineVisible: false, 
       lastValueVisible: true, 
@@ -553,7 +596,6 @@
       priceScaleId: 'left'
     });
     
-    // CE line - on RIGHT scale
     const ceLine = chart.addLineSeries({ 
       priceLineVisible: false, 
       lastValueVisible: true, 
@@ -562,7 +604,6 @@
       priceScaleId: 'right'
     });
     
-    // PE line - on RIGHT scale
     const peLine = chart.addLineSeries({ 
       priceLineVisible: false, 
       lastValueVisible: true, 
@@ -609,7 +650,7 @@
         const marker = {
           time: c.time,
           position: 'inBar',
-          color: isSelected ? '#22c55e' : '#f472b6', // green when selected, pink otherwise
+          color: isSelected ? '#22c55e' : '#f472b6',
           shape: 'circle',
           size: isSelected ? 2 : 1
         };
@@ -633,7 +674,6 @@
     }
 
     async function loadInitialData() {
-      // Fetch data from API
       apiData = await fetchDataFromAPI();
       
       if (apiData.length === 0) {
@@ -645,7 +685,6 @@
       
       const { spotSeries, ceSeries, peSeries } = transformToSeries(apiData);
       
-      // Validate that we have data
       if (spotSeries.length === 0 && ceSeries.length === 0 && peSeries.length === 0) {
         console.warn('No valid data points after transformation');
         document.getElementById('crossings-container').innerHTML = 
@@ -657,10 +696,8 @@
       ceLine.setData(ceSeries);
       peLine.setData(peSeries);
       
-      // Detect only CE-PE crossovers
       allCrossings = [];
       allCrossings.push(...detectCrossovers(ceSeries, peSeries, 'CE', 'PE'));
-      
       allCrossings.sort((a, b) => a.time - b.time);
       
       if (crossoverEnabled) {
@@ -676,14 +713,12 @@
     }
 
     function addCrossingMarkers() {
-      const markers = allCrossings.map(crossing => {
-        return {
-          time: crossing.time,
-          position: 'inBar',
-          color: '#f472b6', // pink for CE-PE crossover
-          shape: 'circle'
-        };
-      });
+      const markers = allCrossings.map(crossing => ({
+        time: crossing.time,
+        position: 'inBar',
+        color: '#f472b6',
+        shape: 'circle'
+      }));
       
       if (markers.length > 0) {
         ceLine.setMarkers(markers);
@@ -787,11 +822,37 @@
       updateChartTheme();
     }
 
-    // Auto-refresh data every 30 seconds
+    function initDropdowns() {
+      const nameSel   = document.getElementById('name-select');
+      const expirySel = document.getElementById('expiry-select');
+      const ceSel     = document.getElementById('ce-strike-select');
+      const peSel     = document.getElementById('pe-strike-select');
+
+      nameSel.addEventListener('change', () => {
+        populateExpirySelect();
+        loadInitialData();
+      });
+
+      expirySel.addEventListener('change', () => {
+        populateStrikeSelects();
+        loadInitialData();
+      });
+
+      ceSel.addEventListener('change', () => {
+        API_PARAMS.ceStrike = String(ceSel.value);
+        loadInitialData();
+      });
+
+      peSel.addEventListener('change', () => {
+        API_PARAMS.peStrike = String(peSel.value);
+        loadInitialData();
+      });
+    }
+
     function startAutoRefresh() {
       autoRefreshInterval = setInterval(async () => {
         await loadInitialData();
-      }, 30000); // 30 seconds
+      }, 30000);
     }
 
     function stopAutoRefresh() {
@@ -801,8 +862,7 @@
       }
     }
 
-    function init() {
-      // Set initial theme
+    async function init() {
       document.body.classList.add('dark-theme');
       
       const themeToggle = document.getElementById('theme-toggle');
@@ -821,10 +881,9 @@
         chart.applyOptions({ width: document.getElementById('chart').clientWidth });
       });
 
-      // Initial load
-      loadInitialData();
-      
-      // Start auto-refresh
+      initDropdowns();
+      await loadGroupedData();
+      await loadInitialData();
       startAutoRefresh();
     }
 
@@ -834,7 +893,6 @@
       init();
     }
     
-    // Clean up on page unload
     window.addEventListener('beforeunload', () => {
       stopAutoRefresh();
     });

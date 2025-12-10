@@ -1,6 +1,7 @@
 package com.crumbs.trade.controller;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -10,8 +11,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.crumbs.trade.dto.StraddleChartResponse;
+import com.crumbs.trade.dto.NameExpiryStrikeGroupedDto;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.service.StraddleGroupingService;
 import com.crumbs.trade.service.StraddleIntradayService;
 
 import lombok.RequiredArgsConstructor;
@@ -23,7 +25,7 @@ public class StraddleChartController {
 
 	@Autowired StraddleIntradayService straddleIntradayService;
 	@Autowired StrategyRepo strategyRepo;
-	
+	@Autowired StraddleGroupingService straddleGroupingService;
 
 	@Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
 	public void straddleIntraday() {
@@ -33,7 +35,7 @@ public class StraddleChartController {
 		}
 	}
 	
-	@GetMapping("/straddle/combined-chart")
+	@GetMapping("/combined-chart")
 	public ResponseEntity<?> getCombinedChart(
 	        @RequestParam String name,
 	        @RequestParam String expiry,
@@ -48,6 +50,9 @@ public class StraddleChartController {
 	    );
 	}
 
-
+	@GetMapping("/grouped")
+    public List<NameExpiryStrikeGroupedDto> getGrouped() {
+        return straddleGroupingService.getGrouped();
+    }
 	
 }

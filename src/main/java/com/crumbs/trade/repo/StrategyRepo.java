@@ -1,5 +1,7 @@
 package com.crumbs.trade.repo;
 
+import java.util.List;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -21,4 +23,12 @@ public interface StrategyRepo extends JpaRepository<Strategy, Long> {
 	@Modifying
 	@Query("update Strategy s set s.candlestick = ?1 where s.id=?2" )
     int updateCandleStickById(int candlestick,long id);
+	
+	@Query("""
+		    SELECT s.name, s.expiry, s.strike
+		    FROM StraddleIntraday s
+		    ORDER BY s.name, s.expiry, s.strike
+		""")
+	List<Object[]> fetchNameExpiryStrikeRaw();
+
 }

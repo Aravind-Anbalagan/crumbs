@@ -19,6 +19,12 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
 	@Query("SELECT s FROM StraddleIntraday s WHERE s.name = :name AND s.expiry = :expiry ORDER BY s.timestamp ASC")
 	List<StraddleIntraday> getSpotHistory(String name, String expiry);
 
+	@Query("""
+		    SELECT s.name, s.expiry, s.strike
+		    FROM StraddleIntraday s
+		    ORDER BY s.name, s.expiry, s.strike
+		""")
+		List<Object[]> fetchNameExpiryStrikeRaw();
 
 
 }
