@@ -69,7 +69,16 @@ public class ResultService {
 			result = optionalResult.get();
 			result.setResult(stock.getResult());
 			result.setSl(stock.getSl());
-			resultRepo.save(result);
+			boolean hasOption = "Y".equalsIgnoreCase(result.getHasOption());
+			boolean isUpDaily = "UP".equalsIgnoreCase(result.getType()) 
+			                    && "DAILY".equalsIgnoreCase(stock.getTradetype());
+
+			if (hasOption || isUpDaily) {
+			    resultRepo.save(result);
+			} else {
+			    logger.info("Skip Stock: {} into result table", result.getName());
+			}
+			
 		} else {
 			// Make New Entry
 			result = new Result();
@@ -98,13 +107,21 @@ public class ResultService {
 				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
 			}*/
 			result.setSl(stock.getSl());
-			if ("Y".equalsIgnoreCase(result.getHasOption())
-					|| ("UP".equalsIgnoreCase(result.getType()) 
-							&& "DAILY".equalsIgnoreCase(stock.getTradetype()))) {
-				resultRepo.save(result);
-			} else {
-				logger.info("Skip Stock: {} into result table", result.getName());
+			if ("ERROR".equalsIgnoreCase(result.getType())) {
+			    logger.info("Skip Stock {} due to ERROR type", result.getName());
+			    return;
 			}
+
+			if ("Y".equalsIgnoreCase(result.getHasOption())
+			        || ("UP".equalsIgnoreCase(result.getType())
+			            && "DAILY".equalsIgnoreCase(stock.getTradetype()))) {
+
+			    resultRepo.save(result);
+
+			} else {
+			    logger.info("Skip Stock: {} into result table", result.getName());
+			}
+
 			
 		}
 

@@ -8,6 +8,7 @@
   <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 
   <style>
+    /* styles unchanged from your last version */
     * { box-sizing: border-box; }
     :root{
       --bg:#0f1720;
@@ -17,7 +18,6 @@
       --ce:#3b82f6;
       --pe:#ef4444;
     }
-    
     body.light-theme {
       --bg:#f8fafc;
       --card:#ffffff;
@@ -28,7 +28,6 @@
       --chart-text:#1e293b;
       --grid:#f1f5f9;
     }
-    
     body.dark-theme {
       --bg:#071021;
       --card:#0b1320;
@@ -39,7 +38,6 @@
       --chart-text:#dbeafe;
       --grid:rgba(255,255,255,0.03);
     }
-    
     html,body{
       height:100%;
       margin:0;
@@ -55,11 +53,9 @@
       overflow-y:auto;
       transition:all 0.3s ease;
     }
-    
     body.light-theme {
       background:linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%);
     }
-    
     .container{
       max-width:100%;
       width:100%;
@@ -78,11 +74,9 @@
       transition:all 0.3s ease;
       overflow-x:hidden;
     }
-    
     body.light-theme .card {
       box-shadow:0 8px 30px rgba(0,0,0,0.08);
     }
-    
     .header{
       display:flex;
       align-items:center;
@@ -94,14 +88,12 @@
     }
     .title{font-size:18px;font-weight:600;color:var(--text);word-break:break-word;}
     .subtitle{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-word;}
-    
     #chart {
       height:500px;
       width:100%;
       max-width:100%;
       overflow:hidden;
     }
-    
     .legend{
       display:flex;
       gap:16px;
@@ -128,7 +120,6 @@
       color:var(--text);
       font-weight:600;
     }
-    
     .controls{
       display:flex;
       gap:12px;
@@ -136,7 +127,11 @@
       flex-wrap:wrap;
       max-width:100%;
     }
-
+    label {
+      font-size:13px;
+      color:var(--muted);
+      margin-right:4px;
+    }
     select {
       background:rgba(15,23,42,0.8);
       color:var(--text);
@@ -145,7 +140,6 @@
       padding:8px 10px;
       font-size:14px;
     }
-    
     button {
       background:rgba(59,130,246,0.1);
       border:1px solid rgba(59,130,246,0.3);
@@ -165,7 +159,6 @@
     button:active{
       transform:translateY(1px);
     }
-    
     .toggle-container {
       display:flex;
       align-items:center;
@@ -178,24 +171,20 @@
       user-select:none;
       transition:all 0.2s;
     }
-    
     body.light-theme .toggle-container {
       background:rgba(34,197,94,0.08);
       border-color:rgba(34,197,94,0.25);
     }
-    
     .toggle-container:hover {
       background:rgba(34,197,94,0.15);
       border-color:rgba(34,197,94,0.4);
     }
-    
     .toggle-label {
       font-size:14px;
       color:var(--text);
       font-weight:600;
       white-space:nowrap;
     }
-    
     .toggle-switch {
       position:relative;
       width:50px;
@@ -206,12 +195,10 @@
       transition:all 0.3s;
       flex-shrink:0;
     }
-    
     .toggle-switch.active {
       background:rgba(34,197,94,0.5);
       border-color:rgba(34,197,94,0.7);
     }
-    
     .toggle-switch::before {
       content:'';
       position:absolute;
@@ -224,12 +211,10 @@
       transition:all 0.3s;
       box-shadow:0 2px 4px rgba(0,0,0,0.3);
     }
-    
     .toggle-switch.active::before {
       transform:translateX(24px);
       background:#22c55e;
     }
-    
     .crossings-section{margin-top:16px;}
     .section-title{
       font-size:15px;
@@ -252,31 +237,26 @@
       cursor:pointer;
       transition:all 0.2s;
     }
-    
     .crossing-item:hover {
       background:rgba(255,255,255,0.08);
       border-color:rgba(255,255,255,0.15);
       transform:translateY(-2px);
       box-shadow:0 4px 12px rgba(0,0,0,0.3);
     }
-    
     .crossing-item.highlighted {
       background:rgba(34,197,94,0.15);
       border:2px solid rgba(34,197,94,0.5);
       box-shadow:0 0 20px rgba(34,197,94,0.3);
     }
-    
     body.light-theme .crossing-item {
       background:rgba(0,0,0,0.02);
       border:1px solid rgba(0,0,0,0.08);
     }
-    
     body.light-theme .crossing-item:hover {
       background:rgba(0,0,0,0.06);
       border-color:rgba(0,0,0,0.15);
       box-shadow:0 4px 12px rgba(0,0,0,0.1);
     }
-    
     body.light-theme .crossing-item.highlighted {
       background:rgba(34,197,94,0.1);
       border:2px solid rgba(34,197,94,0.4);
@@ -308,18 +288,15 @@
       font-size:11px;
       margin-top:4px;
     }
-    
     .no-crossings{
       color:var(--muted);
       text-align:center;
       padding:20px;
       font-size:13px;
     }
-    
     .spot-ce{color:#a78bfa;}
     .spot-pe{color:#fb923c;}
     .ce-pe{color:#f472b6;}
-    
     @media (max-width:640px){
       body{padding:8px;}
       .card{padding:12px;}
@@ -349,7 +326,6 @@
             <span class="toggle-label">Show Crossovers</span>
             <div class="toggle-switch" id="toggle-switch"></div>
 
-          <!-- Dropdowns -->
           <label for="name-select">Name</label>
           <select id="name-select"></select>
           <label for="expiry-select">Expiry</label>
@@ -404,8 +380,14 @@
     let groupedData = [];
     let apiData = [];
 
+    // 5 hours 30 minutes offset in seconds for IST
+    const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60; // 19800 [web:177]
+
     function toUnixSeconds(isoString) {
-      return Math.floor(new Date(isoString).getTime() / 1000);
+      // isoString like "2025-12-10T11:51:13+05:30"
+      const utcSeconds = Math.floor(new Date(isoString).getTime() / 1000);
+      // Shift so that chart (which assumes UTC) shows IST clock time
+      return utcSeconds + IST_OFFSET_SECONDS; 
     }
 
     function transformToSeries(apiArray) {
@@ -490,7 +472,6 @@
       populateStrikeSelects();
     }
 
-    // UPDATED: use atmStrike as default strike when available
     function populateStrikeSelects() {
       const nameSel   = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
@@ -516,7 +497,6 @@
       });
 
       if (strikes.length > 0) {
-        // default to atmStrike if present and found in the strikes array
         let defaultStrike = strikes[0];
         if (selected && selected.atmStrike != null) {
           const atm = Number(selected.atmStrike);
@@ -587,7 +567,7 @@
       timeScale: {
         borderVisible: false,
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: true,
       },
       crosshair: {
         mode: LightweightCharts.CrosshairMode.Normal,
@@ -753,8 +733,8 @@
       }
       
       container.innerHTML = allCrossings.map((crossing, index) => {
-        const date = new Date(crossing.time * 1000);
-        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const date = new Date((crossing.time - IST_OFFSET_SECONDS) * 1000); // back to UTC for display
+        const timeStr = date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         return `
           <div class="crossing-item" data-crossing-index="${index}">

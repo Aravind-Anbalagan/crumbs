@@ -9,7 +9,7 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class CombinedChartPoint {
-    private LocalDateTime time;
+    private String time;
     private BigDecimal ce;
     private BigDecimal pe;
     private BigDecimal spot;

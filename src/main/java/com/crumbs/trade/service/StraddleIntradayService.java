@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -87,7 +90,9 @@ public class StraddleIntradayService {
 		int count = 0;
 
 		// Exact timestamp to the second
-		LocalDateTime timestamp = LocalDateTime.now().withNano(0);
+		LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
+		
+		
 
 		for (StraddlePremiumDto dto : strikeList) {
 
@@ -284,29 +289,50 @@ public class StraddleIntradayService {
 	        BigDecimal ceStrike,
 	        BigDecimal peStrike) {
 
-	    List<StraddleIntraday> ceRows = straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
-	    List<StraddleIntraday> peRows = straddleIntradayRepo.getByStrike(name, expiry, peStrike);
+	    List<StraddleIntraday> ceRows   = straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
+	    List<StraddleIntraday> peRows   = straddleIntradayRepo.getByStrike(name, expiry, peStrike);
 	    List<StraddleIntraday> spotRows = straddleIntradayRepo.getSpotHistory(name, expiry);
 
-	    Map<LocalDateTime, CombinedChartPoint> map = new TreeMap<>();
+	    ZoneId ist = ZoneId.of("Asia/Kolkata");
+
+	    // key = ISO string with +05:30 so JSON already has IST
+	    Map<String, CombinedChartPoint> map = new TreeMap<>();
 
 	    // CE mapping
 	    for (StraddleIntraday r : ceRows) {
-	        map.computeIfAbsent(r.getTimestamp(), t ->
+	        String key = r.getTimestamp()
+	                      .atZone(ist)
+	                      .toOffsetDateTime()
+	                      .withNano(0)
+	                      .toString(); // 2025-12-10T11:52:13+05:30
+
+	        map.computeIfAbsent(key, t ->
 	                new CombinedChartPoint(t, null, null, null)
 	        ).setCe(r.getCePrice());
 	    }
 
 	    // PE mapping
 	    for (StraddleIntraday r : peRows) {
-	        map.computeIfAbsent(r.getTimestamp(), t ->
+	        String key = r.getTimestamp()
+	                      .atZone(ist)
+	                      .toOffsetDateTime()
+	                      .withNano(0)
+	                      .toString();
+
+	        map.computeIfAbsent(key, t ->
 	                new CombinedChartPoint(t, null, null, null)
 	        ).setPe(r.getPePrice());
 	    }
 
 	    // Spot mapping
 	    for (StraddleIntraday r : spotRows) {
-	        map.computeIfAbsent(r.getTimestamp(), t ->
+	        String key = r.getTimestamp()
+	                      .atZone(ist)
+	                      .toOffsetDateTime()
+	                      .withNano(0)
+	                      .toString();
+
+	        map.computeIfAbsent(key, t ->
 	                new CombinedChartPoint(t, null, null, null)
 	        ).setSpot(r.getSpot());
 	    }
@@ -316,6 +342,7 @@ public class StraddleIntradayService {
 
 	    return response;
 	}
+
 
 
 
