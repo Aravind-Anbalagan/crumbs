@@ -189,7 +189,7 @@ public class PredictionService {
             List<String> batch = tokens.subList(start, end);
 
             try {
-                JSONObject payload = buildMarketDataPayload(batch);
+                JSONObject payload = buildMarketDataPayload(batch,"NSE");
                 JSONObject response = callMarketDataWithRetry(smartconnect, payload);
 
                 if (response.has("fetched")) {
@@ -222,14 +222,14 @@ public class PredictionService {
         return result;
     }
 
-    private JSONObject buildMarketDataPayload(List<String> batch) {
+    public JSONObject buildMarketDataPayload(List<String> batch,String exchange) {
         JSONObject payload = new JSONObject();
         payload.put("mode", "FULL");
 
         JSONObject exchangeTokens = new JSONObject();
         JSONArray arr = new JSONArray();
         batch.forEach(arr::put);
-        exchangeTokens.put("NSE", arr);
+        exchangeTokens.put(exchange, arr);
         
         payload.put("exchangeTokens", exchangeTokens);
         return payload;
@@ -240,7 +240,7 @@ public class PredictionService {
     // RETRY LOGIC WITH EXPONENTIAL BACKOFF
     // ========================================
 
-    private JSONObject callMarketDataWithRetry(SmartConnect smartconnect, JSONObject payload)
+    public JSONObject callMarketDataWithRetry(SmartConnect smartconnect, JSONObject payload)
             throws SmartAPIException, InterruptedException, IOException {
 
         int attempt = 0;

@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nifty — Spot / CE / PE with Crossovers</title>
+
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    :root{
+      --bg:#0f1720;
+      --card:#0b1320;
+      --muted:#94a3b8;
+      --spot:#22c55e;
+      --ce:#3b82f6;
+      --pe:#ef4444;
+    }
+    
+    body.light-theme {
+      --bg:#f8fafc;
+      --card:#ffffff;
+      --muted:#64748b;
+      --text:#0f172a;
+      --border:#e2e8f0;
+      --chart-bg:#ffffff;
+      --chart-text:#1e293b;
+      --grid:#f1f5f9;
+    }
+    
+    body.dark-theme {
+      --bg:#071021;
+      --card:#0b1320;
+      --muted:#94a3b8;
+      --text:#e6eef8;
+      --border:#1e293b;
+      --chart-bg:#071421;
+      --chart-text:#dbeafe;
+      --grid:rgba(255,255,255,0.03);
+    }
+    
+    html,body{
+      height:100%;
+      margin:0;
+      padding:0;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      overflow-x:hidden;
+      max-width:100vw;
+    }
+    body{
+      background:linear-gradient(180deg,#071021 0%, #071a2b 100%);
+      color:var(--text, #e6eef8);
+      padding:16px;
+      overflow-y:auto;
+      transition:all 0.3s ease;
+    }
+    
+    body.light-theme {
+      background:linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%);
+    }
+    
+    .container{
+      max-width:100%;
+      width:100%;
+      margin:0 auto;
+      overflow-x:hidden;
+    }
+    .card{
+      width:100%;
+      max-width:100%;
+      background:var(--card);
+      border-radius:12px;
+      padding:16px;
+      box-shadow:0 8px 30px rgba(2,6,23,0.6);
+      border:1px solid var(--border);
+      margin-bottom:16px;
+      transition:all 0.3s ease;
+      overflow-x:hidden;
+    }
+    
+    body.light-theme .card {
+      box-shadow:0 8px 30px rgba(0,0,0,0.08);
+    }
+    
+    .header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:16px;
+      flex-wrap:wrap;
+      max-width:100%;
+    }
+    .title{font-size:18px;font-weight:600;color:var(--text);word-break:break-word;}
+    .subtitle{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-word;}
+    
+    #chart {
+      height:500px;
+      width:100%;
+      max-width:100%;
+      overflow:hidden;
+    }
+    
+    .legend{
+      display:flex;
+      gap:16px;
+      align-items:center;
+      margin-top:10px;
+      flex-wrap:wrap;
+      max-width:100%;
+    }
+    .legend .item{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .swatch{
+      width:12px;
+      height:6px;
+      border-radius:3px;
+      display:inline-block;
+    }
+    .values{
+      margin-left:6px;
+      color:var(--text);
+      font-weight:600;
+    }
+    
+    .controls{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      flex-wrap:wrap;
+      max-width:100%;
+    }
+    
+    button {
+      background:rgba(59,130,246,0.1);
+      border:1px solid rgba(59,130,246,0.3);
+      color:#60a5fa;
+      padding:10px 16px;
+      border-radius:8px;
+      cursor:pointer;
+      font-size:14px;
+      font-weight:500;
+      transition:all 0.2s;
+      white-space:nowrap;
+    }
+    button:hover{
+      background:rgba(59,130,246,0.2);
+      border-color:rgba(59,130,246,0.5);
+    }
+    button:active{
+      transform:translateY(1px);
+    }
+    
+    /* Toggle Switch Styles */
+    .toggle-container {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:10px 16px;
+      background:rgba(34,197,94,0.1);
+      border:2px solid rgba(34,197,94,0.3);
+      border-radius:8px;
+      cursor:pointer;
+      user-select:none;
+      transition:all 0.2s;
+    }
+    
+    body.light-theme .toggle-container {
+      background:rgba(34,197,94,0.08);
+      border-color:rgba(34,197,94,0.25);
+    }
+    
+    .toggle-container:hover {
+      background:rgba(34,197,94,0.15);
+      border-color:rgba(34,197,94,0.4);
+    }
+    
+    .toggle-label {
+      font-size:14px;
+      color:var(--text);
+      font-weight:600;
+      white-space:nowrap;
+    }
+    
+    .toggle-switch {
+      position:relative;
+      width:50px;
+      height:26px;
+      background:rgba(148,163,184,0.3);
+      border-radius:26px;
+      border:2px solid rgba(148,163,184,0.4);
+      transition:all 0.3s;
+      flex-shrink:0;
+    }
+    
+    .toggle-switch.active {
+      background:rgba(34,197,94,0.5);
+      border-color:rgba(34,197,94,0.7);
+    }
+    
+    .toggle-switch::before {
+      content:'';
+      position:absolute;
+      width:18px;
+      height:18px;
+      left:2px;
+      top:2px;
+      background:#94a3b8;
+      border-radius:50%;
+      transition:all 0.3s;
+      box-shadow:0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .toggle-switch.active::before {
+      transform:translateX(24px);
+      background:#22c55e;
+    }
+    
+    .crossings-section{margin-top:16px;}
+    .section-title{
+      font-size:15px;
+      font-weight:600;
+      margin-bottom:12px;
+      color:var(--text);
+    }
+    .crossings-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+      gap:10px;
+      max-width:100%;
+    }
+    .crossing-item{
+      background:rgba(255,255,255,0.03);
+      border:1px solid rgba(255,255,255,0.05);
+      border-radius:8px;
+      padding:10px;
+      font-size:13px;
+      cursor:pointer;
+      transition:all 0.2s;
+    }
+    
+    .crossing-item:hover {
+      background:rgba(255,255,255,0.08);
+      border-color:rgba(255,255,255,0.15);
+      transform:translateY(-2px);
+      box-shadow:0 4px 12px rgba(0,0,0,0.3);
+    }
+    
+    .crossing-item.highlighted {
+      background:rgba(34,197,94,0.15);
+      border:2px solid rgba(34,197,94,0.5);
+      box-shadow:0 0 20px rgba(34,197,94,0.3);
+    }
+    
+    body.light-theme .crossing-item {
+      background:rgba(0,0,0,0.02);
+      border:1px solid rgba(0,0,0,0.08);
+    }
+    
+    body.light-theme .crossing-item:hover {
+      background:rgba(0,0,0,0.06);
+      border-color:rgba(0,0,0,0.15);
+      box-shadow:0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    body.light-theme .crossing-item.highlighted {
+      background:rgba(34,197,94,0.1);
+      border:2px solid rgba(34,197,94,0.4);
+      box-shadow:0 0 20px rgba(34,197,94,0.2);
+    }
+    .crossing-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:6px;
+    }
+    .crossing-type{
+      font-weight:600;
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+    .crossing-time{
+      color:var(--muted);
+      font-size:11px;
+    }
+    .crossing-price{
+      font-size:16px;
+      font-weight:600;
+      color:#22d3ee;
+    }
+    .crossing-desc{
+      color:var(--muted);
+      font-size:11px;
+      margin-top:4px;
+    }
+    
+    .no-crossings{
+      color:var(--muted);
+      text-align:center;
+      padding:20px;
+      font-size:13px;
+    }
+    
+    .spot-ce{color:#a78bfa;}
+    .spot-pe{color:#fb923c;}
+    .ce-pe{color:#f472b6;}
+    
+    @media (max-width:640px){
+      body{padding:8px;}
+      .card{padding:12px;}
+      #chart {height:350px;}
+      .crossings-grid{grid-template-columns:1fr;}
+      .header{flex-direction:column;align-items:flex-start;}
+      .controls{width:100%;gap:8px;}
+      .toggle-container{padding:8px 12px;font-size:13px;}
+      button{padding:8px 12px;font-size:13px;}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div>
+          <div class="title">Nifty — Spot · CE · PE with Crossover Detection</div>
+          <div class="subtitle">Visualize price intersections in real-time</div>
+        </div>
+        <div class="controls">
+          <div class="toggle-container" id="theme-toggle">
+            <span class="toggle-label">Dark Theme</span>
+            <div class="toggle-switch active" id="theme-switch"></div>
+          </div>
+          <div class="toggle-container" id="toggle-container">
+            <span class="toggle-label">Show Crossovers</span>
+            <div class="toggle-switch" id="toggle-switch"></div>
+          </div>
+          <button id="btn-update">Add Data Point</button>
+          <button id="btn-reset">Reset Chart</button>
+        </div>
+      </div>
+
+      <div id="chart"></div>
+
+      <div class="legend">
+        <div class="item">
+          <span class="swatch" style="background:var(--spot)"></span>
+          <span>Spot</span>
+          <span id="val-spot" class="values">-</span>
+        </div>
+        <div class="item">
+          <span class="swatch" style="background:var(--ce)"></span>
+          <span>CE</span>
+          <span id="val-ce" class="values">-</span>
+        </div>
+        <div class="item">
+          <span class="swatch" style="background:var(--pe)"></span>
+          <span>PE</span>
+          <span id="val-pe" class="values">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="crossings-card">
+      <div class="section-title">Detected Crossovers</div>
+      <div id="crossings-container" class="crossings-grid"></div>
+    </div>
+  </div>
+
+  <script>
+    const dummyApiResponse = [
+      { time: "2025-12-09T09:15:00", spot: 125.20, cePrice: 123.45, pePrice: 130.90 },
+      { time: "2025-12-09T09:20:00", spot: 126.75, cePrice: 125.10, pePrice: 128.70 },
+      { time: "2025-12-09T09:25:00", spot: 128.40, cePrice: 127.00, pePrice: 126.20 },
+      { time: "2025-12-09T09:30:00", spot: 127.10, cePrice: 126.20, pePrice: 127.50 },
+      { time: "2025-12-09T09:35:00", spot: 125.55, cePrice: 124.10, pePrice: 129.30 },
+      { time: "2025-12-09T09:40:00", spot: 128.00, cePrice: 128.00, pePrice: 125.80 },
+      { time: "2025-12-09T09:45:00", spot: 129.40, cePrice: 129.60, pePrice: 124.10 },
+      { time: "2025-12-09T09:50:00", spot: 127.15, cePrice: 127.20, pePrice: 126.90 },
+      { time: "2025-12-09T09:55:00", spot: 131.00, cePrice: 131.00, pePrice: 122.30 }
+    ];
+
+    function toUnixSeconds(isoString) {
+      return Math.floor(new Date(isoString).getTime() / 1000);
+    }
+
+    function transformToSeries(apiArray) {
+      const spotSeries = [];
+      const ceSeries = [];
+      const peSeries = [];
+
+      for (const row of apiArray) {
+        const t = toUnixSeconds(row.time);
+        if (!isFinite(t) || typeof row.spot !== 'number') continue;
+        spotSeries.push({ time: t, value: Number(row.spot) });
+        ceSeries.push({ time: t, value: Number(row.cePrice) });
+        peSeries.push({ time: t, value: Number(row.pePrice) });
+      }
+
+      return { spotSeries, ceSeries, peSeries };
+    }
+
+    function detectCrossovers(series1, series2, name1, name2) {
+      const crossings = [];
+      
+      for (let i = 1; i < series1.length; i++) {
+        const prev1 = series1[i - 1].value;
+        const curr1 = series1[i].value;
+        const prev2 = series2[i - 1].value;
+        const curr2 = series2[i].value;
+        
+        const wasBelowNowAbove = prev1 <= prev2 && curr1 > curr2;
+        const wasAboveNowBelow = prev1 >= prev2 && curr1 < curr2;
+        
+        if (wasBelowNowAbove || wasAboveNowBelow) {
+          const t1 = series1[i - 1].time;
+          const t2 = series1[i].time;
+          const ratio = Math.abs(prev2 - prev1) / (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1));
+          const intersectTime = t1 + (t2 - t1) * ratio;
+          const intersectPrice = prev1 + (curr1 - prev1) * ratio;
+          
+          crossings.push({
+            time: intersectTime,
+            price: intersectPrice,
+            type: wasBelowNowAbove ? `${name1} crosses above ${name2}` : `${name1} crosses below ${name2}`,
+            pair: `${name1}-${name2}`,
+            direction: wasBelowNowAbove ? 'up' : 'down'
+          });
+        }
+      }
+      
+      return crossings;
+    }
+
+    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+      layout: {
+        backgroundColor: '#071421',
+        textColor: '#dbeafe',
+      },
+      rightPriceScale: {
+        borderVisible: false,
+      },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: true,
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: 'rgba(255,255,255,0.03)' },
+      },
+    });
+
+    const spotLine = chart.addLineSeries({ 
+      priceLineVisible: false, 
+      lastValueVisible: true, 
+      lineWidth: 3,
+      color: '#22c55e'
+    });
+    
+    const ceLine = chart.addLineSeries({ 
+      priceLineVisible: false, 
+      lastValueVisible: true, 
+      lineWidth: 3,
+      color: '#3b82f6'
+    });
+    
+    const peLine = chart.addLineSeries({ 
+      priceLineVisible: false, 
+      lastValueVisible: true, 
+      lineWidth: 3,
+      color: '#ef4444'
+    });
+
+    let allCrossings = [];
+    let crossoverEnabled = false;
+    let isDarkTheme = true;
+    let highlightedCrossing = null;
+
+    function updateChartTheme() {
+      const bgColor = isDarkTheme ? '#071421' : '#ffffff';
+      const textColor = isDarkTheme ? '#dbeafe' : '#1e293b';
+      const gridColor = isDarkTheme ? 'rgba(255,255,255,0.03)' : '#f1f5f9';
+      
+      chart.applyOptions({
+        layout: {
+          backgroundColor: bgColor,
+          textColor: textColor,
+        },
+        grid: {
+          vertLines: { visible: false },
+          horzLines: { color: gridColor },
+        },
+      });
+    }
+
+    function highlightCrossingOnChart(crossing) {
+      // Create a special marker set with only the highlighted crossing showing text
+      const markers = allCrossings.map(c => {
+        let color = '#a78bfa';
+        if (c.pair === 'Spot-PE') color = '#fb923c';
+        if (c.pair === 'CE-PE') color = '#f472b6';
+        
+        // Only show text for the selected crossing
+        const isSelected = c.time === crossing.time && c.pair === crossing.pair;
+        
+        const marker = {
+          time: c.time,
+          position: 'inBar',
+          color: isSelected ? '#22c55e' : color,
+          shape: 'circle',
+          size: isSelected ? 2 : 1
+        };
+        
+        // Only add text to the selected marker
+        if (isSelected) {
+          marker.text = `${c.pair} - ₹${c.price.toFixed(2)}`;
+        }
+        
+        return marker;
+      });
+      
+      spotLine.setMarkers(markers);
+      
+      // Scroll the chart to show the crossing
+      const visibleRange = chart.timeScale().getVisibleRange();
+      if (!visibleRange || crossing.time < visibleRange.from || crossing.time > visibleRange.to) {
+        chart.timeScale().setVisibleRange({
+          from: crossing.time - 300, // 5 minutes before
+          to: crossing.time + 300    // 5 minutes after
+        });
+      }
+    }
+
+    function loadInitialData() {
+      const { spotSeries, ceSeries, peSeries } = transformToSeries(dummyApiResponse);
+      spotLine.setData(spotSeries);
+      ceLine.setData(ceSeries);
+      peLine.setData(peSeries);
+      
+      allCrossings = [];
+      allCrossings.push(...detectCrossovers(spotSeries, ceSeries, 'Spot', 'CE'));
+      allCrossings.push(...detectCrossovers(spotSeries, peSeries, 'Spot', 'PE'));
+      allCrossings.push(...detectCrossovers(ceSeries, peSeries, 'CE', 'PE'));
+      
+      allCrossings.sort((a, b) => a.time - b.time);
+      
+      if (crossoverEnabled) {
+        addCrossingMarkers();
+        updateCrossingsDisplay();
+      } else {
+        clearCrossingMarkers();
+        hideCrossingsDisplay();
+      }
+      
+      updateLegendLatest();
+      chart.timeScale().fitContent();
+    }
+
+    function addCrossingMarkers() {
+      const markers = allCrossings.map(crossing => {
+        let color = '#a78bfa';
+        if (crossing.pair === 'Spot-PE') color = '#fb923c';
+        if (crossing.pair === 'CE-PE') color = '#f472b6';
+        
+        return {
+          time: crossing.time,
+          position: 'inBar',
+          color: color,
+          shape: 'circle'
+          // No text by default
+        };
+      });
+      
+      if (markers.length > 0) {
+        spotLine.setMarkers(markers);
+      }
+    }
+
+    function clearCrossingMarkers() {
+      spotLine.setMarkers([]);
+    }
+
+    function hideCrossingsDisplay() {
+      const container = document.getElementById('crossings-container');
+      container.innerHTML = '<div class="no-crossings">Enable "Show Crossovers" toggle to detect and display price intersections.</div>';
+    }
+
+    function updateCrossingsDisplay() {
+      const container = document.getElementById('crossings-container');
+      
+      if (allCrossings.length === 0) {
+        container.innerHTML = '<div class="no-crossings">No crossovers detected yet. Add more data points to see intersections.</div>';
+        return;
+      }
+      
+      container.innerHTML = allCrossings.map((crossing, index) => {
+        const date = new Date(crossing.time * 1000);
+        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        
+        let colorClass = 'spot-ce';
+        if (crossing.pair === 'Spot-PE') colorClass = 'spot-pe';
+        if (crossing.pair === 'CE-PE') colorClass = 'ce-pe';
+        
+        return `
+          <div class="crossing-item" data-crossing-index="${index}">
+            <div class="crossing-header">
+              <span class="crossing-type ${colorClass}">${crossing.pair}</span>
+              <span class="crossing-time">${timeStr}</span>
+            </div>
+            <div class="crossing-price">₹${crossing.price.toFixed(2)}</div>
+            <div class="crossing-desc">${crossing.type}</div>
+          </div>
+        `;
+      }).join('');
+      
+      // Add click handlers to each crossing item
+      container.querySelectorAll('.crossing-item').forEach((item, index) => {
+        item.addEventListener('click', () => {
+          // Remove previous highlight
+          container.querySelectorAll('.crossing-item').forEach(el => el.classList.remove('highlighted'));
+          
+          // Add highlight to clicked item
+          item.classList.add('highlighted');
+          
+          // Highlight on chart
+          highlightCrossingOnChart(allCrossings[index]);
+          highlightedCrossing = allCrossings[index];
+        });
+      });
+    }
+
+    function updateLegendLatest() {
+      const spotData = spotLine.data ? spotLine.data() : [];
+      const ceData = ceLine.data ? ceLine.data() : [];
+      const peData = peLine.data ? peLine.data() : [];
+      
+      const spotLast = spotData.length > 0 ? spotData[spotData.length - 1].value : null;
+      const ceLast = ceData.length > 0 ? ceData[ceData.length - 1].value : null;
+      const peLast = peData.length > 0 ? peData[peData.length - 1].value : null;
+
+      document.getElementById('val-spot').textContent = spotLast !== null ? spotLast.toFixed(2) : '-';
+      document.getElementById('val-ce').textContent = ceLast !== null ? ceLast.toFixed(2) : '-';
+      document.getElementById('val-pe').textContent = peLast !== null ? peLast.toFixed(2) : '-';
+    }
+
+    function simulateAppend() {
+      const lastRow = dummyApiResponse[dummyApiResponse.length - 1];
+      const nextTime = new Date(new Date(lastRow.time).getTime() + 5 * 60 * 1000);
+      const nextIso = nextTime.toISOString().slice(0,19);
+
+      const randomDelta = (scale=1) => (Math.random() - 0.5) * scale;
+
+      const newRow = {
+        time: nextIso,
+        spot: +(lastRow.spot + randomDelta(8)).toFixed(2),
+        cePrice: +(Math.max(1, lastRow.cePrice + randomDelta(8))).toFixed(2),
+        pePrice: +(Math.max(1, lastRow.pePrice + randomDelta(8))).toFixed(2)
+      };
+
+      dummyApiResponse.push(newRow);
+      loadInitialData();
+    }
+
+    function resetData() {
+      while (dummyApiResponse.length > 9) dummyApiResponse.pop();
+      loadInitialData();
+    }
+
+    function toggleCrossover() {
+      crossoverEnabled = !crossoverEnabled;
+      const toggleSwitch = document.getElementById('toggle-switch');
+      
+      if (crossoverEnabled) {
+        toggleSwitch.classList.add('active');
+        addCrossingMarkers();
+        updateCrossingsDisplay();
+      } else {
+        toggleSwitch.classList.remove('active');
+        clearCrossingMarkers();
+        hideCrossingsDisplay();
+      }
+    }
+
+    function toggleTheme() {
+      isDarkTheme = !isDarkTheme;
+      const body = document.body;
+      const themeSwitch = document.getElementById('theme-switch');
+      const themeLabel = document.querySelector('#theme-toggle .toggle-label');
+      
+      if (isDarkTheme) {
+        body.classList.remove('light-theme');
+        body.classList.add('dark-theme');
+        themeSwitch.classList.add('active');
+        themeLabel.textContent = 'Dark Theme';
+      } else {
+        body.classList.remove('dark-theme');
+        body.classList.add('light-theme');
+        themeSwitch.classList.remove('active');
+        themeLabel.textContent = 'Light Theme';
+      }
+      
+      updateChartTheme();
+    }
+
+    function init() {
+      // Set initial theme
+      document.body.classList.add('dark-theme');
+      
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+      }
+      
+      const toggleContainer = document.getElementById('toggle-container');
+      if (toggleContainer) {
+        toggleContainer.addEventListener('click', toggleCrossover);
+      }
+
+      document.getElementById('btn-update').addEventListener('click', simulateAppend);
+      document.getElementById('btn-reset').addEventListener('click', resetData);
+
+      window.addEventListener('resize', () => {
+        chart.applyOptions({ width: document.getElementById('chart').clientWidth });
+      });
+
+      loadInitialData();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
