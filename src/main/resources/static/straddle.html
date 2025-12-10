@@ -341,7 +341,6 @@
             <span class="toggle-label">Show Crossovers</span>
             <div class="toggle-switch" id="toggle-switch"></div>
           </div>
-          <button id="btn-update">Add Data Point</button>
           <button id="btn-reset">Reset Chart</button>
         </div>
       </div>
@@ -368,23 +367,22 @@
     </div>
 
     <div class="card" id="crossings-card">
-      <div class="section-title">Detected Crossovers</div>
+      <div class="section-title">Detected CE-PE Crossovers</div>
       <div id="crossings-container" class="crossings-grid"></div>
     </div>
   </div>
 
   <script>
-    const dummyApiResponse = [
-      { time: "2025-12-09T09:15:00", spot: 125.20, cePrice: 123.45, pePrice: 130.90 },
-      { time: "2025-12-09T09:20:00", spot: 126.75, cePrice: 125.10, pePrice: 128.70 },
-      { time: "2025-12-09T09:25:00", spot: 128.40, cePrice: 127.00, pePrice: 126.20 },
-      { time: "2025-12-09T09:30:00", spot: 127.10, cePrice: 126.20, pePrice: 127.50 },
-      { time: "2025-12-09T09:35:00", spot: 125.55, cePrice: 124.10, pePrice: 129.30 },
-      { time: "2025-12-09T09:40:00", spot: 128.00, cePrice: 128.00, pePrice: 125.80 },
-      { time: "2025-12-09T09:45:00", spot: 129.40, cePrice: 129.60, pePrice: 124.10 },
-      { time: "2025-12-09T09:50:00", spot: 127.15, cePrice: 127.20, pePrice: 126.90 },
-      { time: "2025-12-09T09:55:00", spot: 131.00, cePrice: 131.00, pePrice: 122.30 }
-    ];
+    // API Configuration
+    const API_URL = 'http://localhost:8080/api/straddle/straddle/combined-chart';
+    const API_PARAMS = {
+      name: 'NIFTY',
+      expiry: '16DEC25',
+      ceStrike: '26000',
+      peStrike: '26000'
+    };
+    
+    let apiData = [];
 
     function toUnixSeconds(isoString) {
       return Math.floor(new Date(isoString).getTime() / 1000);
@@ -397,28 +395,106 @@
 
       for (const row of apiArray) {
         const t = toUnixSeconds(row.time);
-        if (!isFinite(t) || typeof row.spot !== 'number') continue;
+        // Skip invalid rows or rows with 0 spot value
+        if (!isFinite(t) || typeof row.spot !== 'number' || row.spot === 0) continue;
         spotSeries.push({ time: t, value: Number(row.spot) });
-        ceSeries.push({ time: t, value: Number(row.cePrice) });
-        peSeries.push({ time: t, value: Number(row.pePrice) });
+        ceSeries.push({ time: t, value: Number(row.ce) });
+        peSeries.push({ time: t, value: Number(row.pe) });
       }
 
       return { spotSeries, ceSeries, peSeries };
     }
 
+    // Fetch data from API
+    async function fetchDataFromAPI() {
+      try {
+        const params = new URLSearchParams(API_PARAMS);
+        const response = await fetch(`${API_URL}?${params}`);
+        
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        return result.data || [];
+      } catch (error) {
+        console.error('Error fetching data from API:', error);
+        // Return empty array on error
+        return [];
+      }
+    }
+
+    // Detect convergence/divergence between CE and PE
+    function detectConvergenceDivergence(ceSeries, peSeries) {
+      const events = [];
+      
+      if (ceSeries.length < 5 || peSeries.length < 5) return events;
+      
+      for (let i = 4; i < ceSeries.length && i < peSeries.length; i++) {
+        const currGap = Math.abs(peSeries[i].value - ceSeries[i].value);
+        const prevGap = Math.abs(peSeries[i-1].value - ceSeries[i-1].value);
+        const prev4Gap = Math.abs(peSeries[i-4].value - ceSeries[i-4].value);
+        
+        // Skip if any value is invalid
+        if (!isFinite(currGap) || !isFinite(prevGap) || !isFinite(prev4Gap)) continue;
+        
+        // Calculate trend over last 5 points
+        const gapChange = currGap - prev4Gap;
+        const percentChange = (gapChange / prev4Gap) * 100;
+        
+        // Significant convergence (gap narrowing by >5% over 5 points)
+        if (percentChange < -5) {
+          events.push({
+            time: ceSeries[i].time,
+            gap: currGap,
+            type: 'Convergence - CE & PE getting closer',
+            pair: 'CE-PE',
+            direction: 'converging',
+            percentChange: percentChange.toFixed(2),
+            ceValue: ceSeries[i].value,
+            peValue: peSeries[i].value
+          });
+        }
+        // Significant divergence (gap widening by >5% over 5 points)
+        else if (percentChange > 5) {
+          events.push({
+            time: ceSeries[i].time,
+            gap: currGap,
+            type: 'Divergence - CE & PE moving apart',
+            pair: 'CE-PE',
+            direction: 'diverging',
+            percentChange: percentChange.toFixed(2),
+            ceValue: ceSeries[i].value,
+            peValue: peSeries[i].value
+          });
+        }
+      }
+      
+      return events;
+    }
+
+    // Detect crossovers between two series (kept for potential future use)
     function detectCrossovers(series1, series2, name1, name2) {
       const crossings = [];
       
-      for (let i = 1; i < series1.length; i++) {
+      // Need at least 2 points to detect a crossing
+      if (series1.length < 2 || series2.length < 2) return crossings;
+      
+      for (let i = 1; i < series1.length && i < series2.length; i++) {
         const prev1 = series1[i - 1].value;
         const curr1 = series1[i].value;
         const prev2 = series2[i - 1].value;
         const curr2 = series2[i].value;
         
-        const wasBelowNowAbove = prev1 <= prev2 && curr1 > curr2;
-        const wasAboveNowBelow = prev1 >= prev2 && curr1 < curr2;
+        // Skip if any value is invalid
+        if (!isFinite(prev1) || !isFinite(curr1) || !isFinite(prev2) || !isFinite(curr2)) continue;
+        
+        // Check if lines crossed
+        const wasBelowNowAbove = prev1 < prev2 && curr1 > curr2;
+        const wasAboveNowBelow = prev1 > prev2 && curr1 < curr2;
         
         if (wasBelowNowAbove || wasAboveNowBelow) {
+          // Linear interpolation to find intersection point
           const t1 = series1[i - 1].time;
           const t2 = series1[i].time;
           const ratio = Math.abs(prev2 - prev1) / (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1));
@@ -428,9 +504,12 @@
           crossings.push({
             time: intersectTime,
             price: intersectPrice,
+            gap: 0,
             type: wasBelowNowAbove ? `${name1} crosses above ${name2}` : `${name1} crosses below ${name2}`,
             pair: `${name1}-${name2}`,
-            direction: wasBelowNowAbove ? 'up' : 'down'
+            direction: wasBelowNowAbove ? 'up' : 'down',
+            ceValue: name1 === 'CE' ? curr1 : curr2,
+            peValue: name1 === 'PE' ? curr1 : curr2
           });
         }
       }
@@ -445,10 +524,16 @@
       },
       rightPriceScale: {
         borderVisible: false,
+        visible: true,
+      },
+      leftPriceScale: {
+        borderVisible: false,
+        visible: true,
       },
       timeScale: {
         borderVisible: false,
         timeVisible: true,
+        secondsVisible: false,
       },
       crosshair: {
         mode: LightweightCharts.CrosshairMode.Normal,
@@ -459,31 +544,38 @@
       },
     });
 
+    // Spot line - on LEFT scale
     const spotLine = chart.addLineSeries({ 
       priceLineVisible: false, 
       lastValueVisible: true, 
       lineWidth: 3,
-      color: '#22c55e'
+      color: '#22c55e',
+      priceScaleId: 'left'
     });
     
+    // CE line - on RIGHT scale
     const ceLine = chart.addLineSeries({ 
       priceLineVisible: false, 
       lastValueVisible: true, 
       lineWidth: 3,
-      color: '#3b82f6'
+      color: '#3b82f6',
+      priceScaleId: 'right'
     });
     
+    // PE line - on RIGHT scale
     const peLine = chart.addLineSeries({ 
       priceLineVisible: false, 
       lastValueVisible: true, 
       lineWidth: 3,
-      color: '#ef4444'
+      color: '#ef4444',
+      priceScaleId: 'right'
     });
 
     let allCrossings = [];
     let crossoverEnabled = false;
     let isDarkTheme = true;
     let highlightedCrossing = null;
+    let autoRefreshInterval = null;
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
@@ -499,56 +591,74 @@
           vertLines: { visible: false },
           horzLines: { color: gridColor },
         },
+        leftPriceScale: {
+          borderVisible: false,
+          visible: true,
+        },
+        rightPriceScale: {
+          borderVisible: false,
+          visible: true,
+        },
       });
     }
 
     function highlightCrossingOnChart(crossing) {
-      // Create a special marker set with only the highlighted crossing showing text
       const markers = allCrossings.map(c => {
-        let color = '#a78bfa';
-        if (c.pair === 'Spot-PE') color = '#fb923c';
-        if (c.pair === 'CE-PE') color = '#f472b6';
-        
-        // Only show text for the selected crossing
-        const isSelected = c.time === crossing.time && c.pair === crossing.pair;
+        const isSelected = c.time === crossing.time && c.type === crossing.type;
         
         const marker = {
           time: c.time,
           position: 'inBar',
-          color: isSelected ? '#22c55e' : color,
+          color: isSelected ? '#22c55e' : '#f472b6', // green when selected, pink otherwise
           shape: 'circle',
           size: isSelected ? 2 : 1
         };
         
-        // Only add text to the selected marker
         if (isSelected) {
-          marker.text = `${c.pair} - ₹${c.price.toFixed(2)}`;
+          marker.text = `CE: ₹${c.ceValue.toFixed(2)} = PE: ₹${c.peValue.toFixed(2)}`;
         }
         
         return marker;
       });
       
-      spotLine.setMarkers(markers);
+      ceLine.setMarkers(markers);
       
-      // Scroll the chart to show the crossing
       const visibleRange = chart.timeScale().getVisibleRange();
       if (!visibleRange || crossing.time < visibleRange.from || crossing.time > visibleRange.to) {
         chart.timeScale().setVisibleRange({
-          from: crossing.time - 300, // 5 minutes before
-          to: crossing.time + 300    // 5 minutes after
+          from: crossing.time - 300,
+          to: crossing.time + 300
         });
       }
     }
 
-    function loadInitialData() {
-      const { spotSeries, ceSeries, peSeries } = transformToSeries(dummyApiResponse);
+    async function loadInitialData() {
+      // Fetch data from API
+      apiData = await fetchDataFromAPI();
+      
+      if (apiData.length === 0) {
+        console.warn('No data received from API');
+        document.getElementById('crossings-container').innerHTML = 
+          '<div class="no-crossings">Unable to load data from API. Please check the connection.</div>';
+        return;
+      }
+      
+      const { spotSeries, ceSeries, peSeries } = transformToSeries(apiData);
+      
+      // Validate that we have data
+      if (spotSeries.length === 0 && ceSeries.length === 0 && peSeries.length === 0) {
+        console.warn('No valid data points after transformation');
+        document.getElementById('crossings-container').innerHTML = 
+          '<div class="no-crossings">No valid data points available.</div>';
+        return;
+      }
+      
       spotLine.setData(spotSeries);
       ceLine.setData(ceSeries);
       peLine.setData(peSeries);
       
+      // Detect only CE-PE crossovers
       allCrossings = [];
-      allCrossings.push(...detectCrossovers(spotSeries, ceSeries, 'Spot', 'CE'));
-      allCrossings.push(...detectCrossovers(spotSeries, peSeries, 'Spot', 'PE'));
       allCrossings.push(...detectCrossovers(ceSeries, peSeries, 'CE', 'PE'));
       
       allCrossings.sort((a, b) => a.time - b.time);
@@ -567,71 +677,56 @@
 
     function addCrossingMarkers() {
       const markers = allCrossings.map(crossing => {
-        let color = '#a78bfa';
-        if (crossing.pair === 'Spot-PE') color = '#fb923c';
-        if (crossing.pair === 'CE-PE') color = '#f472b6';
-        
         return {
           time: crossing.time,
           position: 'inBar',
-          color: color,
+          color: '#f472b6', // pink for CE-PE crossover
           shape: 'circle'
-          // No text by default
         };
       });
       
       if (markers.length > 0) {
-        spotLine.setMarkers(markers);
+        ceLine.setMarkers(markers);
       }
     }
 
     function clearCrossingMarkers() {
-      spotLine.setMarkers([]);
+      ceLine.setMarkers([]);
     }
 
     function hideCrossingsDisplay() {
       const container = document.getElementById('crossings-container');
-      container.innerHTML = '<div class="no-crossings">Enable "Show Crossovers" toggle to detect and display price intersections.</div>';
+      container.innerHTML = '<div class="no-crossings">Enable "Show Crossovers" toggle to detect convergence, divergence, and crossover events.</div>';
     }
 
     function updateCrossingsDisplay() {
       const container = document.getElementById('crossings-container');
       
       if (allCrossings.length === 0) {
-        container.innerHTML = '<div class="no-crossings">No crossovers detected yet. Add more data points to see intersections.</div>';
+        container.innerHTML = '<div class="no-crossings">No CE-PE crossovers detected yet. Crossovers will appear when CE and PE prices intersect.</div>';
         return;
       }
       
       container.innerHTML = allCrossings.map((crossing, index) => {
         const date = new Date(crossing.time * 1000);
-        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        
-        let colorClass = 'spot-ce';
-        if (crossing.pair === 'Spot-PE') colorClass = 'spot-pe';
-        if (crossing.pair === 'CE-PE') colorClass = 'ce-pe';
+        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         return `
           <div class="crossing-item" data-crossing-index="${index}">
             <div class="crossing-header">
-              <span class="crossing-type ${colorClass}">${crossing.pair}</span>
+              <span class="crossing-type ce-pe">CE-PE Crossover</span>
               <span class="crossing-time">${timeStr}</span>
             </div>
-            <div class="crossing-price">₹${crossing.price.toFixed(2)}</div>
+            <div class="crossing-price">CE: ₹${crossing.ceValue.toFixed(2)} | PE: ₹${crossing.peValue.toFixed(2)}</div>
             <div class="crossing-desc">${crossing.type}</div>
           </div>
         `;
       }).join('');
       
-      // Add click handlers to each crossing item
       container.querySelectorAll('.crossing-item').forEach((item, index) => {
         item.addEventListener('click', () => {
-          // Remove previous highlight
           container.querySelectorAll('.crossing-item').forEach(el => el.classList.remove('highlighted'));
-          
-          // Add highlight to clicked item
           item.classList.add('highlighted');
-          
-          // Highlight on chart
           highlightCrossingOnChart(allCrossings[index]);
           highlightedCrossing = allCrossings[index];
         });
@@ -652,26 +747,7 @@
       document.getElementById('val-pe').textContent = peLast !== null ? peLast.toFixed(2) : '-';
     }
 
-    function simulateAppend() {
-      const lastRow = dummyApiResponse[dummyApiResponse.length - 1];
-      const nextTime = new Date(new Date(lastRow.time).getTime() + 5 * 60 * 1000);
-      const nextIso = nextTime.toISOString().slice(0,19);
-
-      const randomDelta = (scale=1) => (Math.random() - 0.5) * scale;
-
-      const newRow = {
-        time: nextIso,
-        spot: +(lastRow.spot + randomDelta(8)).toFixed(2),
-        cePrice: +(Math.max(1, lastRow.cePrice + randomDelta(8))).toFixed(2),
-        pePrice: +(Math.max(1, lastRow.pePrice + randomDelta(8))).toFixed(2)
-      };
-
-      dummyApiResponse.push(newRow);
-      loadInitialData();
-    }
-
     function resetData() {
-      while (dummyApiResponse.length > 9) dummyApiResponse.pop();
       loadInitialData();
     }
 
@@ -711,8 +787,22 @@
       updateChartTheme();
     }
 
+    // Auto-refresh data every 30 seconds
+    function startAutoRefresh() {
+      autoRefreshInterval = setInterval(async () => {
+        await loadInitialData();
+      }, 30000); // 30 seconds
+    }
+
+    function stopAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+      }
+    }
+
     function init() {
-      // Set initial themes
+      // Set initial theme
       document.body.classList.add('dark-theme');
       
       const themeToggle = document.getElementById('theme-toggle');
@@ -725,14 +815,17 @@
         toggleContainer.addEventListener('click', toggleCrossover);
       }
 
-      document.getElementById('btn-update').addEventListener('click', simulateAppend);
       document.getElementById('btn-reset').addEventListener('click', resetData);
 
       window.addEventListener('resize', () => {
         chart.applyOptions({ width: document.getElementById('chart').clientWidth });
       });
 
+      // Initial load
       loadInitialData();
+      
+      // Start auto-refresh
+      startAutoRefresh();
     }
 
     if (document.readyState === 'loading') {
@@ -740,6 +833,11 @@
     } else {
       init();
     }
+    
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+      stopAutoRefresh();
+    });
   </script>
 </body>
 </html>
