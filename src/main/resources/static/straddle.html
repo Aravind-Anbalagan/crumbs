@@ -322,6 +322,13 @@
             <span class="toggle-label">Dark Theme</span>
             <div class="toggle-switch active" id="theme-switch"></div>
           </div>
+
+          <!-- Auto update toggle -->
+          <div class="toggle-container" id="auto-update-toggle">
+            <span class="toggle-label" id="auto-update-label">Auto Update: ON</span>
+            <div class="toggle-switch active" id="auto-update-switch"></div>
+          </div>
+
           <div class="toggle-container" id="toggle-container">
             <span class="toggle-label">Show Crossovers</span>
             <div class="toggle-switch" id="toggle-switch"></div>
@@ -380,14 +387,11 @@
     let groupedData = [];
     let apiData = [];
 
-    // 5 hours 30 minutes offset in seconds for IST
     const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60; // 19800 [web:177]
 
     function toUnixSeconds(isoString) {
-      // isoString like "2025-12-10T11:51:13+05:30"
       const utcSeconds = Math.floor(new Date(isoString).getTime() / 1000);
-      // Shift so that chart (which assumes UTC) shows IST clock time
-      return utcSeconds + IST_OFFSET_SECONDS; 
+      return utcSeconds + IST_OFFSET_SECONDS;
     }
 
     function transformToSeries(apiArray) {
@@ -416,7 +420,8 @@
         const result = await response.json();
         return result.data || [];
       } catch (error) {
-        console.error('Error fetching data from API:', error);
+        console.error('Error fetching data from API:', error); // [web:224]
+        showError('Error fetching data from API. Please try again.');
         return [];
       }
     }
@@ -430,6 +435,11 @@
       } catch (err) {
         console.error('Error loading grouped data', err);
       }
+    }
+
+    function showError(message) {
+      const container = document.getElementById('crossings-container');
+      container.innerHTML = `<div class="no-crossings">${message}</div>`;
     }
 
     function populateNameSelect() {
@@ -607,6 +617,7 @@
     let isDarkTheme = true;
     let highlightedCrossing = null;
     let autoRefreshInterval = null;
+    let autoUpdateEnabled = true; // start ON
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
@@ -668,8 +679,7 @@
       
       if (apiData.length === 0) {
         console.warn('No data received from API');
-        document.getElementById('crossings-container').innerHTML = 
-          '<div class="no-crossings">Unable to load data from API. Please check the connection.</div>';
+        showError('No data available for the selected filters.');
         return;
       }
       
@@ -677,8 +687,7 @@
       
       if (spotSeries.length === 0 && ceSeries.length === 0 && peSeries.length === 0) {
         console.warn('No valid data points after transformation');
-        document.getElementById('crossings-container').innerHTML = 
-          '<div class="no-crossings">No valid data points available.</div>';
+        showError('No valid data points available.');
         return;
       }
       
@@ -733,7 +742,7 @@
       }
       
       container.innerHTML = allCrossings.map((crossing, index) => {
-        const date = new Date((crossing.time - IST_OFFSET_SECONDS) * 1000); // back to UTC for display
+        const date = new Date((crossing.time - IST_OFFSET_SECONDS) * 1000);
         const timeStr = date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         return `
@@ -840,15 +849,32 @@
     }
 
     function startAutoRefresh() {
+      if (autoRefreshInterval) return;
       autoRefreshInterval = setInterval(async () => {
         await loadInitialData();
-      }, 30000);
+      }, 30000); // 30s [web:207][web:222]
     }
 
     function stopAutoRefresh() {
       if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval);
+        clearInterval(autoRefreshInterval); // [web:226]
         autoRefreshInterval = null;
+      }
+    }
+
+    function toggleAutoUpdate() {
+      autoUpdateEnabled = !autoUpdateEnabled;
+      const label = document.getElementById('auto-update-label');
+      const sw = document.getElementById('auto-update-switch');
+
+      if (autoUpdateEnabled) {
+        label.textContent = 'Auto Update: ON';
+        sw.classList.add('active');
+        startAutoRefresh();
+      } else {
+        label.textContent = 'Auto Update: OFF';
+        sw.classList.remove('active');
+        stopAutoRefresh();
       }
     }
 
@@ -863,6 +889,11 @@
       const toggleContainer = document.getElementById('toggle-container');
       if (toggleContainer) {
         toggleContainer.addEventListener('click', toggleCrossover);
+      }
+
+      const autoUpdateToggle = document.getElementById('auto-update-toggle');
+      if (autoUpdateToggle) {
+        autoUpdateToggle.addEventListener('click', toggleAutoUpdate);
       }
 
       document.getElementById('btn-reset').addEventListener('click', resetData);

@@ -35,7 +35,8 @@ import com.crumbs.trade.repo.StrategyRepo;
 
 @Service
 public class StraddleIntradayService {
-	Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
+
+    Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
 
     @Autowired PredictionService predictionService;
     @Autowired ChartService chartService;
@@ -45,154 +46,134 @@ public class StraddleIntradayService {
     @Autowired StrategyRepo strategyRepo;
     @Autowired StraddleIntradayRepo straddleIntradayRepo;
 
-   
     /*
-     * Get Combine Straddle Premium
+     * Get Combined Straddle Premium
      */
-    public void getCombineStraddlePremium(String name)
-    {
-    	StraddlePremiumDto straddlePremiumDto = new StraddlePremiumDto();
-    	try
-    	{
-    		SmartConnect smartconnect = angelOne.signIn();
-    		//Get Index Details
-    		Strategy strategy = strategyRepo.findByName(name);
-    		BigDecimal spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
-    				strategy.getTradingsymbol(), strategy.getToken());
-    		//Find ATM Strike for given index
-        	BigDecimal atmStrike = getATMStrike(name,strategy);
-        	
-        	//Fetch All the Stike
-        	List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
-        	
-        	//Get Token Details
-        	strikeList = getAllTokenDetails(strikeList,strategy);
-        	
-        	//Get Price for all the strike
-        	strikeList=getPriceForAllTheStrikes(strikeList);
-        	
-        	//Save the data in DB
-        	savePriceDetails(strikeList,strategy,spotPrice);
-        	
-            //Get Market Data
-        	//getMarketData(straddlePremiumDto);
-    	}
-    	catch (Exception e) {
-    		logger.error(e.getMessage());
-			// TODO: handle exception
-		}
-    	
-    	
+    public void getCombineStraddlePremium(String name) {
+
+        try {
+            SmartConnect smartconnect = angelOne.signIn();  // login once
+
+            Strategy strategy = strategyRepo.findByName(name);
+
+            BigDecimal spotPrice = angelOneService.getcurrentPrice(
+                    smartconnect,
+                    strategy.getExchange(),
+                    strategy.getTradingsymbol(),
+                    strategy.getToken()
+            );
+
+            // ATM Strike
+            BigDecimal atmStrike = getATMStrike(name, strategy);
+
+            // Fetch strike list (5 ITM, ATM, 5 OTM)
+            List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
+
+            // Attach CE/PE tokens
+            strikeList = getAllTokenDetails(strikeList, strategy);
+
+            // Fetch prices
+            strikeList = getPriceForAllTheStrikes(strikeList, smartconnect);
+
+            // Save in DB
+            savePriceDetails(strikeList, strategy, spotPrice);
+
+        } catch (Exception e) {
+            logger.error("Error in getCombineStraddlePremium: {}", e.getMessage());
+        }
     }
-    
-	public int savePriceDetails(List<StraddlePremiumDto> strikeList, Strategy strategy, BigDecimal spotPrice) {
 
-		int count = 0;
+    /*
+     * Save Straddle prices
+     */
+    public int savePriceDetails(List<StraddlePremiumDto> strikeList, Strategy strategy, BigDecimal spotPrice) {
 
-		// Exact timestamp to the second
-		LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
-		
-		
+        int count = 0;
 
-		for (StraddlePremiumDto dto : strikeList) {
-
-			StraddleIntraday entity = new StraddleIntraday();
-
-			entity.setName(strategy.getName());
-			entity.setExpiry(strategy.getExpiry());
-			entity.setStrike(dto.getStrikePrice());
-
-			// precise, clean timestamp
-			entity.setTimestamp(timestamp);
-
-			// Prices
-			entity.setCePrice(dto.getCePrice());
-			entity.setPePrice(dto.getPePrice());
-
-			// Spot
-			entity.setSpot(spotPrice);
-
-			// IV
-			entity.setCeIV(dto.getCeIv());
-			entity.setPeIV(dto.getPeIv());
-			entity.setCombinedIV(dto.getCombinedIv());
-
-			// VWAP
-			entity.setCeVwap(dto.getCeVwap());
-			entity.setPeVwap(dto.getPeVwap());
-			// entity.setCombinedVwap(dto.getCombinedVwap());
-
-			// extrinsic / intrinsic
-			// entity.setIntrinsic(dto.getIntrinsic());
-			// entity.setExtrinsic(dto.getExtrinsic());
-
-			straddleIntradayRepo.save(entity);
-			count++;
-		}
-
-		return count;
-	}
-
-    
- // Get CE and PE prices for all strikes
-    public List<StraddlePremiumDto> getPriceForAllTheStrikes(List<StraddlePremiumDto> strikeList) {
-
-        SmartConnect smartconnect = angelOne.signIn();
+        LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
 
         for (StraddlePremiumDto dto : strikeList) {
 
-            // --- CE Price ---
+            StraddleIntraday entity = new StraddleIntraday();
+
+            entity.setName(strategy.getName());
+            entity.setExpiry(strategy.getExpiry());
+            entity.setStrike(dto.getStrikePrice());
+            entity.setTimestamp(timestamp);
+
+            // Safe price values
+            entity.setCePrice(dto.getCePrice() != null ? dto.getCePrice() : BigDecimal.ZERO);
+            entity.setPePrice(dto.getPePrice() != null ? dto.getPePrice() : BigDecimal.ZERO);
+
+            entity.setSpot(spotPrice);
+
+            entity.setCeIV(dto.getCeIv());
+            entity.setPeIV(dto.getPeIv());
+            entity.setCombinedIV(dto.getCombinedIv());
+
+            entity.setCeVwap(dto.getCeVwap());
+            entity.setPeVwap(dto.getPeVwap());
+
+            straddleIntradayRepo.save(entity);
+            count++;
+        }
+
+        return count;
+    }
+
+    /*
+     * Get CE/PE prices safely
+     */
+    public List<StraddlePremiumDto> getPriceForAllTheStrikes(List<StraddlePremiumDto> strikeList,
+                                                             SmartConnect smartconnect) {
+
+        for (StraddlePremiumDto dto : strikeList) {
+
+            // CE price
             Token ceToken = dto.getCeToken();
             if (ceToken != null) {
-                BigDecimal ceCurrentPrice = angelOneService.getcurrentPrice(
+                BigDecimal cePrice = angelOneService.getcurrentPrice(
                         smartconnect,
                         ceToken.getExch_seg(),
                         ceToken.getSymbol(),
                         ceToken.getToken()
                 );
-                dto.setCePrice(ceCurrentPrice);
+                dto.setCePrice(cePrice);
             }
 
-            // --- PE Price ---
+            // PE price
             Token peToken = dto.getPeToken();
             if (peToken != null) {
-                BigDecimal peCurrentPrice = angelOneService.getcurrentPrice(
+                BigDecimal pePrice = angelOneService.getcurrentPrice(
                         smartconnect,
                         peToken.getExch_seg(),
                         peToken.getSymbol(),
                         peToken.getToken()
                 );
-                dto.setPePrice(peCurrentPrice);
+                dto.setPePrice(pePrice);
             }
         }
-
-        return strikeList; // Same list updated
+        return strikeList;
     }
 
-    
-    //Fetch ITM and OTM
+    /*
+     * Build ITM-ATM-OTM strike list
+     */
     public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal spot, int interval) {
 
         List<StraddlePremiumDto> list = new ArrayList<>();
 
-        // ---- 1. Find ATM strike ----
-        BigDecimal atm = spot
-                .divide(BigDecimal.valueOf(interval), 0, RoundingMode.HALF_UP)
+        BigDecimal atm = spot.divide(BigDecimal.valueOf(interval), 0, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(interval));
 
-        // ---- 2. Add 5 ITM (lower strikes) ----
         for (int i = 5; i >= 1; i--) {
-            BigDecimal strike = atm.subtract(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)));
-            list.add(createDto(strike));
+            list.add(createDto(atm.subtract(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
         }
 
-        // ---- 3. Add ATM strike ----
         list.add(createDto(atm));
 
-        // ---- 4. Add 5 OTM (higher strikes) ----
         for (int i = 1; i <= 5; i++) {
-            BigDecimal strike = atm.add(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)));
-            list.add(createDto(strike));
+            list.add(createDto(atm.add(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
         }
 
         return list;
@@ -201,149 +182,109 @@ public class StraddleIntradayService {
     private StraddlePremiumDto createDto(BigDecimal strike) {
         StraddlePremiumDto dto = new StraddlePremiumDto();
         dto.setStrikePrice(strike);
-        //dto.setTimestamp(LocalDateTime.now());  // or intraday snapshot timestamp
         return dto;
     }
 
-    
     /*
-     * Get ATM Strike
+     * Calculate ATM Strike
      */
-	public BigDecimal getATMStrike(String name, Strategy strategy) {
-		SmartConnect smartconnect = angelOne.signIn();
-		int strikeInterval = 0;
-		String key = name.trim().toUpperCase();
+    public BigDecimal getATMStrike(String name, Strategy strategy) {
 
-		switch (key) {
-		case "NIFTY":
-			strikeInterval = 50;
-			break;
+        SmartConnect smartconnect = angelOne.signIn();
 
-		default:
-			logger.warn("Unknown symbol name: {}", name);
-			break;
-		}
+        int strikeInterval = 0;
+        switch (name.trim().toUpperCase()) {
+            case "NIFTY":
+                strikeInterval = 50;
+                break;
+            default:
+                logger.warn("Unknown symbol {}", name);
+        }
 
-		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
-				strategy.getTradingsymbol(), strategy.getToken());
+        BigDecimal currentPrice = angelOneService.getcurrentPrice(
+                smartconnect, strategy.getExchange(), strategy.getTradingsymbol(), strategy.getToken());
 
-		if (currentPrice == null) {
-			logger.warn("Unable to fetch current price for {}", strategy.getName());
-		}
+        if (currentPrice == null) return BigDecimal.ZERO;
 
-		int nearestStrike = chartService.findNearestMultiple(currentPrice.intValue(), strikeInterval);
+        int nearest = chartService.findNearestMultiple(currentPrice.intValue(), strikeInterval);
 
-		return new BigDecimal(nearestStrike);
-	}
-	
-	public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList, Strategy strategy) {
+        return new BigDecimal(nearest);
+    }
 
-		for (StraddlePremiumDto dto : strikeList) {
+    /*
+     * Fetch CE/PE token from DB
+     */
+    public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList, Strategy strategy) {
 
-			BigDecimal strike = dto.getStrikePrice(); // already present in your list
+        for (StraddlePremiumDto dto : strikeList) {
 
-            // CE Symbol
-			String ceSymbol = String.format("%s%s%dCE", strategy.getName(), strategy.getExpiry(), strike.intValue());
+            int strike = dto.getStrikePrice().intValue();
 
-			Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+            String ceSymbol = String.format("%s%s%dCE", strategy.getName(), strategy.getExpiry(), strike);
+            String peSymbol = String.format("%s%s%dPE", strategy.getName(), strategy.getExpiry(), strike);
 
-			if (ceIndex != null) {
-				Token ceToken = new Token();
-				ceToken.setToken(ceIndex.getToken());
-				ceToken.setSymbol(ceIndex.getSymbol());
-				ceToken.setExch_seg(ceIndex.getExchange());
-				dto.setCeToken(ceToken);
-			}
+            Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+            if (ceIndex != null) {
+                Token t = new Token();
+                t.setToken(ceIndex.getToken());
+                t.setSymbol(ceIndex.getSymbol());
+                t.setExch_seg(ceIndex.getExchange());
+                dto.setCeToken(t);
+            }
 
-            // PE Symbol
-			String peSymbol = String.format("%s%s%dPE", strategy.getName(), strategy.getExpiry(), strike.intValue());
+            Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+            if (peIndex != null) {
+                Token t = new Token();
+                t.setToken(peIndex.getToken());
+                t.setSymbol(peIndex.getSymbol());
+                t.setExch_seg(peIndex.getExchange());
+                dto.setPeToken(t);
+            }
+        }
 
-			Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+        return strikeList;
+    }
 
-			if (peIndex != null) {
-				Token peToken = new Token();
-				peToken.setToken(peIndex.getToken());
-				peToken.setSymbol(peIndex.getSymbol());
-				peToken.setExch_seg(peIndex.getExchange());
-				dto.setPeToken(peToken);
-			}
-		}
+    /*
+     * Combined Line Chart
+     */
+    public CombinedChartResponse getStraddleCombinedChart(
+            String name,
+            String expiry,
+            BigDecimal ceStrike,
+            BigDecimal peStrike) {
 
-		return strikeList; // same list updated
-	}
+        List<StraddleIntraday> ceRows = straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
+        List<StraddleIntraday> peRows = straddleIntradayRepo.getByStrike(name, expiry, peStrike);
+        List<StraddleIntraday> spotRows = straddleIntradayRepo.getSpotHistory(name, expiry);
 
+        Map<String, CombinedChartPoint> map = new TreeMap<>();
+        ZoneId ist = ZoneId.of("Asia/Kolkata");
 
-	public void getMarketData(StraddlePremiumDto straddlePremiumDto) throws InterruptedException, IOException, SmartAPIException
-	{
-		SmartConnect smartconnect = angelOne.signIn();
-		List<String> batch = Arrays.asList(straddlePremiumDto.getCeToken().getToken());
-    	JSONObject payload = predictionService.buildMarketDataPayload(batch,"NFO");
-    	JSONObject jsonObject=predictionService.callMarketDataWithRetry(smartconnect, payload);
-    	System.out.println(jsonObject);
-	}
-	
-	//Display Line chart
-	public CombinedChartResponse getStraddleCombinedChart(
-	        String name,
-	        String expiry,
-	        BigDecimal ceStrike,
-	        BigDecimal peStrike) {
+        // CE
+        for (StraddleIntraday r : ceRows) {
+            String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+            map.computeIfAbsent(key, t -> new CombinedChartPoint(t, null, null, null))
+               .setCe(r.getCePrice());
+        }
 
-	    List<StraddleIntraday> ceRows   = straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
-	    List<StraddleIntraday> peRows   = straddleIntradayRepo.getByStrike(name, expiry, peStrike);
-	    List<StraddleIntraday> spotRows = straddleIntradayRepo.getSpotHistory(name, expiry);
+        // PE
+        for (StraddleIntraday r : peRows) {
+            String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+            map.computeIfAbsent(key, t -> new CombinedChartPoint(t, null, null, null))
+               .setPe(r.getPePrice());
+        }
 
-	    ZoneId ist = ZoneId.of("Asia/Kolkata");
+        // Spot
+        for (StraddleIntraday r : spotRows) {
+            String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+            map.computeIfAbsent(key, t -> new CombinedChartPoint(t, null, null, null))
+               .setSpot(r.getSpot());
+        }
 
-	    // key = ISO string with +05:30 so JSON already has IST
-	    Map<String, CombinedChartPoint> map = new TreeMap<>();
+        CombinedChartResponse response = new CombinedChartResponse();
+        response.getData().addAll(map.values());
 
-	    // CE mapping
-	    for (StraddleIntraday r : ceRows) {
-	        String key = r.getTimestamp()
-	                      .atZone(ist)
-	                      .toOffsetDateTime()
-	                      .withNano(0)
-	                      .toString(); // 2025-12-10T11:52:13+05:30
-
-	        map.computeIfAbsent(key, t ->
-	                new CombinedChartPoint(t, null, null, null)
-	        ).setCe(r.getCePrice());
-	    }
-
-	    // PE mapping
-	    for (StraddleIntraday r : peRows) {
-	        String key = r.getTimestamp()
-	                      .atZone(ist)
-	                      .toOffsetDateTime()
-	                      .withNano(0)
-	                      .toString();
-
-	        map.computeIfAbsent(key, t ->
-	                new CombinedChartPoint(t, null, null, null)
-	        ).setPe(r.getPePrice());
-	    }
-
-	    // Spot mapping
-	    for (StraddleIntraday r : spotRows) {
-	        String key = r.getTimestamp()
-	                      .atZone(ist)
-	                      .toOffsetDateTime()
-	                      .withNano(0)
-	                      .toString();
-
-	        map.computeIfAbsent(key, t ->
-	                new CombinedChartPoint(t, null, null, null)
-	        ).setSpot(r.getSpot());
-	    }
-
-	    CombinedChartResponse response = new CombinedChartResponse();
-	    response.getData().addAll(map.values());
-
-	    return response;
-	}
-
-
-
-
+        return response;
+    }
 }

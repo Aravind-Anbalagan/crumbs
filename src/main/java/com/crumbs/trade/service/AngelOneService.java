@@ -42,6 +42,7 @@ import com.crumbs.trade.repo.ResultMcxRepo;
 import com.crumbs.trade.repo.ResultNiftyRepo;
 import com.crumbs.trade.repo.ResultVixRepo;
 import com.crumbs.trade.repo.SignalsRepo;
+import com.crumbs.trade.repo.StraddleIntradayRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -117,6 +118,9 @@ public class AngelOneService {
 	@Autowired
 	CPRRepo cprRepo;
 	
+	@Autowired
+	StraddleIntradayRepo straddleIntradayRepo;
+	
 	/*
 	 * Get current price
 	 */
@@ -160,6 +164,7 @@ public class AngelOneService {
 		priceRepo.deleteAll();
 		signalsRepo.deleteAll();
 		cprRepo.deleteAll();
+		straddleIntradayRepo.deleteAll();
 	}
 	/*
 	 * Get current price
