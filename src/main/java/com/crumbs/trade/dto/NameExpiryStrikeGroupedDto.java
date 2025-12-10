@@ -10,4 +10,5 @@ import java.util.Map;
 public class NameExpiryStrikeGroupedDto {
     private String name;
     private Map<String, List<BigDecimal>> expiries;  // expiry → list of strikes
+    private BigDecimal atmStrike;
 }

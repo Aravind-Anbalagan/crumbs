@@ -11,15 +11,20 @@ import java.util.TreeSet;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.angelbroking.smartapi.SmartConnect;
+import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.NameExpiryStrikeGroupedDto;
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StraddleIntradayRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 
 @Service
 public class StraddleGroupingService {
 
 	@Autowired StraddleIntradayRepo straddleIntradayRepo;
-
-    
+	@Autowired StrategyRepo strategyRepo;
+	@Autowired StraddleIntradayService straddleIntradayService;
+    @Autowired AngelOne angelOne;
 
 	public List<NameExpiryStrikeGroupedDto> getGrouped() {
 
@@ -44,11 +49,13 @@ public class StraddleGroupingService {
         for (var entry : grouped.entrySet()) {
             NameExpiryStrikeGroupedDto dto = new NameExpiryStrikeGroupedDto();
             dto.setName(entry.getKey());
-
+            //Get Index Details
+    		Strategy strategy = strategyRepo.findByName(dto.getName());
+    		BigDecimal atmStrike = straddleIntradayService.getATMStrike(dto.getName(),strategy);
             // convert Set<BigDecimal> → List<BigDecimal>
             Map<String, List<BigDecimal>> expToList = new LinkedHashMap<>();
             entry.getValue().forEach((exp, set) -> expToList.put(exp, new ArrayList<>(set)));
-
+            dto.setAtmStrike(atmStrike);
             dto.setExpiries(expToList);
             result.add(dto);
         }

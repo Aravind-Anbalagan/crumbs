@@ -348,7 +348,6 @@
           <div class="toggle-container" id="toggle-container">
             <span class="toggle-label">Show Crossovers</span>
             <div class="toggle-switch" id="toggle-switch"></div>
-          </div>
 
           <!-- Dropdowns -->
           <label for="name-select">Name</label>
@@ -491,6 +490,7 @@
       populateStrikeSelects();
     }
 
+    // UPDATED: use atmStrike as default strike when available
     function populateStrikeSelects() {
       const nameSel   = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
@@ -516,10 +516,20 @@
       });
 
       if (strikes.length > 0) {
-        ceSel.value = strikes[0];
-        peSel.value = strikes[0];
-        API_PARAMS.ceStrike = String(ceSel.value);
-        API_PARAMS.peStrike = String(peSel.value);
+        // default to atmStrike if present and found in the strikes array
+        let defaultStrike = strikes[0];
+        if (selected && selected.atmStrike != null) {
+          const atm = Number(selected.atmStrike);
+          const match = strikes.find(s => Number(s) === atm);
+          if (match !== undefined) {
+            defaultStrike = match;
+          }
+        }
+
+        ceSel.value = defaultStrike;
+        peSel.value = defaultStrike;
+        API_PARAMS.ceStrike = String(defaultStrike);
+        API_PARAMS.peStrike = String(defaultStrike);
       }
     }
 
