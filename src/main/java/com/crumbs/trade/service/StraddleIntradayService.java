@@ -9,10 +9,12 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +49,7 @@ public class StraddleIntradayService {
     @Autowired StraddleIntradayRepo straddleIntradayRepo;
 
     /*
-     * Get Combined Straddle Premium
+     * MAIN ENTRY – GET COMBINED STRADDLE PREMIUM
      */
     public void getCombineStraddlePremium(String name) {
 
@@ -63,28 +65,29 @@ public class StraddleIntradayService {
                     strategy.getToken()
             );
 
-            // ATM Strike
+            // ATM strike
             BigDecimal atmStrike = getATMStrike(name, strategy);
 
-            // Fetch strike list (5 ITM, ATM, 5 OTM)
+            // Strikes list
             List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
 
-            // Attach CE/PE tokens
+            // Add CE/PE tokens
             strikeList = getAllTokenDetails(strikeList, strategy);
 
-            // Fetch prices
-            strikeList = getPriceForAllTheStrikes(strikeList, smartconnect);
+            // IMPORTANT → ONE API CALL for all prices
+            strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect);
 
-            // Save in DB
+            // Save to DB
             savePriceDetails(strikeList, strategy, spotPrice);
 
         } catch (Exception e) {
-            logger.error("Error in getCombineStraddlePremium: {}", e.getMessage());
+            logger.error("Error in getCombineStraddlePremium: {}", e.getMessage(), e);
         }
     }
 
+
     /*
-     * Save Straddle prices
+     * SAVE PRICES TO DB
      */
     public int savePriceDetails(List<StraddlePremiumDto> strikeList, Strategy strategy, BigDecimal spotPrice) {
 
@@ -101,7 +104,6 @@ public class StraddleIntradayService {
             entity.setStrike(dto.getStrikePrice());
             entity.setTimestamp(timestamp);
 
-            // Safe price values
             entity.setCePrice(dto.getCePrice() != null ? dto.getCePrice() : BigDecimal.ZERO);
             entity.setPePrice(dto.getPePrice() != null ? dto.getPePrice() : BigDecimal.ZERO);
 
@@ -121,43 +123,80 @@ public class StraddleIntradayService {
         return count;
     }
 
+
     /*
-     * Get CE/PE prices safely
+     * ⭐ ⭐ ONE API CALL FOR ALL STRIKES ⭐ ⭐
      */
-    public List<StraddlePremiumDto> getPriceForAllTheStrikes(List<StraddlePremiumDto> strikeList,
-                                                             SmartConnect smartconnect) {
+    public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(
+            List<StraddlePremiumDto> strikeList,
+            SmartConnect smartconnect) {
 
-        for (StraddlePremiumDto dto : strikeList) {
-
-            // CE price
-            Token ceToken = dto.getCeToken();
-            if (ceToken != null) {
-                BigDecimal cePrice = angelOneService.getcurrentPrice(
-                        smartconnect,
-                        ceToken.getExch_seg(),
-                        ceToken.getSymbol(),
-                        ceToken.getToken()
-                );
-                dto.setCePrice(cePrice);
+        try {
+            // 1️⃣ Collect all tokens
+            List<String> tokens = new ArrayList<>();
+            for (StraddlePremiumDto dto : strikeList) {
+                if (dto.getCeToken() != null)
+                    tokens.add(dto.getCeToken().getToken());
+                if (dto.getPeToken() != null)
+                    tokens.add(dto.getPeToken().getToken());
             }
 
-            // PE price
-            Token peToken = dto.getPeToken();
-            if (peToken != null) {
-                BigDecimal pePrice = angelOneService.getcurrentPrice(
-                        smartconnect,
-                        peToken.getExch_seg(),
-                        peToken.getSymbol(),
-                        peToken.getToken()
-                );
-                dto.setPePrice(pePrice);
+            if (tokens.isEmpty()) return strikeList;
+
+            // 2️⃣ Build payload
+            JSONObject payload = new JSONObject();
+            payload.put("mode", "LTP");
+
+            JSONObject map = new JSONObject();
+            map.put("NFO", tokens);
+
+            payload.put("exchangeTokens", map);
+
+            // 3️⃣ Call AngelOne
+            JSONObject response = predictionService.callMarketDataWithRetry(
+                    smartconnect, payload);
+
+            JSONArray fetchedArray = response.getJSONArray("fetched");
+
+            // 4️⃣ Build token → price map
+            Map<String, BigDecimal> priceMap = new HashMap<>();
+
+            for (int i = 0; i < fetchedArray.length(); i++) {
+                JSONObject item = fetchedArray.getJSONObject(i);
+
+                String token = item.getString("symbolToken");
+                BigDecimal ltp = item.getBigDecimal("ltp");
+
+                priceMap.put(token, ltp);
             }
+
+            // 5️⃣ Assign CE & PE prices to DTOs
+            for (StraddlePremiumDto dto : strikeList) {
+
+                if (dto.getCeToken() != null) {
+                    String t = dto.getCeToken().getToken();
+                    if (priceMap.containsKey(t))
+                        dto.setCePrice(priceMap.get(t));
+                }
+
+                if (dto.getPeToken() != null) {
+                    String t = dto.getPeToken().getToken();
+                    if (priceMap.containsKey(t))
+                        dto.setPePrice(priceMap.get(t));
+                }
+            }
+
+        } catch (Exception | SmartAPIException e) {
+            logger.error("Batch LTP error: {}", e.getMessage(), e);
         }
+
         return strikeList;
     }
 
+
+
     /*
-     * Build ITM-ATM-OTM strike list
+     * BUILD ITM/ATM/OTM STRIKES
      */
     public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal spot, int interval) {
 
@@ -185,24 +224,22 @@ public class StraddleIntradayService {
         return dto;
     }
 
+
     /*
-     * Calculate ATM Strike
+     * ATM Calculation
      */
     public BigDecimal getATMStrike(String name, Strategy strategy) {
 
         SmartConnect smartconnect = angelOne.signIn();
 
-        int strikeInterval = 0;
-        switch (name.trim().toUpperCase()) {
-            case "NIFTY":
-                strikeInterval = 50;
-                break;
-            default:
-                logger.warn("Unknown symbol {}", name);
-        }
+        int strikeInterval = 50;
 
         BigDecimal currentPrice = angelOneService.getcurrentPrice(
-                smartconnect, strategy.getExchange(), strategy.getTradingsymbol(), strategy.getToken());
+                smartconnect,
+                strategy.getExchange(),
+                strategy.getTradingsymbol(),
+                strategy.getToken()
+        );
 
         if (currentPrice == null) return BigDecimal.ZERO;
 
@@ -211,17 +248,22 @@ public class StraddleIntradayService {
         return new BigDecimal(nearest);
     }
 
+
     /*
-     * Fetch CE/PE token from DB
+     * Get CE/PE token details from DB
      */
-    public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList, Strategy strategy) {
+    public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList,
+                                                       Strategy strategy) {
 
         for (StraddlePremiumDto dto : strikeList) {
 
             int strike = dto.getStrikePrice().intValue();
 
-            String ceSymbol = String.format("%s%s%dCE", strategy.getName(), strategy.getExpiry(), strike);
-            String peSymbol = String.format("%s%s%dPE", strategy.getName(), strategy.getExpiry(), strike);
+            String ceSymbol = String.format("%s%s%dCE", strategy.getName(),
+                    strategy.getExpiry(), strike);
+
+            String peSymbol = String.format("%s%s%dPE", strategy.getName(),
+                    strategy.getExpiry(), strike);
 
             Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
             if (ceIndex != null) {
@@ -244,7 +286,6 @@ public class StraddleIntradayService {
 
         return strikeList;
     }
-
     /*
      * Combined Line Chart
      */
