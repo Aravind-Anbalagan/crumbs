@@ -8,7 +8,6 @@
   <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 
   <style>
-    /* styles unchanged from your last version */
     * { box-sizing: border-box; }
     :root{
       --bg:#0f1720;
@@ -78,15 +77,14 @@
       box-shadow:0 8px 30px rgba(0,0,0,0.08);
     }
     .header{
-  display:flex;
-  align-items:center;
-  justify-content:flex-start;
-  gap:16px;
-  margin-bottom:8px; /* was 16px */
-  flex-wrap:wrap;
-  max-width:100%;
-}
-
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      gap:16px;
+      margin-bottom:8px;
+      flex-wrap:wrap;
+      max-width:100%;
+    }
     .title{font-size:18px;font-weight:600;color:var(--text);word-break:break-word;}
     .subtitle{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-word;}
     #chart {
@@ -216,8 +214,6 @@
       transform:translateX(24px);
       background:#22c55e;
     }
-    
-    /* NEW: Checkout dropdown styles */
     .checkout-dropdown {
       position: relative;
       display: inline-block;
@@ -264,11 +260,10 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 0;
+      padding: 6px 8px;
       font-size: 13px;
       cursor: pointer;
       border-radius: 4px;
-      padding: 6px 8px;
       transition: background 0.2s;
     }
     .checkout-item:hover {
@@ -290,7 +285,6 @@
     body.light-theme .checkout-item:hover {
       background: rgba(0,0,0,0.05);
     }
-    
     .crossings-section{margin-top:16px;}
     .section-title{
       font-size:15px;
@@ -396,7 +390,6 @@
             <div class="toggle-switch active" id="theme-switch"></div>
           </div>
 
-          <!-- Auto update toggle -->
           <div class="toggle-container" id="auto-update-toggle">
             <span class="toggle-label" id="auto-update-label">Auto Update: ON</span>
             <div class="toggle-switch active" id="auto-update-switch"></div>
@@ -407,7 +400,6 @@
             <div class="toggle-switch" id="toggle-switch"></div>
           </div>
 
-          <!-- NEW: Checkout Dropdown -->
           <div class="checkout-dropdown">
             <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
             <div class="checkout-menu" id="checkout-menu">
@@ -484,7 +476,7 @@
     let apiData = [];
     let currentSeries = { spotSeries: [], ceSeries: [], peSeries: [] };
 
-    const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60; // 19800
+    const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60;
 
     function toUnixSeconds(isoString) {
       const utcSeconds = Math.floor(new Date(isoString).getTime() / 1000);
@@ -716,7 +708,6 @@
     let autoRefreshInterval = null;
     let autoUpdateEnabled = true;
     
-    // NEW: Line visibility state
     let lineVisibility = {
       spot: true,
       ce: true,
@@ -753,7 +744,6 @@
       ceLine.applyOptions({ visible: lineVisibility.ce });
       peLine.applyOptions({ visible: lineVisibility.pe });
       
-      // Update price scale visibility
       chart.applyOptions({
         leftPriceScale: { visible: lineVisibility.spot },
         rightPriceScale: { visible: lineVisibility.ce || lineVisibility.pe }
@@ -809,7 +799,6 @@
         return;
       }
       
-      // Update series data based on visibility
       spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
       ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
       peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
@@ -905,6 +894,36 @@
       document.getElementById('val-pe').textContent = peLast !== null ? peLast.toFixed(2) : '-';
     }
 
+    // NEW: update legend based on crosshair hover
+    function updateLegendAtCrosshair(param) {
+      const valid =
+        param &&
+        param.time &&
+        param.point &&
+        param.point.x >= 0 &&
+        param.point.y >= 0;
+
+      if (!valid) {
+        updateLegendLatest();
+        return;
+      }
+
+      const spotData = param.seriesData.get(spotLine);
+      const ceData   = param.seriesData.get(ceLine);
+      const peData   = param.seriesData.get(peLine);
+
+      const spotValue = (spotData && spotData.value !== undefined) ? spotData.value : null;
+      const ceValue   = (ceData   && ceData.value   !== undefined) ? ceData.value   : null;
+      const peValue   = (peData   && peData.value   !== undefined) ? peData.value   : null;
+
+      document.getElementById('val-spot').textContent =
+        spotValue !== null ? spotValue.toFixed(2) : '-';
+      document.getElementById('val-ce').textContent =
+        ceValue   !== null ? ceValue.toFixed(2)   : '-';
+      document.getElementById('val-pe').textContent =
+        peValue   !== null ? peValue.toFixed(2)   : '-';
+    }
+
     function resetData() {
       loadInitialData();
     }
@@ -945,7 +964,6 @@
       updateChartTheme();
     }
 
-    // NEW: Checkout dropdown functionality
     function initCheckoutDropdown() {
       const checkoutBtn = document.getElementById('checkout-btn');
       const checkoutMenu = document.getElementById('checkout-menu');
@@ -1049,7 +1067,7 @@
       if (autoRefreshInterval) return;
       autoRefreshInterval = setInterval(async () => {
         await loadInitialData();
-      }, 30000); // 30s
+      }, 30000);
     }
 
     function stopAutoRefresh() {
@@ -1095,7 +1113,6 @@
 
       document.getElementById('btn-reset').addEventListener('click', resetData);
       
-      // NEW: Initialize checkout dropdown
       initCheckoutDropdown();
 
       window.addEventListener('resize', () => {
@@ -1107,6 +1124,11 @@
       await loadInitialData();
       startAutoRefresh();
     }
+
+    // subscribe to crosshair move to drive legend-on-hover
+    chart.subscribeCrosshairMove(param => {
+      updateLegendAtCrosshair(param);
+    });
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
