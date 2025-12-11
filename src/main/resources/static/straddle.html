@@ -78,14 +78,15 @@
       box-shadow:0 8px 30px rgba(0,0,0,0.08);
     }
     .header{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:16px;
-      margin-bottom:16px;
-      flex-wrap:wrap;
-      max-width:100%;
-    }
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:16px;
+  margin-bottom:8px; /* was 16px */
+  flex-wrap:wrap;
+  max-width:100%;
+}
+
     .title{font-size:18px;font-weight:600;color:var(--text);word-break:break-word;}
     .subtitle{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-word;}
     #chart {
@@ -215,6 +216,81 @@
       transform:translateX(24px);
       background:#22c55e;
     }
+    
+    /* NEW: Checkout dropdown styles */
+    .checkout-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .checkout-btn {
+      background: rgba(59,130,246,0.1);
+      border: 1px solid rgba(59,130,246,0.3);
+      color: #60a5fa;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+      white-space: nowrap;
+      margin-left: 8px;
+    }
+    .checkout-btn:hover {
+      background: rgba(59,130,246,0.2);
+      border-color: rgba(59,130,246,0.5);
+    }
+    .checkout-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      min-width: 220px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px);
+      transition: all 0.2s ease;
+    }
+    .checkout-menu.show {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .checkout-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 6px 8px;
+      transition: background 0.2s;
+    }
+    .checkout-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .checkout-item .swatch {
+      width: 10px;
+      height: 5px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .checkout-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #22c55e;
+      margin: 0;
+      flex-shrink: 0;
+    }
+    body.light-theme .checkout-item:hover {
+      background: rgba(0,0,0,0.05);
+    }
+    
     .crossings-section{margin-top:16px;}
     .section-title{
       font-size:15px;
@@ -306,6 +382,7 @@
       .controls{width:100%;gap:8px;}
       .toggle-container{padding:8px 12px;font-size:13px;}
       button{padding:8px 12px;font-size:13px;}
+      .checkout-menu {min-width: 200px; right: -20px;}
     }
   </style>
 </head>
@@ -313,10 +390,6 @@
   <div class="container">
     <div class="card">
       <div class="header">
-        <div>
-          <div class="title">Nifty — Spot · CE · PE with Crossover Detection</div>
-          <div class="subtitle">Visualize price intersections in real-time</div>
-        </div>
         <div class="controls">
           <div class="toggle-container" id="theme-toggle">
             <span class="toggle-label">Dark Theme</span>
@@ -332,6 +405,29 @@
           <div class="toggle-container" id="toggle-container">
             <span class="toggle-label">Show Crossovers</span>
             <div class="toggle-switch" id="toggle-switch"></div>
+          </div>
+
+          <!-- NEW: Checkout Dropdown -->
+          <div class="checkout-dropdown">
+            <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
+            <div class="checkout-menu" id="checkout-menu">
+              <div class="checkout-item">
+                <input type="checkbox" id="spot-check" checked>
+                <span class="swatch" style="background:var(--spot)"></span>
+                <span>Spot</span>
+              </div>
+              <div class="checkout-item">
+                <input type="checkbox" id="ce-check" checked>
+                <span class="swatch" style="background:var(--ce)"></span>
+                <span>CE</span>
+              </div>
+              <div class="checkout-item">
+                <input type="checkbox" id="pe-check" checked>
+                <span class="swatch" style="background:var(--pe)"></span>
+                <span>PE</span>
+              </div>
+            </div>
+          </div>
 
           <label for="name-select">Name</label>
           <select id="name-select"></select>
@@ -386,8 +482,9 @@
     
     let groupedData = [];
     let apiData = [];
+    let currentSeries = { spotSeries: [], ceSeries: [], peSeries: [] };
 
-    const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60; // 19800 [web:177]
+    const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60; // 19800
 
     function toUnixSeconds(isoString) {
       const utcSeconds = Math.floor(new Date(isoString).getTime() / 1000);
@@ -420,7 +517,7 @@
         const result = await response.json();
         return result.data || [];
       } catch (error) {
-        console.error('Error fetching data from API:', error); // [web:224]
+        console.error('Error fetching data from API:', error);
         showError('Error fetching data from API. Please try again.');
         return [];
       }
@@ -617,7 +714,14 @@
     let isDarkTheme = true;
     let highlightedCrossing = null;
     let autoRefreshInterval = null;
-    let autoUpdateEnabled = true; // start ON
+    let autoUpdateEnabled = true;
+    
+    // NEW: Line visibility state
+    let lineVisibility = {
+      spot: true,
+      ce: true,
+      pe: true
+    };
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
@@ -635,12 +739,24 @@
         },
         leftPriceScale: {
           borderVisible: false,
-          visible: true,
+          visible: lineVisibility.spot,
         },
         rightPriceScale: {
           borderVisible: false,
-          visible: true,
+          visible: lineVisibility.ce || lineVisibility.pe,
         },
+      });
+    }
+
+    function updateLineVisibility() {
+      spotLine.applyOptions({ visible: lineVisibility.spot });
+      ceLine.applyOptions({ visible: lineVisibility.ce });
+      peLine.applyOptions({ visible: lineVisibility.pe });
+      
+      // Update price scale visibility
+      chart.applyOptions({
+        leftPriceScale: { visible: lineVisibility.spot },
+        rightPriceScale: { visible: lineVisibility.ce || lineVisibility.pe }
       });
     }
 
@@ -663,7 +779,9 @@
         return marker;
       });
       
-      ceLine.setMarkers(markers);
+      if (lineVisibility.ce) {
+        ceLine.setMarkers(markers);
+      }
       
       const visibleRange = chart.timeScale().getVisibleRange();
       if (!visibleRange || crossing.time < visibleRange.from || crossing.time > visibleRange.to) {
@@ -683,21 +801,24 @@
         return;
       }
       
-      const { spotSeries, ceSeries, peSeries } = transformToSeries(apiData);
+      currentSeries = transformToSeries(apiData);
       
-      if (spotSeries.length === 0 && ceSeries.length === 0 && peSeries.length === 0) {
+      if (currentSeries.spotSeries.length === 0 && currentSeries.ceSeries.length === 0 && currentSeries.peSeries.length === 0) {
         console.warn('No valid data points after transformation');
         showError('No valid data points available.');
         return;
       }
       
-      spotLine.setData(spotSeries);
-      ceLine.setData(ceSeries);
-      peLine.setData(peSeries);
+      // Update series data based on visibility
+      spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
+      ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
+      peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
       
       allCrossings = [];
-      allCrossings.push(...detectCrossovers(ceSeries, peSeries, 'CE', 'PE'));
-      allCrossings.sort((a, b) => a.time - b.time);
+      if (lineVisibility.ce && lineVisibility.pe) {
+        allCrossings.push(...detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE'));
+        allCrossings.sort((a, b) => a.time - b.time);
+      }
       
       if (crossoverEnabled) {
         addCrossingMarkers();
@@ -708,10 +829,13 @@
       }
       
       updateLegendLatest();
+      updateLineVisibility();
       chart.timeScale().fitContent();
     }
 
     function addCrossingMarkers() {
+      if (!lineVisibility.ce) return;
+      
       const markers = allCrossings.map(crossing => ({
         time: crossing.time,
         position: 'inBar',
@@ -768,9 +892,9 @@
     }
 
     function updateLegendLatest() {
-      const spotData = spotLine.data ? spotLine.data() : [];
-      const ceData = ceLine.data ? ceLine.data() : [];
-      const peData = peLine.data ? peLine.data() : [];
+      const spotData = lineVisibility.spot ? currentSeries.spotSeries : [];
+      const ceData = lineVisibility.ce ? currentSeries.ceSeries : [];
+      const peData = lineVisibility.pe ? currentSeries.peSeries : [];
       
       const spotLast = spotData.length > 0 ? spotData[spotData.length - 1].value : null;
       const ceLast = ceData.length > 0 ? ceData[ceData.length - 1].value : null;
@@ -821,6 +945,79 @@
       updateChartTheme();
     }
 
+    // NEW: Checkout dropdown functionality
+    function initCheckoutDropdown() {
+      const checkoutBtn = document.getElementById('checkout-btn');
+      const checkoutMenu = document.getElementById('checkout-menu');
+      
+      checkoutBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = checkoutMenu.classList.contains('show');
+        closeAllDropdowns();
+        if (!isVisible) {
+          checkoutMenu.classList.add('show');
+        }
+      });
+      
+      document.getElementById('spot-check').addEventListener('change', (e) => {
+        lineVisibility.spot = e.target.checked;
+        updateLineVisibility();
+        if (currentSeries.spotSeries.length > 0) {
+          spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
+        }
+        updateLegendLatest();
+        closeAllDropdowns();
+      });
+      
+      document.getElementById('ce-check').addEventListener('change', (e) => {
+        lineVisibility.ce = e.target.checked;
+        updateLineVisibility();
+        if (currentSeries.ceSeries.length > 0) {
+          ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
+        }
+        if (lineVisibility.ce && lineVisibility.pe && crossoverEnabled) {
+          allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
+          allCrossings.sort((a, b) => a.time - b.time);
+          addCrossingMarkers();
+          updateCrossingsDisplay();
+        } else if (crossoverEnabled) {
+          clearCrossingMarkers();
+          allCrossings = [];
+          updateCrossingsDisplay();
+        }
+        updateLegendLatest();
+        closeAllDropdowns();
+      });
+      
+      document.getElementById('pe-check').addEventListener('change', (e) => {
+        lineVisibility.pe = e.target.checked;
+        updateLineVisibility();
+        if (currentSeries.peSeries.length > 0) {
+          peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
+        }
+        if (lineVisibility.ce && lineVisibility.pe && crossoverEnabled) {
+          allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
+          allCrossings.sort((a, b) => a.time - b.time);
+          addCrossingMarkers();
+          updateCrossingsDisplay();
+        } else if (crossoverEnabled) {
+          clearCrossingMarkers();
+          allCrossings = [];
+          updateCrossingsDisplay();
+        }
+        updateLegendLatest();
+        closeAllDropdowns();
+      });
+      
+      document.addEventListener('click', closeAllDropdowns);
+    }
+    
+    function closeAllDropdowns() {
+      document.querySelectorAll('.checkout-menu').forEach(menu => {
+        menu.classList.remove('show');
+      });
+    }
+
     function initDropdowns() {
       const nameSel   = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
@@ -852,12 +1049,12 @@
       if (autoRefreshInterval) return;
       autoRefreshInterval = setInterval(async () => {
         await loadInitialData();
-      }, 30000); // 30s [web:207][web:222]
+      }, 30000); // 30s
     }
 
     function stopAutoRefresh() {
       if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval); // [web:226]
+        clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
       }
     }
@@ -897,6 +1094,9 @@
       }
 
       document.getElementById('btn-reset').addEventListener('click', resetData);
+      
+      // NEW: Initialize checkout dropdown
+      initCheckoutDropdown();
 
       window.addEventListener('resize', () => {
         chart.applyOptions({ width: document.getElementById('chart').clientWidth });
