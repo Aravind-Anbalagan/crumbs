@@ -103,6 +103,18 @@
       align-items: center; 
       gap: 6px;
     }
+.card.chart-fullscreen #chart {
+  height: calc(100vh - 80px) !important; 
+}
+select {
+  position: relative !important;
+  z-index: 300000 !important;
+}
+
+select option {
+  background-color: #0b1320 !important;
+  color: #e6eef8 !important;
+}
 
     @media (max-width:900px){
       .header{ gap:8px; font-size: 12px; }
@@ -198,7 +210,7 @@
 
     let allCrossings = [];
     let crossoverEnabled = false;
-    let isDarkTheme = true;
+    let isDarkTheme = false;
     let autoRefreshInterval = null;
     let autoUpdateEnabled = true;
     let lineVisibility = {
@@ -646,15 +658,21 @@
       });
 
       document.getElementById('btn-max-chart').addEventListener('click', () => {
-        const card = document.querySelector('.card');
-        card.classList.toggle('chart-fullscreen');
-        setTimeout(() => {
-          chart.applyOptions({ 
-            width: card.clientWidth, 
-            height: card.clientHeight - 100 
-          });
-        }, 200);
-      });
+  const card = document.querySelector('.card');
+  card.classList.toggle('chart-fullscreen');
+
+  setTimeout(() => {
+    const chartDiv = document.getElementById('chart');
+
+    chart.applyOptions({
+      width: chartDiv.clientWidth,
+      height: chartDiv.clientHeight
+    });
+
+    chart.timeScale().fitContent();
+  }, 200);
+});
+
 
       document.addEventListener('click', closeAllDropdowns);
     }
@@ -760,6 +778,20 @@
     }
 
     chart.subscribeCrosshairMove(param => updateLegendAtCrosshair(param));
+
+// 1️⃣ Force default Light Theme before init()
+(function setDefaultLightTheme() {
+  isDarkTheme = false;
+
+  document.body.style.background =
+    "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
+
+  const sw = document.getElementById("theme-switch");
+  const label = document.querySelector("#theme-toggle .toggle-label");
+
+  if (sw) sw.classList.remove("active");
+  if (label) label.textContent = "Light";
+})();
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
