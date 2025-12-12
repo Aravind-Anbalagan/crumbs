@@ -16,6 +16,32 @@
     .card{ width:100%; background:#0b1320; border-radius:12px; padding:16px; border:1px solid rgba(255,255,255,0.03); margin-bottom:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6); }
     .header{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
     #chart{ height:520px; width:100%; }
+ .chart-fullscreen {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  z-index: 100000;
+  border-radius: 0 !important;
+}
+#btn-max-chart {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  background: rgba(0,0,0,0.4);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: 99999;
+}
+
+
     .legend{ display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:center; }
     .legend .item{ display:flex; align-items:center; gap:8px; font-size:13px; color:#94a3b8; }
     .swatch{ width:12px; height:6px; border-radius:3px; display:inline-block; }
@@ -48,6 +74,8 @@
 
     <!-- MAIN CARD -->
     <div class="card">
+    <button id="btn-max-chart">🗖</button>
+
       <div class="header">
         <div class="toggle-container" id="theme-toggle">
           <span class="toggle-label">Dark Theme</span>
@@ -86,6 +114,7 @@
         <label style="color:#94a3b8">PE</label><select id="pe-strike-select"></select>
 
         <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset Chart</button>
+        
       </div>
 
       <div id="chart"></div>
@@ -703,6 +732,19 @@
         drawOpenPriceLines();
         updateOpenLegend();
       });
+      
+      const chartCard = document.querySelector(".card");
+
+document.getElementById("btn-max-chart").addEventListener("click", () => {
+  chartCard.classList.toggle("chart-fullscreen");
+
+  // Recalculate the chart layout
+  setTimeout(() => {
+    chart.applyOptions({ width: chartCard.clientWidth, height: chartCard.clientHeight - 50 });
+  }, 200);
+});
+
+
 
       document.addEventListener('click', closeAllDropdowns);
     }
