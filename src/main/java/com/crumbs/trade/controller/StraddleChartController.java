@@ -32,6 +32,7 @@ public class StraddleChartController {
 			@Scheduled(cron = "0 * 10-14 * * MON-FRI", zone = "Asia/Kolkata"), // 10:00 - 14:59
 			@Scheduled(cron = "0 0-30 15 * * MON-FRI", zone = "Asia/Kolkata") // 15:00 - 15:30
 	})
+	//@Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
 	public void straddleIntraday() {
 		if ("Y".equalsIgnoreCase(strategyRepo.findByName("STRADDLE_PREMIUM").getActive())) {
 			straddleIntradayService.getCombineStraddlePremium("NIFTY");

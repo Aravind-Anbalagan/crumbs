@@ -3,513 +3,499 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Nifty — Spot / CE / PE with Crossovers</title>
+  <title>Nifty — CE/PE Chart (fixed, HEX colors)</title>
 
+  <!-- Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 
   <style>
     * { box-sizing: border-box; }
-    :root{
-      --bg:#0f1720;
-      --card:#0b1320;
-      --muted:#94a3b8;
-      --spot:#22c55e;
-      --ce:#3b82f6;
-      --pe:#ef4444;
-    }
-    body.light-theme {
-      --bg:#f8fafc;
-      --card:#ffffff;
-      --muted:#64748b;
-      --text:#0f172a;
-      --border:#e2e8f0;
-      --chart-bg:#ffffff;
-      --chart-text:#1e293b;
-      --grid:#f1f5f9;
-    }
-    body.dark-theme {
-      --bg:#071021;
-      --card:#0b1320;
-      --muted:#94a3b8;
-      --text:#e6eef8;
-      --border:#1e293b;
-      --chart-bg:#071421;
-      --chart-text:#dbeafe;
-      --grid:rgba(255,255,255,0.03);
-    }
-    html,body{
-      height:100%;
-      margin:0;
-      padding:0;
-      font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      overflow-x:hidden;
-      max-width:100vw;
-    }
-    body{
-      background:linear-gradient(180deg,#071021 0%, #071a2b 100%);
-      color:var(--text, #e6eef8);
-      padding:16px;
-      overflow-y:auto;
-      transition:all 0.3s ease;
-    }
-    body.light-theme {
-      background:linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%);
-    }
-    .container{
-      max-width:100%;
-      width:100%;
-      margin:0 auto;
-      overflow-x:hidden;
-    }
-    .card{
-      width:100%;
-      max-width:100%;
-      background:var(--card);
-      border-radius:12px;
-      padding:16px;
-      box-shadow:0 8px 30px rgba(2,6,23,0.6);
-      border:1px solid var(--border);
-      margin-bottom:16px;
-      transition:all 0.3s ease;
-      overflow-x:hidden;
-    }
-    body.light-theme .card {
-      box-shadow:0 8px 30px rgba(0,0,0,0.08);
-    }
-    .header{
-      display:flex;
-      align-items:center;
-      justify-content:flex-start;
-      gap:16px;
-      margin-bottom:8px;
-      flex-wrap:wrap;
-      max-width:100%;
-    }
-    .title{font-size:18px;font-weight:600;color:var(--text);word-break:break-word;}
-    .subtitle{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-word;}
-    #chart {
-      height:500px;
-      width:100%;
-      max-width:100%;
-      overflow:hidden;
-    }
-    .legend{
-      display:flex;
-      gap:16px;
-      align-items:center;
-      margin-top:10px;
-      flex-wrap:wrap;
-      max-width:100%;
-    }
-    .legend .item{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      font-size:13px;
-      color:var(--muted);
-    }
-    .swatch{
-      width:12px;
-      height:6px;
-      border-radius:3px;
-      display:inline-block;
-    }
-    .values{
-      margin-left:6px;
-      color:var(--text);
-      font-weight:600;
-    }
-    .controls{
-      display:flex;
-      gap:12px;
-      align-items:center;
-      flex-wrap:wrap;
-      max-width:100%;
-    }
-    label {
-      font-size:13px;
-      color:var(--muted);
-      margin-right:4px;
-    }
-    select {
-      background:rgba(15,23,42,0.8);
-      color:var(--text);
-      border:1px solid var(--border);
-      border-radius:8px;
-      padding:8px 10px;
-      font-size:14px;
-    }
-    button {
-      background:rgba(59,130,246,0.1);
-      border:1px solid rgba(59,130,246,0.3);
-      color:#60a5fa;
-      padding:10px 16px;
-      border-radius:8px;
-      cursor:pointer;
-      font-size:14px;
-      font-weight:500;
-      transition:all 0.2s;
-      white-space:nowrap;
-    }
-    button:hover{
-      background:rgba(59,130,246,0.2);
-      border-color:rgba(59,130,246,0.5);
-    }
-    button:active{
-      transform:translateY(1px);
-    }
-    .toggle-container {
-      display:flex;
-      align-items:center;
-      gap:12px;
-      padding:10px 16px;
-      background:rgba(34,197,94,0.1);
-      border:2px solid rgba(34,197,94,0.3);
-      border-radius:8px;
-      cursor:pointer;
-      user-select:none;
-      transition:all 0.2s;
-    }
-    body.light-theme .toggle-container {
-      background:rgba(34,197,94,0.08);
-      border-color:rgba(34,197,94,0.25);
-    }
-    .toggle-container:hover {
-      background:rgba(34,197,94,0.15);
-      border-color:rgba(34,197,94,0.4);
-    }
-    .toggle-label {
-      font-size:14px;
-      color:var(--text);
-      font-weight:600;
-      white-space:nowrap;
-    }
-    .toggle-switch {
-      position:relative;
-      width:50px;
-      height:26px;
-      background:rgba(148,163,184,0.3);
-      border-radius:26px;
-      border:2px solid rgba(148,163,184,0.4);
-      transition:all 0.3s;
-      flex-shrink:0;
-    }
-    .toggle-switch.active {
-      background:rgba(34,197,94,0.5);
-      border-color:rgba(34,197,94,0.7);
-    }
-    .toggle-switch::before {
-      content:'';
-      position:absolute;
-      width:18px;
-      height:18px;
-      left:2px;
-      top:2px;
-      background:#94a3b8;
-      border-radius:50%;
-      transition:all 0.3s;
-      box-shadow:0 2px 4px rgba(0,0,0,0.3);
-    }
-    .toggle-switch.active::before {
-      transform:translateX(24px);
-      background:#22c55e;
-    }
-    .checkout-dropdown {
-      position: relative;
-      display: inline-block;
-    }
-    .checkout-btn {
-      background: rgba(59,130,246,0.1);
-      border: 1px solid rgba(59,130,246,0.3);
-      color: #60a5fa;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      transition: all 0.2s;
-      white-space: nowrap;
-      margin-left: 8px;
-    }
-    .checkout-btn:hover {
-      background: rgba(59,130,246,0.2);
-      border-color: rgba(59,130,246,0.5);
-    }
-    .checkout-menu {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      min-width: 220px;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-      z-index: 1000;
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-10px);
-      transition: all 0.2s ease;
-    }
-    .checkout-menu.show {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }
-    .checkout-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      font-size: 13px;
-      cursor: pointer;
-      border-radius: 4px;
-      transition: background 0.2s;
-    }
-    .checkout-item:hover {
-      background: rgba(255,255,255,0.05);
-    }
-    .checkout-item .swatch {
-      width: 10px;
-      height: 5px;
-      border-radius: 2px;
-      flex-shrink: 0;
-    }
-    .checkout-item input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: #22c55e;
-      margin: 0;
-      flex-shrink: 0;
-    }
-    body.light-theme .checkout-item:hover {
-      background: rgba(0,0,0,0.05);
-    }
-    .crossings-section{margin-top:16px;}
-    .section-title{
-      font-size:15px;
-      font-weight:600;
-      margin-bottom:12px;
-      color:var(--text);
-    }
-    .crossings-grid{
-      display:grid;
-      grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
-      gap:10px;
-      max-width:100%;
-    }
-    .crossing-item{
-      background:rgba(255,255,255,0.03);
-      border:1px solid rgba(255,255,255,0.05);
-      border-radius:8px;
-      padding:10px;
-      font-size:13px;
-      cursor:pointer;
-      transition:all 0.2s;
-    }
-    .crossing-item:hover {
-      background:rgba(255,255,255,0.08);
-      border-color:rgba(255,255,255,0.15);
-      transform:translateY(-2px);
-      box-shadow:0 4px 12px rgba(0,0,0,0.3);
-    }
-    .crossing-item.highlighted {
-      background:rgba(34,197,94,0.15);
-      border:2px solid rgba(34,197,94,0.5);
-      box-shadow:0 0 20px rgba(34,197,94,0.3);
-    }
-    body.light-theme .crossing-item {
-      background:rgba(0,0,0,0.02);
-      border:1px solid rgba(0,0,0,0.08);
-    }
-    body.light-theme .crossing-item:hover {
-      background:rgba(0,0,0,0.06);
-      border-color:rgba(0,0,0,0.15);
-      box-shadow:0 4px 12px rgba(0,0,0,0.1);
-    }
-    body.light-theme .crossing-item.highlighted {
-      background:rgba(34,197,94,0.1);
-      border:2px solid rgba(34,197,94,0.4);
-      box-shadow:0 0 20px rgba(34,197,94,0.2);
-    }
-    .crossing-header{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:6px;
-    }
-    .crossing-type{
-      font-weight:600;
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:0.5px;
-    }
-    .crossing-time{
-      color:var(--muted);
-      font-size:11px;
-    }
-    .crossing-price{
-      font-size:16px;
-      font-weight:600;
-      color:#22d3ee;
-    }
-    .crossing-desc{
-      color:var(--muted);
-      font-size:11px;
-      margin-top:4px;
-    }
-    .no-crossings{
-      color:var(--muted);
-      text-align:center;
-      padding:20px;
-      font-size:13px;
-    }
-    .spot-ce{color:#a78bfa;}
-    .spot-pe{color:#fb923c;}
-    .ce-pe{color:#f472b6;}
-    @media (max-width:640px){
-      body{padding:8px;}
-      .card{padding:12px;}
-      #chart {height:350px;}
-      .crossings-grid{grid-template-columns:1fr;}
-      .header{flex-direction:column;align-items:flex-start;}
-      .controls{width:100%;gap:8px;}
-      .toggle-container{padding:8px 12px;font-size:13px;}
-      button{padding:8px 12px;font-size:13px;}
-      .checkout-menu {min-width: 200px; right: -20px;}
+    html,body{ height:100%; margin:0; padding:0; font-family:Inter, ui-sans-serif, system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; }
+    body{ background:linear-gradient(180deg,#071021 0%, #071a2b 100%); color:#e6eef8; padding:16px; transition:all 0.25s ease; }
+    .container{ max-width:100%; width:100%; margin:0 auto; overflow-x:hidden; }
+    .card{ width:100%; background:#0b1320; border-radius:12px; padding:16px; border:1px solid rgba(255,255,255,0.03); margin-bottom:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6); }
+    .header{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+    #chart{ height:520px; width:100%; }
+    .legend{ display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+    .legend .item{ display:flex; align-items:center; gap:8px; font-size:13px; color:#94a3b8; }
+    .swatch{ width:12px; height:6px; border-radius:3px; display:inline-block; }
+
+    .checkout-dropdown{ position:relative; z-index:999999; }
+    .checkout-btn{ padding:6px 12px; border-radius:6px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.12); cursor:pointer; font-size:13px; color:#60a5fa; }
+    .checkout-menu{ position:absolute; top:100%; right:0; background:#0b1320; border:1px solid rgba(255,255,255,0.03); border-radius:8px; min-width:260px; padding:12px; transform:translateY(-10px); opacity:0; visibility:hidden; transition:0.18s; box-shadow:0 8px 25px rgba(0,0,0,0.4); }
+    .checkout-menu.show{ transform:translateY(0); opacity:1; visibility:visible; }
+    .checkout-item{ display:flex; gap:8px; align-items:center; padding:6px 8px; font-size:13px; border-radius:4px; color:#94a3b8; }
+    .checkout-item:hover{ background:rgba(255,255,255,0.02); }
+
+    .toggle-container{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; background:rgba(148,163,184,0.03); border:1px solid rgba(148,163,184,0.03); }
+    .toggle-label{ font-size:13px; font-weight:600; color:#94a3b8; }
+    .toggle-switch{ width:46px; height:24px; border-radius:24px; border:1px solid rgba(148,163,184,0.25); position:relative; background:rgba(148,163,184,0.06); }
+    .toggle-switch.active{ background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.35); }
+    .toggle-switch::before{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; top:4px; left:4px; background:#94a3b8; transition:all .18s; }
+    .toggle-switch.active::before{ transform:translateX(22px); background:#22c55e; }
+
+    .crossings-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; margin-top:10px; }
+    .crossing-item{ padding:10px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); cursor:pointer; color:#cbd5e1; }
+
+    @media (max-width:900px){
+      .header{ gap:8px; }
+      .checkout-menu{ min-width:200px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
+
+    <!-- MAIN CARD -->
     <div class="card">
       <div class="header">
-        <div class="controls">
-          <div class="toggle-container" id="theme-toggle">
-            <span class="toggle-label">Dark Theme</span>
-            <div class="toggle-switch active" id="theme-switch"></div>
-          </div>
-
-          <div class="toggle-container" id="auto-update-toggle">
-            <span class="toggle-label" id="auto-update-label">Auto Update: ON</span>
-            <div class="toggle-switch active" id="auto-update-switch"></div>
-          </div>
-
-          <div class="toggle-container" id="toggle-container">
-            <span class="toggle-label">Show Crossovers</span>
-            <div class="toggle-switch" id="toggle-switch"></div>
-          </div>
-
-          <div class="checkout-dropdown">
-            <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
-            <div class="checkout-menu" id="checkout-menu">
-              <div class="checkout-item">
-                <input type="checkbox" id="spot-check" checked>
-                <span class="swatch" style="background:var(--spot)"></span>
-                <span>Spot</span>
-              </div>
-              <div class="checkout-item">
-                <input type="checkbox" id="ce-check" checked>
-                <span class="swatch" style="background:var(--ce)"></span>
-                <span>CE</span>
-              </div>
-              <div class="checkout-item">
-                <input type="checkbox" id="pe-check" checked>
-                <span class="swatch" style="background:var(--pe)"></span>
-                <span>PE</span>
-              </div>
-            </div>
-          </div>
-
-          <label for="name-select">Name</label>
-          <select id="name-select"></select>
-          <label for="expiry-select">Expiry</label>
-          <select id="expiry-select"></select>
-          <label for="ce-strike-select">CE</label>
-          <select id="ce-strike-select"></select>
-          <label for="pe-strike-select">PE</label>
-          <select id="pe-strike-select"></select>
-
-          <button id="btn-reset">Reset Chart</button>
+        <div class="toggle-container" id="theme-toggle">
+          <span class="toggle-label">Dark Theme</span>
+          <div class="toggle-switch active" id="theme-switch"></div>
         </div>
+
+        <div class="toggle-container" id="auto-update-toggle">
+          <span class="toggle-label" id="auto-update-label">Auto Update: ON</span>
+          <div class="toggle-switch active" id="auto-update-switch"></div>
+        </div>
+
+        <div class="toggle-container" id="toggle-container">
+          <span class="toggle-label">Show Crossovers</span>
+          <div class="toggle-switch" id="toggle-switch"></div>
+        </div>
+
+        <div class="checkout-dropdown">
+          <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
+          <div class="checkout-menu" id="checkout-menu">
+            <div class="checkout-item"><input type="checkbox" id="spot-check" checked> <span class="swatch" style="background:#22c55e"></span> Spot</div>
+            <div class="checkout-item"><input type="checkbox" id="ce-check" checked> <span class="swatch" style="background:#3b82f6"></span> CE</div>
+            <div class="checkout-item"><input type="checkbox" id="pe-check" checked> <span class="swatch" style="background:#ef4444"></span> PE</div>
+            <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#fb7185"></span> Combined Premium</div>
+            <div class="checkout-item"><input type="checkbox" id="avg-check" checked> <span class="swatch" style="background:#14b8a6"></span> Avg Price</div>
+            <div class="checkout-item"><input type="checkbox" id="extrinsic-check" checked> <span class="swatch" style="background:#eab308"></span> Extrinsic</div>
+            <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
+            <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#fbbf24"></span> CE Open</div>
+            <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#c084fc"></span> PE Open</div>
+            <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#38bdf8"></span> Combined Open</div>
+          </div>
+        </div>
+
+        <label style="color:#94a3b8">Name</label><select id="name-select"></select>
+        <label style="color:#94a3b8">Expiry</label><select id="expiry-select"></select>
+        <label style="color:#94a3b8">CE</label><select id="ce-strike-select"></select>
+        <label style="color:#94a3b8">PE</label><select id="pe-strike-select"></select>
+
+        <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset Chart</button>
       </div>
 
       <div id="chart"></div>
 
-      <div class="legend">
-        <div class="item">
-          <span class="swatch" style="background:var(--spot)"></span>
-          <span>Spot</span>
-          <span id="val-spot" class="values">-</span>
-        </div>
-        <div class="item">
-          <span class="swatch" style="background:var(--ce)"></span>
-          <span>CE</span>
-          <span id="val-ce" class="values">-</span>
-        </div>
-        <div class="item">
-          <span class="swatch" style="background:var(--pe)"></span>
-          <span>PE</span>
-          <span id="val-pe" class="values">-</span>
-        </div>
+      <div class="legend" id="bottom-legend">
+        <div class="item"><span class="swatch" style="background:#22c55e"></span> Spot: <strong id="val-spot">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#3b82f6"></span> CE: <strong id="val-ce">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#ef4444"></span> PE: <strong id="val-pe">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#fb7185"></span> Combined Premium: <strong id="val-combined-premium">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#14b8a6"></span> Avg Price: <strong id="val-avg">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#eab308"></span> Extrinsic: <strong id="val-extrinsic">-</strong></div>
+
+        <div class="item"><span class="swatch" style="background:#fbbf24"></span> CE Open: <strong id="val-ce-open">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#c084fc"></span> PE Open: <strong id="val-pe-open">-</strong></div>
+        <div class="item"><span class="swatch" style="background:#38bdf8"></span> Combined Open: <strong id="val-combined-open">-</strong></div>
       </div>
     </div>
 
-    <div class="card" id="crossings-card">
-      <div class="section-title">Detected CE-PE Crossovers</div>
+    <div class="card">
+      <div class="section-title" style="color:#cbd5e1;font-weight:600;margin-bottom:8px">Detected CE-PE Crossovers</div>
       <div id="crossings-container" class="crossings-grid"></div>
     </div>
+
   </div>
 
   <script>
+    /***** CONFIG *****/
     const API_URL = '/api/straddle/combined-chart';
     const GROUPED_API_URL = '/api/straddle/grouped';
+    const API_PARAMS = { name: 'NIFTY', expiry: '16DEC25', ceStrike: '26000', peStrike: '26000' };
+    const IST_OFFSET_SECONDS = 5.5 * 60 * 60; // 19800
 
-    const API_PARAMS = {
-      name: 'NIFTY',
-      expiry: '16DEC25',
-      ceStrike: '26000',
-      peStrike: '26000'
-    };
-    
+    /***** STATE *****/
     let groupedData = [];
     let apiData = [];
-    let currentSeries = { spotSeries: [], ceSeries: [], peSeries: [] };
+    let currentSeries = {
+      spotSeries: [],
+      ceSeries: [],
+      peSeries: [],
+      combinedPremiumSeries: [],
+      extrinsicSeries: [],
+      avgPriceSeries: [],
+      ceOpen: null,
+      peOpen: null,
+      combinedOpen: null
+    };
 
-    const IST_OFFSET_SECONDS = 5 * 60 * 60 + 30 * 60;
+    let allCrossings = [];
+    let crossoverEnabled = false;
+    let isDarkTheme = true;
+    let autoRefreshInterval = null;
+    let lineVisibility = {
+      spot: true,
+      ce: true,
+      pe: true,
+      combinedPremium: true,
+      avgPrice: true,
+      extrinsic: true,
+      ceOpen: true,
+      peOpen: true,
+      combinedOpen: true
+    };
 
+    /***** HELPERS *****/
     function toUnixSeconds(isoString) {
       const utcSeconds = Math.floor(new Date(isoString).getTime() / 1000);
       return utcSeconds + IST_OFFSET_SECONDS;
     }
 
+    function showError(message) {
+      const container = document.getElementById('crossings-container');
+      container.innerHTML = `<div class="no-crossings">${message}</div>`;
+    }
+
+    function safeFix(v) {
+      return (v !== null && v !== undefined && Number.isFinite(Number(v))) ? Number(v).toFixed(2) : '-';
+    }
+
+    /***** TRANSFORM *****/
     function transformToSeries(apiArray) {
       const spotSeries = [];
       const ceSeries = [];
       const peSeries = [];
+      const combinedPremiumSeries = [];
+      const extrinsicSeries = [];
+      const avgPriceSeries = [];
 
       for (const row of apiArray) {
-        const t = toUnixSeconds(row.time);
-        if (!isFinite(t) || typeof row.spot !== 'number' || row.spot === 0) continue;
-        spotSeries.push({ time: t, value: Number(row.spot) });
-        ceSeries.push({ time: t, value: Number(row.ce) });
-        peSeries.push({ time: t, value: Number(row.pe) });
+        const t = toUnixSeconds(row.timestamp);
+        if (!isFinite(t) || row.spot == null) continue;
+
+        const spotVal = Number(row.spot);
+        const ceVal = Number(row.ce);
+        const peVal = Number(row.pe);
+        const combinedPremiumVal = row.combinedPremium != null ? Number(row.combinedPremium) : null;
+        const extrinsicVal = row.extrinsic != null ? Number(row.extrinsic) : null;
+        const avgVal = row.avgPrice != null ? Number(row.avgPrice) : null;
+
+        if (!Number.isFinite(spotVal)) continue;
+
+        spotSeries.push({ time: t, value: spotVal });
+        if (Number.isFinite(ceVal)) ceSeries.push({ time: t, value: ceVal });
+        if (Number.isFinite(peVal)) peSeries.push({ time: t, value: peVal });
+        if (combinedPremiumVal != null && Number.isFinite(combinedPremiumVal)) combinedPremiumSeries.push({ time: t, value: combinedPremiumVal });
+        if (extrinsicVal != null && Number.isFinite(extrinsicVal)) extrinsicSeries.push({ time: t, value: extrinsicVal });
+        if (avgVal != null && Number.isFinite(avgVal)) avgPriceSeries.push({ time: t, value: avgVal });
       }
 
-      return { spotSeries, ceSeries, peSeries };
+      // constant opens from first row
+      if (apiArray.length > 0) {
+        const first = apiArray[0];
+        const parsedCeOpen = Number(first.ceOpen);
+        const parsedPeOpen = Number(first.peOpen);
+        const parsedCombinedOpen = Number(first.combinedOpen);
+
+        currentSeries.ceOpen = Number.isFinite(parsedCeOpen) ? parsedCeOpen : null;
+        currentSeries.peOpen = Number.isFinite(parsedPeOpen) ? parsedPeOpen : null;
+        currentSeries.combinedOpen = Number.isFinite(parsedCombinedOpen) ? parsedCombinedOpen : null;
+
+        console.debug('[transformToSeries] opens:', { ceOpen: currentSeries.ceOpen, peOpen: currentSeries.peOpen, combinedOpen: currentSeries.combinedOpen });
+      } else {
+        currentSeries.ceOpen = null;
+        currentSeries.peOpen = null;
+        currentSeries.combinedOpen = null;
+      }
+
+      currentSeries.spotSeries = spotSeries;
+      currentSeries.ceSeries = ceSeries;
+      currentSeries.peSeries = peSeries;
+      currentSeries.combinedPremiumSeries = combinedPremiumSeries;
+      currentSeries.extrinsicSeries = extrinsicSeries;
+      currentSeries.avgPriceSeries = avgPriceSeries;
+
+      return { spotSeries, ceSeries, peSeries, combinedPremiumSeries, extrinsicSeries, avgPriceSeries };
     }
 
+    /***** CHART SETUP *****/
+    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+      layout: { backgroundColor: '#071421', textColor: '#dbeafe' },
+      rightPriceScale: { borderVisible: false, visible: true },
+      leftPriceScale: { borderVisible: false, visible: true },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: true,
+        secondsVisible: true,
+        tickMarkFormatter: (time) => {
+          const istDate = new Date((time - IST_OFFSET_SECONDS) * 1000);
+          return istDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+      },
+      grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    });
+
+    // dynamic series (hard-coded HEX colors)
+    const spotLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#22c55e', priceScaleId: 'left' });
+    const ceLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#3b82f6', priceScaleId: 'right' });
+    const peLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#ef4444', priceScaleId: 'right' });
+    const combinedPremiumLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#fb7185', priceScaleId: 'right' });
+    const avgPriceLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#14b8a6', priceScaleId: 'right' });
+    const extrinsicLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#eab308', priceScaleId: 'right' });
+
+    // constant open lines (horizontal style)
+    const ceOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#fbbf24', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
+    const peOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#c084fc', lineStyle: LightweightCharts.LineStyle.Dotted, priceScaleId: 'right' });
+    const combinedOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#38bdf8', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
+
+    function updateChartTheme() {
+      const bgColor = isDarkTheme ? '#071421' : '#ffffff';
+      const textColor = isDarkTheme ? '#dbeafe' : '#1e293b';
+      const gridColor = isDarkTheme ? 'rgba(255,255,255,0.03)' : '#f1f5f9';
+
+      chart.applyOptions({
+        layout: { backgroundColor: bgColor, textColor: textColor },
+        grid: { vertLines: { visible: false }, horzLines: { color: gridColor } },
+        leftPriceScale: { borderVisible: false, visible: lineVisibility.spot },
+        rightPriceScale: {
+          borderVisible: false,
+          visible: lineVisibility.ce || lineVisibility.pe || lineVisibility.combinedPremium || lineVisibility.avgPrice || lineVisibility.extrinsic || lineVisibility.ceOpen || lineVisibility.peOpen || lineVisibility.combinedOpen
+        }
+      });
+    }
+
+    /***** DRAW OPEN LINES *****/
+    function drawOpenPriceLines() {
+      const timestamps = (currentSeries.spotSeries || []).map(p => p.time);
+      if (!timestamps.length) {
+        ceOpenLine.setData([]); peOpenLine.setData([]); combinedOpenLine.setData([]); return;
+      }
+
+      const ceOpenVal = Number(currentSeries.ceOpen);
+      const peOpenVal = Number(currentSeries.peOpen);
+      const combinedOpenVal = Number(currentSeries.combinedOpen);
+
+      if (lineVisibility.ceOpen && Number.isFinite(ceOpenVal)) {
+        ceOpenLine.setData(timestamps.map(t => ({ time: t, value: ceOpenVal })));
+      } else {
+        ceOpenLine.setData([]);
+      }
+
+      if (lineVisibility.peOpen && Number.isFinite(peOpenVal)) {
+        peOpenLine.setData(timestamps.map(t => ({ time: t, value: peOpenVal })));
+      } else {
+        peOpenLine.setData([]);
+      }
+
+      if (lineVisibility.combinedOpen && Number.isFinite(combinedOpenVal)) {
+        combinedOpenLine.setData(timestamps.map(t => ({ time: t, value: combinedOpenVal })));
+      } else {
+        combinedOpenLine.setData([]);
+      }
+
+      chart.applyOptions({
+        rightPriceScale: {
+          visible: lineVisibility.ce || lineVisibility.pe || lineVisibility.combinedPremium || lineVisibility.avgPrice || lineVisibility.extrinsic || lineVisibility.ceOpen || lineVisibility.peOpen || lineVisibility.combinedOpen
+        },
+        leftPriceScale: { visible: lineVisibility.spot }
+      });
+    }
+
+    /***** LEGEND UPDATES *****/
+    function updateOpenLegend() {
+      document.getElementById('val-ce-open').textContent = (lineVisibility.ceOpen && Number.isFinite(currentSeries.ceOpen)) ? Number(currentSeries.ceOpen).toFixed(2) : '-';
+      document.getElementById('val-pe-open').textContent = (lineVisibility.peOpen && Number.isFinite(currentSeries.peOpen)) ? Number(currentSeries.peOpen).toFixed(2) : '-';
+      document.getElementById('val-combined-open').textContent = (lineVisibility.combinedOpen && Number.isFinite(currentSeries.combinedOpen)) ? Number(currentSeries.combinedOpen).toFixed(2) : '-';
+    }
+
+    function updateLegendLatest() {
+      const spotData = lineVisibility.spot ? currentSeries.spotSeries : [];
+      const ceData = lineVisibility.ce ? currentSeries.ceSeries : [];
+      const peData = lineVisibility.pe ? currentSeries.peSeries : [];
+      const combinedPremiumData = lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : [];
+      const avgData = lineVisibility.avgPrice ? currentSeries.avgPriceSeries : [];
+      const extrinsicData = lineVisibility.extrinsic ? currentSeries.extrinsicSeries : [];
+
+      const spotLast = spotData.length > 0 ? spotData[spotData.length - 1].value : null;
+      const ceLast = ceData.length > 0 ? ceData[ceData.length - 1].value : null;
+      const peLast = peData.length > 0 ? peData[peData.length - 1].value : null;
+      const combinedPremiumLast = combinedPremiumData.length > 0 ? combinedPremiumData[combinedPremiumData.length - 1].value : null;
+      const avgLast = avgData.length > 0 ? avgData[avgData.length - 1].value : null;
+      const extrinsicLast = extrinsicData.length > 0 ? extrinsicData[extrinsicData.length - 1].value : null;
+
+      document.getElementById('val-spot').textContent = spotLast !== null ? spotLast.toFixed(2) : '-';
+      document.getElementById('val-spot').style.opacity = lineVisibility.spot ? '1' : '0.4';
+
+      document.getElementById('val-ce').textContent = ceLast !== null ? ceLast.toFixed(2) : '-';
+      document.getElementById('val-ce').style.opacity = lineVisibility.ce ? '1' : '0.4';
+
+      document.getElementById('val-pe').textContent = peLast !== null ? peLast.toFixed(2) : '-';
+      document.getElementById('val-pe').style.opacity = lineVisibility.pe ? '1' : '0.4';
+
+      document.getElementById('val-combined-premium').textContent = combinedPremiumLast !== null ? combinedPremiumLast.toFixed(2) : '-';
+      document.getElementById('val-combined-premium').style.opacity = lineVisibility.combinedPremium ? '1' : '0.4';
+
+      document.getElementById('val-avg').textContent = avgLast !== null ? avgLast.toFixed(2) : '-';
+      document.getElementById('val-avg').style.opacity = lineVisibility.avgPrice ? '1' : '0.4';
+
+      document.getElementById('val-extrinsic').textContent = extrinsicLast !== null ? extrinsicLast.toFixed(2) : '-';
+      document.getElementById('val-extrinsic').style.opacity = lineVisibility.extrinsic ? '1' : '0.4';
+
+      updateOpenLegend();
+    }
+
+    /***** CROSSHAIR HOVER *****/
+    function updateLegendAtCrosshair(param) {
+      const valid = param && param.time && param.point && param.point.x >= 0 && param.point.y >= 0;
+      if (!valid) { updateLegendLatest(); return; }
+
+      const spotData = param.seriesData.get(spotLine);
+      const ceData = param.seriesData.get(ceLine);
+      const peData = param.seriesData.get(peLine);
+      const combinedPremiumData = param.seriesData.get(combinedPremiumLine);
+      const avgData = param.seriesData.get(avgPriceLine);
+      const extrinsicData = param.seriesData.get(extrinsicLine);
+
+      const spotValue = spotData && spotData.value !== undefined ? spotData.value : null;
+      const ceValue = ceData && ceData.value !== undefined ? ceData.value : null;
+      const peValue = peData && peData.value !== undefined ? peData.value : null;
+      const combinedPremiumValue = combinedPremiumData && combinedPremiumData.value !== undefined ? combinedPremiumData.value : null;
+      const avgValue = avgData && avgData.value !== undefined ? avgData.value : null;
+      const extrinsicValue = extrinsicData && extrinsicData.value !== undefined ? extrinsicData.value : null;
+
+      // opens: fallback to static opens if seriesData doesn't include them
+      const ceOpenData = param.seriesData.get(ceOpenLine);
+      const peOpenData = param.seriesData.get(peOpenLine);
+      const combinedOpenData = param.seriesData.get(combinedOpenLine);
+
+      const ceOpenValue = (ceOpenData && ceOpenData.value !== undefined) ? ceOpenData.value : (lineVisibility.ceOpen && Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen : null);
+      const peOpenValue = (peOpenData && peOpenData.value !== undefined) ? peOpenData.value : (lineVisibility.peOpen && Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen : null);
+      const combinedOpenValue = (combinedOpenData && combinedOpenData.value !== undefined) ? combinedOpenData.value : (lineVisibility.combinedOpen && Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen : null);
+
+      const safe = (v) => (v !== null && v !== undefined && Number.isFinite(Number(v))) ? Number(v).toFixed(2) : '-';
+
+      document.getElementById('val-spot').textContent = safe(spotValue);
+      document.getElementById('val-ce').textContent = safe(ceValue);
+      document.getElementById('val-pe').textContent = safe(peValue);
+      document.getElementById('val-combined-premium').textContent = safe(combinedPremiumValue);
+      document.getElementById('val-avg').textContent = safe(avgValue);
+      document.getElementById('val-extrinsic').textContent = safe(extrinsicValue);
+
+      document.getElementById('val-ce-open').textContent = safe(ceOpenValue);
+      document.getElementById('val-pe-open').textContent = safe(peOpenValue);
+      document.getElementById('val-combined-open').textContent = safe(combinedOpenValue);
+    }
+
+    /***** CROSSOVER DETECTION *****/
+    function detectCrossovers(series1, series2, name1, name2) {
+      const crossings = [];
+      if (series1.length < 2 || series2.length < 2) return crossings;
+      for (let i = 1; i < series1.length && i < series2.length; i++) {
+        const prev1 = series1[i - 1].value;
+        const curr1 = series1[i].value;
+        const prev2 = series2[i - 1].value;
+        const curr2 = series2[i].value;
+        if (!isFinite(prev1) || !isFinite(curr1) || !isFinite(prev2) || !isFinite(curr2)) continue;
+        const wasBelowNowAbove = prev1 < prev2 && curr1 > curr2;
+        const wasAboveNowBelow = prev1 > prev2 && curr1 < curr2;
+        if (wasBelowNowAbove || wasAboveNowBelow) {
+          const t1 = series1[i - 1].time;
+          const t2 = series1[i].time;
+          const denom = (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1)) || 1;
+          const ratio = Math.abs(prev2 - prev1) / denom;
+          const intersectTime = t1 + (t2 - t1) * ratio;
+          const intersectPrice = prev1 + (curr1 - prev1) * ratio;
+          crossings.push({
+            time: intersectTime,
+            price: intersectPrice,
+            gap: 0,
+            type: wasBelowNowAbove ? `${name1} crosses above ${name2}` : `${name1} crosses below ${name2}`,
+            pair: `${name1}-${name2}`,
+            direction: wasBelowNowAbove ? 'up' : 'down',
+            ceValue: name1 === 'CE' ? curr1 : curr2,
+            peValue: name1 === 'PE' ? curr1 : curr2
+          });
+        }
+      }
+      return crossings;
+    }
+
+    function addCrossingMarkers() {
+      if (!lineVisibility.ce) return;
+      const markers = allCrossings.map(crossing => ({ time: crossing.time, position: 'inBar', color: '#f472b6', shape: 'circle' }));
+      ceLine.setMarkers(markers.length ? markers : []);
+    }
+    function clearCrossingMarkers() { ceLine.setMarkers([]); }
+
+    function updateCrossingsDisplay() {
+      const container = document.getElementById('crossings-container');
+      if (allCrossings.length === 0) {
+        container.innerHTML = '<div class="no-crossings">No CE-PE crossovers detected yet. Crossovers will appear when CE and PE prices intersect.</div>';
+        return;
+      }
+      container.innerHTML = allCrossings.map((crossing, index) => {
+        const istDate = new Date((crossing.time - IST_OFFSET_SECONDS) * 1000);
+        const timeStr = istDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return `
+          <div class="crossing-item" data-crossing-index="${index}">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-weight:600;font-size:12px">CE-PE Crossover</div>
+              <div style="color:#94a3b8;font-size:11px">${timeStr}</div>
+            </div>
+            <div style="font-weight:600;margin-top:6px">CE: ₹${crossing.ceValue.toFixed(2)} | PE: ₹${crossing.peValue.toFixed(2)}</div>
+            <div style="color:#94a3b8;font-size:12px;margin-top:6px">${crossing.type}</div>
+          </div>
+        `;
+      }).join('');
+      container.querySelectorAll('.crossing-item').forEach((item, index) => {
+        item.addEventListener('click', () => {
+          container.querySelectorAll('.crossing-item').forEach(el => el.classList.remove('highlighted'));
+          item.classList.add('highlighted');
+          highlightCrossingOnChart(allCrossings[index]);
+        });
+      });
+    }
+  </script>
+<script>
+    /***** SCROLL UP FOR PART 1 — THIS CONTINUES THE SCRIPT *****/
+
+    function highlightCrossingOnChart(crossing) {
+      const markers = allCrossings.map(c => {
+        const isSelected = c.time === crossing.time && c.type === crossing.type;
+        const marker = {
+          time: c.time,
+          position: 'inBar',
+          color: isSelected ? '#22c55e' : '#f472b6',
+          shape: 'circle',
+          size: isSelected ? 2 : 1
+        };
+        if (isSelected) marker.text = `CE: ₹${c.ceValue.toFixed(2)} = PE: ₹${c.peValue.toFixed(2)}`;
+        return marker;
+      });
+
+      ceLine.setMarkers(markers);
+
+      const visibleRange = chart.timeScale().getVisibleRange();
+      if (!visibleRange || crossing.time < visibleRange.from || crossing.time > visibleRange.to) {
+        chart.timeScale().setVisibleRange({ from: crossing.time - 300, to: crossing.time + 300 });
+      }
+    }
+
+    /***** API CALLS *****/
     async function fetchDataFromAPI() {
       try {
         const params = new URLSearchParams(API_PARAMS);
         const response = await fetch(`${API_URL}?${params}`);
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`API request failed: ${response.status}`);
         const result = await response.json();
         return result.data || [];
-      } catch (error) {
-        console.error('Error fetching data from API:', error);
+      } catch (err) {
+        console.error('Error fetching data from API:', err);
         showError('Error fetching data from API. Please try again.');
         return [];
       }
@@ -526,36 +512,25 @@
       }
     }
 
-    function showError(message) {
-      const container = document.getElementById('crossings-container');
-      container.innerHTML = `<div class="no-crossings">${message}</div>`;
-    }
-
+    /***** DROPDOWN POPULATION *****/
     function populateNameSelect() {
       const nameSel = document.getElementById('name-select');
       nameSel.innerHTML = '';
-
       groupedData.forEach(item => {
         const opt = document.createElement('option');
         opt.value = item.name;
         opt.textContent = item.name;
         nameSel.appendChild(opt);
       });
-
-      if (nameSel.value) {
-        API_PARAMS.name = nameSel.value;
-      }
-
+      API_PARAMS.name = nameSel.value;
       populateExpirySelect();
     }
 
     function populateExpirySelect() {
-      const nameSel   = document.getElementById('name-select');
+      const nameSel = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
-
       const selected = groupedData.find(x => x.name === nameSel.value);
       expirySel.innerHTML = '';
-
       const expiries = selected ? Object.keys(selected.expiries) : [];
       expiries.forEach(exp => {
         const opt = document.createElement('option');
@@ -563,19 +538,15 @@
         opt.textContent = exp;
         expirySel.appendChild(opt);
       });
-
-      if (expirySel.value) {
-        API_PARAMS.expiry = expirySel.value;
-      }
-
+      API_PARAMS.expiry = expirySel.value;
       populateStrikeSelects();
     }
 
     function populateStrikeSelects() {
-      const nameSel   = document.getElementById('name-select');
+      const nameSel = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
-      const ceSel     = document.getElementById('ce-strike-select');
-      const peSel     = document.getElementById('pe-strike-select');
+      const ceSel = document.getElementById('ce-strike-select');
+      const peSel = document.getElementById('pe-strike-select');
 
       const selected = groupedData.find(x => x.name === nameSel.value);
       const strikes = selected ? (selected.expiries[expirySel.value] || []) : [];
@@ -597,12 +568,11 @@
 
       if (strikes.length > 0) {
         let defaultStrike = strikes[0];
+
         if (selected && selected.atmStrike != null) {
           const atm = Number(selected.atmStrike);
           const match = strikes.find(s => Number(s) === atm);
-          if (match !== undefined) {
-            defaultStrike = match;
-          }
+          if (match !== undefined) defaultStrike = match;
         }
 
         ceSel.value = defaultStrike;
@@ -612,435 +582,141 @@
       }
     }
 
-    function detectCrossovers(series1, series2, name1, name2) {
-      const crossings = [];
-      if (series1.length < 2 || series2.length < 2) return crossings;
-      
-      for (let i = 1; i < series1.length && i < series2.length; i++) {
-        const prev1 = series1[i - 1].value;
-        const curr1 = series1[i].value;
-        const prev2 = series2[i - 1].value;
-        const curr2 = series2[i].value;
-        
-        if (!isFinite(prev1) || !isFinite(curr1) || !isFinite(prev2) || !isFinite(curr2)) continue;
-        
-        const wasBelowNowAbove = prev1 < prev2 && curr1 > curr2;
-        const wasAboveNowBelow = prev1 > prev2 && curr1 < curr2;
-        
-        if (wasBelowNowAbove || wasAboveNowBelow) {
-          const t1 = series1[i - 1].time;
-          const t2 = series1[i].time;
-          const ratio = Math.abs(prev2 - prev1) / (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1));
-          const intersectTime = t1 + (t2 - t1) * ratio;
-          const intersectPrice = prev1 + (curr1 - prev1) * ratio;
-          
-          crossings.push({
-            time: intersectTime,
-            price: intersectPrice,
-            gap: 0,
-            type: wasBelowNowAbove ? `${name1} crosses above ${name2}` : `${name1} crosses below ${name2}`,
-            pair: `${name1}-${name2}`,
-            direction: wasBelowNowAbove ? 'up' : 'down',
-            ceValue: name1 === 'CE' ? curr1 : curr2,
-            peValue: name1 === 'PE' ? curr1 : curr2
-          });
-        }
-      }
-      
-      return crossings;
-    }
-
-    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-      layout: {
-        backgroundColor: '#071421',
-        textColor: '#dbeafe',
-      },
-      rightPriceScale: {
-        borderVisible: false,
-        visible: true,
-      },
-      leftPriceScale: {
-        borderVisible: false,
-        visible: true,
-      },
-      timeScale: {
-        borderVisible: false,
-        timeVisible: true,
-        secondsVisible: true,
-      },
-      crosshair: {
-        mode: LightweightCharts.CrosshairMode.Normal,
-      },
-      grid: {
-        vertLines: { visible: false },
-        horzLines: { color: 'rgba(255,255,255,0.03)' },
-      },
-    });
-
-    const spotLine = chart.addLineSeries({ 
-      priceLineVisible: false, 
-      lastValueVisible: true, 
-      lineWidth: 3,
-      color: '#22c55e',
-      priceScaleId: 'left'
-    });
-    
-    const ceLine = chart.addLineSeries({ 
-      priceLineVisible: false, 
-      lastValueVisible: true, 
-      lineWidth: 3,
-      color: '#3b82f6',
-      priceScaleId: 'right'
-    });
-    
-    const peLine = chart.addLineSeries({ 
-      priceLineVisible: false, 
-      lastValueVisible: true, 
-      lineWidth: 3,
-      color: '#ef4444',
-      priceScaleId: 'right'
-    });
-
-    let allCrossings = [];
-    let crossoverEnabled = false;
-    let isDarkTheme = true;
-    let highlightedCrossing = null;
-    let autoRefreshInterval = null;
-    let autoUpdateEnabled = true;
-    
-    let lineVisibility = {
-      spot: true,
-      ce: true,
-      pe: true
-    };
-
-    function updateChartTheme() {
-      const bgColor = isDarkTheme ? '#071421' : '#ffffff';
-      const textColor = isDarkTheme ? '#dbeafe' : '#1e293b';
-      const gridColor = isDarkTheme ? 'rgba(255,255,255,0.03)' : '#f1f5f9';
-      
-      chart.applyOptions({
-        layout: {
-          backgroundColor: bgColor,
-          textColor: textColor,
-        },
-        grid: {
-          vertLines: { visible: false },
-          horzLines: { color: gridColor },
-        },
-        leftPriceScale: {
-          borderVisible: false,
-          visible: lineVisibility.spot,
-        },
-        rightPriceScale: {
-          borderVisible: false,
-          visible: lineVisibility.ce || lineVisibility.pe,
-        },
-      });
-    }
-
-    function updateLineVisibility() {
-      spotLine.applyOptions({ visible: lineVisibility.spot });
-      ceLine.applyOptions({ visible: lineVisibility.ce });
-      peLine.applyOptions({ visible: lineVisibility.pe });
-      
-      chart.applyOptions({
-        leftPriceScale: { visible: lineVisibility.spot },
-        rightPriceScale: { visible: lineVisibility.ce || lineVisibility.pe }
-      });
-    }
-
-    function highlightCrossingOnChart(crossing) {
-      const markers = allCrossings.map(c => {
-        const isSelected = c.time === crossing.time && c.type === crossing.type;
-        
-        const marker = {
-          time: c.time,
-          position: 'inBar',
-          color: isSelected ? '#22c55e' : '#f472b6',
-          shape: 'circle',
-          size: isSelected ? 2 : 1
-        };
-        
-        if (isSelected) {
-          marker.text = `CE: ₹${c.ceValue.toFixed(2)} = PE: ₹${c.peValue.toFixed(2)}`;
-        }
-        
-        return marker;
-      });
-      
-      if (lineVisibility.ce) {
-        ceLine.setMarkers(markers);
-      }
-      
-      const visibleRange = chart.timeScale().getVisibleRange();
-      if (!visibleRange || crossing.time < visibleRange.from || crossing.time > visibleRange.to) {
-        chart.timeScale().setVisibleRange({
-          from: crossing.time - 300,
-          to: crossing.time + 300
-        });
-      }
-    }
-
+    /***** MAIN LOAD FUNCTION *****/
     async function loadInitialData() {
       apiData = await fetchDataFromAPI();
-      
       if (apiData.length === 0) {
-        console.warn('No data received from API');
         showError('No data available for the selected filters.');
         return;
       }
-      
-      currentSeries = transformToSeries(apiData);
-      
-      if (currentSeries.spotSeries.length === 0 && currentSeries.ceSeries.length === 0 && currentSeries.peSeries.length === 0) {
-        console.warn('No valid data points after transformation');
-        showError('No valid data points available.');
-        return;
-      }
-      
+
+      transformToSeries(apiData);
+
+      // Dynamic series
       spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
       ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
       peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
-      
+      combinedPremiumLine.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
+      avgPriceLine.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
+      extrinsicLine.setData(lineVisibility.extrinsic ? currentSeries.extrinsicSeries : []);
+
+      // Draw opens
+      drawOpenPriceLines();
+      updateOpenLegend();
+
+      // Crossovers
       allCrossings = [];
       if (lineVisibility.ce && lineVisibility.pe) {
-        allCrossings.push(...detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE'));
+        allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
         allCrossings.sort((a, b) => a.time - b.time);
       }
-      
       if (crossoverEnabled) {
         addCrossingMarkers();
         updateCrossingsDisplay();
       } else {
         clearCrossingMarkers();
-        hideCrossingsDisplay();
       }
-      
+
       updateLegendLatest();
-      updateLineVisibility();
       chart.timeScale().fitContent();
     }
 
-    function addCrossingMarkers() {
-      if (!lineVisibility.ce) return;
-      
-      const markers = allCrossings.map(crossing => ({
-        time: crossing.time,
-        position: 'inBar',
-        color: '#f472b6',
-        shape: 'circle'
-      }));
-      
-      if (markers.length > 0) {
-        ceLine.setMarkers(markers);
-      }
-    }
-
-    function clearCrossingMarkers() {
-      ceLine.setMarkers([]);
-    }
-
-    function hideCrossingsDisplay() {
-      const container = document.getElementById('crossings-container');
-      container.innerHTML = '<div class="no-crossings">Enable "Show Crossovers" toggle to detect convergence, divergence, and crossover events.</div>';
-    }
-
-    function updateCrossingsDisplay() {
-      const container = document.getElementById('crossings-container');
-      
-      if (allCrossings.length === 0) {
-        container.innerHTML = '<div class="no-crossings">No CE-PE crossovers detected yet. Crossovers will appear when CE and PE prices intersect.</div>';
-        return;
-      }
-      
-      container.innerHTML = allCrossings.map((crossing, index) => {
-        const date = new Date((crossing.time - IST_OFFSET_SECONDS) * 1000);
-        const timeStr = date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        
-        return `
-          <div class="crossing-item" data-crossing-index="${index}">
-            <div class="crossing-header">
-              <span class="crossing-type ce-pe">CE-PE Crossover</span>
-              <span class="crossing-time">${timeStr}</span>
-            </div>
-            <div class="crossing-price">CE: ₹${crossing.ceValue.toFixed(2)} | PE: ₹${crossing.peValue.toFixed(2)}</div>
-            <div class="crossing-desc">${crossing.type}</div>
-          </div>
-        `;
-      }).join('');
-      
-      container.querySelectorAll('.crossing-item').forEach((item, index) => {
-        item.addEventListener('click', () => {
-          container.querySelectorAll('.crossing-item').forEach(el => el.classList.remove('highlighted'));
-          item.classList.add('highlighted');
-          highlightCrossingOnChart(allCrossings[index]);
-          highlightedCrossing = allCrossings[index];
-        });
-      });
-    }
-
-    function updateLegendLatest() {
-      const spotData = lineVisibility.spot ? currentSeries.spotSeries : [];
-      const ceData = lineVisibility.ce ? currentSeries.ceSeries : [];
-      const peData = lineVisibility.pe ? currentSeries.peSeries : [];
-      
-      const spotLast = spotData.length > 0 ? spotData[spotData.length - 1].value : null;
-      const ceLast = ceData.length > 0 ? ceData[ceData.length - 1].value : null;
-      const peLast = peData.length > 0 ? peData[peData.length - 1].value : null;
-
-      document.getElementById('val-spot').textContent = spotLast !== null ? spotLast.toFixed(2) : '-';
-      document.getElementById('val-ce').textContent = ceLast !== null ? ceLast.toFixed(2) : '-';
-      document.getElementById('val-pe').textContent = peLast !== null ? peLast.toFixed(2) : '-';
-    }
-
-    // NEW: update legend based on crosshair hover
-    function updateLegendAtCrosshair(param) {
-      const valid =
-        param &&
-        param.time &&
-        param.point &&
-        param.point.x >= 0 &&
-        param.point.y >= 0;
-
-      if (!valid) {
-        updateLegendLatest();
-        return;
-      }
-
-      const spotData = param.seriesData.get(spotLine);
-      const ceData   = param.seriesData.get(ceLine);
-      const peData   = param.seriesData.get(peLine);
-
-      const spotValue = (spotData && spotData.value !== undefined) ? spotData.value : null;
-      const ceValue   = (ceData   && ceData.value   !== undefined) ? ceData.value   : null;
-      const peValue   = (peData   && peData.value   !== undefined) ? peData.value   : null;
-
-      document.getElementById('val-spot').textContent =
-        spotValue !== null ? spotValue.toFixed(2) : '-';
-      document.getElementById('val-ce').textContent =
-        ceValue   !== null ? ceValue.toFixed(2)   : '-';
-      document.getElementById('val-pe').textContent =
-        peValue   !== null ? peValue.toFixed(2)   : '-';
-    }
-
-    function resetData() {
-      loadInitialData();
-    }
-
-    function toggleCrossover() {
-      crossoverEnabled = !crossoverEnabled;
-      const toggleSwitch = document.getElementById('toggle-switch');
-      
-      if (crossoverEnabled) {
-        toggleSwitch.classList.add('active');
-        addCrossingMarkers();
-        updateCrossingsDisplay();
-      } else {
-        toggleSwitch.classList.remove('active');
-        clearCrossingMarkers();
-        hideCrossingsDisplay();
-      }
-    }
-
-    function toggleTheme() {
-      isDarkTheme = !isDarkTheme;
-      const body = document.body;
-      const themeSwitch = document.getElementById('theme-switch');
-      const themeLabel = document.querySelector('#theme-toggle .toggle-label');
-      
-      if (isDarkTheme) {
-        body.classList.remove('light-theme');
-        body.classList.add('dark-theme');
-        themeSwitch.classList.add('active');
-        themeLabel.textContent = 'Dark Theme';
-      } else {
-        body.classList.remove('dark-theme');
-        body.classList.add('light-theme');
-        themeSwitch.classList.remove('active');
-        themeLabel.textContent = 'Light Theme';
-      }
-      
-      updateChartTheme();
-    }
-
+    /***** CHECKBOX HANDLERS *****/
     function initCheckoutDropdown() {
       const checkoutBtn = document.getElementById('checkout-btn');
       const checkoutMenu = document.getElementById('checkout-menu');
-      
+
       checkoutBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const isVisible = checkoutMenu.classList.contains('show');
         closeAllDropdowns();
-        if (!isVisible) {
-          checkoutMenu.classList.add('show');
-        }
+        if (!isVisible) checkoutMenu.classList.add('show');
       });
-      
+
+      // Helper
+      function updateAll() {
+        drawOpenPriceLines();
+        updateLegendLatest();
+        loadInitialData();
+      }
+
+      // Spot
       document.getElementById('spot-check').addEventListener('change', (e) => {
         lineVisibility.spot = e.target.checked;
-        updateLineVisibility();
-        if (currentSeries.spotSeries.length > 0) {
-          spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
-        }
+        spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
         updateLegendLatest();
         closeAllDropdowns();
       });
-      
+
+      // CE
       document.getElementById('ce-check').addEventListener('change', (e) => {
         lineVisibility.ce = e.target.checked;
-        updateLineVisibility();
-        if (currentSeries.ceSeries.length > 0) {
-          ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
-        }
-        if (lineVisibility.ce && lineVisibility.pe && crossoverEnabled) {
-          allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
-          allCrossings.sort((a, b) => a.time - b.time);
-          addCrossingMarkers();
-          updateCrossingsDisplay();
-        } else if (crossoverEnabled) {
-          clearCrossingMarkers();
-          allCrossings = [];
-          updateCrossingsDisplay();
-        }
+        ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
         updateLegendLatest();
         closeAllDropdowns();
       });
-      
+
+      // PE
       document.getElementById('pe-check').addEventListener('change', (e) => {
         lineVisibility.pe = e.target.checked;
-        updateLineVisibility();
-        if (currentSeries.peSeries.length > 0) {
-          peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
-        }
-        if (lineVisibility.ce && lineVisibility.pe && crossoverEnabled) {
-          allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
-          allCrossings.sort((a, b) => a.time - b.time);
-          addCrossingMarkers();
-          updateCrossingsDisplay();
-        } else if (crossoverEnabled) {
-          clearCrossingMarkers();
-          allCrossings = [];
-          updateCrossingsDisplay();
-        }
+        peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
         updateLegendLatest();
         closeAllDropdowns();
       });
-      
+
+      document.getElementById('combined-premium-check').addEventListener('change', (e) => {
+        lineVisibility.combinedPremium = e.target.checked;
+        combinedPremiumLine.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
+        updateLegendLatest();
+        closeAllDropdowns();
+      });
+
+      document.getElementById('avg-check').addEventListener('change', (e) => {
+        lineVisibility.avgPrice = e.target.checked;
+        avgPriceLine.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
+        updateLegendLatest();
+        closeAllDropdowns();
+      });
+
+      document.getElementById('extrinsic-check').addEventListener('change', (e) => {
+        lineVisibility.extrinsic = e.target.checked;
+        extrinsicLine.setData(lineVisibility.extrinsic ? currentSeries.extrinsicSeries : []);
+        updateLegendLatest();
+        closeAllDropdowns();
+      });
+
+      // CONSTANT lines toggles
+      document.getElementById('ce-open-check').addEventListener('change', (e) => {
+        lineVisibility.ceOpen = e.target.checked;
+        drawOpenPriceLines();
+        updateOpenLegend();
+      });
+
+      document.getElementById('pe-open-check').addEventListener('change', (e) => {
+        lineVisibility.peOpen = e.target.checked;
+        drawOpenPriceLines();
+        updateOpenLegend();
+      });
+
+      document.getElementById('combined-open-check').addEventListener('change', (e) => {
+        lineVisibility.combinedOpen = e.target.checked;
+        drawOpenPriceLines();
+        updateOpenLegend();
+      });
+
       document.addEventListener('click', closeAllDropdowns);
     }
-    
+
     function closeAllDropdowns() {
-      document.querySelectorAll('.checkout-menu').forEach(menu => {
-        menu.classList.remove('show');
-      });
+      document.querySelectorAll('.checkout-menu').forEach(menu => menu.classList.remove('show'));
     }
 
+    /***** DROPDOWN FILTERS *****/
     function initDropdowns() {
-      const nameSel   = document.getElementById('name-select');
+      const nameSel = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
-      const ceSel     = document.getElementById('ce-strike-select');
-      const peSel     = document.getElementById('pe-strike-select');
+      const ceSel = document.getElementById('ce-strike-select');
+      const peSel = document.getElementById('pe-strike-select');
 
       nameSel.addEventListener('change', () => {
         populateExpirySelect();
@@ -1063,6 +739,7 @@
       });
     }
 
+    /***** AUTO REFRESH *****/
     function startAutoRefresh() {
       if (autoRefreshInterval) return;
       autoRefreshInterval = setInterval(async () => {
@@ -1077,6 +754,43 @@
       }
     }
 
+    /***** THEME TOGGLE *****/
+    function toggleTheme() {
+      isDarkTheme = !isDarkTheme;
+      const body = document.body;
+      const themeSwitch = document.getElementById('theme-switch');
+      const themeLabel = document.querySelector('#theme-toggle .toggle-label');
+
+      if (isDarkTheme) {
+        body.style.background = "linear-gradient(180deg,#071021 0%, #071a2b 100%)";
+        themeSwitch.classList.add('active');
+        themeLabel.textContent = 'Dark Theme';
+      } else {
+        body.style.background = "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
+        themeSwitch.classList.remove('active');
+        themeLabel.textContent = 'Light Theme';
+      }
+      updateChartTheme();
+    }
+
+    /***** CROSSOVER TOGGLE *****/
+    function toggleCrossover() {
+      crossoverEnabled = !crossoverEnabled;
+      const toggleSwitch = document.getElementById('toggle-switch');
+
+      if (crossoverEnabled) {
+        toggleSwitch.classList.add('active');
+        addCrossingMarkers();
+        updateCrossingsDisplay();
+      } else {
+        toggleSwitch.classList.remove('active');
+        clearCrossingMarkers();
+        document.getElementById('crossings-container').innerHTML =
+          '<div class="no-crossings">Enable "Show Crossovers" to detect CE-PE intersections.</div>';
+      }
+    }
+
+    /***** AUTO UPDATE TOGGLE *****/
     function toggleAutoUpdate() {
       autoUpdateEnabled = !autoUpdateEnabled;
       const label = document.getElementById('auto-update-label');
@@ -1093,52 +807,43 @@
       }
     }
 
+    /***** RESET BUTTON *****/
+    function resetData() {
+      loadInitialData();
+    }
+
+    /***** INIT *****/
     async function init() {
       document.body.classList.add('dark-theme');
-      
-      const themeToggle = document.getElementById('theme-toggle');
-      if (themeToggle) {
-        themeToggle.addEventListener('click', toggleTheme);
-      }
-      
-      const toggleContainer = document.getElementById('toggle-container');
-      if (toggleContainer) {
-        toggleContainer.addEventListener('click', toggleCrossover);
-      }
 
-      const autoUpdateToggle = document.getElementById('auto-update-toggle');
-      if (autoUpdateToggle) {
-        autoUpdateToggle.addEventListener('click', toggleAutoUpdate);
-      }
-
+      document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+      document.getElementById('toggle-container').addEventListener('click', toggleCrossover);
+      document.getElementById('auto-update-toggle').addEventListener('click', toggleAutoUpdate);
       document.getElementById('btn-reset').addEventListener('click', resetData);
-      
+
       initCheckoutDropdown();
-
-      window.addEventListener('resize', () => {
-        chart.applyOptions({ width: document.getElementById('chart').clientWidth });
-      });
-
       initDropdowns();
       await loadGroupedData();
       await loadInitialData();
       startAutoRefresh();
+
+      window.addEventListener('resize', () => {
+        chart.applyOptions({ width: document.getElementById('chart').clientWidth });
+      });
     }
 
-    // subscribe to crosshair move to drive legend-on-hover
-    chart.subscribeCrosshairMove(param => {
-      updateLegendAtCrosshair(param);
-    });
+    chart.subscribeCrosshairMove(param => updateLegendAtCrosshair(param));
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
     } else {
       init();
     }
-    
-    window.addEventListener('beforeunload', () => {
-      stopAutoRefresh();
-    });
+
+    window.addEventListener('beforeunload', () => stopAutoRefresh());
   </script>
+</body>
+</html>
+<!-- END OF DOCUMENT -->
 </body>
 </html>

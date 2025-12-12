@@ -11,8 +11,8 @@ import lombok.Data;
     name = "straddle_intraday",
     indexes = {
         @Index(name = "idx_name_expiry_strike", columnList = "name, expiry, strike"),
-        @Index(name = "idx_timestamp", columnList = "timestamp"),
-        @Index(name = "idx_name_expiry_timestamp", columnList = "name, expiry, timestamp")
+        @Index(name = "idx_timestamp", columnList = "trade_timestamp"),
+        @Index(name = "idx_name_expiry_timestamp", columnList = "name, expiry, trade_timestamp")
     }
 )
 @Data
@@ -23,11 +23,13 @@ public class StraddleIntraday {
     private Long id;
 
     private String name;       // NIFTY / BANKNIFTY / FINNIFTY
-    private String expiry;     // e.g. 2025-12-25
+
+    private String expiry;     // e.g., 2025-12-25
 
     @Column(precision = 20, scale = 4)
     private BigDecimal strike;
 
+    @Column(name = "trade_timestamp")
     private LocalDateTime timestamp;
 
     @Column(precision = 20, scale = 4)
@@ -45,8 +47,9 @@ public class StraddleIntraday {
     @Column(precision = 10, scale = 4)
     private BigDecimal peIV;
 
-    @Column(precision = 10, scale = 4)
-    private BigDecimal combinedIV;
+    // 🔥 Combined Premium (CE + PE)
+    @Column(precision = 20, scale = 4)
+    private BigDecimal combinedPremium;
 
     @Column(precision = 20, scale = 4)
     private BigDecimal ceVwap;
@@ -57,10 +60,26 @@ public class StraddleIntraday {
     @Column(precision = 20, scale = 4)
     private BigDecimal combinedVwap;
 
+    // 🔥 Total intrinsic (callIntrinsic + putIntrinsic)
     @Column(precision = 20, scale = 4)
     private BigDecimal intrinsic;
 
+    // 🔥 Total extrinsic (ceExtrinsic + peExtrinsic)
     @Column(precision = 20, scale = 4)
     private BigDecimal extrinsic;
 
+    // 🔥 CE Open price
+    @Column(precision = 20, scale = 4)
+    private BigDecimal ceOpenPrice;
+
+    // 🔥 PE Open price
+    @Column(precision = 20, scale = 4)
+    private BigDecimal peOpenPrice;
+
+    // 🔥 Combined Open price (ceOpen + peOpen)
+    @Column(precision = 20, scale = 4)
+    private BigDecimal combinedOpenPrice;
+    
+    @Column(precision = 20, scale = 4)
+    private BigDecimal avgPrice;
 }
