@@ -3,9 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Nifty — CE/PE Chart (fixed, HEX colors)</title>
-
-  <!-- Lightweight Charts -->
+  <title>Nifty — CE/PE Chart</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 
   <style>
@@ -13,82 +11,125 @@
     html,body{ height:100%; margin:0; padding:0; font-family:Inter, ui-sans-serif, system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; }
     body{ background:linear-gradient(180deg,#071021 0%, #071a2b 100%); color:#e6eef8; padding:16px; transition:all 0.25s ease; }
     .container{ max-width:100%; width:100%; margin:0 auto; overflow-x:hidden; }
-    .card{ width:100%; background:#0b1320; border-radius:12px; padding:16px; border:1px solid rgba(255,255,255,0.03); margin-bottom:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6); }
+    .card{ width:100%; background:#0b1320; border-radius:12px; padding:16px; border:1px solid rgba(255,255,255,0.03); margin-bottom:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6); position:relative; }
     .header{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
     #chart{ height:520px; width:100%; }
- .chart-fullscreen {
-  position: fixed !important;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw !important;
-  height: 100vh !important;
-  margin: 0 !important;
-  z-index: 100000;
-  border-radius: 0 !important;
-}
-#btn-max-chart {
-  position: absolute;
-  right: 12px;
-  top: 12px;
-  background: rgba(0,0,0,0.4);
-  color: white;
-  border: 1px solid rgba(255,255,255,0.2);
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  z-index: 99999;
-}
-
+    .chart-fullscreen {
+      position: fixed !important;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      z-index: 100000;
+      border-radius: 0 !important;
+      padding: 8px !important;
+    }
+    .btn-icon {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      background: rgba(0,0,0,0.4);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      z-index: 99999;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .btn-icon:hover { background: rgba(0,0,0,0.6); }
 
     .legend{ display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:center; }
-    .legend .item{ display:flex; align-items:center; gap:8px; font-size:13px; color:#94a3b8; }
+    .legend .item{ display:flex; align-items:center; gap:8px; font-size:13px; color:#94a3b8; transition: opacity 0.2s; }
+    .legend .item.hidden { opacity: 0.3; }
     .swatch{ width:12px; height:6px; border-radius:3px; display:inline-block; }
 
     .checkout-dropdown{ position:relative; z-index:999999; }
-    .checkout-btn{ padding:6px 12px; border-radius:6px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.12); cursor:pointer; font-size:13px; color:#60a5fa; }
-    .checkout-menu{ position:absolute; top:100%; right:0; background:#0b1320; border:1px solid rgba(255,255,255,0.03); border-radius:8px; min-width:260px; padding:12px; transform:translateY(-10px); opacity:0; visibility:hidden; transition:0.18s; box-shadow:0 8px 25px rgba(0,0,0,0.4); }
+    .checkout-btn{ padding:6px 12px; border-radius:6px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.12); cursor:pointer; font-size:13px; color:#60a5fa; transition: all 0.2s; }
+    .checkout-btn:hover { background:rgba(59,130,246,0.12); }
+    .checkout-menu{ position:absolute; top:100%; right:0; background:#0b1320; border:1px solid rgba(255,255,255,0.03); border-radius:8px; min-width:260px; padding:12px; transform:translateY(-10px); opacity:0; visibility:hidden; transition:0.18s; box-shadow:0 8px 25px rgba(0,0,0,0.4); margin-top:4px; }
     .checkout-menu.show{ transform:translateY(0); opacity:1; visibility:visible; }
-    .checkout-item{ display:flex; gap:8px; align-items:center; padding:6px 8px; font-size:13px; border-radius:4px; color:#94a3b8; }
+    .checkout-item{ display:flex; gap:8px; align-items:center; padding:6px 8px; font-size:13px; border-radius:4px; color:#94a3b8; cursor:pointer; }
     .checkout-item:hover{ background:rgba(255,255,255,0.02); }
+    .checkout-item input[type="checkbox"] { cursor: pointer; }
 
-    .toggle-container{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; background:rgba(148,163,184,0.03); border:1px solid rgba(148,163,184,0.03); }
-    .toggle-label{ font-size:13px; font-weight:600; color:#94a3b8; }
-    .toggle-switch{ width:46px; height:24px; border-radius:24px; border:1px solid rgba(148,163,184,0.25); position:relative; background:rgba(148,163,184,0.06); }
+    .toggle-container{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; background:rgba(148,163,184,0.03); border:1px solid rgba(148,163,184,0.03); transition: all 0.2s; }
+    .toggle-container:hover { background:rgba(148,163,184,0.05); }
+    .toggle-label{ font-size:13px; font-weight:600; color:#94a3b8; user-select: none; }
+    .toggle-switch{ width:46px; height:24px; border-radius:24px; border:1px solid rgba(148,163,184,0.25); position:relative; background:rgba(148,163,184,0.06); transition: all 0.2s; }
     .toggle-switch.active{ background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.35); }
     .toggle-switch::before{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; top:4px; left:4px; background:#94a3b8; transition:all .18s; }
     .toggle-switch.active::before{ transform:translateX(22px); background:#22c55e; }
 
     .crossings-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; margin-top:10px; }
-    .crossing-item{ padding:10px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); cursor:pointer; color:#cbd5e1; }
+    .crossing-item{ padding:10px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); cursor:pointer; color:#cbd5e1; transition: all 0.2s; }
+    .crossing-item:hover { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.06); }
+    .crossing-item.highlighted { background:rgba(34,197,94,0.1); border-color:rgba(34,197,94,0.3); }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-left: 8px;
+      animation: pulse 2s infinite;
+    }
+    .status-indicator.live { background: #22c55e; }
+    .status-indicator.error { background: #ef4444; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    select { 
+      padding: 6px 10px; 
+      border-radius: 6px; 
+      background: rgba(148,163,184,0.05); 
+      border: 1px solid rgba(148,163,184,0.1); 
+      color: #e6eef8;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    select:focus { outline: none; border-color: rgba(59,130,246,0.3); }
+
+    .no-crossings { padding: 20px; text-align: center; color: #64748b; font-size: 14px; }
+
+    .last-update { 
+      font-size: 11px; 
+      color: #64748b; 
+      margin-left: auto; 
+      display: flex; 
+      align-items: center; 
+      gap: 6px;
+    }
 
     @media (max-width:900px){
-      .header{ gap:8px; }
+      .header{ gap:8px; font-size: 12px; }
       .checkout-menu{ min-width:200px; }
+      #chart { height: 400px; }
+      .legend { font-size: 11px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-
-    <!-- MAIN CARD -->
     <div class="card">
-    <button id="btn-max-chart">🗖</button>
+      <button id="btn-max-chart" class="btn-icon">⛶</button>
 
       <div class="header">
         <div class="toggle-container" id="theme-toggle">
-          <span class="toggle-label">Dark Theme</span>
+          <span class="toggle-label">Dark</span>
           <div class="toggle-switch active" id="theme-switch"></div>
         </div>
 
         <div class="toggle-container" id="auto-update-toggle">
-          <span class="toggle-label" id="auto-update-label">Auto Update: ON</span>
+          <span class="toggle-label" id="auto-update-label">Auto: ON</span>
           <div class="toggle-switch active" id="auto-update-switch"></div>
         </div>
 
         <div class="toggle-container" id="toggle-container">
-          <span class="toggle-label">Show Crossovers</span>
+          <span class="toggle-label">Crossovers</span>
           <div class="toggle-switch" id="toggle-switch"></div>
         </div>
 
@@ -113,174 +154,148 @@
         <label style="color:#94a3b8">CE</label><select id="ce-strike-select"></select>
         <label style="color:#94a3b8">PE</label><select id="pe-strike-select"></select>
 
-        <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset Chart</button>
+        <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
         
+        <div class="last-update">
+          <span id="last-update-time">--:--:--</span>
+          <span class="status-indicator live" id="status-indicator"></span>
+        </div>
       </div>
 
       <div id="chart"></div>
 
       <div class="legend" id="bottom-legend">
-        <div class="item"><span class="swatch" style="background:#22c55e"></span> Spot: <strong id="val-spot">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#3b82f6"></span> CE: <strong id="val-ce">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#ef4444"></span> PE: <strong id="val-pe">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#fb7185"></span> Combined Premium: <strong id="val-combined-premium">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#14b8a6"></span> Avg Price: <strong id="val-avg">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#eab308"></span> Extrinsic: <strong id="val-extrinsic">-</strong></div>
-
-        <div class="item"><span class="swatch" style="background:#fbbf24"></span> CE Open: <strong id="val-ce-open">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#c084fc"></span> PE Open: <strong id="val-pe-open">-</strong></div>
-        <div class="item"><span class="swatch" style="background:#38bdf8"></span> Combined Open: <strong id="val-combined-open">-</strong></div>
+        <div class="item" data-line="spot"><span class="swatch" style="background:#22c55e"></span> Spot: <strong id="val-spot">-</strong></div>
+        <div class="item" data-line="ce"><span class="swatch" style="background:#3b82f6"></span> CE: <strong id="val-ce">-</strong></div>
+        <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span> PE: <strong id="val-pe">-</strong></div>
+        <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#fb7185"></span> Combined: <strong id="val-combined-premium">-</strong></div>
+        <div class="item" data-line="avgPrice"><span class="swatch" style="background:#14b8a6"></span> Avg: <strong id="val-avg">-</strong></div>
+        <div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span> Extrinsic: <strong id="val-extrinsic">-</strong></div>
+        <div class="item" data-line="ceOpen"><span class="swatch" style="background:#d97706"></span> CE Open: <strong id="val-ce-open">-</strong></div>
+        <div class="item" data-line="peOpen"><span class="swatch" style="background:#7e22ce"></span> PE Open: <strong id="val-pe-open">-</strong></div>
+        <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#0284c7"></span> Comb Open: <strong id="val-combined-open">-</strong></div>
       </div>
     </div>
 
     <div class="card">
-      <div class="section-title" style="color:#cbd5e1;font-weight:600;margin-bottom:8px">Detected CE-PE Crossovers</div>
+      <div style="color:#cbd5e1;font-weight:600;margin-bottom:8px">CE-PE Crossovers</div>
       <div id="crossings-container" class="crossings-grid"></div>
     </div>
-
   </div>
 
   <script>
-    /***** CONFIG *****/
     const API_URL = '/api/straddle/combined-chart';
     const GROUPED_API_URL = '/api/straddle/grouped';
     const API_PARAMS = { name: 'NIFTY', expiry: '16DEC25', ceStrike: '26000', peStrike: '26000' };
-    const IST_OFFSET_SECONDS = 5.5 * 60 * 60; // 19800
+    const IST_OFFSET_SECONDS = 5.5 * 60 * 60;
 
-    /***** STATE *****/
     let groupedData = [];
     let apiData = [];
     let currentSeries = {
-      spotSeries: [],
-      ceSeries: [],
-      peSeries: [],
-      combinedPremiumSeries: [],
-      extrinsicSeries: [],
-      avgPriceSeries: [],
-      ceOpen: null,
-      peOpen: null,
-      combinedOpen: null
+      spotSeries: [], ceSeries: [], peSeries: [], combinedPremiumSeries: [],
+      extrinsicSeries: [], avgPriceSeries: [], ceOpen: null, peOpen: null, combinedOpen: null
     };
 
     let allCrossings = [];
     let crossoverEnabled = false;
     let isDarkTheme = true;
     let autoRefreshInterval = null;
+    let autoUpdateEnabled = true;
     let lineVisibility = {
-      spot: true,
-      ce: true,
-      pe: true,
-      combinedPremium: true,
-      avgPrice: true,
-      extrinsic: true,
-      ceOpen: true,
-      peOpen: true,
-      combinedOpen: true
+      spot: true, ce: true, pe: true, combinedPremium: true,
+      avgPrice: true, extrinsic: true, ceOpen: true, peOpen: true, combinedOpen: true
     };
 
-    /***** HELPERS *****/
     function toUnixSeconds(isoString) {
-      const utcSeconds = Math.floor(new Date(isoString).getTime() / 1000);
-      return utcSeconds + IST_OFFSET_SECONDS;
+      return Math.floor(new Date(isoString).getTime() / 1000) + IST_OFFSET_SECONDS;
     }
 
     function showError(message) {
-      const container = document.getElementById('crossings-container');
-      container.innerHTML = `<div class="no-crossings">${message}</div>`;
+      document.getElementById('crossings-container').innerHTML = `<div class="no-crossings">${message}</div>`;
+      document.getElementById('status-indicator').className = 'status-indicator error';
     }
 
-    function safeFix(v) {
-      return (v !== null && v !== undefined && Number.isFinite(Number(v))) ? Number(v).toFixed(2) : '-';
+    function updateLastUpdateTime() {
+      const now = new Date();
+      document.getElementById('last-update-time').textContent = now.toLocaleTimeString('en-IN', { 
+        timeZone: 'Asia/Kolkata', hour12: false 
+      });
     }
 
-    /***** TRANSFORM *****/
     function transformToSeries(apiArray) {
-      const spotSeries = [];
-      const ceSeries = [];
-      const peSeries = [];
-      const combinedPremiumSeries = [];
-      const extrinsicSeries = [];
-      const avgPriceSeries = [];
+      const series = { spot: [], ce: [], pe: [], combinedPremium: [], extrinsic: [], avgPrice: [] };
 
       for (const row of apiArray) {
         const t = toUnixSeconds(row.timestamp);
         if (!isFinite(t) || row.spot == null) continue;
 
-        const spotVal = Number(row.spot);
-        const ceVal = Number(row.ce);
-        const peVal = Number(row.pe);
-        const combinedPremiumVal = row.combinedPremium != null ? Number(row.combinedPremium) : null;
-        const extrinsicVal = row.extrinsic != null ? Number(row.extrinsic) : null;
-        const avgVal = row.avgPrice != null ? Number(row.avgPrice) : null;
+        const vals = {
+          spot: Number(row.spot),
+          ce: Number(row.ce),
+          pe: Number(row.pe),
+          combinedPremium: row.combinedPremium != null ? Number(row.combinedPremium) : null,
+          extrinsic: row.extrinsic != null ? Number(row.extrinsic) : null,
+          avgPrice: row.avgPrice != null ? Number(row.avgPrice) : null
+        };
 
-        if (!Number.isFinite(spotVal)) continue;
+        if (!Number.isFinite(vals.spot)) continue;
 
-        spotSeries.push({ time: t, value: spotVal });
-        if (Number.isFinite(ceVal)) ceSeries.push({ time: t, value: ceVal });
-        if (Number.isFinite(peVal)) peSeries.push({ time: t, value: peVal });
-        if (combinedPremiumVal != null && Number.isFinite(combinedPremiumVal)) combinedPremiumSeries.push({ time: t, value: combinedPremiumVal });
-        if (extrinsicVal != null && Number.isFinite(extrinsicVal)) extrinsicSeries.push({ time: t, value: extrinsicVal });
-        if (avgVal != null && Number.isFinite(avgVal)) avgPriceSeries.push({ time: t, value: avgVal });
+        series.spot.push({ time: t, value: vals.spot });
+        if (Number.isFinite(vals.ce)) series.ce.push({ time: t, value: vals.ce });
+        if (Number.isFinite(vals.pe)) series.pe.push({ time: t, value: vals.pe });
+        if (vals.combinedPremium != null && Number.isFinite(vals.combinedPremium)) 
+          series.combinedPremium.push({ time: t, value: vals.combinedPremium });
+        if (vals.extrinsic != null && Number.isFinite(vals.extrinsic)) 
+          series.extrinsic.push({ time: t, value: vals.extrinsic });
+        if (vals.avgPrice != null && Number.isFinite(vals.avgPrice)) 
+          series.avgPrice.push({ time: t, value: vals.avgPrice });
       }
 
-      // constant opens from first row
       if (apiArray.length > 0) {
         const first = apiArray[0];
-        const parsedCeOpen = Number(first.ceOpen);
-        const parsedPeOpen = Number(first.peOpen);
-        const parsedCombinedOpen = Number(first.combinedOpen);
-
-        currentSeries.ceOpen = Number.isFinite(parsedCeOpen) ? parsedCeOpen : null;
-        currentSeries.peOpen = Number.isFinite(parsedPeOpen) ? parsedPeOpen : null;
-        currentSeries.combinedOpen = Number.isFinite(parsedCombinedOpen) ? parsedCombinedOpen : null;
-
-        console.debug('[transformToSeries] opens:', { ceOpen: currentSeries.ceOpen, peOpen: currentSeries.peOpen, combinedOpen: currentSeries.combinedOpen });
-      } else {
-        currentSeries.ceOpen = null;
-        currentSeries.peOpen = null;
-        currentSeries.combinedOpen = null;
+        currentSeries.ceOpen = Number.isFinite(Number(first.ceOpen)) ? Number(first.ceOpen) : null;
+        currentSeries.peOpen = Number.isFinite(Number(first.peOpen)) ? Number(first.peOpen) : null;
+        currentSeries.combinedOpen = Number.isFinite(Number(first.combinedOpen)) ? Number(first.combinedOpen) : null;
       }
 
-      currentSeries.spotSeries = spotSeries;
-      currentSeries.ceSeries = ceSeries;
-      currentSeries.peSeries = peSeries;
-      currentSeries.combinedPremiumSeries = combinedPremiumSeries;
-      currentSeries.extrinsicSeries = extrinsicSeries;
-      currentSeries.avgPriceSeries = avgPriceSeries;
+      Object.assign(currentSeries, {
+        spotSeries: series.spot, ceSeries: series.ce, peSeries: series.pe,
+        combinedPremiumSeries: series.combinedPremium,
+        extrinsicSeries: series.extrinsic, avgPriceSeries: series.avgPrice
+      });
 
-      return { spotSeries, ceSeries, peSeries, combinedPremiumSeries, extrinsicSeries, avgPriceSeries };
+      return series;
     }
 
-    /***** CHART SETUP *****/
     const chart = LightweightCharts.createChart(document.getElementById('chart'), {
       layout: { backgroundColor: '#071421', textColor: '#dbeafe' },
       rightPriceScale: { borderVisible: false, visible: true },
       leftPriceScale: { borderVisible: false, visible: true },
       timeScale: {
-        borderVisible: false,
-        timeVisible: true,
-        secondsVisible: true,
+        borderVisible: false, timeVisible: true, secondsVisible: true,
         tickMarkFormatter: (time) => {
           const istDate = new Date((time - IST_OFFSET_SECONDS) * 1000);
-          return istDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          return istDate.toLocaleTimeString('en-IN', { 
+            timeZone: 'Asia/Kolkata', hour12: false, 
+            hour: '2-digit', minute: '2-digit', second: '2-digit' 
+          });
         }
       },
       grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
       crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
     });
 
-    // dynamic series (hard-coded HEX colors)
-    const spotLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#22c55e', priceScaleId: 'left' });
-    const ceLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#3b82f6', priceScaleId: 'right' });
-    const peLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#ef4444', priceScaleId: 'right' });
-    const combinedPremiumLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#fb7185', priceScaleId: 'right' });
-    const avgPriceLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#14b8a6', priceScaleId: 'right' });
-    const extrinsicLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#eab308', priceScaleId: 'right' });
-
-    // constant open lines (horizontal style)
-    const ceOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#d97706', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
-    const peOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#7e22ce', lineStyle: LightweightCharts.LineStyle.Dotted, priceScaleId: 'right' });
-    const combinedOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#0284c7', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
+    const lines = {
+      spot: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#22c55e', priceScaleId: 'left' }),
+      ce: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#3b82f6', priceScaleId: 'right' }),
+      pe: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#ef4444', priceScaleId: 'right' }),
+      combinedPremium: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#fb7185', priceScaleId: 'right' }),
+      avgPrice: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#14b8a6', priceScaleId: 'right' }),
+      extrinsic: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#eab308', priceScaleId: 'right' }),
+      ceOpen: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#d97706', lineStyle: 2, priceScaleId: 'right' }),
+      peOpen: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#7e22ce', lineStyle: 1, priceScaleId: 'right' }),
+      combinedOpen: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#0284c7', lineStyle: 2, priceScaleId: 'right' })
+    };
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
@@ -289,165 +304,124 @@
 
       chart.applyOptions({
         layout: { backgroundColor: bgColor, textColor: textColor },
-        grid: { vertLines: { visible: false }, horzLines: { color: gridColor } },
-        leftPriceScale: { borderVisible: false, visible: lineVisibility.spot },
-        rightPriceScale: {
-          borderVisible: false,
-          visible: lineVisibility.ce || lineVisibility.pe || lineVisibility.combinedPremium || lineVisibility.avgPrice || lineVisibility.extrinsic || lineVisibility.ceOpen || lineVisibility.peOpen || lineVisibility.combinedOpen
+        grid: { vertLines: { visible: false }, horzLines: { color: gridColor } }
+      });
+    }
+
+    function drawOpenPriceLines() {
+      const timestamps = currentSeries.spotSeries.map(p => p.time);
+      if (!timestamps.length) {
+        lines.ceOpen.setData([]);
+        lines.peOpen.setData([]);
+        lines.combinedOpen.setData([]);
+        return;
+      }
+
+      const opens = {
+        ceOpen: Number(currentSeries.ceOpen),
+        peOpen: Number(currentSeries.peOpen),
+        combinedOpen: Number(currentSeries.combinedOpen)
+      };
+
+      Object.keys(opens).forEach(key => {
+        if (lineVisibility[key] && Number.isFinite(opens[key])) {
+          lines[key].setData(timestamps.map(t => ({ time: t, value: opens[key] })));
+        } else {
+          lines[key].setData([]);
         }
       });
     }
 
-    /***** DRAW OPEN LINES *****/
-    function drawOpenPriceLines() {
-      const timestamps = (currentSeries.spotSeries || []).map(p => p.time);
-      if (!timestamps.length) {
-        ceOpenLine.setData([]); peOpenLine.setData([]); combinedOpenLine.setData([]); return;
-      }
-
-      const ceOpenVal = Number(currentSeries.ceOpen);
-      const peOpenVal = Number(currentSeries.peOpen);
-      const combinedOpenVal = Number(currentSeries.combinedOpen);
-
-      if (lineVisibility.ceOpen && Number.isFinite(ceOpenVal)) {
-        ceOpenLine.setData(timestamps.map(t => ({ time: t, value: ceOpenVal })));
-      } else {
-        ceOpenLine.setData([]);
-      }
-
-      if (lineVisibility.peOpen && Number.isFinite(peOpenVal)) {
-        peOpenLine.setData(timestamps.map(t => ({ time: t, value: peOpenVal })));
-      } else {
-        peOpenLine.setData([]);
-      }
-
-      if (lineVisibility.combinedOpen && Number.isFinite(combinedOpenVal)) {
-        combinedOpenLine.setData(timestamps.map(t => ({ time: t, value: combinedOpenVal })));
-      } else {
-        combinedOpenLine.setData([]);
-      }
-
-      chart.applyOptions({
-        rightPriceScale: {
-          visible: lineVisibility.ce || lineVisibility.pe || lineVisibility.combinedPremium || lineVisibility.avgPrice || lineVisibility.extrinsic || lineVisibility.ceOpen || lineVisibility.peOpen || lineVisibility.combinedOpen
-        },
-        leftPriceScale: { visible: lineVisibility.spot }
+    function updateLegendVisibility() {
+      document.querySelectorAll('.legend .item').forEach(item => {
+        const lineKey = item.dataset.line;
+        if (lineKey && !lineVisibility[lineKey]) {
+          item.classList.add('hidden');
+        } else {
+          item.classList.remove('hidden');
+        }
       });
     }
 
-    /***** LEGEND UPDATES *****/
-    function updateOpenLegend() {
-      document.getElementById('val-ce-open').textContent = (lineVisibility.ceOpen && Number.isFinite(currentSeries.ceOpen)) ? Number(currentSeries.ceOpen).toFixed(2) : '-';
-      document.getElementById('val-pe-open').textContent = (lineVisibility.peOpen && Number.isFinite(currentSeries.peOpen)) ? Number(currentSeries.peOpen).toFixed(2) : '-';
-      document.getElementById('val-combined-open').textContent = (lineVisibility.combinedOpen && Number.isFinite(currentSeries.combinedOpen)) ? Number(currentSeries.combinedOpen).toFixed(2) : '-';
-    }
-
     function updateLegendLatest() {
-      const spotData = lineVisibility.spot ? currentSeries.spotSeries : [];
-      const ceData = lineVisibility.ce ? currentSeries.ceSeries : [];
-      const peData = lineVisibility.pe ? currentSeries.peSeries : [];
-      const combinedPremiumData = lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : [];
-      const avgData = lineVisibility.avgPrice ? currentSeries.avgPriceSeries : [];
-      const extrinsicData = lineVisibility.extrinsic ? currentSeries.extrinsicSeries : [];
+      const values = {};
+      ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'extrinsic'].forEach(key => {
+        const data = currentSeries[key + 'Series'];
+        values[key] = data.length > 0 ? data[data.length - 1].value : null;
+      });
 
-      const spotLast = spotData.length > 0 ? spotData[spotData.length - 1].value : null;
-      const ceLast = ceData.length > 0 ? ceData[ceData.length - 1].value : null;
-      const peLast = peData.length > 0 ? peData[peData.length - 1].value : null;
-      const combinedPremiumLast = combinedPremiumData.length > 0 ? combinedPremiumData[combinedPremiumData.length - 1].value : null;
-      const avgLast = avgData.length > 0 ? avgData[avgData.length - 1].value : null;
-      const extrinsicLast = extrinsicData.length > 0 ? extrinsicData[extrinsicData.length - 1].value : null;
+      document.getElementById('val-spot').textContent = values.spot !== null ? values.spot.toFixed(2) : '-';
+      document.getElementById('val-ce').textContent = values.ce !== null ? values.ce.toFixed(2) : '-';
+      document.getElementById('val-pe').textContent = values.pe !== null ? values.pe.toFixed(2) : '-';
+      document.getElementById('val-combined-premium').textContent = values.combinedPremium !== null ? values.combinedPremium.toFixed(2) : '-';
+      document.getElementById('val-avg').textContent = values.avgPrice !== null ? values.avgPrice.toFixed(2) : '-';
+      document.getElementById('val-extrinsic').textContent = values.extrinsic !== null ? values.extrinsic.toFixed(2) : '-';
 
-      document.getElementById('val-spot').textContent = spotLast !== null ? spotLast.toFixed(2) : '-';
-      document.getElementById('val-spot').style.opacity = lineVisibility.spot ? '1' : '0.4';
+      document.getElementById('val-ce-open').textContent = Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen.toFixed(2) : '-';
+      document.getElementById('val-pe-open').textContent = Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen.toFixed(2) : '-';
+      document.getElementById('val-combined-open').textContent = Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen.toFixed(2) : '-';
 
-      document.getElementById('val-ce').textContent = ceLast !== null ? ceLast.toFixed(2) : '-';
-      document.getElementById('val-ce').style.opacity = lineVisibility.ce ? '1' : '0.4';
-
-      document.getElementById('val-pe').textContent = peLast !== null ? peLast.toFixed(2) : '-';
-      document.getElementById('val-pe').style.opacity = lineVisibility.pe ? '1' : '0.4';
-
-      document.getElementById('val-combined-premium').textContent = combinedPremiumLast !== null ? combinedPremiumLast.toFixed(2) : '-';
-      document.getElementById('val-combined-premium').style.opacity = lineVisibility.combinedPremium ? '1' : '0.4';
-
-      document.getElementById('val-avg').textContent = avgLast !== null ? avgLast.toFixed(2) : '-';
-      document.getElementById('val-avg').style.opacity = lineVisibility.avgPrice ? '1' : '0.4';
-
-      document.getElementById('val-extrinsic').textContent = extrinsicLast !== null ? extrinsicLast.toFixed(2) : '-';
-      document.getElementById('val-extrinsic').style.opacity = lineVisibility.extrinsic ? '1' : '0.4';
-
-      updateOpenLegend();
+      updateLegendVisibility();
     }
 
-    /***** CROSSHAIR HOVER *****/
     function updateLegendAtCrosshair(param) {
-      const valid = param && param.time && param.point && param.point.x >= 0 && param.point.y >= 0;
-      if (!valid) { updateLegendLatest(); return; }
+      if (!param || !param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+        updateLegendLatest();
+        return;
+      }
 
-      const spotData = param.seriesData.get(spotLine);
-      const ceData = param.seriesData.get(ceLine);
-      const peData = param.seriesData.get(peLine);
-      const combinedPremiumData = param.seriesData.get(combinedPremiumLine);
-      const avgData = param.seriesData.get(avgPriceLine);
-      const extrinsicData = param.seriesData.get(extrinsicLine);
+      const getData = (line) => param.seriesData.get(line);
+      const getValue = (data) => data && data.value !== undefined ? data.value : null;
 
-      const spotValue = spotData && spotData.value !== undefined ? spotData.value : null;
-      const ceValue = ceData && ceData.value !== undefined ? ceData.value : null;
-      const peValue = peData && peData.value !== undefined ? peData.value : null;
-      const combinedPremiumValue = combinedPremiumData && combinedPremiumData.value !== undefined ? combinedPremiumData.value : null;
-      const avgValue = avgData && avgData.value !== undefined ? avgData.value : null;
-      const extrinsicValue = extrinsicData && extrinsicData.value !== undefined ? extrinsicData.value : null;
+      const values = {
+        spot: getValue(getData(lines.spot)),
+        ce: getValue(getData(lines.ce)),
+        pe: getValue(getData(lines.pe)),
+        combinedPremium: getValue(getData(lines.combinedPremium)),
+        avgPrice: getValue(getData(lines.avgPrice)),
+        extrinsic: getValue(getData(lines.extrinsic)),
+        ceOpen: getValue(getData(lines.ceOpen)) ?? currentSeries.ceOpen,
+        peOpen: getValue(getData(lines.peOpen)) ?? currentSeries.peOpen,
+        combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen
+      };
 
-      // opens: fallback to static opens if seriesData doesn't include them
-      const ceOpenData = param.seriesData.get(ceOpenLine);
-      const peOpenData = param.seriesData.get(peOpenLine);
-      const combinedOpenData = param.seriesData.get(combinedOpenLine);
+      const fmt = (v) => v !== null && Number.isFinite(v) ? v.toFixed(2) : '-';
 
-      const ceOpenValue = (ceOpenData && ceOpenData.value !== undefined) ? ceOpenData.value : (lineVisibility.ceOpen && Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen : null);
-      const peOpenValue = (peOpenData && peOpenData.value !== undefined) ? peOpenData.value : (lineVisibility.peOpen && Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen : null);
-      const combinedOpenValue = (combinedOpenData && combinedOpenData.value !== undefined) ? combinedOpenData.value : (lineVisibility.combinedOpen && Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen : null);
-
-      const safe = (v) => (v !== null && v !== undefined && Number.isFinite(Number(v))) ? Number(v).toFixed(2) : '-';
-
-      document.getElementById('val-spot').textContent = safe(spotValue);
-      document.getElementById('val-ce').textContent = safe(ceValue);
-      document.getElementById('val-pe').textContent = safe(peValue);
-      document.getElementById('val-combined-premium').textContent = safe(combinedPremiumValue);
-      document.getElementById('val-avg').textContent = safe(avgValue);
-      document.getElementById('val-extrinsic').textContent = safe(extrinsicValue);
-
-      document.getElementById('val-ce-open').textContent = safe(ceOpenValue);
-      document.getElementById('val-pe-open').textContent = safe(peOpenValue);
-      document.getElementById('val-combined-open').textContent = safe(combinedOpenValue);
+      document.getElementById('val-spot').textContent = fmt(values.spot);
+      document.getElementById('val-ce').textContent = fmt(values.ce);
+      document.getElementById('val-pe').textContent = fmt(values.pe);
+      document.getElementById('val-combined-premium').textContent = fmt(values.combinedPremium);
+      document.getElementById('val-avg').textContent = fmt(values.avgPrice);
+      document.getElementById('val-extrinsic').textContent = fmt(values.extrinsic);
+      document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
+      document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
+      document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
     }
 
-    /***** CROSSOVER DETECTION *****/
-    function detectCrossovers(series1, series2, name1, name2) {
+    function detectCrossovers(s1, s2, n1, n2) {
       const crossings = [];
-      if (series1.length < 2 || series2.length < 2) return crossings;
-      for (let i = 1; i < series1.length && i < series2.length; i++) {
-        const prev1 = series1[i - 1].value;
-        const curr1 = series1[i].value;
-        const prev2 = series2[i - 1].value;
-        const curr2 = series2[i].value;
-        if (!isFinite(prev1) || !isFinite(curr1) || !isFinite(prev2) || !isFinite(curr2)) continue;
-        const wasBelowNowAbove = prev1 < prev2 && curr1 > curr2;
-        const wasAboveNowBelow = prev1 > prev2 && curr1 < curr2;
-        if (wasBelowNowAbove || wasAboveNowBelow) {
-          const t1 = series1[i - 1].time;
-          const t2 = series1[i].time;
-          const denom = (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1)) || 1;
-          const ratio = Math.abs(prev2 - prev1) / denom;
-          const intersectTime = t1 + (t2 - t1) * ratio;
-          const intersectPrice = prev1 + (curr1 - prev1) * ratio;
+      if (s1.length < 2 || s2.length < 2) return crossings;
+      
+      for (let i = 1; i < Math.min(s1.length, s2.length); i++) {
+        const [prev1, curr1, prev2, curr2] = [s1[i-1].value, s1[i].value, s2[i-1].value, s2[i].value];
+        if (![prev1, curr1, prev2, curr2].every(v => isFinite(v))) continue;
+        
+        const crossedUp = prev1 < prev2 && curr1 > curr2;
+        const crossedDown = prev1 > prev2 && curr1 < curr2;
+        
+        if (crossedUp || crossedDown) {
+          const [t1, t2] = [s1[i-1].time, s1[i].time];
+          const ratio = Math.abs(prev2 - prev1) / (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1) || 1);
+          const time = t1 + (t2 - t1) * ratio;
+          const price = prev1 + (curr1 - prev1) * ratio;
+          
           crossings.push({
-            time: intersectTime,
-            price: intersectPrice,
-            gap: 0,
-            type: wasBelowNowAbove ? `${name1} crosses above ${name2}` : `${name1} crosses below ${name2}`,
-            pair: `${name1}-${name2}`,
-            direction: wasBelowNowAbove ? 'up' : 'down',
-            ceValue: name1 === 'CE' ? curr1 : curr2,
-            peValue: name1 === 'PE' ? curr1 : curr2
+            time, price, gap: 0,
+            type: crossedUp ? `${n1} crosses above ${n2}` : `${n1} crosses below ${n2}`,
+            pair: `${n1}-${n2}`,
+            direction: crossedUp ? 'up' : 'down',
+            ceValue: n1 === 'CE' ? curr1 : curr2,
+            peValue: n1 === 'PE' ? curr1 : curr2
           });
         }
       }
@@ -456,58 +430,63 @@
 
     function addCrossingMarkers() {
       if (!lineVisibility.ce) return;
-      const markers = allCrossings.map(crossing => ({ time: crossing.time, position: 'inBar', color: '#f472b6', shape: 'circle' }));
-      ceLine.setMarkers(markers.length ? markers : []);
+      const markers = allCrossings.map(c => ({ 
+        time: c.time, position: 'inBar', color: '#f472b6', shape: 'circle' 
+      }));
+      lines.ce.setMarkers(markers);
     }
-    function clearCrossingMarkers() { ceLine.setMarkers([]); }
+
+    function clearCrossingMarkers() { lines.ce.setMarkers([]); }
 
     function updateCrossingsDisplay() {
       const container = document.getElementById('crossings-container');
       if (allCrossings.length === 0) {
-        container.innerHTML = '<div class="no-crossings">No CE-PE crossovers detected yet. Crossovers will appear when CE and PE prices intersect.</div>';
+        container.innerHTML = '<div class="no-crossings">No crossovers detected yet.</div>';
         return;
       }
-      container.innerHTML = allCrossings.map((crossing, index) => {
-        const istDate = new Date((crossing.time - IST_OFFSET_SECONDS) * 1000);
-        const timeStr = istDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      container.innerHTML = allCrossings.map((c, i) => {
+        const istDate = new Date((c.time - IST_OFFSET_SECONDS) * 1000);
+        const timeStr = istDate.toLocaleTimeString('en-IN', { 
+          timeZone: 'Asia/Kolkata', hour12: false, 
+          hour: '2-digit', minute: '2-digit', second: '2-digit' 
+        });
+        
         return `
-          <div class="crossing-item" data-crossing-index="${index}">
+          <div class="crossing-item" data-crossing-index="${i}">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <div style="font-weight:600;font-size:12px">CE-PE Crossover</div>
+              <div style="font-weight:600;font-size:12px">CE-PE Cross</div>
               <div style="color:#94a3b8;font-size:11px">${timeStr}</div>
             </div>
-            <div style="font-weight:600;margin-top:6px">CE: ₹${crossing.ceValue.toFixed(2)} | PE: ₹${crossing.peValue.toFixed(2)}</div>
-            <div style="color:#94a3b8;font-size:12px;margin-top:6px">${crossing.type}</div>
+            <div style="font-weight:600;margin-top:6px">CE: ₹${c.ceValue.toFixed(2)} | PE: ₹${c.peValue.toFixed(2)}</div>
+            <div style="color:#94a3b8;font-size:12px;margin-top:6px">${c.type}</div>
           </div>
         `;
       }).join('');
-      container.querySelectorAll('.crossing-item').forEach((item, index) => {
+      
+      container.querySelectorAll('.crossing-item').forEach((item, i) => {
         item.addEventListener('click', () => {
           container.querySelectorAll('.crossing-item').forEach(el => el.classList.remove('highlighted'));
           item.classList.add('highlighted');
-          highlightCrossingOnChart(allCrossings[index]);
+          highlightCrossingOnChart(allCrossings[i]);
         });
       });
     }
-  </script>
-<script>
-    /***** SCROLL UP FOR PART 1 — THIS CONTINUES THE SCRIPT *****/
 
     function highlightCrossingOnChart(crossing) {
       const markers = allCrossings.map(c => {
         const isSelected = c.time === crossing.time && c.type === crossing.type;
-        const marker = {
+        return {
           time: c.time,
           position: 'inBar',
           color: isSelected ? '#22c55e' : '#f472b6',
           shape: 'circle',
-          size: isSelected ? 2 : 1
+          size: isSelected ? 2 : 1,
+          text: isSelected ? `CE: ₹${c.ceValue.toFixed(2)} = PE: ₹${c.peValue.toFixed(2)}` : undefined
         };
-        if (isSelected) marker.text = `CE: ₹${c.ceValue.toFixed(2)} = PE: ₹${c.peValue.toFixed(2)}`;
-        return marker;
       });
 
-      ceLine.setMarkers(markers);
+      lines.ce.setMarkers(markers);
 
       const visibleRange = chart.timeScale().getVisibleRange();
       if (!visibleRange || crossing.time < visibleRange.from || crossing.time > visibleRange.to) {
@@ -515,17 +494,18 @@
       }
     }
 
-    /***** API CALLS *****/
     async function fetchDataFromAPI() {
       try {
         const params = new URLSearchParams(API_PARAMS);
         const response = await fetch(`${API_URL}?${params}`);
-        if (!response.ok) throw new Error(`API request failed: ${response.status}`);
+        if (!response.ok) throw new Error(`API failed: ${response.status}`);
         const result = await response.json();
+        document.getElementById('status-indicator').className = 'status-indicator live';
+        updateLastUpdateTime();
         return result.data || [];
       } catch (err) {
-        console.error('Error fetching data from API:', err);
-        showError('Error fetching data from API. Please try again.');
+        console.error('Error fetching data:', err);
+        showError('Error fetching data. Please try again.');
         return [];
       }
     }
@@ -541,17 +521,12 @@
       }
     }
 
-    /***** DROPDOWN POPULATION *****/
     function populateNameSelect() {
-      const nameSel = document.getElementById('name-select');
-      nameSel.innerHTML = '';
-      groupedData.forEach(item => {
-        const opt = document.createElement('option');
-        opt.value = item.name;
-        opt.textContent = item.name;
-        nameSel.appendChild(opt);
-      });
-      API_PARAMS.name = nameSel.value;
+      const sel = document.getElementById('name-select');
+      sel.innerHTML = groupedData.map(item => 
+        `<option value="${item.name}">${item.name}</option>`
+      ).join('');
+      API_PARAMS.name = sel.value;
       populateExpirySelect();
     }
 
@@ -559,14 +534,11 @@
       const nameSel = document.getElementById('name-select');
       const expirySel = document.getElementById('expiry-select');
       const selected = groupedData.find(x => x.name === nameSel.value);
-      expirySel.innerHTML = '';
       const expiries = selected ? Object.keys(selected.expiries) : [];
-      expiries.forEach(exp => {
-        const opt = document.createElement('option');
-        opt.value = exp;
-        opt.textContent = exp;
-        expirySel.appendChild(opt);
-      });
+      
+      expirySel.innerHTML = expiries.map(exp => 
+        `<option value="${exp}">${exp}</option>`
+      ).join('');
       API_PARAMS.expiry = expirySel.value;
       populateStrikeSelects();
     }
@@ -580,24 +552,12 @@
       const selected = groupedData.find(x => x.name === nameSel.value);
       const strikes = selected ? (selected.expiries[expirySel.value] || []) : [];
 
-      ceSel.innerHTML = '';
-      peSel.innerHTML = '';
-
-      strikes.forEach(strike => {
-        const opt1 = document.createElement('option');
-        opt1.value = strike;
-        opt1.textContent = strike;
-        ceSel.appendChild(opt1);
-
-        const opt2 = document.createElement('option');
-        opt2.value = strike;
-        opt2.textContent = strike;
-        peSel.appendChild(opt2);
-      });
+      const strikeOptions = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
+      ceSel.innerHTML = strikeOptions;
+      peSel.innerHTML = strikeOptions;
 
       if (strikes.length > 0) {
         let defaultStrike = strikes[0];
-
         if (selected && selected.atmStrike != null) {
           const atm = Number(selected.atmStrike);
           const match = strikes.find(s => Number(s) === atm);
@@ -611,7 +571,6 @@
       }
     }
 
-    /***** MAIN LOAD FUNCTION *****/
     async function loadInitialData() {
       apiData = await fetchDataFromAPI();
       if (apiData.length === 0) {
@@ -621,24 +580,21 @@
 
       transformToSeries(apiData);
 
-      // Dynamic series
-      spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
-      ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
-      peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
-      combinedPremiumLine.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
-      avgPriceLine.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
-      extrinsicLine.setData(lineVisibility.extrinsic ? currentSeries.extrinsicSeries : []);
+      lines.spot.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
+      lines.ce.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
+      lines.pe.setData(lineVisibility.pe ? currentSeries.peSeries : []);
+      lines.combinedPremium.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
+      lines.avgPrice.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
+      lines.extrinsic.setData(lineVisibility.extrinsic ? currentSeries.extrinsicSeries : []);
 
-      // Draw opens
       drawOpenPriceLines();
-      updateOpenLegend();
 
-      // Crossovers
       allCrossings = [];
       if (lineVisibility.ce && lineVisibility.pe) {
         allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
         allCrossings.sort((a, b) => a.time - b.time);
       }
+
       if (crossoverEnabled) {
         addCrossingMarkers();
         updateCrossingsDisplay();
@@ -650,143 +606,83 @@
       chart.timeScale().fitContent();
     }
 
-    /***** CHECKBOX HANDLERS *****/
     function initCheckoutDropdown() {
-      const checkoutBtn = document.getElementById('checkout-btn');
-      const checkoutMenu = document.getElementById('checkout-menu');
+      const btn = document.getElementById('checkout-btn');
+      const menu = document.getElementById('checkout-menu');
 
-      checkoutBtn.addEventListener('click', (e) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const isVisible = checkoutMenu.classList.contains('show');
+        const isVisible = menu.classList.contains('show');
         closeAllDropdowns();
-        if (!isVisible) checkoutMenu.classList.add('show');
+        if (!isVisible) menu.classList.add('show');
       });
 
-      // Helper
-      function updateAll() {
-        drawOpenPriceLines();
-        updateLegendLatest();
-        loadInitialData();
-      }
+      const checkboxHandlers = {
+        'spot-check': 'spot',
+        'ce-check': 'ce',
+        'pe-check': 'pe',
+        'combined-premium-check': 'combinedPremium',
+        'avg-check': 'avgPrice',
+        'extrinsic-check': 'extrinsic',
+        'ce-open-check': 'ceOpen',
+        'pe-open-check': 'peOpen',
+        'combined-open-check': 'combinedOpen'
+      };
 
-      // Spot
-      document.getElementById('spot-check').addEventListener('change', (e) => {
-        lineVisibility.spot = e.target.checked;
-        spotLine.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
-        updateLegendLatest();
-        closeAllDropdowns();
+      Object.entries(checkboxHandlers).forEach(([id, key]) => {
+        document.getElementById(id).addEventListener('change', (e) => {
+          lineVisibility[key] = e.target.checked;
+          
+          if (['ceOpen', 'peOpen', 'combinedOpen'].includes(key)) {
+            drawOpenPriceLines();
+          } else {
+            const seriesKey = key + 'Series';
+            lines[key].setData(lineVisibility[key] ? currentSeries[seriesKey] : []);
+          }
+          
+          updateLegendLatest();
+          closeAllDropdowns();
+        });
       });
 
-      // CE
-      document.getElementById('ce-check').addEventListener('change', (e) => {
-        lineVisibility.ce = e.target.checked;
-        ceLine.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
-        updateLegendLatest();
-        closeAllDropdowns();
+      document.getElementById('btn-max-chart').addEventListener('click', () => {
+        const card = document.querySelector('.card');
+        card.classList.toggle('chart-fullscreen');
+        setTimeout(() => {
+          chart.applyOptions({ 
+            width: card.clientWidth, 
+            height: card.clientHeight - 100 
+          });
+        }, 200);
       });
-
-      // PE
-      document.getElementById('pe-check').addEventListener('change', (e) => {
-        lineVisibility.pe = e.target.checked;
-        peLine.setData(lineVisibility.pe ? currentSeries.peSeries : []);
-        updateLegendLatest();
-        closeAllDropdowns();
-      });
-
-      document.getElementById('combined-premium-check').addEventListener('change', (e) => {
-        lineVisibility.combinedPremium = e.target.checked;
-        combinedPremiumLine.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
-        updateLegendLatest();
-        closeAllDropdowns();
-      });
-
-      document.getElementById('avg-check').addEventListener('change', (e) => {
-        lineVisibility.avgPrice = e.target.checked;
-        avgPriceLine.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
-        updateLegendLatest();
-        closeAllDropdowns();
-      });
-
-      document.getElementById('extrinsic-check').addEventListener('change', (e) => {
-        lineVisibility.extrinsic = e.target.checked;
-        extrinsicLine.setData(lineVisibility.extrinsic ? currentSeries.extrinsicSeries : []);
-        updateLegendLatest();
-        closeAllDropdowns();
-      });
-
-      // CONSTANT lines toggles
-      document.getElementById('ce-open-check').addEventListener('change', (e) => {
-        lineVisibility.ceOpen = e.target.checked;
-        drawOpenPriceLines();
-        updateOpenLegend();
-      });
-
-      document.getElementById('pe-open-check').addEventListener('change', (e) => {
-        lineVisibility.peOpen = e.target.checked;
-        drawOpenPriceLines();
-        updateOpenLegend();
-      });
-
-      document.getElementById('combined-open-check').addEventListener('change', (e) => {
-        lineVisibility.combinedOpen = e.target.checked;
-        drawOpenPriceLines();
-        updateOpenLegend();
-      });
-      
-      const chartCard = document.querySelector(".card");
-
-document.getElementById("btn-max-chart").addEventListener("click", () => {
-  chartCard.classList.toggle("chart-fullscreen");
-
-  // Recalculate the chart layout
-  setTimeout(() => {
-    chart.applyOptions({ width: chartCard.clientWidth, height: chartCard.clientHeight - 50 });
-  }, 200);
-});
-
-
 
       document.addEventListener('click', closeAllDropdowns);
     }
 
     function closeAllDropdowns() {
-      document.querySelectorAll('.checkout-menu').forEach(menu => menu.classList.remove('show'));
+      document.querySelectorAll('.checkout-menu').forEach(m => m.classList.remove('show'));
     }
 
-    /***** DROPDOWN FILTERS *****/
     function initDropdowns() {
-      const nameSel = document.getElementById('name-select');
-      const expirySel = document.getElementById('expiry-select');
-      const ceSel = document.getElementById('ce-strike-select');
-      const peSel = document.getElementById('pe-strike-select');
-
-      nameSel.addEventListener('change', () => {
-        populateExpirySelect();
-        loadInitialData();
-      });
-
-      expirySel.addEventListener('change', () => {
-        populateStrikeSelects();
-        loadInitialData();
-      });
-
-      ceSel.addEventListener('change', () => {
-        API_PARAMS.ceStrike = String(ceSel.value);
-        loadInitialData();
-      });
-
-      peSel.addEventListener('change', () => {
-        API_PARAMS.peStrike = String(peSel.value);
-        loadInitialData();
+      ['name-select', 'expiry-select', 'ce-strike-select', 'pe-strike-select'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => {
+          if (id === 'name-select') {
+            populateExpirySelect();
+          } else if (id === 'expiry-select') {
+            populateStrikeSelects();
+          } else if (id === 'ce-strike-select') {
+            API_PARAMS.ceStrike = String(document.getElementById(id).value);
+          } else if (id === 'pe-strike-select') {
+            API_PARAMS.peStrike = String(document.getElementById(id).value);
+          }
+          loadInitialData();
+        });
       });
     }
 
-    /***** AUTO REFRESH *****/
     function startAutoRefresh() {
       if (autoRefreshInterval) return;
-      autoRefreshInterval = setInterval(async () => {
-        await loadInitialData();
-      }, 30000);
+      autoRefreshInterval = setInterval(() => loadInitialData(), 30000);
     }
 
     function stopAutoRefresh() {
@@ -796,72 +692,61 @@ document.getElementById("btn-max-chart").addEventListener("click", () => {
       }
     }
 
-    /***** THEME TOGGLE *****/
     function toggleTheme() {
       isDarkTheme = !isDarkTheme;
       const body = document.body;
-      const themeSwitch = document.getElementById('theme-switch');
-      const themeLabel = document.querySelector('#theme-toggle .toggle-label');
+      const sw = document.getElementById('theme-switch');
+      const label = document.querySelector('#theme-toggle .toggle-label');
 
       if (isDarkTheme) {
         body.style.background = "linear-gradient(180deg,#071021 0%, #071a2b 100%)";
-        themeSwitch.classList.add('active');
-        themeLabel.textContent = 'Dark Theme';
+        sw.classList.add('active');
+        label.textContent = 'Dark';
       } else {
         body.style.background = "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
-        themeSwitch.classList.remove('active');
-        themeLabel.textContent = 'Light Theme';
+        sw.classList.remove('active');
+        label.textContent = 'Light';
       }
       updateChartTheme();
     }
 
-    /***** CROSSOVER TOGGLE *****/
     function toggleCrossover() {
       crossoverEnabled = !crossoverEnabled;
-      const toggleSwitch = document.getElementById('toggle-switch');
+      const sw = document.getElementById('toggle-switch');
 
       if (crossoverEnabled) {
-        toggleSwitch.classList.add('active');
+        sw.classList.add('active');
         addCrossingMarkers();
         updateCrossingsDisplay();
       } else {
-        toggleSwitch.classList.remove('active');
+        sw.classList.remove('active');
         clearCrossingMarkers();
-        document.getElementById('crossings-container').innerHTML =
-          '<div class="no-crossings">Enable "Show Crossovers" to detect CE-PE intersections.</div>';
+        document.getElementById('crossings-container').innerHTML = 
+          '<div class="no-crossings">Enable "Crossovers" to detect CE-PE intersections.</div>';
       }
     }
 
-    /***** AUTO UPDATE TOGGLE *****/
     function toggleAutoUpdate() {
       autoUpdateEnabled = !autoUpdateEnabled;
       const label = document.getElementById('auto-update-label');
       const sw = document.getElementById('auto-update-switch');
 
       if (autoUpdateEnabled) {
-        label.textContent = 'Auto Update: ON';
+        label.textContent = 'Auto: ON';
         sw.classList.add('active');
         startAutoRefresh();
       } else {
-        label.textContent = 'Auto Update: OFF';
+        label.textContent = 'Auto: OFF';
         sw.classList.remove('active');
         stopAutoRefresh();
       }
     }
 
-    /***** RESET BUTTON *****/
-    function resetData() {
-      loadInitialData();
-    }
-
-    /***** INIT *****/
     async function init() {
-      document.body.classList.add('dark-theme');
-
       document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
       document.getElementById('toggle-container').addEventListener('click', toggleCrossover);
       document.getElementById('auto-update-toggle').addEventListener('click', toggleAutoUpdate);
-      document.getElementById('btn-reset').addEventListener('click', resetData);
+      document.getElementById('btn-reset').addEventListener('click', loadInitialData);
 
       initCheckoutDropdown();
       initDropdowns();
@@ -882,10 +767,7 @@ document.getElementById("btn-max-chart").addEventListener("click", () => {
       init();
     }
 
-    window.addEventListener('beforeunload', () => stopAutoRefresh());
+    window.addEventListener('beforeunload', stopAutoRefresh);
   </script>
-</body>
-</html>
-<!-- END OF DOCUMENT -->
 </body>
 </html>
