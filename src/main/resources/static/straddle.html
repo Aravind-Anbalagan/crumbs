@@ -74,9 +74,9 @@
             <div class="checkout-item"><input type="checkbox" id="avg-check" checked> <span class="swatch" style="background:#14b8a6"></span> Avg Price</div>
             <div class="checkout-item"><input type="checkbox" id="extrinsic-check" checked> <span class="swatch" style="background:#eab308"></span> Extrinsic</div>
             <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-            <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#fbbf24"></span> CE Open</div>
-            <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#c084fc"></span> PE Open</div>
-            <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#38bdf8"></span> Combined Open</div>
+            <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#d97706"></span> CE Open</div>
+            <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#7e22ce"></span> PE Open</div>
+            <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#0284c7"></span> Combined Open</div>
           </div>
         </div>
 
@@ -249,9 +249,9 @@
     const extrinsicLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#eab308', priceScaleId: 'right' });
 
     // constant open lines (horizontal style)
-    const ceOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#fbbf24', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
-    const peOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#c084fc', lineStyle: LightweightCharts.LineStyle.Dotted, priceScaleId: 'right' });
-    const combinedOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#38bdf8', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
+    const ceOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#d97706', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
+    const peOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#7e22ce', lineStyle: LightweightCharts.LineStyle.Dotted, priceScaleId: 'right' });
+    const combinedOpenLine = chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#0284c7', lineStyle: LightweightCharts.LineStyle.Dashed, priceScaleId: 'right' });
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
