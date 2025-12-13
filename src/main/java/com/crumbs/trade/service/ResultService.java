@@ -68,6 +68,7 @@ public class ResultService {
 		if (optionalResult.isPresent()) {
 			result = optionalResult.get();
 			result.setResult(stock.getResult());
+			result.setCurrentltp(stock.getCurrentPrice());
 			result.setSl(stock.getSl());
 			boolean hasOption = "Y".equalsIgnoreCase(result.getHasOption());
 			boolean isUpDaily = "UP".equalsIgnoreCase(result.getType()) 
@@ -87,7 +88,7 @@ public class ResultService {
 			result.setToken(stock.getToken());
 			result.setTradingSymbol(stock.getTradingSymbol());
 			result.setExchange(stock.getExchange());
-			result.setExecutedltp(stock.getPrevdaycloseprice());
+			result.setExecutedltp(stock.getCurrentPrice());
 			result.setCurrentltp(stock.getCurrentPrice());
 			String psar = stock.getPsarFlagDay();
 			String ha = stock.getHeikinAshiDay();
