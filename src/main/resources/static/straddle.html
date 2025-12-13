@@ -13,7 +13,13 @@
     .container{ max-width:100%; width:100%; margin:0 auto; overflow-x:hidden; }
     .card{ width:100%; background:#0b1320; border-radius:12px; padding:16px; border:1px solid rgba(255,255,255,0.03); margin-bottom:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6); position:relative; }
     .header{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
-    #chart{ height:520px; width:100%; }
+
+    /* Chart leaves room at bottom for legend */
+    #chart{
+      height:520px;
+      width:100%;
+    }
+
     .chart-fullscreen {
       position: fixed !important;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -24,6 +30,7 @@
       border-radius: 0 !important;
       padding: 8px !important;
     }
+
     .btn-icon {
       position: absolute;
       right: 12px;
@@ -100,8 +107,9 @@
     }
 
     .card.chart-fullscreen #chart {
-      height: calc(100vh - 80px) !important; 
+      height: calc(100vh - 110px) !important; /* leave space for header + legend */
     }
+
     select {
       position: relative !important;
       z-index: 300000 !important;
@@ -111,48 +119,57 @@
       color: #e6eef8 !important;
     }
 
-    /* Legend layout with fixed value width */
-   .legend {
+   /* NORMAL VIEW: legend below chart, not overlapping */
+.legend {
+  position: static;             /* back to normal flow */
+  margin-top: 10px;
   display: flex;
   flex-wrap: wrap;
-  column-gap: 4px;   /* small gap between boxes */
+  column-gap: 4px;
   row-gap: 4px;
-  margin-top: 10px;
   align-items: center;
 }
 
-.legend .item {
-  display: inline-flex;
-  align-items: center;
-  font-size: 13px;
-  color: #94a3b8;
-  padding: 2px 6px;                     /* inner padding for box */
-  border-radius: 4px;
-  border: 1px solid rgba(148,163,184,0.25);  /* partition border */
-  background: rgba(15,23,42,0.7);       /* slight background to separate from chart */
+    /* FULLSCREEN: legend pinned inside card */
+.chart-fullscreen .legend {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  margin-top: 0;                /* no extra gap */
 }
 
-.legend .item.hidden { opacity: 0.3; }
+    .legend .item {
+      display: inline-flex;
+      align-items: center;
+      font-size: 13px;
+      color: #94a3b8;
+      padding: 2px 6px;                     /* inner padding for box */
+      border-radius: 4px;
+      border: 1px solid rgba(148,163,184,0.25);  /* partition border */
+      background: rgba(15,23,42,0.7);       /* slight background to separate from chart */
+    }
 
-.legend .item .swatch {
-  width: 12px;
-  height: 6px;
-  border-radius: 3px;
-  display: inline-block;
-  margin-right: 4px;
-}
+    .legend .item.hidden { opacity: 0.3; }
 
-.legend .item .label {
-  margin-right: 4px;
-}
+    .legend .item .swatch {
+      width: 12px;
+      height: 6px;
+      border-radius: 3px;
+      display: inline-block;
+      margin-right: 4px;
+    }
 
-.legend .item strong {
-  display: inline-block;
-  width: 72px;                 /* fixed slot for number */
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+    .legend .item .label {
+      margin-right: 4px;
+    }
 
+    .legend .item strong {
+      display: inline-block;
+      width: 72px;                 /* fixed slot for number */
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
 
     @media (max-width:900px){
       .header{ gap:8px; font-size: 12px; }
@@ -215,17 +232,16 @@
       <div id="chart"></div>
 
       <div class="legend" id="bottom-legend">
-  <div class="item" data-line="spot"><span class="swatch" style="background:#000000"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div>
-  <div class="item" data-line="ce"><span class="swatch" style="background:#22c55e"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div>
-  <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
-  <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#3b82f6"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div>
-  <div class="item" data-line="avgPrice"><span class="swatch" style="background:#301934"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div>
-  <div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span><span class="label">Extrinsic:</span><strong id="val-extrinsic">-</strong></div>
-  <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
-  <div class="item" data-line="peOpen"><span class="swatch" style="background:#fecaca"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div>
-  <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#d6a65a"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div>
-</div>
-
+        <div class="item" data-line="spot"><span class="swatch" style="background:#000000"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div>
+        <div class="item" data-line="ce"><span class="swatch" style="background:#22c55e"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div>
+        <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
+        <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#3b82f6"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div>
+        <div class="item" data-line="avgPrice"><span class="swatch" style="background:#301934"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div>
+        <div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span><span class="label">Extrinsic:</span><strong id="val-extrinsic">-</strong></div>
+        <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
+        <div class="item" data-line="peOpen"><span class="swatch" style="background:#fecaca"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div>
+        <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#d6a65a"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div>
+      </div>
     </div>
 
     <div class="card">
@@ -337,84 +353,82 @@
     });
 
     const lines = {
-  // Spot - black
-  spot: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: true,
-    lineWidth: 3,
-    color: '#000000',
-    priceScaleId: 'left'
-  }),
-  // CE - green
-  ce: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: true,
-    lineWidth: 3,
-    color: '#22c55e',
-    priceScaleId: 'right'
-  }),
-  // PE - red
-  pe: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: true,
-    lineWidth: 3,
-    color: '#ef4444',
-    priceScaleId: 'right'
-  }),
-  // Combined - blue
-  combinedPremium: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: true,
-    lineWidth: 2.5,
-    color: '#3b82f6',
-    priceScaleId: 'right'
-  }),
-  // Avg - dark purple
-  avgPrice: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: true,
-    lineWidth: 2,
-    color: '#301934',
-    priceScaleId: 'right'
-  }),
-  // Extrinsic - yellow
-  extrinsic: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: true,
-    lineWidth: 2,
-    color: '#eab308',
-    priceScaleId: 'right'
-  }),
-  // CE Open - light green (dashed)
-  ceOpen: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: false,
-    lineWidth: 4,
-    color: '#86efac',
-    lineStyle: 1,
-    priceScaleId: 'right'
-  }),
-  // PE Open - light red (solid thin)
-  peOpen: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: false,
-    lineWidth: 4,
-    color: '#fecaca',
-    lineStyle: 1,
-    priceScaleId: 'right'
-  }),
-  // Comb Open - light brown (dashed)
-  combinedOpen: chart.addLineSeries({
-    priceLineVisible: false,
-    lastValueVisible: false,
-    lineWidth: 3,
-    color: '#d6a65a',
-    lineStyle: 2,
-    priceScaleId: 'right'
-  })
-};
-
-
+      // Spot - black
+      spot: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        lineWidth: 3,
+        color: '#000000',
+        priceScaleId: 'left'
+      }),
+      // CE - green
+      ce: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        lineWidth: 3,
+        color: '#22c55e',
+        priceScaleId: 'right'
+      }),
+      // PE - red
+      pe: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        lineWidth: 3,
+        color: '#ef4444',
+        priceScaleId: 'right'
+      }),
+      // Combined - blue
+      combinedPremium: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        lineWidth: 2.5,
+        color: '#3b82f6',
+        priceScaleId: 'right'
+      }),
+      // Avg - dark purple
+      avgPrice: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        lineWidth: 2,
+        color: '#301934',
+        priceScaleId: 'right'
+      }),
+      // Extrinsic - yellow
+      extrinsic: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: true,
+        lineWidth: 2,
+        color: '#eab308',
+        priceScaleId: 'right'
+      }),
+      // CE Open - light green
+      ceOpen: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: false,
+        lineWidth: 4,
+        color: '#86efac',
+        lineStyle: 1,
+        priceScaleId: 'right'
+      }),
+      // PE Open - light red
+      peOpen: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: false,
+        lineWidth: 4,
+        color: '#fecaca',
+        lineStyle: 1,
+        priceScaleId: 'right'
+      }),
+      // Comb Open - light brown (dashed)
+      combinedOpen: chart.addLineSeries({
+        priceLineVisible: false,
+        lastValueVisible: false,
+        lineWidth: 3,
+        color: '#d6a65a',
+        lineStyle: 2,
+        priceScaleId: 'right'
+      })
+    };
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
@@ -765,21 +779,20 @@
       });
 
       document.getElementById('btn-max-chart').addEventListener('click', () => {
-  const card = document.querySelector('.card');
-  card.classList.toggle('chart-fullscreen');
+        const card = document.querySelector('.card');
+        card.classList.toggle('chart-fullscreen');
 
-  setTimeout(() => {
-    const chartDiv = document.getElementById('chart');
+        setTimeout(() => {
+          const chartDiv = document.getElementById('chart');
 
-    chart.applyOptions({
-      width: chartDiv.clientWidth,
-      height: chartDiv.clientHeight
-    });
+          chart.applyOptions({
+            width: chartDiv.clientWidth,
+            height: chartDiv.clientHeight
+          });
 
-    chart.timeScale().fitContent();
-  }, 200);
-});
-
+          chart.timeScale().fitContent();
+        }, 200);
+      });
 
       document.addEventListener('click', closeAllDropdowns);
     }
@@ -886,19 +899,18 @@
 
     chart.subscribeCrosshairMove(param => updateLegendAtCrosshair(param));
 
-// 1️⃣ Force default Light Theme before init()
-(function setDefaultLightTheme() {
-  isDarkTheme = false;
+    (function setDefaultLightTheme() {
+      isDarkTheme = false;
 
-  document.body.style.background =
-    "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
+      document.body.style.background =
+        "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
 
-  const sw = document.getElementById("theme-switch");
-  const label = document.querySelector("#theme-toggle .toggle-label");
+      const sw = document.getElementById("theme-switch");
+      const label = document.querySelector("#theme-toggle .toggle-label");
 
-  if (sw) sw.classList.remove("active");
-  if (label) label.textContent = "Light";
-})();
+      if (sw) sw.classList.remove("active");
+      if (label) label.textContent = "Light";
+    })();
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
