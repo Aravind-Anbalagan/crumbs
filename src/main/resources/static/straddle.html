@@ -119,29 +119,35 @@ select option {
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px; /* space BETWEEN items only */
+  column-gap: 16px;   /* gap BETWEEN sets */
+  row-gap: 4px;
 }
 
 .legend .item {
+  /* each item just holds one fixed-width set */
+}
+
+.legend .item .set {
   display: inline-flex;
   align-items: center;
-  font-size: 13px;
+  width: 140px;              /* full width of [color + label + value] */
 }
 
 .legend .item .swatch {
-  margin-right: 4px;   /* <color>␣ */
+  margin-right: 4px;
 }
 
 .legend .item .label {
-  margin-right: 4px;   /* Spot:␣ */
+  margin-right: 4px;
 }
 
-.legend .item strong {
-  display: inline-block;
+.legend .item .value {
+  flex: 1;                    /* value takes remaining space in the set */
   text-align: right;
   font-variant-numeric: tabular-nums;
-  margin-right: 8px;
 }
+
+
 
 
 
@@ -207,7 +213,9 @@ select option {
 
       <div id="chart"></div>
 
-     <div class="legend" id="bottom-legend"><div class="item" data-line="spot"><span class="swatch" style="background:#22c55e"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div><div class="item" data-line="ce"><span class="swatch" style="background:#3b82f6"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div><div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div><div class="item" data-line="combinedPremium"><span class="swatch" style="background:#fb7185"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div><div class="item" data-line="avgPrice"><span class="swatch" style="background:#14b8a6"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div><div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span><span class="label">Extrinsic:</span><strong id="val-extrinsic">-</strong></div><div class="item" data-line="ceOpen"><span class="swatch" style="background:#d97706"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div><div class="item" data-line="peOpen"><span class="swatch" style="background:#7e22ce"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div><div class="item" data-line="combinedOpen"><span class="swatch" style="background:#0284c7"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div></div>
+     <div class="legend" id="bottom-legend">
+     
+     <div class="item" data-line="spot"><span class="swatch" style="background:#22c55e"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div><div class="item" data-line="ce"><span class="swatch" style="background:#3b82f6"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div><div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div><div class="item" data-line="combinedPremium"><span class="swatch" style="background:#fb7185"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div><div class="item" data-line="avgPrice"><span class="swatch" style="background:#14b8a6"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div><div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span><span class="label">Extrinsic:</span><strong id="val-extrinsic">-</strong></div><div class="item" data-line="ceOpen"><span class="swatch" style="background:#d97706"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div><div class="item" data-line="peOpen"><span class="swatch" style="background:#7e22ce"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div><div class="item" data-line="combinedOpen"><span class="swatch" style="background:#0284c7"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div></div>
 
 
     </div>
