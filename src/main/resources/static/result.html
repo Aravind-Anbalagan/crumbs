@@ -64,6 +64,7 @@
       max-width: 1440px;
       margin: 0 auto;
     }
+
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -349,6 +350,26 @@
     html[data-theme="dark"] .pagination button {
       background: #020617;
       color: var(--text-secondary);
+    }
+    .pagination button:hover:not(:disabled) {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    html[data-theme="dark"] .pagination button:hover:not(:disabled) {
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .pagination button.active {
+      background: var(--primary-color);
+      color: var(--bg-primary);
+      border-color: var(--primary-color);
+      font-weight: 600;
+      user-select: none;
+    }
+    .pagination button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      user-select: none;
     }
 
     .has-option-badge {
@@ -839,6 +860,7 @@
       if (startPage > 1) {
         const firstBtn = document.createElement("button");
         firstBtn.textContent = "1";
+        if (1 === currentPage) firstBtn.classList.add("active");
         firstBtn.onclick = () => { currentPage = 1; renderTable(); };
         pagination.appendChild(firstBtn);
         if (startPage > 2) {
@@ -866,6 +888,7 @@
         }
         const lastBtn = document.createElement("button");
         lastBtn.textContent = totalPages;
+        if (totalPages === currentPage) lastBtn.classList.add("active");
         lastBtn.onclick = () => { currentPage = totalPages; renderTable(); };
         pagination.appendChild(lastBtn);
       }
