@@ -40,11 +40,6 @@
     }
     .btn-icon:hover { background: rgba(0,0,0,0.6); }
 
-    .legend{ display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:center; }
-    .legend .item{ display:flex; align-items:center; gap:8px; font-size:13px; color:#94a3b8; transition: opacity 0.2s; }
-    .legend .item.hidden { opacity: 0.3; }
-    .swatch{ width:12px; height:6px; border-radius:3px; display:inline-block; }
-
     .checkout-dropdown{ position:relative; z-index:999999; }
     .checkout-btn{ padding:6px 12px; border-radius:6px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.12); cursor:pointer; font-size:13px; color:#60a5fa; transition: all 0.2s; }
     .checkout-btn:hover { background:rgba(59,130,246,0.12); }
@@ -103,37 +98,47 @@
       align-items: center; 
       gap: 6px;
     }
-.card.chart-fullscreen #chart {
-  height: calc(100vh - 80px) !important; 
-}
-select {
-  position: relative !important;
-  z-index: 300000 !important;
-}
 
-select option {
-  background-color: #0b1320 !important;
-  color: #e6eef8 !important;
-}
+    .card.chart-fullscreen #chart {
+      height: calc(100vh - 80px) !important; 
+    }
+    select {
+      position: relative !important;
+      z-index: 300000 !important;
+    }
+    select option {
+      background-color: #0b1320 !important;
+      color: #e6eef8 !important;
+    }
 
-.legend {
+    /* Legend layout with fixed value width */
+   .legend {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 16px;   /* gap BETWEEN sets */
+  column-gap: 4px;   /* small gap between boxes */
   row-gap: 4px;
+  margin-top: 10px;
+  align-items: center;
 }
 
 .legend .item {
-  /* each item just holds one fixed-width set */
-}
-
-.legend .item .set {
   display: inline-flex;
   align-items: center;
-  width: 140px;              /* full width of [color + label + value] */
+  font-size: 13px;
+  color: #94a3b8;
+  padding: 2px 6px;                     /* inner padding for box */
+  border-radius: 4px;
+  border: 1px solid rgba(148,163,184,0.25);  /* partition border */
+  background: rgba(15,23,42,0.7);       /* slight background to separate from chart */
 }
 
+.legend .item.hidden { opacity: 0.3; }
+
 .legend .item .swatch {
+  width: 12px;
+  height: 6px;
+  border-radius: 3px;
+  display: inline-block;
   margin-right: 4px;
 }
 
@@ -141,16 +146,12 @@ select option {
   margin-right: 4px;
 }
 
-.legend .item .value {
-  flex: 1;                    /* value takes remaining space in the set */
+.legend .item strong {
+  display: inline-block;
+  width: 72px;                 /* fixed slot for number */
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-
-
-
-
-
 
 
     @media (max-width:900px){
@@ -185,16 +186,16 @@ select option {
         <div class="checkout-dropdown">
           <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
           <div class="checkout-menu" id="checkout-menu">
-            <div class="checkout-item"><input type="checkbox" id="spot-check" checked> <span class="swatch" style="background:#22c55e"></span> Spot</div>
-            <div class="checkout-item"><input type="checkbox" id="ce-check" checked> <span class="swatch" style="background:#3b82f6"></span> CE</div>
+            <div class="checkout-item"><input type="checkbox" id="spot-check" checked> <span class="swatch" style="background:#000000"></span> Spot</div>
+            <div class="checkout-item"><input type="checkbox" id="ce-check" checked> <span class="swatch" style="background:#22c55e"></span> CE</div>
             <div class="checkout-item"><input type="checkbox" id="pe-check" checked> <span class="swatch" style="background:#ef4444"></span> PE</div>
-            <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#fb7185"></span> Combined Premium</div>
-            <div class="checkout-item"><input type="checkbox" id="avg-check" checked> <span class="swatch" style="background:#14b8a6"></span> Avg Price</div>
+            <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
+            <div class="checkout-item"><input type="checkbox" id="avg-check" checked> <span class="swatch" style="background:#301934"></span> Avg Price</div>
             <div class="checkout-item"><input type="checkbox" id="extrinsic-check" checked> <span class="swatch" style="background:#eab308"></span> Extrinsic</div>
             <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-            <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#d97706"></span> CE Open</div>
-            <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#7e22ce"></span> PE Open</div>
-            <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#0284c7"></span> Combined Open</div>
+            <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#86efac"></span> CE Open</div>
+            <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#fecaca"></span> PE Open</div>
+            <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#d6a65a"></span> Combined Open</div>
           </div>
         </div>
 
@@ -213,10 +214,17 @@ select option {
 
       <div id="chart"></div>
 
-     <div class="legend" id="bottom-legend">
-     
-     <div class="item" data-line="spot"><span class="swatch" style="background:#22c55e"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div><div class="item" data-line="ce"><span class="swatch" style="background:#3b82f6"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div><div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div><div class="item" data-line="combinedPremium"><span class="swatch" style="background:#fb7185"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div><div class="item" data-line="avgPrice"><span class="swatch" style="background:#14b8a6"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div><div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span><span class="label">Extrinsic:</span><strong id="val-extrinsic">-</strong></div><div class="item" data-line="ceOpen"><span class="swatch" style="background:#d97706"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div><div class="item" data-line="peOpen"><span class="swatch" style="background:#7e22ce"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div><div class="item" data-line="combinedOpen"><span class="swatch" style="background:#0284c7"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div></div>
-
+      <div class="legend" id="bottom-legend">
+  <div class="item" data-line="spot"><span class="swatch" style="background:#000000"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div>
+  <div class="item" data-line="ce"><span class="swatch" style="background:#22c55e"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div>
+  <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
+  <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#3b82f6"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div>
+  <div class="item" data-line="avgPrice"><span class="swatch" style="background:#301934"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div>
+  <div class="item" data-line="extrinsic"><span class="swatch" style="background:#eab308"></span><span class="label">Extrinsic:</span><strong id="val-extrinsic">-</strong></div>
+  <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
+  <div class="item" data-line="peOpen"><span class="swatch" style="background:#fecaca"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div>
+  <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#d6a65a"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div>
+</div>
 
     </div>
 
@@ -329,16 +337,84 @@ select option {
     });
 
     const lines = {
-      spot: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#22c55e', priceScaleId: 'left' }),
-      ce: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#3b82f6', priceScaleId: 'right' }),
-      pe: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 3, color: '#ef4444', priceScaleId: 'right' }),
-      combinedPremium: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#fb7185', priceScaleId: 'right' }),
-      avgPrice: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#14b8a6', priceScaleId: 'right' }),
-      extrinsic: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#eab308', priceScaleId: 'right' }),
-      ceOpen: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#d97706', lineStyle: 2, priceScaleId: 'right' }),
-      peOpen: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#7e22ce', lineStyle: 1, priceScaleId: 'right' }),
-      combinedOpen: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, lineWidth: 1, color: '#0284c7', lineStyle: 2, priceScaleId: 'right' })
-    };
+  // Spot - black
+  spot: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: true,
+    lineWidth: 3,
+    color: '#000000',
+    priceScaleId: 'left'
+  }),
+  // CE - green
+  ce: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: true,
+    lineWidth: 3,
+    color: '#22c55e',
+    priceScaleId: 'right'
+  }),
+  // PE - red
+  pe: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: true,
+    lineWidth: 3,
+    color: '#ef4444',
+    priceScaleId: 'right'
+  }),
+  // Combined - blue
+  combinedPremium: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: true,
+    lineWidth: 2.5,
+    color: '#3b82f6',
+    priceScaleId: 'right'
+  }),
+  // Avg - dark purple
+  avgPrice: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: true,
+    lineWidth: 2,
+    color: '#301934',
+    priceScaleId: 'right'
+  }),
+  // Extrinsic - yellow
+  extrinsic: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: true,
+    lineWidth: 2,
+    color: '#eab308',
+    priceScaleId: 'right'
+  }),
+  // CE Open - light green (dashed)
+  ceOpen: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: false,
+    lineWidth: 4,
+    color: '#86efac',
+    lineStyle: 1,
+    priceScaleId: 'right'
+  }),
+  // PE Open - light red (solid thin)
+  peOpen: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: false,
+    lineWidth: 4,
+    color: '#fecaca',
+    lineStyle: 1,
+    priceScaleId: 'right'
+  }),
+  // Comb Open - light brown (dashed)
+  combinedOpen: chart.addLineSeries({
+    priceLineVisible: false,
+    lastValueVisible: false,
+    lineWidth: 3,
+    color: '#d6a65a',
+    lineStyle: 2,
+    priceScaleId: 'right'
+  })
+};
+
+
 
     function updateChartTheme() {
       const bgColor = isDarkTheme ? '#071421' : '#ffffff';
