@@ -1,10 +1,19 @@
 package com.crumbs.trade.controller;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+import com.angelbroking.smartapi.SmartConnect;
+import com.crumbs.trade.dto.ChartDataDTO;
+import com.crumbs.trade.dto.LevelAnalysisResult;
+import com.crumbs.trade.entity.Level;
+import com.crumbs.trade.entity.Strategy;
+import com.crumbs.trade.repo.LevelRepository;
+import com.crumbs.trade.service.*;
+import com.crumbs.trade.utility.LevelAnalysisUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,10 +28,6 @@ import com.crumbs.trade.entity.Vix;
 import com.crumbs.trade.repo.PricesNiftyRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
-import com.crumbs.trade.service.ChartService;
-import com.crumbs.trade.service.OIService;
-import com.crumbs.trade.service.SRService;
-import com.crumbs.trade.service.TaskService;
 
 import jakarta.mail.internet.AddressException;
 
@@ -39,6 +44,8 @@ public class HeikinPsarController {
     @Autowired private StrategyRepo strategyRepo;
     @Autowired private OIService oiService;
     @Autowired private SRService srService;
+    @Autowired private TradeManagerService tradeManagerService;
+    @Autowired private LevelRepository levelRepo;
 
     private static final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -178,6 +185,11 @@ public class HeikinPsarController {
         if ("Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY_OI").getActive())) {
             oiService.getOptionChain("NIFTY_OI");
         }
+        if ("Y".equalsIgnoreCase(strategyRepo.findByName("SR").getActive())) {
+            ChartDataDTO  chartDataDTO  = srService.analyzeIntraday("NIFTY","FIVE_MINUTE");
+            srService.saveLevels("NIFTY","FIVE_MINUTE",chartDataDTO);
+        }
+
     }
 
     // Strategy 3 (MCX)
@@ -215,4 +227,42 @@ public class HeikinPsarController {
                     taskName, LocalDateTime.now().format(timeFormat), e.getMessage(), e);
         }
     }
+
+    @Scheduled(cron = "*/10 15-59 9 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "*/10 * 10-14 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "*/10 0-30 15 * * MON-FRI", zone = "Asia/Kolkata")
+    public void runStrategy() {
+
+        String symbol = "NIFTY";
+        String timeframe = "FIVE_MINUTE";
+
+        BigDecimal ltp = chartService.getCurrentPrice(symbol);
+
+        // 1️⃣ Validate LTP
+        if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        // 2️⃣ Load levels
+        List<Level> levels =
+                levelRepo.findBySymbolAndTimeframe(symbol, timeframe);
+
+        if (levels == null || levels.isEmpty()) {
+            return;
+        }
+
+        // 3️⃣ Analyze
+        LevelAnalysisResult analysis =
+                LevelAnalysisUtil.analyze(ltp, levels);
+
+        // 4️⃣ Handle trade ENTRY (BUY / SELL only)
+        tradeManagerService.handleSignal(
+                symbol, timeframe, analysis);
+
+        // 5️⃣ Handle trade EXIT (TARGET / SL)
+        tradeManagerService.monitorTrade(
+                symbol, timeframe, ltp);
+    }
+
+
 }

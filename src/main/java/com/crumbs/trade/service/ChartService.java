@@ -20,6 +20,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
+import com.crumbs.trade.repo.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -42,10 +43,6 @@ import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.ResultVix;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.Vix;
-import com.crumbs.trade.repo.IndexesRepo;
-import com.crumbs.trade.repo.PricesIndexRepo;
-import com.crumbs.trade.repo.ResultVixRepo;
-import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.ChartService.CandleRange;
 import com.crumbs.trade.service.TrendLineService.OHLCV;
 import com.crumbs.trade.service.TrendLineService.TrendAnalysisResult;
@@ -108,6 +105,10 @@ public class ChartService {
 	
 	@Autowired
 	VWAPIndicator vwapIndicator;
+
+    @Autowired
+    StrategyRepo strategyRepo;
+
 	/*
 	 * Get JsonDetail
 	 */
@@ -1221,5 +1222,23 @@ public class ChartService {
 		}
 	}
 
-	
+	public BigDecimal getCurrentPrice(String name)
+    {
+        try {
+            SmartConnect smartconnect = angelOne.signIn();  // login once
+
+            Strategy strategy = strategyRepo.findByName(name);
+
+            return angelOneService.getcurrentPrice(
+                    smartconnect,
+                    strategy.getExchange(),
+                    strategy.getTradingsymbol(),
+                    strategy.getToken()
+            );
+        } catch (Exception e) {
+            logger.error("Unable to get Current Price for {}", name);
+            return BigDecimal.ZERO;
+        }
+
+    }
 }

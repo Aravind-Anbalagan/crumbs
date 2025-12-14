@@ -1,5 +1,10 @@
 package com.crumbs.trade.service;
 
+import com.crumbs.trade.builder.FiboLevelMapper;
+import com.crumbs.trade.builder.LevelBuilder;
+import com.crumbs.trade.dto.*;
+import com.crumbs.trade.entity.*;
+import com.crumbs.trade.repo.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -11,30 +16,20 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
-import com.crumbs.trade.dto.CandleDTO;
-import com.crumbs.trade.dto.CandleRequestDto;
-import com.crumbs.trade.dto.PriceActionResult;
-import com.crumbs.trade.dto.StrategyDTO;
-import com.crumbs.trade.entity.Candle;
-import com.crumbs.trade.entity.Chart;
-import com.crumbs.trade.entity.Indexes;
-import com.crumbs.trade.entity.PricesIndex;
-import com.crumbs.trade.entity.Signals;
-import com.crumbs.trade.entity.Strategy;
-import com.crumbs.trade.repo.ChartRepo;
-import com.crumbs.trade.repo.IndexesRepo;
-import com.crumbs.trade.repo.PricesIndexRepo;
-import com.crumbs.trade.repo.SignalsRepo;
-import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
 import com.google.gson.Gson;
-
+import com.crumbs.trade.dto.ChartDataDTO;
+import com.crumbs.trade.dto.FibonacciLevel;
+import com.crumbs.trade.dto.FiboLevel;
+import com.crumbs.trade.entity.Level;
 
 import jakarta.transaction.Transactional;
 
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
 @Service
 public class SRService {
 
@@ -67,12 +62,26 @@ public class SRService {
 	
 	@Autowired
 	StrategyRepo strategyRepo;
-	
+
+    @Autowired
+    LevelRepository levelRepo;
+
+    @Autowired
+    private LevelBuilder levelBuilder;
+
+    @Autowired
+    PredictivePriceActionService predictivePriceActionService;
+
+    @Autowired
+    private FiboLevelMapper fiboLevelMapper;
+
+    private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
 	private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
 	private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 	Logger logger = LoggerFactory.getLogger(SRService.class);
-	    
-	public enum TimeFrame {
+
+
+    public enum TimeFrame {
 	    ONE_MINUTE(15, 1, 10),       // NSE=15, MCX=10
 	    FIVE_MINUTE(50, 5, 10),      // NSE=50, MCX=10
 	    FIFTEEN_MINUTE(100, 15, 30), // NSE=100, MCX=30
@@ -212,10 +221,10 @@ public class SRService {
 	    LocalDateTime toDateTime = getLastValidCandleCloseForMarket(selected, market); // Updated call here
 	    LocalDateTime fromDateTime = toDateTime.minusDays(bestDays);
 
-	    System.out.println("Exchange: " + exchange + " (Market: " + market + ")");
-	    System.out.println("Timeframe: " + selected);
-	    System.out.println("From: " + fromDateTime.format(FORMATTER));
-	    System.out.println("To:   " + toDateTime.format(FORMATTER));
+	    //System.out.println("Exchange: " + exchange + " (Market: " + market + ")");
+	    //System.out.println("Timeframe: " + selected);
+	    //System.out.println("From: " + fromDateTime.format(FORMATTER));
+	    //System.out.println("To:   " + toDateTime.format(FORMATTER));
 
 	    candle.setFromDate(fromDateTime.format(FORMATTER));
 	    candle.setToDate(toDateTime.format(FORMATTER));
@@ -437,6 +446,154 @@ public class SRService {
 
 	    return candles;
 	}
+
+public ChartDataDTO analyzeIntraday(String name,String timeFrame)
+{
+    // Get candles from your repository
+    ChartDataDTO dto = new ChartDataDTO();
+    pricesIndexRepo.deleteAll();
+    String symbol = strategyRepo.findByName(name).getTradingsymbol();
+    String exchange = getExchange(name);
+
+    //Step : 1 Time Period of the given stock/index
+    CandleRequestDto candle = getCandleTiming(timeFrame,exchange);
+
+    //Step 2 : Read candle data
+    List<PricesIndex> candles = getCandleData(candle, name, symbol);
+    BigDecimal currentPrice = candles.get(candles.size() - 1).getClose();
+
+    //Step 3:
+
+    // Call predictive analysis
+    PriceActionResult priceActionResult =predictivePriceActionService.analyzePredictive(currentPrice, candles, timeFrame);
+    dto.setPriceActionSupport(priceActionResult.getSr_nearestSupports());
+    dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
+    dto.setFiboSupport(priceActionResult.getFibo_supports());
+    dto.setFiboResistance(priceActionResult.getFibo_resistances());
+    CandleDTO candleDto = getPreviousDayCandle(name, exchange, symbol);
+    dto.setPreviousDayCandle(candleDto);
+    dto.setFinal_confidence(priceActionResult.getFinal_confidence());
+    dto.setFinal_reason(priceActionResult.getFinal_reason());
+    dto.setFinal_signal(priceActionResult.getFinal_signal());
+    List<CandleDTO> candleList = getcandleList();
+    candleList = getcandleList();
+    dto.setCandles(candleList);
+    return dto;
+}
+    public CandleDTO getPreviousDayCandle(String name, String exchange, String symbol) {
+        String key = name + "|" + exchange + "|" + symbol;
+        return previousDayCache.computeIfAbsent(
+                key,
+                k -> getPreviousOHLC("ONE_DAY", name, exchange, symbol)
+        );
+    }
+
+    @Transactional
+    public void saveLevels(
+            String name,
+            String timeFrame,
+            ChartDataDTO dto) {
+
+        // -----------------------------
+        // Defensive checks
+        // -----------------------------
+        if (dto == null) return;
+
+        // -----------------------------
+        // Delete old snapshot
+        // -----------------------------
+        levelRepo.deleteBySymbolAndTimeframe(name, timeFrame);
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Level> levels = new ArrayList<>();
+
+        // -----------------------------
+        // PRICE ACTION SUPPORT (seq > 0)
+        // -----------------------------
+        int seq = 1;
+        if (dto.getPriceActionSupport() != null) {
+            for (BigDecimal v : dto.getPriceActionSupport()) {
+                levels.add(
+                        levelBuilder.buildPriceActionLevel(
+                                name,
+                                timeFrame,
+                                seq++,
+                                v,
+                                now
+                        )
+                );
+            }
+        }
+
+        // -----------------------------
+        // PRICE ACTION RESISTANCE (seq < 0)
+        // -----------------------------
+        seq = -1;
+        if (dto.getPriceActionResistance() != null) {
+            for (BigDecimal v : dto.getPriceActionResistance()) {
+                levels.add(
+                        levelBuilder.buildPriceActionLevel(
+                                name,
+                                timeFrame,
+                                seq--,
+                                v,
+                                now
+                        )
+                );
+            }
+        }
+
+        // -----------------------------
+        // FIBO SUPPORT
+        // -----------------------------
+        seq = 1;
+        if (dto.getFiboSupport() != null) {
+            for (FibonacciLevel f : dto.getFiboSupport()) {
+
+                FiboLevel mapped =
+                        fiboLevelMapper.fromFibonacciLevel(f);
+
+                levels.add(
+                        levelBuilder.buildFiboLevel(
+                                name,
+                                timeFrame,
+                                seq++,
+                                mapped,
+                                now
+                        )
+                );
+            }
+        }
+
+        // -----------------------------
+        // FIBO RESISTANCE
+        // -----------------------------
+        seq = -1;
+        if (dto.getFiboResistance() != null) {
+            for (FibonacciLevel f : dto.getFiboResistance()) {
+
+                FiboLevel mapped =
+                        fiboLevelMapper.fromFibonacciLevel(f);
+
+                levels.add(
+                        levelBuilder.buildFiboLevel(
+                                name,
+                                timeFrame,
+                                seq--,
+                                mapped,
+                                now
+                        )
+                );
+            }
+        }
+
+        // -----------------------------
+        // Persist in one batch
+        // -----------------------------
+        if (!levels.isEmpty()) {
+            levelRepo.saveAll(levels);
+        }
+    }
 
 
 }

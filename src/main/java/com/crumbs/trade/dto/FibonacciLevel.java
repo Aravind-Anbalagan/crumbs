@@ -12,4 +12,6 @@ import java.math.BigDecimal;
 public class FibonacciLevel {
     private BigDecimal level;
     private String label;
+
+
 }
