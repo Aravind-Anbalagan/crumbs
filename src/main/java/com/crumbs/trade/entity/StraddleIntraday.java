@@ -60,13 +60,19 @@ public class StraddleIntraday {
     @Column(precision = 20, scale = 4)
     private BigDecimal combinedVwap;
 
-    // 🔥 Total intrinsic (callIntrinsic + putIntrinsic)
+    // --- CE ---
     @Column(precision = 20, scale = 4)
-    private BigDecimal intrinsic;
+    private BigDecimal ceIntrinsic;
 
-    // 🔥 Total extrinsic (ceExtrinsic + peExtrinsic)
     @Column(precision = 20, scale = 4)
-    private BigDecimal extrinsic;
+    private BigDecimal ceExtrinsic;
+
+    // --- PE ---
+    @Column(precision = 20, scale = 4)
+    private BigDecimal peIntrinsic;
+
+    @Column(precision = 20, scale = 4)
+    private BigDecimal peExtrinsic;
 
     // 🔥 CE Open price
     @Column(precision = 20, scale = 4)

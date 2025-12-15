@@ -1,14 +1,10 @@
 package com.crumbs.trade.service;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,23 +34,24 @@ import com.crumbs.trade.repo.StrategyRepo;
 @Service
 public class StraddleIntradayService {
 
-    Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
+    private static final Logger logger =
+            LoggerFactory.getLogger(StraddleIntradayService.class);
 
-    @Autowired PredictionService predictionService;
-    @Autowired ChartService chartService;
-    @Autowired AngelOneService angelOneService;
-    @Autowired AngelOne angelOne;
-    @Autowired IndexesRepo indexesRepo;
-    @Autowired StrategyRepo strategyRepo;
-    @Autowired StraddleIntradayRepo straddleIntradayRepo;
+    @Autowired private PredictionService predictionService;
+    @Autowired private ChartService chartService;
+    @Autowired private AngelOneService angelOneService;
+    @Autowired private AngelOne angelOne;
+    @Autowired private IndexesRepo indexesRepo;
+    @Autowired private StrategyRepo strategyRepo;
+    @Autowired private StraddleIntradayRepo straddleIntradayRepo;
 
-    /*
-     * MAIN ENTRY – GET COMBINED STRADDLE PREMIUM
-     */
+    // =====================================================
+    // MAIN ENTRY
+    // =====================================================
     public void getCombineStraddlePremium(String name) {
 
         try {
-            SmartConnect smartconnect = angelOne.signIn();  // login once
+            SmartConnect smartconnect = angelOne.signIn();
 
             Strategy strategy = strategyRepo.findByName(name);
 
@@ -65,230 +62,193 @@ public class StraddleIntradayService {
                     strategy.getToken()
             );
 
-            // ATM strike
             BigDecimal atmStrike = getATMStrike(name, strategy);
 
-            // Strikes list
-            List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
+            List<StraddlePremiumDto> strikeList =
+                    buildStraddleDtos(atmStrike, 50);
 
-            // Add CE/PE tokens
             strikeList = getAllTokenDetails(strikeList, strategy);
 
-            // IMPORTANT → ONE API CALL for all prices
-            strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect);
+            strikeList =
+                    getPriceForAllTheStrikesBatch(strikeList, smartconnect);
 
-            // Save to DB
             savePriceDetails(strikeList, strategy, spotPrice);
 
         } catch (Exception e) {
-            logger.error("Error in getCombineStraddlePremium: {}", e.getMessage(), e);
+            logger.error("Error in getCombineStraddlePremium", e);
         }
     }
 
+    // =====================================================
+    // SAVE TO DB (UPDATED FOR NEW ENTITY)
+    // =====================================================
+    public int savePriceDetails(List<StraddlePremiumDto> strikeList,
+                                Strategy strategy,
+                                BigDecimal spotPrice) {
 
-	/*
-	 * SAVE PRICES TO DB
-	 */
-	public int savePriceDetails(List<StraddlePremiumDto> strikeList, Strategy strategy, BigDecimal spotPrice) {
+        int count = 0;
 
-		int count = 0;
+        LocalDateTime timestamp =
+                LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
 
-		LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
+        for (StraddlePremiumDto dto : strikeList) {
 
-		for (StraddlePremiumDto dto : strikeList) {
+            StraddleIntraday entity = new StraddleIntraday();
 
-			StraddleIntraday entity = new StraddleIntraday();
+            entity.setName(strategy.getName());
+            entity.setExpiry(strategy.getExpiry());
+            entity.setStrike(dto.getStrikePrice());
+            entity.setTimestamp(timestamp);
 
-			entity.setName(strategy.getName());
-			entity.setExpiry(strategy.getExpiry());
-			entity.setStrike(dto.getStrikePrice());
-			entity.setTimestamp(timestamp);
+            BigDecimal ce = dto.getCePrice() != null ? dto.getCePrice() : BigDecimal.ZERO;
+            BigDecimal pe = dto.getPePrice() != null ? dto.getPePrice() : BigDecimal.ZERO;
 
-			BigDecimal ce = dto.getCePrice() != null ? dto.getCePrice() : BigDecimal.ZERO;
-			BigDecimal pe = dto.getPePrice() != null ? dto.getPePrice() : BigDecimal.ZERO;
+            entity.setCePrice(ce);
+            entity.setPePrice(pe);
+            entity.setSpot(spotPrice);
 
-			entity.setCePrice(ce);
-			entity.setPePrice(pe);
-			entity.setSpot(spotPrice);
+            entity.setCeIV(dto.getCeIv());
+            entity.setPeIV(dto.getPeIv());
 
-			entity.setCeIV(dto.getCeIv());
-			entity.setPeIV(dto.getPeIv());
-			//entity.setCombinedIV(dto.getCombinedIv());
+            entity.setCeVwap(dto.getCeVwap());
+            entity.setPeVwap(dto.getPeVwap());
 
-			entity.setCeVwap(dto.getCeVwap());
-			entity.setPeVwap(dto.getPeVwap());
+            // 1️⃣ Combined Premium
+            BigDecimal combinedPremium = ce.add(pe);
+            entity.setCombinedPremium(combinedPremium);
 
-// -----------------------------
-// 1️⃣ Combined Premium
-// -----------------------------
-			BigDecimal combinedPremium = ce.add(pe);
-			entity.setCombinedPremium(combinedPremium);
+            // 2️⃣ Intrinsic (CLAMP HERE ONLY)
+            BigDecimal ceIntrinsic =
+                    spotPrice.subtract(dto.getStrikePrice())
+                            .max(BigDecimal.ZERO);
 
-// -----------------------------
-// 2️⃣ Intrinsic values
-// -----------------------------
-			BigDecimal callIntrinsic = spotPrice.subtract(dto.getStrikePrice()).max(BigDecimal.ZERO);
-			BigDecimal putIntrinsic = dto.getStrikePrice().subtract(spotPrice).max(BigDecimal.ZERO);
+            BigDecimal peIntrinsic =
+                    dto.getStrikePrice().subtract(spotPrice)
+                            .max(BigDecimal.ZERO);
 
-			BigDecimal totalIntrinsic = callIntrinsic.add(putIntrinsic);
-			entity.setIntrinsic(totalIntrinsic);
+            entity.setCeIntrinsic(ceIntrinsic);
+            entity.setPeIntrinsic(peIntrinsic);
 
-// -----------------------------
-// 3️⃣ Extrinsic values
-// -----------------------------
-			BigDecimal ceExtrinsic = ce.subtract(callIntrinsic).max(BigDecimal.ZERO);
-			BigDecimal peExtrinsic = pe.subtract(putIntrinsic).max(BigDecimal.ZERO);
+            // 3️⃣ Extrinsic (NO CLAMP)
+            BigDecimal ceExtrinsic = ce.subtract(ceIntrinsic);
+            BigDecimal peExtrinsic = pe.subtract(peIntrinsic);
 
-			BigDecimal totalExtrinsic = ceExtrinsic.add(peExtrinsic);
-			entity.setExtrinsic(totalExtrinsic);
+            entity.setCeExtrinsic(ceExtrinsic);
+            entity.setPeExtrinsic(peExtrinsic);
 
-// -----------------------------
-// 4️⃣ Open Prices (if sent from DTO)
-// -----------------------------
-			entity.setCeOpenPrice(dto.getCeOpenPrice());
-			entity.setPeOpenPrice(dto.getPeOpenPrice());
+            // 4️⃣ Open Prices
+            entity.setCeOpenPrice(dto.getCeOpenPrice());
+            entity.setPeOpenPrice(dto.getPeOpenPrice());
 
-// Combined Open Price
-			if (dto.getCeOpenPrice() != null && dto.getPeOpenPrice() != null) {
-				entity.setCombinedOpenPrice(dto.getCeOpenPrice().add(dto.getPeOpenPrice()));
-			}
-			
-//Avg price
+            if (dto.getCeOpenPrice() != null && dto.getPeOpenPrice() != null) {
+                entity.setCombinedOpenPrice(
+                        dto.getCeOpenPrice().add(dto.getPeOpenPrice()));
+            }
 
-			if (ce != null && pe != null) {
-			    entity.setAvgPrice(
-			        ce.add(pe).divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP)
-			    );
-			} else {
-			    entity.setAvgPrice(null); // or keep previous value
-			}
+            // 5️⃣ Avg Price
+            entity.setAvgPrice(
+                    combinedPremium.divide(
+                            BigDecimal.valueOf(2),
+                            4,
+                            RoundingMode.HALF_UP
+                    )
+            );
 
+            straddleIntradayRepo.save(entity);
+            count++;
+        }
 
-// -----------------------------
-// Save row
-// -----------------------------
-			straddleIntradayRepo.save(entity);
-			count++;
-		}
+        return count;
+    }
 
-		return count;
-	}
+    // =====================================================
+    // ONE API CALL – FULL MODE
+    // =====================================================
+    public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(
+            List<StraddlePremiumDto> strikeList,
+            SmartConnect smartconnect) {
 
+        try {
+            List<String> tokens = new ArrayList<>();
 
-    /*
-     * ⭐ ⭐ ONE API CALL FOR ALL STRIKES ⭐ ⭐
-     */
-	public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(
-	        List<StraddlePremiumDto> strikeList,
-	        SmartConnect smartconnect) {
+            for (StraddlePremiumDto dto : strikeList) {
+                if (dto.getCeToken() != null)
+                    tokens.add(dto.getCeToken().getToken());
+                if (dto.getPeToken() != null)
+                    tokens.add(dto.getPeToken().getToken());
+            }
 
-	    try {
-	        // 1️⃣ Collect all tokens
-	        List<String> tokens = new ArrayList<>();
-	        for (StraddlePremiumDto dto : strikeList) {
-	            if (dto.getCeToken() != null)
-	                tokens.add(dto.getCeToken().getToken());
-	            if (dto.getPeToken() != null)
-	                tokens.add(dto.getPeToken().getToken());
-	        }
+            if (tokens.isEmpty()) return strikeList;
 
-	        if (tokens.isEmpty()) return strikeList;
+            JSONObject payload = new JSONObject();
+            payload.put("mode", "FULL");
 
-	        // 2️⃣ FULL MODE → returns LTP + OHLC (which includes OPEN)
-	        JSONObject payload = new JSONObject();
-	        payload.put("mode", "FULL");
+            JSONObject map = new JSONObject();
+            map.put("NFO", tokens);
+            payload.put("exchangeTokens", map);
 
-	        JSONObject map = new JSONObject();
-	        map.put("NFO", tokens);
-	        payload.put("exchangeTokens", map);
+            JSONObject response =
+                    predictionService.callMarketDataWithRetry(
+                            smartconnect, payload);
 
-	        // 3️⃣ Call AngelOne Market Data API
-	        JSONObject response = predictionService.callMarketDataWithRetry(
-	                smartconnect, payload);
+            JSONArray fetched = response.getJSONArray("fetched");
 
-	        JSONArray fetchedArray = response.getJSONArray("fetched");
+            Map<String, BigDecimal> ltpMap = new HashMap<>();
+            Map<String, BigDecimal> openMap = new HashMap<>();
 
-	        // 4️⃣ Prepare maps for LTP & OPEN
-	        Map<String, BigDecimal> ltpMap = new HashMap<>();
-	        Map<String, BigDecimal> openMap = new HashMap<>();
+            for (int i = 0; i < fetched.length(); i++) {
+                JSONObject item = fetched.getJSONObject(i);
+                ltpMap.put(item.getString("symbolToken"),
+                        item.getBigDecimal("ltp"));
+                openMap.put(item.getString("symbolToken"),
+                        item.getBigDecimal("open"));
+            }
 
-	        // 5️⃣ Parse API Response
-	        for (int i = 0; i < fetchedArray.length(); i++) {
+            for (StraddlePremiumDto dto : strikeList) {
 
-	            JSONObject item = fetchedArray.getJSONObject(i);
+                if (dto.getCeToken() != null) {
+                    String t = dto.getCeToken().getToken();
+                    dto.setCePrice(ltpMap.get(t));
+                    dto.setCeOpenPrice(openMap.get(t));
+                }
 
-	            String token = item.getString("symbolToken");
+                if (dto.getPeToken() != null) {
+                    String t = dto.getPeToken().getToken();
+                    dto.setPePrice(ltpMap.get(t));
+                    dto.setPeOpenPrice(openMap.get(t));
+                }
+            }
 
-	            BigDecimal ltp = item.getBigDecimal("ltp");
-	            BigDecimal open = item.getBigDecimal("open");  // <--- use this
+        } catch (Exception | SmartAPIException e) {
+            logger.error("Batch FULL error", e);
+        }
 
-	            ltpMap.put(token, ltp);
-	            openMap.put(token, open);
-	        }
+        return strikeList;
+    }
 
-	        // 6️⃣ Assign values back to StraddlePremiumDto
-	        for (StraddlePremiumDto dto : strikeList) {
-
-	            BigDecimal ceLtp = null;
-	            BigDecimal peLtp = null;
-
-	            BigDecimal ceOpen = null;
-	            BigDecimal peOpen = null;
-
-	            if (dto.getCeToken() != null) {
-	                String t = dto.getCeToken().getToken();
-	                ceLtp = ltpMap.get(t);
-	                ceOpen = openMap.get(t);
-
-	                dto.setCePrice(ceLtp);
-	                dto.setCeOpenPrice(ceOpen);
-	            }
-
-	            if (dto.getPeToken() != null) {
-	                String t = dto.getPeToken().getToken();
-	                peLtp = ltpMap.get(t);
-	                peOpen = openMap.get(t);
-
-	                dto.setPePrice(peLtp);
-	                dto.setPeOpenPrice(peOpen);
-	            }
-
-	            // 7️⃣ Combined values
-	            if (ceLtp != null && peLtp != null)
-	                dto.setCombinedPremium(ceLtp.add(peLtp));
-
-	            if (ceOpen != null && peOpen != null)
-	                dto.setCombinedOpenPrice(ceOpen.add(peOpen));
-	        }
-
-	    } catch (Exception | SmartAPIException e) {
-	        logger.error("Batch FULL error: {}", e.getMessage(), e);
-	    }
-
-	    return strikeList;
-	}
-
-
-
-
-    /*
-     * BUILD ITM/ATM/OTM STRIKES
-     */
+    // =====================================================
+    // STRIKE BUILDING
+    // =====================================================
     public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal spot, int interval) {
 
         List<StraddlePremiumDto> list = new ArrayList<>();
 
-        BigDecimal atm = spot.divide(BigDecimal.valueOf(interval), 0, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(interval));
+        BigDecimal atm =
+                spot.divide(BigDecimal.valueOf(interval), 0, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(interval));
 
         for (int i = 5; i >= 1; i--) {
-            list.add(createDto(atm.subtract(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
+            list.add(createDto(
+                    atm.subtract(BigDecimal.valueOf(interval)
+                            .multiply(BigDecimal.valueOf(i)))));
         }
 
         list.add(createDto(atm));
 
         for (int i = 1; i <= 5; i++) {
-            list.add(createDto(atm.add(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
+            list.add(createDto(
+                    atm.add(BigDecimal.valueOf(interval)
+                            .multiply(BigDecimal.valueOf(i)))));
         }
 
         return list;
@@ -300,48 +260,55 @@ public class StraddleIntradayService {
         return dto;
     }
 
-
-    /*
-     * ATM Calculation
-     */
+    // =====================================================
+    // ATM STRIKE
+    // =====================================================
     public BigDecimal getATMStrike(String name, Strategy strategy) {
 
         SmartConnect smartconnect = angelOne.signIn();
 
-        int strikeInterval = 50;
-
-        BigDecimal currentPrice = angelOneService.getcurrentPrice(
+        BigDecimal price = angelOneService.getcurrentPrice(
                 smartconnect,
                 strategy.getExchange(),
                 strategy.getTradingsymbol(),
                 strategy.getToken()
         );
 
-        if (currentPrice == null) return BigDecimal.ZERO;
+        if (price == null) return BigDecimal.ZERO;
 
-        int nearest = chartService.findNearestMultiple(currentPrice.intValue(), strikeInterval);
+        int nearest =
+                chartService.findNearestMultiple(price.intValue(), 50);
 
-        return new BigDecimal(nearest);
+        return BigDecimal.valueOf(nearest);
     }
 
-
-    /*
-     * Get CE/PE token details from DB
-     */
-    public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList,
-                                                       Strategy strategy) {
+    // =====================================================
+    // TOKEN DETAILS
+    // =====================================================
+    public List<StraddlePremiumDto> getAllTokenDetails(
+            List<StraddlePremiumDto> strikeList,
+            Strategy strategy) {
 
         for (StraddlePremiumDto dto : strikeList) {
 
             int strike = dto.getStrikePrice().intValue();
 
-            String ceSymbol = String.format("%s%s%dCE", strategy.getName(),
-                    strategy.getExpiry(), strike);
+            String ceSymbol =
+                    String.format("%s%s%dCE",
+                            strategy.getName(),
+                            strategy.getExpiry(),
+                            strike);
 
-            String peSymbol = String.format("%s%s%dPE", strategy.getName(),
-                    strategy.getExpiry(), strike);
+            String peSymbol =
+                    String.format("%s%s%dPE",
+                            strategy.getName(),
+                            strategy.getExpiry(),
+                            strike);
 
-            Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+            Indexes ceIndex =
+                    indexesRepo.findByNameAndSymbol(
+                            strategy.getName(), ceSymbol);
+
             if (ceIndex != null) {
                 Token t = new Token();
                 t.setToken(ceIndex.getToken());
@@ -350,7 +317,10 @@ public class StraddleIntradayService {
                 dto.setCeToken(t);
             }
 
-            Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+            Indexes peIndex =
+                    indexesRepo.findByNameAndSymbol(
+                            strategy.getName(), peSymbol);
+
             if (peIndex != null) {
                 Token t = new Token();
                 t.setToken(peIndex.getToken());
@@ -359,103 +329,115 @@ public class StraddleIntradayService {
                 dto.setPeToken(t);
             }
         }
-
         return strikeList;
     }
-    /*
-     * Combined Line Chart
-     */
+
+    // =====================================================
+    // COMBINED CHART (TOTAL EXTRINSIC DERIVED)
+    // =====================================================
     public CombinedChartResponse getStraddleCombinedChart(
             String name,
             String expiry,
             BigDecimal ceStrike,
             BigDecimal peStrike) {
 
-        List<StraddleIntraday> ceRows = straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
-        List<StraddleIntraday> peRows = straddleIntradayRepo.getByStrike(name, expiry, peStrike);
-        List<StraddleIntraday> spotRows = straddleIntradayRepo.getSpotHistory(name, expiry);
+        List<StraddleIntraday> ceRows =
+                straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
+
+        List<StraddleIntraday> peRows =
+                straddleIntradayRepo.getByStrike(name, expiry, peStrike);
+
+        List<StraddleIntraday> spotRows =
+                straddleIntradayRepo.getSpotHistory(name, expiry);
 
         Map<String, CombinedChartPoint> map = new TreeMap<>();
         ZoneId ist = ZoneId.of("Asia/Kolkata");
 
-        // CE rows
+        // ---------------- CE rows ----------------
         for (StraddleIntraday r : ceRows) {
 
-            String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+            String key = r.getTimestamp()
+                    .atZone(ist)
+                    .toOffsetDateTime()
+                    .withNano(0)
+                    .toString();
 
             CombinedChartPoint pt = map.computeIfAbsent(
                     key,
-                    t -> new CombinedChartPoint(t, null, null,null, null, null, null, null, null, null)
+                    t -> new CombinedChartPoint(
+                            t, null, null, null, null,
+                            null, null, null,
+                            null, null, null)
             );
 
             pt.setCe(r.getCePrice());
             pt.setCeOpen(r.getCeOpenPrice());
-            pt.setCombinedPremium(r.getCePrice().add(r.getCeOpenPrice()));
-          
-            if (r.getExtrinsic() != null)
-                pt.setExtrinsic(r.getExtrinsic());
+            pt.setCeExtrinsic(r.getCeExtrinsic());
         }
 
-        // PE rows
+        // ---------------- PE rows ----------------
         for (StraddleIntraday r : peRows) {
 
-            String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+            String key = r.getTimestamp()
+                    .atZone(ist)
+                    .toOffsetDateTime()
+                    .withNano(0)
+                    .toString();
 
             CombinedChartPoint pt = map.computeIfAbsent(
                     key,
-                    t -> new CombinedChartPoint(t, null, null,null, null, null, null, null, null, null)
+                    t -> new CombinedChartPoint(
+                            t, null, null, null, null,
+                            null, null, null,
+                            null, null, null)
             );
 
             pt.setPe(r.getPePrice());
             pt.setPeOpen(r.getPeOpenPrice());
-
-            if (r.getExtrinsic() != null)
-                pt.setExtrinsic(r.getExtrinsic());
+            pt.setPeExtrinsic(r.getPeExtrinsic());
         }
 
-        // SPOT rows
+        // ---------------- SPOT rows ----------------
         for (StraddleIntraday r : spotRows) {
 
-            String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+            String key = r.getTimestamp()
+                    .atZone(ist)
+                    .toOffsetDateTime()
+                    .withNano(0)
+                    .toString();
 
             CombinedChartPoint pt = map.computeIfAbsent(
                     key,
-                    t -> new CombinedChartPoint(t, null, null,null, null, null, null, null, null, null)
+                    t -> new CombinedChartPoint(
+                            t, null, null, null, null,
+                            null, null, null,
+                            null, null, null)
             );
 
             pt.setSpot(r.getSpot());
         }
 
-        // Derived values: combinedPremium, combinedOpen, avgPrice
+        // ---------------- Derived values ----------------
         for (CombinedChartPoint pt : map.values()) {
 
-            // ✅ Combined Premium = CE + PE
+            // Combined Premium
             if (pt.getCe() != null && pt.getPe() != null) {
                 pt.setCombinedPremium(pt.getCe().add(pt.getPe()));
-            }
-
-            // ✅ Combined Open Price = CE Open + PE Open
-            if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
-                pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
-            }
-
-            // Avg price
-            if (pt.getCe() != null && pt.getPe() != null) {
                 pt.setAvgPrice(
-                        pt.getCe()
-                                .add(pt.getPe())
+                        pt.getCombinedPremium()
                                 .divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP)
                 );
             }
-        }
 
+            // Combined Open
+            if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
+                pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
+            }
+        }
 
         CombinedChartResponse response = new CombinedChartResponse();
         response.getData().addAll(map.values());
-
         return response;
     }
-
-
 
 }
