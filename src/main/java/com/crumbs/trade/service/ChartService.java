@@ -35,7 +35,6 @@ import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.dto.OHLC;
-import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
@@ -43,9 +42,6 @@ import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.ResultVix;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.Vix;
-import com.crumbs.trade.service.ChartService.CandleRange;
-import com.crumbs.trade.service.TrendLineService.OHLCV;
-import com.crumbs.trade.service.TrendLineService.TrendAnalysisResult;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
 import jakarta.mail.internet.AddressException;
@@ -728,7 +724,12 @@ public class ChartService {
 			resultVixRepo.save(resultVix);
 			
 			//Notification
-			notifyTelegram(strategy,type);
+            String message = String.format(
+                    "ENTRY %s | %s",
+                    strategy.getName(),
+                    type
+            );
+			notifyTelegram(type);
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (resultVix.getType().equalsIgnoreCase(resultVix.getMa()))) {
@@ -796,18 +797,19 @@ public class ChartService {
 			//monitorSignal(resultVix.getName(), resultVix.getExchange(), false, 0);
 			
 			//Notification
-			notifyTelegram(strategy,type);
+            String message = String.format(
+                    "EXIT %s | %s",
+                    strategy.getName(),
+                    type
+            );
+			notifyTelegram(message);
 			
 		}
 		
 	}
-	private void notifyTelegram(Strategy strategy, String type) {
+	private void notifyTelegram(String message) {
 	    try {
-	        String message = String.format("%s: %s -> %s", 
-	            type, 
-	            strategy.getName(), 
-	            type
-	        );
+
 	        
 	        logger.info("📤 Attempting to send Telegram message: " + message);
 	        
@@ -1206,6 +1208,12 @@ public class ChartService {
 		resultVix.setPoints(calculatePoints(resultVix));
 		resultVix.setActive(false);
 		resultVixRepo.save(resultVix);
+        String message = String.format(
+                "EXIT %s | %s",
+                resultVix.getName(),
+                resultVix.getType()
+        );
+
 	}
 
 	public String getName() {
