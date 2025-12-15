@@ -1127,7 +1127,7 @@ public class ChartService {
 	        targetThreshold = new BigDecimal("750.00");
 	        stopLossThreshold = new BigDecimal("250.00");
 	    } else { // Default: Nifty or others
-	        targetThreshold = new BigDecimal("30.00");
+	        targetThreshold = new BigDecimal("20.00");
 	        stopLossThreshold = new BigDecimal("10.00");
 	    }
 

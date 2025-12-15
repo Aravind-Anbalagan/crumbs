@@ -1,14 +1,18 @@
 package com.crumbs.trade.entity;
 
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+
 import jakarta.persistence.*;
 import lombok.Data;
 
 @Data
 @Entity
-@Table(name = "trade_execution")
+@Table(name = "trade_execution",
+        indexes = {
+                @Index(name = "idx_trade_symbol_tf", columnList = "symbol,timeframe"),
+                @Index(name = "idx_trade_status", columnList = "status")
+        })
 public class TradeExecution {
 
     @Id
@@ -29,11 +33,15 @@ public class TradeExecution {
 
     private BigDecimal exitPrice;
     private LocalDateTime exitTime;
-    private String exitReason;
+    private String exitReason;  // TARGET / SL / TRAIL_SL
 
     private BigDecimal levelValue;
-    private String method;
+    private String method;      // PRICE_ACTION / FIBO
     private String strength;
+
+    private BigDecimal pnl;     // ✅ PnL stored
+
+    private LocalDateTime lastSignalTime;
 
     @Column(length = 500)
     private String explanation;

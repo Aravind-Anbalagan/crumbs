@@ -426,23 +426,29 @@ public class StraddleIntradayService {
             pt.setSpot(r.getSpot());
         }
 
-        // Derived values: combinedOpen, avgPrice
+        // Derived values: combinedPremium, combinedOpen, avgPrice
         for (CombinedChartPoint pt : map.values()) {
 
-            // Open sum
+            // ✅ Combined Premium = CE + PE
+            if (pt.getCe() != null && pt.getPe() != null) {
+                pt.setCombinedPremium(pt.getCe().add(pt.getPe()));
+            }
+
+            // ✅ Combined Open Price = CE Open + PE Open
             if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
                 pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
             }
 
             // Avg price
             if (pt.getCe() != null && pt.getPe() != null) {
-                BigDecimal avg = pt.getCe()
-                        .add(pt.getPe())
-                        .divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP);
-
-                pt.setAvgPrice(avg);
+                pt.setAvgPrice(
+                        pt.getCe()
+                                .add(pt.getPe())
+                                .divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP)
+                );
             }
         }
+
 
         CombinedChartResponse response = new CombinedChartResponse();
         response.getData().addAll(map.values());

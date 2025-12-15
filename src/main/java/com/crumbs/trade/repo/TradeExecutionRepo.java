@@ -1,9 +1,9 @@
 package com.crumbs.trade.repo;
 
-
-
 import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+
 import com.crumbs.trade.entity.TradeExecution;
 
 public interface TradeExecutionRepo
@@ -11,5 +11,12 @@ public interface TradeExecutionRepo
 
     Optional<TradeExecution>
     findFirstBySymbolAndTimeframeAndStatus(
-            String symbol, String timeframe, String status);
+            String symbol,
+            String timeframe,
+            String status);
+
+    Optional<TradeExecution>
+    findFirstBySymbolAndTimeframeOrderByEntryTimeDesc(
+            String symbol,
+            String timeframe);
 }
