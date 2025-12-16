@@ -1,396 +1,386 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crumbs</title>
-  <style>
-    html { box-sizing: border-box; }
-    *, *:before, *:after { box-sizing: inherit; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f5f6fa;
-      color: #333;
-    }
-    nav {
-      background: linear-gradient(90deg, #1e272e, #2c3e50);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    }
-    .menu {
-      display: flex;
-      list-style: none;
-      width: 100%;
-      overflow-x: auto;
-    }
-    .menu-item {
-      flex: 1;
-      text-align: center;
-    }
-    .menu-link {
-      display: block;
-      padding: 14px 0;
-      color: #d2dae2;
-      background: none;
-      font-size: 15px;
-      font-weight: 500;
-      border: none;
-      outline: none;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      width: 100%;
-    }
-    .menu-link:hover,
-    .menu-item.active-menu .menu-link {
-      background-color: rgba(255,255,255,0.05);
-      color: #fff;
-    }
-    .menu-item.active-menu .menu-link {
-      background: #00a8ff;
-      color: #fff;
-      font-weight: 600;
-      box-shadow: inset 0 -3px 0 #0077b6;
-    }
-    .menu-item.disabled-menu .menu-link {
-      pointer-events: none;
-      opacity: 0.5;
-      cursor: default;
-      background: none !important;
-      color: #a0a8b0 !important;
-      font-weight: 500;
-      box-shadow: none !important;
-    }
-    #iframeContainer {
-      position: relative;
-      width: 100%;
-      height: calc(100vh - 50px);
-      pointer-events: none;
-      opacity: 0.5;
-    }
-    #contentFrame {
-      width: 100%;
-      height: 100%;
-      border: none;
-      background: #fff;
-    }
-    #spinner {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #00a8ff;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      display: none;
-      z-index: 20;
-    }
-    @keyframes spin {
-      0% { transform: translate(-50%, -50%) rotate(0deg);}
-      100% { transform: translate(-50%, -50%) rotate(360deg);}
-    }
-    
-    #loginPopup {
-      display: flex;
-      position: fixed;
-      z-index: 2000;
-      left: 0;
-      top: 0;
-      width: 100vw;
-      height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      align-items: center;
-      justify-content: center;
-      animation: gradientShift 8s ease infinite;
-      background-size: 200% 200%;
-    }
-    @keyframes gradientShift {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-    @keyframes fadeInScale {
-      from { opacity: 0; transform: scale(0.9); }
-      to { opacity: 1; transform: scale(1); }
-    }
-    @keyframes pulseError {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.02); }
-    }
-    
-    .login-modal {
-      background: rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(20px);
-      border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-                  inset 0 1px 0 rgba(255, 255, 255, 0.4);
-      padding: 50px 45px;
-      min-width: 420px;
-      max-width: 90%;
-      text-align: center;
-      position: relative;
-      animation: fadeInScale 0.5s;
-    }
-    
-    /* INCONSISTENT LOCK ICON */
-    .lock-icon {
-      width: 70px;
-      height: 70px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 24px;
-      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-      animation: chaosRotate 3s ease-in-out infinite;
-    }
-    @keyframes chaosRotate {
-      0% { transform: rotate(0deg) scale(1); }
-      25% { transform: rotate(-15deg) scale(1.1); }
-      50% { transform: rotate(15deg) scale(0.95); }
-      75% { transform: rotate(-10deg) scale(1.05); }
-      100% { transform: rotate(0deg) scale(1); }
-    }
-    
-    /* INCONSISTENT EMOJI STYLING */
-    .chaos-emoji {
-      display: inline-block;
-      animation: wobbleEmoji 2s ease-in-out infinite;
-    }
-    @keyframes wobbleEmoji {
-      0%, 100% { transform: rotate(0deg) scale(1); }
-      25% { transform: rotate(-20deg) scale(1.2); }
-      50% { transform: rotate(20deg) scale(0.9); }
-      75% { transform: rotate(-15deg) scale(1.1); }
-    }
-    
-    .login-modal h2 {
-      margin-bottom: 10px;
-      font-size: 2rem;
-      color: #ffffff;
-      font-weight: 700;
-      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    }
-    .login-modal p {
-      color: rgba(255, 255, 255, 0.9);
-      margin-bottom: 32px;
-      font-size: 1rem;
-      font-weight: 400;
-    }
-    
-    .input-wrapper {
-      position: relative;
-      margin-bottom: 20px;
-    }
-    
-    /* INCONSISTENT KEY ICON - Hidden but animated */
-    .input-icon {
-      position: absolute;
-      left: 18px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 20px;
-      opacity: 0;
-      pointer-events: none;
-      animation: keyBounce 1.5s ease-in-out infinite;
-    }
-    @keyframes keyBounce {
-      0%, 100% { transform: translateY(-50%) rotate(0deg) scale(1); }
-      50% { transform: translateY(-60%) rotate(360deg) scale(1.3); }
-    }
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crumbs</title>
+    <style>
+        html { box-sizing: border-box; }
+        *, *:before, *:after { box-sizing: inherit; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f6fa;
+            color: #333;
+        }
+        nav {
+            background: linear-gradient(90deg, #1e272e, #2c3e50);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .menu {
+            display: flex;
+            list-style: none;
+            width: 100%;
+            overflow-x: auto;
+        }
+        .menu-item {
+            flex: 1;
+            text-align: center;
+        }
+        .menu-link {
+            display: block;
+            padding: 14px 0;
+            color: #d2dae2;
+            background: none;
+            font-size: 15px;
+            font-weight: 500;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        .menu-link:hover,
+        .menu-item.active-menu .menu-link {
+            background-color: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+        .menu-item.active-menu .menu-link {
+            background: #00a8ff;
+            color: #fff;
+            font-weight: 600;
+            box-shadow: inset 0 -3px 0 #0077b6;
+        }
+        .menu-item.disabled-menu .menu-link {
+            pointer-events: none;
+            opacity: 0.5;
+            cursor: default;
+            background: none !important;
+            color: #a0a8b0 !important;
+            font-weight: 500;
+            box-shadow: none !important;
+        }
+        #iframeContainer {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 50px);
+            pointer-events: none;
+            opacity: 0.5;
+        }
+        #contentFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #fff;
+        }
+        #spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #00a8ff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: none;
+            z-index: 20;
+        }
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg);}
+            100% { transform: translate(-50%, -50%) rotate(360deg);}
+        }
 
-    .login-modal input[type="password"] {
-      width: 100%;
-      padding: 18px 20px;
-      text-align: center;
-      font-size: 1rem;
-      border-radius: 50px;
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      background: rgba(255, 255, 255, 0.2);
-      color: #ffffff;
-      font-weight: 500;
-      transition: all 0.3s ease;
-    }
-    .login-modal input[type="password"]::placeholder {
-      text-align: center;
-      color: rgba(255, 255, 255, 0.6);
-    }
-    
-    .login-modal input[type="password"]:focus {
-      outline: none;
-      border-color: rgba(255, 255, 255, 0.6);
-      background: rgba(255, 255, 255, 0.25);
-      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
-    }
-    .login-modal input[type="password"].error-shake {
-      animation: pulseError 0.5s ease;
-      border-color: #ff6b6b;
-      background: rgba(255, 107, 107, 0.2);
-    }
+        #loginPopup {
+            display: flex;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            align-items: center;
+            justify-content: center;
+            animation: gradientShift 8s ease infinite;
+            background-size: 200% 200%;
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes pulseError {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
 
-    .login-modal button {
-      width: 100%;
-      padding: 18px 24px;
-      background: linear-gradient(135deg, #ffffff, #f0f0f0);
-      color: #667eea;
-      border: none;
-      border-radius: 50px;
-      font-size: 1.05rem;
-      cursor: pointer;
-      font-weight: 700;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-    }
+        .login-modal {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            padding: 50px 45px;
+            min-width: 420px;
+            max-width: 90%;
+            text-align: center;
+            position: relative;
+            animation: fadeInScale 0.5s;
+        }
 
-    .login-modal button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 30px rgba(0, 0, 0, 0.2);
-    }
-    
-    /* INCONSISTENT UNLOCK ICON */
-    .unlock-icon {
-      font-size: 20px;
-      display: inline-block;
-      animation: unlockShake 2s ease-in-out infinite;
-    }
-    @keyframes unlockShake {
-      0%, 100% { transform: rotate(0deg) scale(1); }
-      10% { transform: rotate(-10deg) scale(1.1); }
-      20% { transform: rotate(10deg) scale(0.95); }
-      30% { transform: rotate(-10deg) scale(1.05); }
-      40% { transform: rotate(0deg) scale(1); }
-    }
-    
-    .login-modal .error {
-      color: #ffffff;
-      margin-top: 20px;
-      font-size: 0.9rem;
-      display: none;
-      background: rgba(255, 107, 107, 0.3);
-      backdrop-filter: blur(10px);
-      padding: 12px 20px;
-      border-radius: 50px;
-      border: 1px solid rgba(255, 107, 107, 0.5);
-      animation: fadeInScale 0.3s ease;
-      font-weight: 500;
-    }
-    
-    /* INCONSISTENT WARNING ICON */
-    .warning-icon {
-      display: inline-block;
-      animation: warningPulse 0.5s ease-in-out infinite;
-    }
-    @keyframes warningPulse {
-      0%, 100% { transform: scale(1) rotate(0deg); }
-      50% { transform: scale(1.3) rotate(180deg); }
-    }
-    
-    .particles {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-      overflow: hidden;
-    }
-    .particle {
-      position: absolute;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      animation: float-particle 15s infinite;
-    }
-    @keyframes float-particle {
-      0% { transform: translateY(100vh) scale(0); opacity: 0; }
-      10% { opacity: 1; }
-      90% { opacity: 1; }
-      100% { transform: translateY(-100vh) scale(1); opacity: 0; }
-    }
-    
-    .authenticated #iframeContainer,
-    .authenticated nav {
-      pointer-events: auto;
-      opacity: 1;
-    }
-    .authenticated #loginPopup {
-      display: none !important;
-    }
-  </style>
+        .lock-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            animation: chaosRotate 3s ease-in-out infinite;
+        }
+        @keyframes chaosRotate {
+            0% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(-15deg) scale(1.1); }
+            50% { transform: rotate(15deg) scale(0.95); }
+            75% { transform: rotate(-10deg) scale(1.05); }
+            100% { transform: rotate(0deg) scale(1); }
+        }
+
+        .chaos-emoji {
+            display: inline-block;
+            animation: wobbleEmoji 2s ease-in-out infinite;
+        }
+        @keyframes wobbleEmoji {
+            0%, 100% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(-20deg) scale(1.2); }
+            50% { transform: rotate(20deg) scale(0.9); }
+            75% { transform: rotate(-15deg) scale(1.1); }
+        }
+
+        .login-modal h2 {
+            margin-bottom: 10px;
+            font-size: 2rem;
+            color: #ffffff;
+            font-weight: 700;
+        }
+        .login-modal p {
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 32px;
+            font-size: 1rem;
+            font-weight: 400;
+        }
+
+        .input-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            opacity: 0;
+            pointer-events: none;
+            animation: keyBounce 1.5s ease-in-out infinite;
+        }
+        @keyframes keyBounce {
+            0%, 100% { transform: translateY(-50%) rotate(0deg) scale(1); }
+            50% { transform: translateY(-60%) rotate(360deg) scale(1.3); }
+        }
+
+        .login-modal input[type="password"] {
+            width: 100%;
+            padding: 18px 20px;
+            text-align: center;
+            font-size: 1rem;
+            border-radius: 50px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .login-modal input[type="password"]::placeholder {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .login-modal input[type="password"]:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+        }
+        .login-modal input[type="password"].error-shake {
+            animation: pulseError 0.5s ease;
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.2);
+        }
+
+        .login-modal button {
+            width: 100%;
+            padding: 18px 24px;
+            background: linear-gradient(135deg, #ffffff, #f0f0f0);
+            color: #667eea;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.05rem;
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .login-modal button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .unlock-icon {
+            font-size: 20px;
+            display: inline-block;
+            animation: unlockShake 2s ease-in-out infinite;
+        }
+        @keyframes unlockShake {
+            0%, 100% { transform: rotate(0deg) scale(1); }
+            10% { transform: rotate(-10deg) scale(1.1); }
+            20% { transform: rotate(10deg) scale(0.95); }
+            30% { transform: rotate(-10deg) scale(1.05); }
+            40% { transform: rotate(0deg) scale(1); }
+        }
+
+        .login-modal .error {
+            color: #ffffff;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            display: none;
+            background: rgba(255, 107, 107, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 107, 107, 0.5);
+            animation: fadeInScale 0.3s ease;
+            font-weight: 500;
+        }
+
+        .warning-icon {
+            display: inline-block;
+            animation: warningPulse 0.5s ease-in-out infinite;
+        }
+        @keyframes warningPulse {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.3) rotate(180deg); }
+        }
+
+        .particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            animation: float-particle 15s infinite;
+        }
+        @keyframes float-particle {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) scale(1); opacity: 0; }
+        }
+
+        .authenticated #iframeContainer,
+        .authenticated nav {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .authenticated #loginPopup {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
-  <div id="loginPopup">
+<div id="loginPopup">
     <div class="particles" id="particles"></div>
     <div class="login-modal">
-      <div class="lock-icon">
-        <span class="chaos-emoji" style="font-size:32px;">🔐</span>
-      </div>
-      <h2>CRUMBS</h2>
-      <p>Please authenticate to continue</p>
-      <div class="input-wrapper">
-        <span class="input-icon chaos-emoji">🔑</span>
-        <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Access Code" />
-      </div>
+        <div class="lock-icon">
+            <span class="chaos-emoji" style="font-size:32px;">🔐</span>
+        </div>
+        <h2>CRUMBS</h2>
+        <p>Please authenticate to continue</p>
+        <div class="input-wrapper">
+            <span class="input-icon chaos-emoji">🔑</span>
+            <input id="loginCodeInput" type="password" maxlength="15" autocomplete="off" placeholder="Access Code" />
+        </div>
 
-      <button id="loginBtn" type="button">
-        <span class="unlock-icon">🔓</span>
-        Authenticate
-      </button>
+        <button id="loginBtn" type="button">
+            <span class="unlock-icon">🔓</span>
+            Authenticate
+        </button>
 
-      <div class="error" id="loginError">
-        <span class="warning-icon">⚠️</span> Authentication failed. Please try again.
-      </div>
+        <div class="error" id="loginError">
+            <span class="warning-icon">⚠️</span> Authentication failed. Please try again.
+        </div>
     </div>
-  </div>
-  
-  <nav>
+</div>
+
+<nav>
     <ul class="menu">
-      <li class="menu-item" data-url="stock.html"><button class="menu-link">Stocks</button></li>
-    <li class="menu-item" data-url="straddle.html"><button class="menu-link">Straddle</button></li>
-      <li class="menu-item" data-url="intraday.html"><button class="menu-link">Intraday</button></li>
-      <li class="menu-item" data-url="orders.html"><button class="menu-link">Orders</button></li>
-      <li class="menu-item" data-url="log.html"><button class="menu-link">Log</button></li>
+        <li class="menu-item" data-url="stock.html"><button class="menu-link">Stocks</button></li>
+        <li class="menu-item" data-url="straddle.html"><button class="menu-link">Straddle</button></li>
+        <li class="menu-item" data-url="intraday.html"><button class="menu-link">Intraday</button></li>
+        <li class="menu-item" data-url="orders.html"><button class="menu-link">Orders</button></li>
+        <li class="menu-item" data-url="log.html"><button class="menu-link">Log</button></li>
     </ul>
-  </nav>
-  
-  <div id="iframeContainer">
+</nav>
+
+<div id="iframeContainer">
     <div id="spinner"></div>
     <iframe id="contentFrame" src="stock.html"></iframe>
-  </div>
-  
-  <script>
-    // Randomize particle animations
+</div>
+
+<script>
     const particlesContainer = document.getElementById('particles');
     for (let i = 0; i < 15; i++) {
-      const p = document.createElement('div');
-      p.className = 'particle';
-      const size = Math.random() * 10 + 5;
-      p.style.width = size + 'px';
-      p.style.height = size + 'px';
-      p.style.left = Math.random() * 100 + '%';
-      p.style.animationDelay = Math.random() * 15 + 's';
-      p.style.animationDuration = (Math.random() * 10 + 10) + 's';
-      particlesContainer.appendChild(p);
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const size = Math.random() * 10 + 5;
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
+        p.style.left = Math.random() * 100 + '%';
+        p.style.animationDelay = Math.random() * 15 + 's';
+        p.style.animationDuration = (Math.random() * 10 + 10) + 's';
+        particlesContainer.appendChild(p);
     }
 
-    // Add random chaos to emojis on load
     function addRandomChaos() {
-      const chaosElements = document.querySelectorAll('.chaos-emoji');
-      chaosElements.forEach(el => {
-        const randomRotation = Math.random() * 360;
-        const randomScale = 0.8 + Math.random() * 0.4;
-        const randomDelay = Math.random() * 2;
-        el.style.animationDelay = randomDelay + 's';
-      });
+        const chaosElements = document.querySelectorAll('.chaos-emoji');
+        chaosElements.forEach(el => {
+            const randomDelay = Math.random() * 2;
+            el.style.animationDelay = randomDelay + 's';
+        });
     }
     addRandomChaos();
 
@@ -401,36 +391,39 @@
     const body = document.body;
 
     async function validateKey(code) {
-      try {
-        const res = await fetch('/key/1/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secret: code })
-        });
-        if (!res.ok) return false;
-        return await res.json();
-      } catch {
-        return false;
-      }
+        try {
+            const res = await fetch('/key/1/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ secret: code })
+            });
+            if (!res.ok) return false;
+            return await res.json();
+        } catch {
+            return false;
+        }
     }
 
     loginBtn.onclick = async () => {
-      const val = loginInput.value.trim();
-      const ok = await validateKey(val);
-      if (ok) {
-        body.classList.add('authenticated');
-        loginPopup.style.display = 'none';
-      } else {
-        loginError.style.display = 'block';
-        loginInput.classList.add('error-shake');
-        loginInput.value = '';
-        loginInput.focus();
-        setTimeout(() => loginInput.classList.remove('error-shake'), 500);
-      }
+        const val = loginInput.value.trim();
+        const ok = await validateKey(val);
+        if (ok) {
+            // Clear all stored user actions for a fresh session
+            localStorage.clear();  // or removeItem for specific keys only [web:17]
+
+            body.classList.add('authenticated');
+            loginPopup.style.display = 'none';
+        } else {
+            loginError.style.display = 'block';
+            loginInput.classList.add('error-shake');
+            loginInput.value = '';
+            loginInput.focus();
+            setTimeout(() => loginInput.classList.remove('error-shake'), 500);
+        }
     };
 
     loginInput.addEventListener('keyup', e => {
-      if (e.key === 'Enter') loginBtn.click();
+        if (e.key === 'Enter') loginBtn.click();
     });
 
     const spinner = document.getElementById('spinner');
@@ -438,30 +431,30 @@
     const menuItems = document.querySelectorAll('.menu-item');
 
     function loadPage(url) {
-      spinner.style.display = 'block';
-      iframe.src = url;
-      setActive(url);
+        spinner.style.display = 'block';
+        iframe.src = url;
+        setActive(url);
     }
 
     function setActive(url) {
-      menuItems.forEach(i =>
-        i.classList.toggle('active-menu', i.dataset.url === url)
-      );
+        menuItems.forEach(i =>
+            i.classList.toggle('active-menu', i.dataset.url === url)
+        );
     }
 
     menuItems.forEach(i => {
-      if (!i.classList.contains('disabled-menu')) {
-        i.querySelector('.menu-link').onclick = () => loadPage(i.dataset.url);
-      }
+        if (!i.classList.contains('disabled-menu')) {
+            i.querySelector('.menu-link').onclick = () => loadPage(i.dataset.url);
+        }
     });
 
     iframe.onload = () => {
-      spinner.style.display = 'none';
-      const url = iframe.contentWindow.location.pathname.split('/').pop();
-      setActive(url);
+        spinner.style.display = 'none';
+        const url = iframe.contentWindow.location.pathname.split('/').pop();
+        setActive(url);
     };
 
     setActive('stock.html');
-  </script>
+</script>
 </body>
 </html>

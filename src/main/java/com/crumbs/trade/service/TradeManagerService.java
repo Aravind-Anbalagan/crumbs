@@ -22,7 +22,7 @@ public class TradeManagerService {
        CONFIG FLAGS (ON / OFF)
        ============================== */
 
-    private static final boolean ENABLE_PRICE_ACTION = true;
+    private static final boolean ENABLE_PRICE_ACTION = false;
     private static final boolean ENABLE_FIBO = true;
 
     private static final boolean ENABLE_TRAILING_SL = false;
@@ -32,7 +32,7 @@ public class TradeManagerService {
        ============================== */
 
     private static final BigDecimal TARGET_POINTS = new BigDecimal("30");
-    private static final BigDecimal SL_POINTS = new BigDecimal("15");
+    private static final BigDecimal SL_POINTS = new BigDecimal("10");
     private static final BigDecimal TRAIL_SL_STEP = new BigDecimal("10");
 
     private static final int COOLDOWN_MINUTES = 5;

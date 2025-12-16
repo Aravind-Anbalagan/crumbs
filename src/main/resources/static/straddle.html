@@ -1,27 +1,68 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Nifty — CE/PE Chart</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Nifty CEPE Chart</title>
+
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 
     <style>
-        * { box-sizing: border-box; }
-        html,body{ height:100%; margin:0; padding:0; font-family:Inter, ui-sans-serif, system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; }
-        body{ background:linear-gradient(180deg,#071021 0%, #071a2b 100%); color:#e6eef8; padding:16px; transition:all 0.25s ease; }
-        .container{ max-width:100%; width:100%; margin:0 auto; overflow-x:hidden; }
-        .card{ width:100%; background:#0b1320; border-radius:12px; padding:16px; border:1px solid rgba(255,255,255,0.03); margin-bottom:16px; box-shadow:0 8px 30px rgba(2,6,23,0.6); position:relative; }
-        .header{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+        * {
+            box-sizing: border-box;
+        }
 
-        #chart{
-            height:520px;
-            width:100%;
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        }
+
+        body {
+            background: linear-gradient(180deg, #071021 0, #071a2b 100%);
+            color: #e6eef8;
+            padding: 16px;
+            transition: all 0.25s ease;
+        }
+
+        .container {
+            max-width: 100%;
+            width: 100%;
+            margin: 0 auto;
+            overflow-x: hidden;
+        }
+
+        .card {
+            width: 100%;
+            background: #0b1320;
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            margin-bottom: 16px;
+            box-shadow: 0 8px 30px rgba(2, 6, 23, 0.6);
+            position: relative;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        #chart {
+            height: 520px;
+            width: 100%;
         }
 
         .chart-fullscreen {
             position: fixed !important;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             width: 100vw !important;
             height: 100vh !important;
             margin: 0 !important;
@@ -34,9 +75,9 @@
             position: absolute;
             right: 12px;
             top: 12px;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0, 0, 0, 0.4);
             color: white;
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 6px 10px;
             border-radius: 6px;
             cursor: pointer;
@@ -44,29 +85,154 @@
             font-size: 14px;
             transition: all 0.2s;
         }
-        .btn-icon:hover { background: rgba(0,0,0,0.6); }
 
-        .checkout-dropdown{ position:relative; z-index:999999; }
-        .checkout-btn{ padding:6px 12px; border-radius:6px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.12); cursor:pointer; font-size:13px; color:#60a5fa; transition: all 0.2s; }
-        .checkout-btn:hover { background:rgba(59,130,246,0.12); }
-        .checkout-menu{ position:absolute; top:100%; right:0; background:#0b1320; border:1px solid rgba(255,255,255,0.03); border-radius:8px; min-width:260px; padding:12px; transform:translateY(-10px); opacity:0; visibility:hidden; transition:0.18s; box-shadow:0 8px 25px rgba(0,0,0,0.4); margin-top:4px; }
-        .checkout-menu.show{ transform:translateY(0); opacity:1; visibility:visible; }
-        .checkout-item{ display:flex; gap:8px; align-items:center; padding:6px 8px; font-size:13px; border-radius:4px; color:#94a3b8; cursor:pointer; }
-        .checkout-item:hover{ background:rgba(255,255,255,0.02); }
-        .checkout-item input[type="checkbox"] { cursor: pointer; }
+        .btn-icon:hover {
+            background: rgba(0, 0, 0, 0.6);
+        }
 
-        .toggle-container{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; background:rgba(148,163,184,0.03); border:1px solid rgba(148,163,184,0.03); transition: all 0.2s; }
-        .toggle-container:hover { background:rgba(148,163,184,0.05); }
-        .toggle-label{ font-size:13px; font-weight:600; color:#94a3b8; user-select: none; }
-        .toggle-switch{ width:46px; height:24px; border-radius:24px; border:1px solid rgba(148,163,184,0.25); position:relative; background:rgba(148,163,184,0.06); transition: all 0.2s; }
-        .toggle-switch.active{ background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.35); }
-        .toggle-switch::before{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; top:4px; left:4px; background:#94a3b8; transition:all .18s; }
-        .toggle-switch.active::before{ transform:translateX(22px); background:#22c55e; }
+        .checkout-dropdown {
+            position: relative;
+            z-index: 999999;
+        }
 
-        .crossings-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; margin-top:10px; }
-        .crossing-item{ padding:10px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); cursor:pointer; color:#cbd5e1; transition: all 0.2s; }
-        .crossing-item:hover { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.06); }
-        .crossing-item.highlighted { background:rgba(34,197,94,0.1); border-color:rgba(34,197,94,0.3); }
+        .checkout-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.12);
+            cursor: pointer;
+            font-size: 13px;
+            color: #60a5fa;
+            transition: all 0.2s;
+        }
+
+        .checkout-btn:hover {
+            background: rgba(59, 130, 246, 0.12);
+        }
+
+        .checkout-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: #0b1320;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            min-width: 260px;
+            padding: 12px;
+            transform: translateY(-10px);
+            opacity: 0;
+            visibility: hidden;
+            transition: 0.18s;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            margin-top: 4px;
+        }
+
+        .checkout-menu.show {
+            transform: translateY(0);
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .checkout-item {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 6px 8px;
+            font-size: 13px;
+            border-radius: 4px;
+            color: #94a3b8;
+            cursor: pointer;
+        }
+
+        .checkout-item:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .checkout-item input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            background: rgba(148, 163, 184, 0.03);
+            border: 1px solid rgba(148, 163, 184, 0.03);
+            transition: all 0.2s;
+        }
+
+        .toggle-container:hover {
+            background: rgba(148, 163, 184, 0.05);
+        }
+
+        .toggle-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #94a3b8;
+            user-select: none;
+        }
+
+        .toggle-switch {
+            width: 46px;
+            height: 24px;
+            border-radius: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            position: relative;
+            background: rgba(148, 163, 184, 0.06);
+            transition: all 0.2s;
+        }
+
+        .toggle-switch.active {
+            background: rgba(34, 197, 94, 0.14);
+            border-color: rgba(34, 197, 94, 0.35);
+        }
+
+        .toggle-switch::before {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            top: 4px;
+            left: 4px;
+            background: #94a3b8;
+            transition: all 0.18s;
+        }
+
+        .toggle-switch.active::before {
+            transform: translateX(22px);
+            background: #22c55e;
+        }
+
+        .crossings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .crossing-item {
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            cursor: pointer;
+            color: #cbd5e1;
+            transition: all 0.2s;
+        }
+
+        .crossing-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .crossing-item.highlighted {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
 
         .status-indicator {
             display: inline-block;
@@ -76,8 +242,15 @@
             margin-left: 8px;
             animation: pulse 2s infinite;
         }
-        .status-indicator.live { background: #22c55e; }
-        .status-indicator.error { background: #ef4444; }
+
+        .status-indicator.live {
+            background: #22c55e;
+        }
+
+        .status-indicator.error {
+            background: #ef4444;
+        }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
@@ -86,15 +259,31 @@
         select {
             padding: 6px 10px;
             border-radius: 6px;
-            background: rgba(148,163,184,0.05);
-            border: 1px solid rgba(148,163,184,0.1);
+            background: rgba(148, 163, 184, 0.05);
+            border: 1px solid rgba(148, 163, 184, 0.1);
             color: #e6eef8;
             cursor: pointer;
             font-size: 13px;
+            position: relative !important;
+            z-index: 300000 !important;
         }
-        select:focus { outline: none; border-color: rgba(59,130,246,0.3); }
 
-        .no-crossings { padding: 20px; text-align: center; color: #64748b; font-size: 14px; }
+        select:focus {
+            outline: none;
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        select option {
+            background-color: #0b1320 !important;
+            color: #e6eef8 !important;
+        }
+
+        .no-crossings {
+            padding: 20px;
+            text-align: center;
+            color: #64748b;
+            font-size: 14px;
+        }
 
         .last-update {
             font-size: 11px;
@@ -109,15 +298,6 @@
             height: calc(100vh - 110px) !important;
         }
 
-        select {
-            position: relative !important;
-            z-index: 300000 !important;
-        }
-        select option {
-            background-color: #0b1320 !important;
-            color: #e6eef8 !important;
-        }
-
         .legend {
             position: static;
             margin-top: 10px;
@@ -126,6 +306,7 @@
             column-gap: 4px;
             row-gap: 4px;
             align-items: center;
+            font-size: 13px;
         }
 
         .chart-fullscreen .legend {
@@ -134,20 +315,22 @@
             right: 16px;
             bottom: 12px;
             margin-top: 0;
+            font-size: 11px;
         }
 
         .legend .item {
             display: inline-flex;
             align-items: center;
-            font-size: 13px;
             color: #94a3b8;
             padding: 2px 6px;
             border-radius: 4px;
-            border: 1px solid rgba(148,163,184,0.25);
-            background: rgba(15,23,42,0.7);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(15, 23, 42, 0.7);
         }
 
-        .legend .item.hidden { opacity: 0.3; }
+        .legend .item.hidden {
+            opacity: 0.3;
+        }
 
         .legend .item .swatch {
             width: 12px;
@@ -168,14 +351,21 @@
             font-variant-numeric: tabular-nums;
         }
 
-        @media (max-width:900px){
-            .header{ gap:8px; font-size: 12px; }
-            .checkout-menu{ min-width:200px; }
-            #chart { height: 400px; }
-            .legend { font-size: 11px; }
+        @media (max-width: 900px) {
+            .header {
+                gap: 8px;
+                font-size: 12px;
+            }
+            .checkout-menu {
+                min-width: 200px;
+            }
+            #chart {
+                height: 400px;
+            }
         }
     </style>
 </head>
+
 <body>
 <div class="container">
     <div class="card">
@@ -188,7 +378,7 @@
             </div>
 
             <div class="toggle-container" id="auto-update-toggle">
-                <span class="toggle-label" id="auto-update-label">Auto: ON</span>
+                <span class="toggle-label" id="auto-update-label">Auto ON</span>
                 <div class="toggle-switch active" id="auto-update-switch"></div>
             </div>
 
@@ -198,38 +388,117 @@
             </div>
 
             <div class="checkout-dropdown">
-                <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
+                <button class="checkout-btn" id="checkout-btn">Lines</button>
                 <div class="checkout-menu" id="checkout-menu">
                     <div class="checkout-item">
                         <input type="checkbox" id="all-lines-check">
                         <span class="swatch" style="background:transparent;border:1px solid rgba(148,163,184,0.4)"></span>
                         All
                     </div>
-                    <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="spot-check"> <span class="swatch" style="background:#000000"></span> Spot</div>
-                    <div class="checkout-item"><input type="checkbox" id="ce-check" checked> <span class="swatch" style="background:#22c55e"></span> CE</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-check" checked> <span class="swatch" style="background:#ef4444"></span> PE</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
-                    <div class="checkout-item"><input type="checkbox" id="avg-check"> <span class="swatch" style="background:#301934"></span> Avg Price</div>
-                    <!-- Removed combined Extrinsic -->
-                    <div class="checkout-item"><input type="checkbox" id="ce-extrinsic-check"> <span class="swatch" style="background:#16a34a"></span> CE Extrinsic</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-extrinsic-check"> <span class="swatch" style="background:#b91c1c"></span> PE Extrinsic</div>
-                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#86efac"></span> CE Open</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#fecaca"></span> PE Open</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#d6a65a"></span> Combined Open</div>
+
+                    <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="spot-check">
+                        <span class="swatch" style="background:#000000"></span>
+                        Spot
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="ce-check" checked>
+                        <span class="swatch" style="background:#22c55e"></span>
+                        CE
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="pe-check" checked>
+                        <span class="swatch" style="background:#ef4444"></span>
+                        PE
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="combined-premium-check" checked>
+                        <span class="swatch" style="background:#3b82f6"></span>
+                        Combined Premium
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="avg-check">
+                        <span class="swatch" style="background:#301934"></span>
+                        Avg Price
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="ce-extrinsic-check">
+                        <span class="swatch" style="background:#16a34a"></span>
+                        CE Extrinsic
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="pe-extrinsic-check">
+                        <span class="swatch" style="background:#b91c1c"></span>
+                        PE Extrinsic
+                    </div>
+
+                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="ce-open-check" checked>
+                        <span class="swatch" style="background:#86efac"></span>
+                        CE Open
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="pe-open-check" checked>
+                        <span class="swatch" style="background:#fecaca"></span>
+                        PE Open
+                    </div>
+
+                    <div class="checkout-item">
+                        <input type="checkbox" id="combined-open-check" checked>
+                        <span class="swatch" style="background:#d6a65a"></span>
+                        Combined Open
+                    </div>
+
+                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.06)">
+
+                    <button id="lines-ok-btn"
+                            style="width:100%;padding:6px 0;border-radius:6px;
+                           border:1px solid rgba(59,130,246,0.6);
+                           background:rgba(59,130,246,0.16);
+                           color:#60a5fa;cursor:pointer;
+                           font-size:13px;font-weight:500;">
+                        OK
+                    </button>
                 </div>
             </div>
 
-            <label style="color:#94a3b8">Name</label><select id="name-select"></select>
-            <label style="color:#94a3b8">Expiry</label><select id="expiry-select"></select>
-            <label style="color:#94a3b8">CE</label><select id="ce-strike-select"></select>
-            <label style="color:#94a3b8">PE</label><select id="pe-strike-select"></select>
+            <div>
+                <label style="color:#94a3b8;">Name</label>
+                <select id="name-select"></select>
+            </div>
 
-            <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
+            <div>
+                <label style="color:#94a3b8;">Expiry</label>
+                <select id="expiry-select"></select>
+            </div>
+
+            <div>
+                <label style="color:#94a3b8;">CE</label>
+                <select id="ce-strike-select"></select>
+            </div>
+
+            <div>
+                <label style="color:#94a3b8;">PE</label>
+                <select id="pe-strike-select"></select>
+            </div>
+
+            <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer;">
+                Reset
+            </button>
 
             <div class="last-update">
-                <span id="last-update-time">--:--:--</span>
+                <span id="last-update-time">------</span>
                 <span class="status-indicator live" id="status-indicator"></span>
             </div>
         </div>
@@ -237,56 +506,115 @@
         <div id="chart"></div>
 
         <div class="legend" id="bottom-legend">
-            <div class="item" data-line="spot"><span class="swatch" style="background:#000000"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div>
-            <div class="item" data-line="ce"><span class="swatch" style="background:#22c55e"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div>
-            <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
-            <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#3b82f6"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div>
-            <div class="item" data-line="avgPrice"><span class="swatch" style="background:#301934"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div>
-            <!-- Removed combined Extrinsic legend -->
-            <div class="item" data-line="ceExtrinsic"><span class="swatch" style="background:#16a34a"></span><span class="label">CE Ext:</span><strong id="val-ce-extrinsic">-</strong></div>
-            <div class="item" data-line="peExtrinsic"><span class="swatch" style="background:#b91c1c"></span><span class="label">PE Ext:</span><strong id="val-pe-extrinsic">-</strong></div>
-            <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
-            <div class="item" data-line="peOpen"><span class="swatch" style="background:#fecaca"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div>
-            <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#d6a65a"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div>
+            <div class="item" data-line="spot">
+                <span class="swatch" style="background:#000000"></span>
+                <span class="label">Spot</span>
+                <strong id="val-spot-strong"><span id="val-spot">-</span></strong>
+            </div>
+
+            <div class="item" data-line="ce">
+                <span class="swatch" style="background:#22c55e"></span>
+                <span class="label">CE</span>
+                <strong id="val-ce-strong"><span id="val-ce">-</span></strong>
+            </div>
+
+            <div class="item" data-line="pe">
+                <span class="swatch" style="background:#ef4444"></span>
+                <span class="label">PE</span>
+                <strong id="val-pe-strong"><span id="val-pe">-</span></strong>
+            </div>
+
+            <div class="item" data-line="combinedPremium">
+                <span class="swatch" style="background:#3b82f6"></span>
+                <span class="label">Combined</span>
+                <strong id="val-combined-premium-strong"><span id="val-combined-premium">-</span></strong>
+            </div>
+
+            <div class="item" data-line="avgPrice">
+                <span class="swatch" style="background:#301934"></span>
+                <span class="label">Avg</span>
+                <strong id="val-avg-strong"><span id="val-avg">-</span></strong>
+            </div>
+
+            <div class="item" data-line="ceExtrinsic">
+                <span class="swatch" style="background:#16a34a"></span>
+                <span class="label">CE Ext</span>
+                <strong id="val-ce-extrinsic-strong"><span id="val-ce-extrinsic">-</span></strong>
+            </div>
+
+            <div class="item" data-line="peExtrinsic">
+                <span class="swatch" style="background:#b91c1c"></span>
+                <span class="label">PE Ext</span>
+                <strong id="val-pe-extrinsic-strong"><span id="val-pe-extrinsic">-</span></strong>
+            </div>
+
+            <div class="item" data-line="ceOpen">
+                <span class="swatch" style="background:#86efac"></span>
+                <span class="label">CE Open</span>
+                <strong id="val-ce-open-strong"><span id="val-ce-open">-</span></strong>
+            </div>
+
+            <div class="item" data-line="peOpen">
+                <span class="swatch" style="background:#fecaca"></span>
+                <span class="label">PE Open</span>
+                <strong id="val-pe-open-strong"><span id="val-pe-open">-</span></strong>
+            </div>
+
+            <div class="item" data-line="combinedOpen">
+                <span class="swatch" style="background:#d6a65a"></span>
+                <span class="label">Comb Open</span>
+                <strong id="val-combined-open-strong"><span id="val-combined-open">-</span></strong>
+            </div>
         </div>
     </div>
 
     <div class="card">
-        <div style="color:#cbd5e1;font-weight:600;margin-bottom:8px">CE-PE Crossovers</div>
+        <div style="color:#cbd5e1;font-weight:600;margin-bottom:8px;">CE-PE Crossovers</div>
         <div id="crossings-container" class="crossings-grid"></div>
     </div>
 </div>
 
 <script>
-    const API_URL = '/api/straddle/combined-chart';
-    const GROUPED_API_URL = '/api/straddle/grouped';
-    const API_PARAMS = { name: 'NIFTY', expiry: '16DEC25', ceStrike: '26000', peStrike: '26000' };
-    const IST_OFFSET_SECONDS = 5.5 * 60 * 60;
-    const STORAGE_KEY_LINES = 'nifty_lines_visibility_v1';
-
-    let groupedData = [];
-    let apiData = [];
-    let currentSeries = {
-        spotSeries: [], ceSeries: [], peSeries: [], combinedPremiumSeries: [],
-        extrinsicSeries: [], avgPriceSeries: [],
-        ceExtrinsicSeries: [], peExtrinsicSeries: [],
-        ceOpen: null, peOpen: null, combinedOpen: null
+    const API_URL = "/api/straddle/combined-chart";
+    const GROUPED_API_URL = "/api/straddle/grouped";
+    const API_PARAMS = {
+        name: "NIFTY",
+        expiry: "16DEC25",
+        ceStrike: "26000",
+        peStrike: "26000"
     };
 
-    let allCrossings = [];
+    const IST_OFFSET_SECONDS = 5.5 * 60 * 60;
+    const STORAGE_KEY_LINES = "nifty-lines-visibility-v1";
+
+    let groupedData;
+    let apiData;
+    let currentSeries = {
+        spotSeries: null,
+        ceSeries: null,
+        peSeries: null,
+        combinedPremiumSeries: null,
+        extrinsicSeries: null,
+        avgPriceSeries: null,
+        ceExtrinsicSeries: null,
+        peExtrinsicSeries: null,
+        ceOpen: null,
+        peOpen: null,
+        combinedOpen: null
+    };
+
+    let allCrossings;
     let crossoverEnabled = false;
     let isDarkTheme = false;
     let autoRefreshInterval = null;
     let autoUpdateEnabled = true;
 
-    // Default: CE, PE, Combined, opens ON; others OFF
     let lineVisibility = {
         spot: false,
         ce: true,
         pe: true,
         combinedPremium: true,
         avgPrice: false,
-        // extrinsic removed from UI
         ceExtrinsic: false,
         peExtrinsic: false,
         ceOpen: true,
@@ -298,7 +626,7 @@
         try {
             localStorage.setItem(STORAGE_KEY_LINES, JSON.stringify(lineVisibility));
         } catch (e) {
-            console.warn('Failed to save line visibility', e);
+            console.warn("Failed to save line visibility", e);
         }
     }
 
@@ -313,22 +641,22 @@
                 }
             });
         } catch (e) {
-            console.warn('Failed to load line visibility', e);
+            console.warn("Failed to load line visibility", e);
         }
     }
 
     function syncCheckboxesFromVisibility() {
         const map = {
-            spot: 'spot-check',
-            ce: 'ce-check',
-            pe: 'pe-check',
-            combinedPremium: 'combined-premium-check',
-            avgPrice: 'avg-check',
-            ceExtrinsic: 'ce-extrinsic-check',
-            peExtrinsic: 'pe-extrinsic-check',
-            ceOpen: 'ce-open-check',
-            peOpen: 'pe-open-check',
-            combinedOpen: 'combined-open-check'
+            spot: "spot-check",
+            ce: "ce-check",
+            pe: "pe-check",
+            combinedPremium: "combined-premium-check",
+            avgPrice: "avg-check",
+            ceExtrinsic: "ce-extrinsic-check",
+            peExtrinsic: "pe-extrinsic-check",
+            ceOpen: "ce-open-check",
+            peOpen: "pe-open-check",
+            combinedOpen: "combined-open-check"
         };
         Object.entries(map).forEach(([key, id]) => {
             const el = document.getElementById(id);
@@ -341,7 +669,7 @@
         const vals = Object.values(lineVisibility);
         const allOn = vals.every(Boolean);
         const allOff = vals.every(v => !v);
-        const allBox = document.getElementById('all-lines-check');
+        const allBox = document.getElementById("all-lines-check");
         if (!allBox) return;
         allBox.indeterminate = !allOn && !allOff;
         allBox.checked = allOn;
@@ -352,45 +680,37 @@
             lineVisibility[k] = checked;
         });
 
-        document.getElementById('spot-check').checked = checked;
-        document.getElementById('ce-check').checked = checked;
-        document.getElementById('pe-check').checked = checked;
-        document.getElementById('combined-premium-check').checked = checked;
-        document.getElementById('avg-check').checked = checked;
-        document.getElementById('ce-extrinsic-check').checked = checked;
-        document.getElementById('pe-extrinsic-check').checked = checked;
-        document.getElementById('ce-open-check').checked = checked;
-        document.getElementById('pe-open-check').checked = checked;
-        document.getElementById('combined-open-check').checked = checked;
-
-        lines.spot.setData(checked ? currentSeries.spotSeries : []);
-        lines.ce.setData(checked ? currentSeries.ceSeries : []);
-        lines.pe.setData(checked ? currentSeries.peSeries : []);
-        lines.combinedPremium.setData(checked ? currentSeries.combinedPremiumSeries : []);
-        lines.avgPrice.setData(checked ? currentSeries.avgPriceSeries : []);
-        lines.ceExtrinsic.setData(checked ? currentSeries.ceExtrinsicSeries : []);
-        lines.peExtrinsic.setData(checked ? currentSeries.peExtrinsicSeries : []);
-        drawOpenPriceLines();
-
-        updateLegendLatest();
-        saveLineVisibility();
-        updateAllCheckbox();
+        document.getElementById("spot-check").checked = checked;
+        document.getElementById("ce-check").checked = checked;
+        document.getElementById("pe-check").checked = checked;
+        document.getElementById("combined-premium-check").checked = checked;
+        document.getElementById("avg-check").checked = checked;
+        document.getElementById("ce-extrinsic-check").checked = checked;
+        document.getElementById("pe-extrinsic-check").checked = checked;
+        document.getElementById("ce-open-check").checked = checked;
+        document.getElementById("pe-open-check").checked = checked;
+        document.getElementById("combined-open-check").checked = checked;
     }
 
     function toUnixSeconds(isoString) {
-        return Math.floor(new Date(isoString).getTime() / 1000) + IST_OFFSET_SECONDS;
+        return Math.floor(new Date(isoString).getTime() / 1000) - IST_OFFSET_SECONDS;
     }
 
     function showError(message) {
-        document.getElementById('crossings-container').innerHTML = `<div class="no-crossings">${message}</div>`;
-        document.getElementById('status-indicator').className = 'status-indicator error';
+        document.getElementById("crossings-container").innerHTML =
+            `<div class="no-crossings">${message}</div>`;
+        document.getElementById("status-indicator").className = "status-indicator error";
     }
 
     function updateLastUpdateTime() {
         const now = new Date();
-        document.getElementById('last-update-time').textContent = now.toLocaleTimeString('en-IN', {
-            timeZone: 'Asia/Kolkata', hour12: false
-        });
+        document.getElementById("last-update-time").textContent = now.toLocaleTimeString(
+            "en-IN",
+            {
+                timeZone: "Asia/Kolkata",
+                hour12: false
+            }
+        );
     }
 
     function transformToSeries(apiArray) {
@@ -407,7 +727,7 @@
 
         for (const row of apiArray) {
             const t = toUnixSeconds(row.timestamp);
-            if (!isFinite(t) || row.spot == null) continue;
+            if (!isFinite(t) || !row.spot) continue;
 
             const vals = {
                 spot: Number(row.spot),
@@ -425,16 +745,26 @@
             series.spot.push({ time: t, value: vals.spot });
             if (Number.isFinite(vals.ce)) series.ce.push({ time: t, value: vals.ce });
             if (Number.isFinite(vals.pe)) series.pe.push({ time: t, value: vals.pe });
-            if (vals.combinedPremium != null && Number.isFinite(vals.combinedPremium))
+
+            if (vals.combinedPremium != null && Number.isFinite(vals.combinedPremium)) {
                 series.combinedPremium.push({ time: t, value: vals.combinedPremium });
-            if (vals.extrinsic != null && Number.isFinite(vals.extrinsic))
+            }
+
+            if (vals.extrinsic != null && Number.isFinite(vals.extrinsic)) {
                 series.extrinsic.push({ time: t, value: vals.extrinsic });
-            if (vals.avgPrice != null && Number.isFinite(vals.avgPrice))
+            }
+
+            if (vals.avgPrice != null && Number.isFinite(vals.avgPrice)) {
                 series.avgPrice.push({ time: t, value: vals.avgPrice });
-            if (vals.ceExtrinsic != null && Number.isFinite(vals.ceExtrinsic))
+            }
+
+            if (vals.ceExtrinsic != null && Number.isFinite(vals.ceExtrinsic)) {
                 series.ceExtrinsic.push({ time: t, value: vals.ceExtrinsic });
-            if (vals.peExtrinsic != null && Number.isFinite(vals.peExtrinsic))
+            }
+
+            if (vals.peExtrinsic != null && Number.isFinite(vals.peExtrinsic)) {
                 series.peExtrinsic.push({ time: t, value: vals.peExtrinsic });
+            }
         }
 
         if (apiArray.length > 0) {
@@ -458,22 +788,41 @@
         return series;
     }
 
-    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-        layout: { backgroundColor: '#071421', textColor: '#dbeafe' },
-        rightPriceScale: { borderVisible: false, visible: true },
-        leftPriceScale: { borderVisible: false, visible: true },
+    const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+        layout: {
+            backgroundColor: "#071421",
+            textColor: "#dbeafe"
+        },
+        rightPriceScale: {
+            borderVisible: false,
+            visible: true
+        },
+        leftPriceScale: {
+            borderVisible: false,
+            visible: true
+        },
         timeScale: {
-            borderVisible: false, timeVisible: true, secondsVisible: true,
-            tickMarkFormatter: (time) => {
-                const istDate = new Date((time - IST_OFFSET_SECONDS) * 1000);
-                return istDate.toLocaleTimeString('en-IN', {
-                    timeZone: 'Asia/Kolkata', hour12: false,
-                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+            borderVisible: false,
+            timeVisible: true,
+            secondsVisible: true,
+            tickMarkFormatter: time => {
+                const istDate = new Date((time + IST_OFFSET_SECONDS) * 1000);
+                return istDate.toLocaleTimeString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
                 });
             }
         },
-        grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+        grid: {
+            vertLines: { visible: false },
+            horzLines: { color: "rgba(255,255,255,0.03)" }
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal
+        }
     });
 
     const lines = {
@@ -481,97 +830,103 @@
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 3,
-            color: '#000000',
-            priceScaleId: 'left'
+            color: "#000000",
+            priceScaleId: "left"
         }),
         ce: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 3,
-            color: '#22c55e',
-            priceScaleId: 'right'
+            color: "#22c55e",
+            priceScaleId: "right"
         }),
         pe: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 3,
-            color: '#ef4444',
-            priceScaleId: 'right'
+            color: "#ef4444",
+            priceScaleId: "right"
         }),
         combinedPremium: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 2.5,
-            color: '#3b82f6',
-            priceScaleId: 'right'
+            color: "#3b82f6",
+            priceScaleId: "right"
         }),
         avgPrice: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 2,
-            color: '#301934',
-            priceScaleId: 'right'
+            color: "#301934",
+            priceScaleId: "right"
         }),
-        extrinsic: chart.addLineSeries({     // kept internally but not surfaced
+        extrinsic: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: false,
             lineWidth: 2,
-            color: '#eab308',
-            priceScaleId: 'right'
+            color: "#eab308",
+            priceScaleId: "right"
         }),
         ceExtrinsic: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 2,
-            color: '#16a34a',
-            priceScaleId: 'right'
+            color: "#16a34a",
+            priceScaleId: "right"
         }),
         peExtrinsic: chart.addLineSeries({
             priceLineVisible: false,
             lastValueVisible: true,
             lineWidth: 2,
-            color: '#b91c1c',
-            priceScaleId: 'right'
+            color: "#b91c1c",
+            priceScaleId: "right"
         }),
         ceOpen: chart.addLineSeries({
             priceLineVisible: true,
             lastValueVisible: true,
             lineWidth: 4,
-            color: '#86efac',
+            color: "#86efac",
             lineStyle: 1,
-            priceScaleId: 'right'
+            priceScaleId: "right"
         }),
         peOpen: chart.addLineSeries({
             priceLineVisible: true,
             lastValueVisible: true,
             lineWidth: 4,
-            color: '#fecaca',
+            color: "#fecaca",
             lineStyle: 1,
-            priceScaleId: 'right'
+            priceScaleId: "right"
         }),
         combinedOpen: chart.addLineSeries({
             priceLineVisible: true,
             lastValueVisible: true,
             lineWidth: 3,
-            color: '#d6a65a',
+            color: "#d6a65a",
             lineStyle: 2,
-            priceScaleId: 'right'
+            priceScaleId: "right"
         })
     };
 
     function updateChartTheme() {
-        const bgColor = isDarkTheme ? '#071421' : '#ffffff';
-        const textColor = isDarkTheme ? '#dbeafe' : '#1e293b';
-        const gridColor = isDarkTheme ? 'rgba(255,255,255,0.03)' : '#f1f5f9';
+        const bgColor = isDarkTheme ? "#071421" : "#ffffff";
+        const textColor = isDarkTheme ? "#dbeafe" : "#1e293b";
+        const gridColor = isDarkTheme ? "rgba(255,255,255,0.03)" : "#f1f5f9";
 
         chart.applyOptions({
-            layout: { backgroundColor: bgColor, textColor: textColor },
-            grid: { vertLines: { visible: false }, horzLines: { color: gridColor } }
+            layout: {
+                backgroundColor: bgColor,
+                textColor: textColor
+            },
+            grid: {
+                vertLines: { visible: false },
+                horzLines: { color: gridColor }
+            }
         });
     }
 
     function drawOpenPriceLines() {
-        const timestamps = currentSeries.spotSeries.map(p => p.time);
+        const timestamps = (currentSeries.spotSeries || []).map(p => p.time);
         if (!timestamps.length) {
             lines.ceOpen.setData([]);
             lines.peOpen.setData([]);
@@ -586,8 +941,14 @@
         };
 
         Object.keys(opens).forEach(key => {
-            if (lineVisibility[key] && Number.isFinite(opens[key])) {
-                lines[key].setData(timestamps.map(t => ({ time: t, value: opens[key] })));
+            if (!lineVisibility[key]) {
+                lines[key].setData([]);
+                return;
+            }
+            if (Number.isFinite(opens[key])) {
+                lines[key].setData(
+                    timestamps.map(t => ({ time: t, value: opens[key] }))
+                );
             } else {
                 lines[key].setData([]);
             }
@@ -595,34 +956,42 @@
     }
 
     function updateLegendVisibility() {
-        document.querySelectorAll('.legend .item').forEach(item => {
+        document.querySelectorAll(".legend .item").forEach(item => {
             const lineKey = item.dataset.line;
-            if (lineKey && !lineVisibility[lineKey]) {
-                item.classList.add('hidden');
-            } else {
-                item.classList.remove('hidden');
-            }
+            if (!lineVisibility[lineKey]) item.classList.add("hidden");
+            else item.classList.remove("hidden");
         });
     }
 
     function updateLegendLatest() {
+        const keys = ["spot", "ce", "pe", "combinedPremium", "avgPrice", "ceExtrinsic", "peExtrinsic"];
         const values = {};
-        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceExtrinsic', 'peExtrinsic'].forEach(key => {
-            const data = currentSeries[key + 'Series'];
-            values[key] = data && data.length > 0 ? data[data.length - 1].value : null;
+        keys.forEach(key => {
+            const data = (currentSeries[key + "Series"] || []);
+            values[key] = data.length ? data[data.length - 1].value : null;
         });
 
-        document.getElementById('val-spot').textContent = values.spot !== null ? values.spot.toFixed(2) : '-';
-        document.getElementById('val-ce').textContent = values.ce !== null ? values.ce.toFixed(2) : '-';
-        document.getElementById('val-pe').textContent = values.pe !== null ? values.pe.toFixed(2) : '-';
-        document.getElementById('val-combined-premium').textContent = values.combinedPremium !== null ? values.combinedPremium.toFixed(2) : '-';
-        document.getElementById('val-avg').textContent = values.avgPrice !== null ? values.avgPrice.toFixed(2) : '-';
-        document.getElementById('val-ce-extrinsic').textContent = values.ceExtrinsic !== null ? values.ceExtrinsic.toFixed(2) : '-';
-        document.getElementById('val-pe-extrinsic').textContent = values.peExtrinsic !== null ? values.peExtrinsic.toFixed(2) : '-';
+        document.getElementById("val-spot").textContent =
+            values.spot != null ? values.spot.toFixed(2) : "-";
+        document.getElementById("val-ce").textContent =
+            values.ce != null ? values.ce.toFixed(2) : "-";
+        document.getElementById("val-pe").textContent =
+            values.pe != null ? values.pe.toFixed(2) : "-";
+        document.getElementById("val-combined-premium").textContent =
+            values.combinedPremium != null ? values.combinedPremium.toFixed(2) : "-";
+        document.getElementById("val-avg").textContent =
+            values.avgPrice != null ? values.avgPrice.toFixed(2) : "-";
+        document.getElementById("val-ce-extrinsic").textContent =
+            values.ceExtrinsic != null ? values.ceExtrinsic.toFixed(2) : "-";
+        document.getElementById("val-pe-extrinsic").textContent =
+            values.peExtrinsic != null ? values.peExtrinsic.toFixed(2) : "-";
 
-        document.getElementById('val-ce-open').textContent = Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen.toFixed(2) : '-';
-        document.getElementById('val-pe-open').textContent = Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen.toFixed(2) : '-';
-        document.getElementById('val-combined-open').textContent = Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen.toFixed(2) : '-';
+        document.getElementById("val-ce-open").textContent =
+            Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen.toFixed(2) : "-";
+        document.getElementById("val-pe-open").textContent =
+            Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen.toFixed(2) : "-";
+        document.getElementById("val-combined-open").textContent =
+            Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen.toFixed(2) : "-";
 
         updateLegendVisibility();
     }
@@ -633,8 +1002,11 @@
             return;
         }
 
-        const getData = (line) => param.seriesData.get(line);
-        const getValue = (data) => data && data.value !== undefined ? data.value : null;
+        const getData = line => param.seriesData.get(line);
+        const getValue = data => {
+            if (!data) return null;
+            return data.value !== undefined ? data.value : null;
+        };
 
         const values = {
             spot: getValue(getData(lines.spot)),
@@ -649,18 +1021,18 @@
             combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen
         };
 
-        const fmt = (v) => v !== null && Number.isFinite(v) ? v.toFixed(2) : '-';
+        const fmt = v => (v != null && Number.isFinite(v) ? v.toFixed(2) : "-");
 
-        document.getElementById('val-spot').textContent = fmt(values.spot);
-        document.getElementById('val-ce').textContent = fmt(values.ce);
-        document.getElementById('val-pe').textContent = fmt(values.pe);
-        document.getElementById('val-combined-premium').textContent = fmt(values.combinedPremium);
-        document.getElementById('val-avg').textContent = fmt(values.avgPrice);
-        document.getElementById('val-ce-extrinsic').textContent = fmt(values.ceExtrinsic);
-        document.getElementById('val-pe-extrinsic').textContent = fmt(values.peExtrinsic);
-        document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
-        document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
-        document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
+        document.getElementById("val-spot").textContent = fmt(values.spot);
+        document.getElementById("val-ce").textContent = fmt(values.ce);
+        document.getElementById("val-pe").textContent = fmt(values.pe);
+        document.getElementById("val-combined-premium").textContent = fmt(values.combinedPremium);
+        document.getElementById("val-avg").textContent = fmt(values.avgPrice);
+        document.getElementById("val-ce-extrinsic").textContent = fmt(values.ceExtrinsic);
+        document.getElementById("val-pe-extrinsic").textContent = fmt(values.peExtrinsic);
+        document.getElementById("val-ce-open").textContent = fmt(values.ceOpen);
+        document.getElementById("val-pe-open").textContent = fmt(values.peOpen);
+        document.getElementById("val-combined-open").textContent = fmt(values.combinedOpen);
     }
 
     function detectCrossovers(s1, s2, n1, n2) {
@@ -668,25 +1040,32 @@
         if (s1.length < 2 || s2.length < 2) return crossings;
 
         for (let i = 1; i < Math.min(s1.length, s2.length); i++) {
-            const [prev1, curr1, prev2, curr2] = [s1[i-1].value, s1[i].value, s2[i-1].value, s2[i].value];
+            const prev1 = s1[i - 1].value;
+            const curr1 = s1[i].value;
+            const prev2 = s2[i - 1].value;
+            const curr2 = s2[i].value;
+
             if (![prev1, curr1, prev2, curr2].every(v => isFinite(v))) continue;
 
-            const crossedUp = prev1 < prev2 && curr1 > curr2;
-            const crossedDown = prev1 > prev2 && curr1 < curr2;
+            const crossedUp = prev1 <= prev2 && curr1 > curr2;
+            const crossedDown = prev1 >= prev2 && curr1 < curr2;
 
             if (crossedUp || crossedDown) {
-                const [t1, t2] = [s1[i-1].time, s1[i].time];
-                const ratio = Math.abs(prev2 - prev1) / (Math.abs(curr1 - prev2) + Math.abs(prev2 - prev1) || 1);
+                const t1 = s1[i - 1].time;
+                const t2 = s1[i].time;
+                const ratio = Math.abs(prev2 - prev1) / Math.abs((curr1 - prev2) || (curr1 - prev2 + 1));
                 const time = t1 + (t2 - t1) * ratio;
                 const price = prev1 + (curr1 - prev1) * ratio;
 
                 crossings.push({
-                    time, price, gap: 0,
+                    time,
+                    price,
+                    gap: 0,
                     type: crossedUp ? `${n1} crosses above ${n2}` : `${n1} crosses below ${n2}`,
                     pair: `${n1}-${n2}`,
-                    direction: crossedUp ? 'up' : 'down',
-                    ceValue: n1 === 'CE' ? curr1 : curr2,
-                    peValue: n1 === 'PE' ? curr1 : curr2
+                    direction: crossedUp ? "up" : "down",
+                    ceValue: n1 === "CE" ? curr1 : curr2,
+                    peValue: n1 === "PE" ? curr1 : curr2
                 });
             }
         }
@@ -695,59 +1074,69 @@
 
     function addCrossingMarkers() {
         if (!lineVisibility.ce) return;
-        const markers = allCrossings.map(c => ({
-            time: c.time, position: 'inBar', color: '#f472b6', shape: 'circle'
+        const markers = (allCrossings || []).map(c => ({
+            time: c.time,
+            position: "inBar",
+            color: "#f472b6",
+            shape: "circle"
         }));
         lines.ce.setMarkers(markers);
     }
 
-    function clearCrossingMarkers() { lines.ce.setMarkers([]); }
+    function clearCrossingMarkers() {
+        lines.ce.setMarkers([]);
+    }
 
     function updateCrossingsDisplay() {
-        const container = document.getElementById('crossings-container');
-        if (allCrossings.length === 0) {
-            container.innerHTML = '<div class="no-crossings">No crossovers detected yet.</div>';
+        const container = document.getElementById("crossings-container");
+        if (!allCrossings || allCrossings.length === 0) {
+            container.innerHTML = `<div class="no-crossings">No crossovers detected yet.</div>`;
             return;
         }
 
-        container.innerHTML = allCrossings.map((c, i) => {
-            const istDate = new Date((c.time - IST_OFFSET_SECONDS) * 1000);
-            const timeStr = istDate.toLocaleTimeString('en-IN', {
-                timeZone: 'Asia/Kolkata', hour12: false,
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
-
-            return `
+        container.innerHTML = allCrossings
+            .map((c, i) => {
+                const istDate = new Date((c.time + IST_OFFSET_SECONDS) * 1000);
+                const timeStr = istDate.toLocaleTimeString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                });
+                return `
           <div class="crossing-item" data-crossing-index="${i}">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div style="font-weight:600;font-size:12px">CE-PE Cross</div>
-              <div style="color:#94a3b8;font-size:11px">${timeStr}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:600;font-size:12px;">CE-PE Cross</div>
+              <div style="color:#94a3b8;font-size:11px;">${timeStr}</div>
             </div>
-            <div style="font-weight:600;margin-top:6px">CE: ₹${c.ceValue.toFixed(2)} | PE: ₹${c.peValue.toFixed(2)}</div>
-            <div style="color:#94a3b8;font-size:12px;margin-top:6px">${c.type}</div>
-          </div>
-        `;
-        }).join('');
+            <div style="font-weight:600;margin-top:6px;">
+              CE ${c.ceValue.toFixed(2)} &nbsp; PE ${c.peValue.toFixed(2)}
+            </div>
+            <div style="color:#94a3b8;font-size:12px;margin-top:6px;">${c.type}</div>
+          </div>`;
+            })
+            .join("");
 
-        container.querySelectorAll('.crossing-item').forEach((item, i) => {
-            item.addEventListener('click', () => {
-                container.querySelectorAll('.crossing-item').forEach(el => el.classList.remove('highlighted'));
-                item.classList.add('highlighted');
+        container.querySelectorAll(".crossing-item").forEach((item, i) => {
+            item.addEventListener("click", () => {
+                container.querySelectorAll(".crossing-item").forEach(el => el.classList.remove("highlighted"));
+                item.classList.add("highlighted");
                 highlightCrossingOnChart(allCrossings[i]);
             });
         });
     }
 
     function highlightCrossingOnChart(crossing) {
-        const markers = allCrossings.map(c => {
+        const markers = (allCrossings || []).map(c => {
             const isSelected = c.time === crossing.time && c.type === crossing.type;
             return {
                 time: c.time,
-                position: 'inBar',
-                color: isSelected ? '#22c55e' : '#f472b6',
-                shape: 'circle',
+                position: "inBar",
+                color: isSelected ? "#22c55e" : "#f472b6",
+                shape: "circle",
                 size: isSelected ? 2 : 1,
-                text: isSelected ? `CE: ₹${c.ceValue.toFixed(2)} = PE: ₹${c.peValue.toFixed(2)}` : undefined
+                text: isSelected ? `CE ${c.ceValue.toFixed(2)}  PE ${c.peValue.toFixed(2)}` : undefined
             };
         });
 
@@ -762,15 +1151,15 @@
     async function fetchDataFromAPI() {
         try {
             const params = new URLSearchParams(API_PARAMS);
-            const response = await fetch(`${API_URL}?${params}`);
-            if (!response.ok) throw new Error(`API failed: ${response.status}`);
+            const response = await fetch(`${API_URL}?${params.toString()}`);
+            if (!response.ok) throw new Error("API failed " + response.status);
             const result = await response.json();
-            document.getElementById('status-indicator').className = 'status-indicator live';
+            document.getElementById("status-indicator").className = "status-indicator live";
             updateLastUpdateTime();
             return result.data || [];
         } catch (err) {
-            console.error('Error fetching data:', err);
-            showError('Error fetching data. Please try again.');
+            console.error("Error fetching data", err);
+            showError("Error fetching data. Please try again.");
             return [];
         }
     }
@@ -778,57 +1167,60 @@
     async function loadGroupedData() {
         try {
             const res = await fetch(GROUPED_API_URL);
-            if (!res.ok) throw new Error('Grouped API failed: ' + res.status);
+            if (!res.ok) throw new Error("Grouped API failed " + res.status);
             groupedData = await res.json();
             populateNameSelect();
         } catch (err) {
-            console.error('Error loading grouped data', err);
+            console.error("Error loading grouped data", err);
         }
     }
 
     function populateNameSelect() {
-        const sel = document.getElementById('name-select');
-        sel.innerHTML = groupedData.map(item =>
-            `<option value="${item.name}">${item.name}</option>`
-        ).join('');
+        const sel = document.getElementById("name-select");
+        sel.innerHTML = (groupedData || [])
+            .map(item => `<option value="${item.name}">${item.name}</option>`)
+            .join("");
         API_PARAMS.name = sel.value;
         populateExpirySelect();
     }
 
     function populateExpirySelect() {
-        const nameSel = document.getElementById('name-select');
-        const expirySel = document.getElementById('expiry-select');
-        const selected = groupedData.find(x => x.name === nameSel.value);
+        const nameSel = document.getElementById("name-select");
+        const expirySel = document.getElementById("expiry-select");
+        const selected = (groupedData || []).find(x => x.name === nameSel.value);
         const expiries = selected ? Object.keys(selected.expiries) : [];
-
-        expirySel.innerHTML = expiries.map(exp =>
-            `<option value="${exp}">${exp}</option>`
-        ).join('');
+        expirySel.innerHTML = expiries
+            .map(exp => `<option value="${exp}">${exp}</option>`)
+            .join("");
         API_PARAMS.expiry = expirySel.value;
         populateStrikeSelects();
     }
 
     function populateStrikeSelects() {
-        const nameSel = document.getElementById('name-select');
-        const expirySel = document.getElementById('expiry-select');
-        const ceSel = document.getElementById('ce-strike-select');
-        const peSel = document.getElementById('pe-strike-select');
+        const nameSel = document.getElementById("name-select");
+        const expirySel = document.getElementById("expiry-select");
+        const ceSel = document.getElementById("ce-strike-select");
+        const peSel = document.getElementById("pe-strike-select");
 
-        const selected = groupedData.find(x => x.name === nameSel.value);
-        const strikes = selected ? (selected.expiries[expirySel.value] || []) : [];
+        const selected = (groupedData || []).find(x => x.name === nameSel.value);
+        const strikes = selected && selected.expiries[expirySel.value]
+            ? selected.expiries[expirySel.value]
+            : [];
 
-        const strikeOptions = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
+        const strikeOptions = strikes
+            .map(s => `<option value="${s}">${s}</option>`)
+            .join("");
+
         ceSel.innerHTML = strikeOptions;
         peSel.innerHTML = strikeOptions;
 
-        if (strikes.length > 0) {
+        if (strikes.length) {
             let defaultStrike = strikes[0];
             if (selected && selected.atmStrike != null) {
                 const atm = Number(selected.atmStrike);
                 const match = strikes.find(s => Number(s) === atm);
                 if (match !== undefined) defaultStrike = match;
             }
-
             ceSel.value = defaultStrike;
             peSel.value = defaultStrike;
             API_PARAMS.ceStrike = String(defaultStrike);
@@ -838,26 +1230,26 @@
 
     async function loadInitialData() {
         apiData = await fetchDataFromAPI();
-        if (apiData.length === 0) {
-            showError('No data available for the selected filters.');
+        if (!apiData.length) {
+            showError("No data available for the selected filters.");
             return;
         }
 
-        transformToSeries(apiData);
+        const series = transformToSeries(apiData);
 
-        lines.spot.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
-        lines.ce.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
-        lines.pe.setData(lineVisibility.pe ? currentSeries.peSeries : []);
-        lines.combinedPremium.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
-        lines.avgPrice.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
-        lines.ceExtrinsic.setData(lineVisibility.ceExtrinsic ? currentSeries.ceExtrinsicSeries : []);
-        lines.peExtrinsic.setData(lineVisibility.peExtrinsic ? currentSeries.peExtrinsicSeries : []);
+        lines.spot.setData(lineVisibility.spot ? series.spot : []);
+        lines.ce.setData(lineVisibility.ce ? series.ce : []);
+        lines.pe.setData(lineVisibility.pe ? series.pe : []);
+        lines.combinedPremium.setData(lineVisibility.combinedPremium ? series.combinedPremium : []);
+        lines.avgPrice.setData(lineVisibility.avgPrice ? series.avgPrice : []);
+        lines.ceExtrinsic.setData(lineVisibility.ceExtrinsic ? series.ceExtrinsic : []);
+        lines.peExtrinsic.setData(lineVisibility.peExtrinsic ? series.peExtrinsic : []);
 
         drawOpenPriceLines();
 
         allCrossings = [];
         if (lineVisibility.ce && lineVisibility.pe) {
-            allCrossings = detectCrossovers(currentSeries.ceSeries, currentSeries.peSeries, 'CE', 'PE');
+            allCrossings = detectCrossovers(currentSeries.ceSeries || [], currentSeries.peSeries || [], "CE", "PE");
             allCrossings.sort((a, b) => a.time - b.time);
         }
 
@@ -866,8 +1258,8 @@
             updateCrossingsDisplay();
         } else {
             clearCrossingMarkers();
-            document.getElementById('crossings-container').innerHTML =
-                '<div class="no-crossings">Enable "Crossovers" to detect CE-PE intersections.</div>';
+            document.getElementById("crossings-container").innerHTML =
+                `<div class="no-crossings">Enable Crossovers to detect CE-PE intersections.</div>`;
         }
 
         updateLegendLatest();
@@ -875,84 +1267,107 @@
     }
 
     function initCheckoutDropdown() {
-        const btn = document.getElementById('checkout-btn');
-        const menu = document.getElementById('checkout-menu');
+        const btn = document.getElementById("checkout-btn");
+        const menu = document.getElementById("checkout-menu");
 
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener("click", e => {
             e.stopPropagation();
-            const isVisible = menu.classList.contains('show');
+            const isVisible = menu.classList.contains("show");
             closeAllDropdowns();
-            if (!isVisible) menu.classList.add('show');
+            if (!isVisible) menu.classList.add("show");
         });
 
-        document.getElementById('all-lines-check').addEventListener('change', (e) => {
+        // keep clicks inside menu from closing it via document click
+        menu.addEventListener("click", e => e.stopPropagation());
+
+        document.getElementById("all-lines-check").addEventListener("change", e => {
             setAllLinesChecked(e.target.checked);
         });
 
         const checkboxHandlers = {
-            'spot-check': 'spot',
-            'ce-check': 'ce',
-            'pe-check': 'pe',
-            'combined-premium-check': 'combinedPremium',
-            'avg-check': 'avgPrice',
-            'ce-extrinsic-check': 'ceExtrinsic',
-            'pe-extrinsic-check': 'peExtrinsic',
-            'ce-open-check': 'ceOpen',
-            'pe-open-check': 'peOpen',
-            'combined-open-check': 'combinedOpen'
+            "spot-check": "spot",
+            "ce-check": "ce",
+            "pe-check": "pe",
+            "combined-premium-check": "combinedPremium",
+            "avg-check": "avgPrice",
+            "ce-extrinsic-check": "ceExtrinsic",
+            "pe-extrinsic-check": "peExtrinsic",
+            "ce-open-check": "ceOpen",
+            "pe-open-check": "peOpen",
+            "combined-open-check": "combinedOpen"
         };
 
         Object.entries(checkboxHandlers).forEach(([id, key]) => {
-            document.getElementById(id).addEventListener('change', (e) => {
+            const row = document.getElementById(id).closest(".checkout-item");
+            if (row) row.addEventListener("click", e => e.stopPropagation());
+            document.getElementById(id).addEventListener("change", e => {
                 lineVisibility[key] = e.target.checked;
-
-                if (['ceOpen', 'peOpen', 'combinedOpen'].includes(key)) {
-                    drawOpenPriceLines();
-                } else {
-                    const seriesKey = key + 'Series';
-                    lines[key].setData(lineVisibility[key] ? currentSeries[seriesKey] : []);
-                }
-
-                updateLegendLatest();
-                saveLineVisibility();
-                updateAllCheckbox();
-                closeAllDropdowns();
             });
         });
 
-        document.getElementById('btn-max-chart').addEventListener('click', () => {
-            const card = document.querySelector('.card');
-            card.classList.toggle('chart-fullscreen');
+        document.getElementById("lines-ok-btn").addEventListener("click", e => {
+            e.stopPropagation();
 
-            setTimeout(() => {
-                const chartDiv = document.getElementById('chart');
+            const seriesMap = {
+                spot: "spotSeries",
+                ce: "ceSeries",
+                pe: "peSeries",
+                combinedPremium: "combinedPremiumSeries",
+                avgPrice: "avgPriceSeries",
+                ceExtrinsic: "ceExtrinsicSeries",
+                peExtrinsic: "peExtrinsicSeries"
+            };
 
-                chart.applyOptions({
-                    width: chartDiv.clientWidth,
-                    height: chartDiv.clientHeight
-                });
+            Object.entries(checkboxHandlers).forEach(([id, key]) => {
+                const checked = document.getElementById(id).checked;
+                lineVisibility[key] = checked;
 
-                chart.timeScale().fitContent();
-            }, 200);
+                if (["ceOpen", "peOpen", "combinedOpen"].includes(key)) {
+                    drawOpenPriceLines();
+                } else if (seriesMap[key]) {
+                    const seriesKey = seriesMap[key];
+                    const data = currentSeries[seriesKey] || [];
+                    lines[key].setData(checked ? data : []);
+                }
+            });
+
+            if (lineVisibility.ce && lineVisibility.pe) {
+                allCrossings = detectCrossovers(currentSeries.ceSeries || [], currentSeries.peSeries || [], "CE", "PE");
+                allCrossings.sort((a, b) => a.time - b.time);
+            } else {
+                allCrossings = [];
+            }
+
+            if (crossoverEnabled) {
+                addCrossingMarkers();
+                updateCrossingsDisplay();
+            } else {
+                clearCrossingMarkers();
+            }
+
+            updateLegendLatest();
+            saveLineVisibility();
+            updateAllCheckbox();
+            closeAllDropdowns();
         });
 
-        document.addEventListener('click', closeAllDropdowns);
+        document.addEventListener("click", closeAllDropdowns);
     }
 
     function closeAllDropdowns() {
-        document.querySelectorAll('.checkout-menu').forEach(m => m.classList.remove('show'));
+        document.querySelectorAll(".checkout-menu").forEach(m => m.classList.remove("show"));
     }
 
     function initDropdowns() {
-        ['name-select', 'expiry-select', 'ce-strike-select', 'pe-strike-select'].forEach(id => {
-            document.getElementById(id).addEventListener('change', () => {
-                if (id === 'name-select') {
+        ["name-select", "expiry-select", "ce-strike-select", "pe-strike-select"].forEach(id => {
+            document.getElementById(id).addEventListener("change", () => {
+                if (id === "name-select") {
                     populateExpirySelect();
-                } else if (id === 'expiry-select') {
+                } else if (id === "expiry-select") {
                     populateStrikeSelects();
-                } else if (id === 'ce-strike-select') {
+                } else if (id === "ce-strike-select") {
                     API_PARAMS.ceStrike = String(document.getElementById(id).value);
-                } else if (id === 'pe-strike-select') {
+                } else if (id === "pe-strike-select") {
                     API_PARAMS.peStrike = String(document.getElementById(id).value);
                 }
                 loadInitialData();
@@ -962,108 +1377,136 @@
 
     function startAutoRefresh() {
         if (autoRefreshInterval) return;
-        autoRefreshInterval = setInterval(() => loadInitialData(), 30000);
+        autoRefreshInterval = setInterval(loadInitialData, 30000);
     }
 
     function stopAutoRefresh() {
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-            autoRefreshInterval = null;
-        }
+        if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
     }
 
     function toggleTheme() {
         isDarkTheme = !isDarkTheme;
         const body = document.body;
-        const sw = document.getElementById('theme-switch');
-        const label = document.querySelector('#theme-toggle .toggle-label');
+        const sw = document.getElementById("theme-switch");
+        const label = document.querySelector("#theme-toggle .toggle-label");
 
         if (isDarkTheme) {
-            body.style.background = "linear-gradient(180deg,#071021 0%, #071a2b 100%)";
-            sw.classList.add('active');
-            label.textContent = 'Dark';
+            body.style.background = "linear-gradient(180deg,#071021 0,#071a2b 100%)";
+            sw.classList.add("active");
+            label.textContent = "Dark";
         } else {
-            body.style.background = "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
-            sw.classList.remove('active');
-            label.textContent = 'Light';
+            body.style.background = "linear-gradient(180deg,#f8fafc 0,#e2e8f0 100%)";
+            sw.classList.remove("active");
+            label.textContent = "Light";
         }
         updateChartTheme();
     }
 
     function toggleCrossover() {
         crossoverEnabled = !crossoverEnabled;
-        const sw = document.getElementById('toggle-switch');
-
+        const sw = document.getElementById("toggle-switch");
+        const container = document.getElementById("crossings-container");
         if (crossoverEnabled) {
-            sw.classList.add('active');
+            sw.classList.add("active");
             addCrossingMarkers();
             updateCrossingsDisplay();
         } else {
-            sw.classList.remove('active');
+            sw.classList.remove("active");
             clearCrossingMarkers();
-            document.getElementById('crossings-container').innerHTML =
-                '<div class="no-crossings">Enable "Crossovers" to detect CE-PE intersections.</div>';
+            container.innerHTML =
+                `<div class="no-crossings">Enable Crossovers to detect CE-PE intersections.</div>`;
         }
     }
 
     function toggleAutoUpdate() {
         autoUpdateEnabled = !autoUpdateEnabled;
-        const label = document.getElementById('auto-update-label');
-        const sw = document.getElementById('auto-update-switch');
-
+        const label = document.getElementById("auto-update-label");
+        const sw = document.getElementById("auto-update-switch");
         if (autoUpdateEnabled) {
-            label.textContent = 'Auto: ON';
-            sw.classList.add('active');
+            label.textContent = "Auto ON";
+            sw.classList.add("active");
             startAutoRefresh();
         } else {
-            label.textContent = 'Auto: OFF';
-            sw.classList.remove('active');
+            label.textContent = "Auto OFF";
+            sw.classList.remove("active");
             stopAutoRefresh();
         }
+    }
+
+    function hardResetChart() {
+        // 1) clear stored visibility
+        localStorage.removeItem(STORAGE_KEY_LINES);
+
+        // 2) reset defaults
+        lineVisibility = {
+            spot: false,
+            ce: true,
+            pe: true,
+            combinedPremium: true,
+            avgPrice: false,
+            ceExtrinsic: false,
+            peExtrinsic: false,
+            ceOpen: true,
+            peOpen: true,
+            combinedOpen: true
+        };
+
+        // 3) sync UI
+        syncCheckboxesFromVisibility();
+        updateAllCheckbox();
+
+        // 4) clear all series
+        Object.values(lines).forEach(series => series.setData([]));
+
+        // 5) fresh data
+        loadInitialData();
     }
 
     async function init() {
         loadLineVisibility();
 
-        document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-        document.getElementById('toggle-container').addEventListener('click', toggleCrossover);
-        document.getElementById('auto-update-toggle').addEventListener('click', toggleAutoUpdate);
-        document.getElementById('btn-reset').addEventListener('click', loadInitialData);
+        document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+        document.getElementById("toggle-container").addEventListener("click", toggleCrossover);
+        document.getElementById("auto-update-toggle").addEventListener("click", toggleAutoUpdate);
+
+        document.getElementById("btn-reset").addEventListener("click", hardResetChart);
 
         initCheckoutDropdown();
         syncCheckboxesFromVisibility();
         initDropdowns();
+
         await loadGroupedData();
         await loadInitialData();
         startAutoRefresh();
 
-        window.addEventListener('resize', () => {
-            chart.applyOptions({ width: document.getElementById('chart').clientWidth });
+        window.addEventListener("resize", () => {
+            chart.applyOptions({ width: document.getElementById("chart").clientWidth });
+        });
+
+        chart.subscribeCrosshairMove(param => updateLegendAtCrosshair(param));
+
+        document.getElementById("btn-max-chart").addEventListener("click", () => {
+            const card = document.querySelector(".card");
+            card.classList.toggle("chart-fullscreen");
+            setTimeout(() => {
+                const chartDiv = document.getElementById("chart");
+                chart.applyOptions({
+                    width: chartDiv.clientWidth,
+                    height: chartDiv.clientHeight
+                });
+                chart.timeScale().fitContent();
+            }, 200);
         });
     }
 
-    chart.subscribeCrosshairMove(param => updateLegendAtCrosshair(param));
-
-    (function setDefaultLightTheme() {
-        isDarkTheme = false;
-
-        document.body.style.background =
-            "linear-gradient(180deg,#f8fafc 0%, #e2e8f0 100%)";
-
-        const sw = document.getElementById("theme-switch");
-        const label = document.querySelector("#theme-toggle .toggle-label");
-
-        if (sw) sw.classList.remove("active");
-        if (label) label.textContent = "Light";
-    })();
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
     } else {
         init();
     }
 
-    window.addEventListener('beforeunload', stopAutoRefresh);
+    window.addEventListener("beforeunload", stopAutoRefresh);
 </script>
 </body>
 </html>
