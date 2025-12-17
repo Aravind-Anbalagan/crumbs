@@ -180,7 +180,7 @@ public class TradeManagerService {
        HELPERS
        ============================== */
 
-    private boolean isMethodAllowed(String method) {
+    public boolean isMethodAllowed(String method) {
         return ("PRICE_ACTION".equals(method) && ENABLE_PRICE_ACTION)
                 || ("FIBO".equals(method) && ENABLE_FIBO);
     }

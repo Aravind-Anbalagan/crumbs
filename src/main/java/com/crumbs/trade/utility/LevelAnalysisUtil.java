@@ -9,7 +9,7 @@ import com.crumbs.trade.entity.Level;
 
 public class LevelAnalysisUtil {
 
-    private static final BigDecimal NEAR_RANGE = new BigDecimal("10");
+    private static final BigDecimal NEAR_RANGE = new BigDecimal("5");
 
     public static LevelAnalysisResult analyze(
             BigDecimal currentPrice,

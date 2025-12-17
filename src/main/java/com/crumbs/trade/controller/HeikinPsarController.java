@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.dto.ChartDataDTO;
@@ -246,7 +247,12 @@ public class HeikinPsarController {
         // 2️⃣ Load levels
         List<Level> levels =
                 levelRepo.findBySymbolAndTimeframe(symbol, timeframe);
+        // 🔥 ADD THIS - Filters based on method
+        levels = levels.stream()
+            .filter(l -> tradeManagerService.isMethodAllowed(l.getMethod()))
+            .collect(Collectors.toList());
 
+        
         if (levels == null || levels.isEmpty()) {
             return;
         }
