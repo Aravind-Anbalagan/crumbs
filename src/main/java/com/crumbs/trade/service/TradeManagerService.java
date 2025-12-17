@@ -18,34 +18,41 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class TradeManagerService {
 
-    /* ==============================
-       CONFIG FLAGS (ON / OFF)
-       ============================== */
+    /* ==================================================
+       CONSTANTS (CHANGE VALUES ONLY HERE)
+       ================================================== */
 
+    // --- Strategy toggles
     private static final boolean ENABLE_PRICE_ACTION = false;
     private static final boolean ENABLE_FIBO = true;
-
     private static final boolean ENABLE_TRAILING_SL = false;
 
-    /* ==============================
-       RISK CONFIG
-       ============================== */
-
-    private static final BigDecimal TARGET_POINTS = new BigDecimal("30");
-    private static final BigDecimal SL_POINTS = new BigDecimal("10");
-    private static final BigDecimal TRAIL_SL_STEP = new BigDecimal("10");
-
+    // --- Cooldown
     private static final int COOLDOWN_MINUTES = 5;
 
-    /* ==============================
+    // --- Symbols
+    private static final String SYMBOL_NIFTY = "NIFTY";
+    private static final String SYMBOL_SILVERM = "SILVERM";
+
+    // --- Risk config : NIFTY
+    private static final BigDecimal NIFTY_TARGET = new BigDecimal("30");
+    private static final BigDecimal NIFTY_SL = new BigDecimal("10");
+    private static final BigDecimal NIFTY_TRAIL_SL = new BigDecimal("10");
+
+    // --- Risk config : SILVERM
+    private static final BigDecimal SILVER_TARGET = new BigDecimal("750");
+    private static final BigDecimal SILVER_SL = new BigDecimal("250");
+    private static final BigDecimal SILVER_TRAIL_SL = new BigDecimal("250");
+
+    /* ==================================================
        DEPENDENCY
-       ============================== */
+       ================================================== */
 
     private final TradeExecutionRepo repo;
 
-    /* ==============================
+    /* ==================================================
        ENTRY LOGIC
-       ============================== */
+       ================================================== */
 
     @Transactional
     public void handleSignal(
@@ -100,8 +107,12 @@ public class TradeManagerService {
         t.setEntryTime(LocalDateTime.now());
         t.setLastSignalTime(LocalDateTime.now());
 
-        t.setTargetPrice(calcTarget(analysis.getCurrentPrice(), tradeType));
-        t.setSlPrice(calcSL(analysis.getCurrentPrice(), tradeType));
+        // 🔥 Target & SL from constants
+        t.setTargetPrice(calcTarget(
+                analysis.getCurrentPrice(), tradeType, symbol));
+
+        t.setSlPrice(calcSL(
+                analysis.getCurrentPrice(), tradeType, symbol));
 
         t.setLevelValue(ref.getLevelValue());
         t.setMethod(ref.getMethod());
@@ -111,9 +122,9 @@ public class TradeManagerService {
         repo.save(t);
     }
 
-    /* ==============================
+    /* ==================================================
        EXIT + TRAILING SL
-       ============================== */
+       ================================================== */
 
     @Transactional
     public void monitorTrade(
@@ -148,9 +159,9 @@ public class TradeManagerService {
         }
     }
 
-    /* ==============================
+    /* ==================================================
        CLOSE + PnL
-       ============================== */
+       ================================================== */
 
     private void close(TradeExecution t, BigDecimal exitPrice, String reason) {
 
@@ -159,55 +170,71 @@ public class TradeManagerService {
         t.setExitTime(LocalDateTime.now());
         t.setExitReason(reason);
 
-        // -----------------------
-        // ✅ PnL CALCULATION
-        // -----------------------
-        BigDecimal pnl;
-
-        if ("BUY".equals(t.getTradeType())) {
-            pnl = exitPrice.subtract(t.getEntryPrice());
-        } else {
-            pnl = t.getEntryPrice().subtract(exitPrice);
-        }
+        BigDecimal pnl =
+                "BUY".equals(t.getTradeType())
+                        ? exitPrice.subtract(t.getEntryPrice())
+                        : t.getEntryPrice().subtract(exitPrice);
 
         t.setPnl(pnl);
 
         repo.save(t);
     }
 
-
-    /* ==============================
+    /* ==================================================
        HELPERS
-       ============================== */
+       ================================================== */
 
     public boolean isMethodAllowed(String method) {
         return ("PRICE_ACTION".equals(method) && ENABLE_PRICE_ACTION)
                 || ("FIBO".equals(method) && ENABLE_FIBO);
     }
 
-    private BigDecimal calcTarget(BigDecimal price, String tradeType) {
+    private BigDecimal calcTarget(
+            BigDecimal price,
+            String tradeType,
+            String symbol) {
+
+        BigDecimal target =
+                SYMBOL_SILVERM.equals(symbol)
+                        ? SILVER_TARGET
+                        : NIFTY_TARGET;
+
         return "BUY".equals(tradeType)
-                ? price.add(TARGET_POINTS)
-                : price.subtract(TARGET_POINTS);
+                ? price.add(target)
+                : price.subtract(target);
     }
 
-    private BigDecimal calcSL(BigDecimal price, String tradeType) {
+    private BigDecimal calcSL(
+            BigDecimal price,
+            String tradeType,
+            String symbol) {
+
+        BigDecimal sl =
+                SYMBOL_SILVERM.equals(symbol)
+                        ? SILVER_SL
+                        : NIFTY_SL;
+
         return "BUY".equals(tradeType)
-                ? price.subtract(SL_POINTS)
-                : price.add(SL_POINTS);
+                ? price.subtract(sl)
+                : price.add(sl);
     }
 
     private void applyTrailingSL(TradeExecution t, BigDecimal ltp) {
 
+        BigDecimal step =
+                SYMBOL_SILVERM.equals(t.getSymbol())
+                        ? SILVER_TRAIL_SL
+                        : NIFTY_TRAIL_SL;
+
         if ("BUY".equals(t.getTradeType())) {
-            BigDecimal newSl = ltp.subtract(TRAIL_SL_STEP);
+            BigDecimal newSl = ltp.subtract(step);
             if (newSl.compareTo(t.getSlPrice()) > 0) {
                 t.setSlPrice(newSl);
             }
         }
 
         if ("SELL".equals(t.getTradeType())) {
-            BigDecimal newSl = ltp.add(TRAIL_SL_STEP);
+            BigDecimal newSl = ltp.add(step);
             if (newSl.compareTo(t.getSlPrice()) < 0) {
                 t.setSlPrice(newSl);
             }

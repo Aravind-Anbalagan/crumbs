@@ -105,6 +105,19 @@ public class ChartService {
     @Autowired
     StrategyRepo strategyRepo;
 
+    private static final String SYMBOL_SILVERM = "SILVERM";
+
+    // NIFTY (default)
+    private static final BigDecimal NIFTY_TARGET = new BigDecimal("20.00");
+    private static final BigDecimal NIFTY_SL = new BigDecimal("10.00");
+
+    // SILVERM
+    private static final BigDecimal SILVER_TARGET = new BigDecimal("750.00");
+    private static final BigDecimal SILVER_SL = new BigDecimal("250.00");
+
+    private static final String BUY = "BUY";
+    private static final String SELL = "SELL";
+    
 	/*
 	 * Get JsonDetail
 	 */
@@ -1085,66 +1098,119 @@ public class ChartService {
 
 		ResultVix resultVix = resultVixRepo.findByActiveTrueAndName(name);
 		Strategy strategy = getTokenDetails(name, type);
-		BigDecimal currentPrice = new BigDecimal("0");
+
+		BigDecimal currentPrice = BigDecimal.ZERO;
 		boolean tradeFlag = false;
-		if (resultVix != null) {
-			// Get Current Price of Executed Order
-			SmartConnect smartconnect = angelOne.signIn();
 
-			if (!testFlag) {
-				// Normal Flow
-				currentPrice = angelOneService.getcurrentPrice(smartconnect, resultVix.getExchange(),
-						resultVix.getSymbol(), resultVix.getToken());
-			} else {
-				// Back Test
-				currentPrice = vix.getClose();
-			}
-
-			if (currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) != 0) {
-				String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType(),name);
-				String transactionType = resultVix.getType().equalsIgnoreCase("BUY") ? Constants.TRANSACTION_TYPE_SELL
-						: Constants.TRANSACTION_TYPE_BUY;
-				if (result != null && !transactionType.equalsIgnoreCase(resultVix.getType())) {
-
-					tradeFlag = "Y".equals(strategy.getLive()); // Take Trade In Flat Trade
-					logger.info("Exit Trade: Result={}", result);
-
-					// Place Order - EXIT
-					Token token = placeOrder(setValues(resultVix), transactionType, "S", tradeFlag);
-					closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
-
-				}
-			}
-
+		if (resultVix == null) {
+			return;
 		}
+
+		// -----------------------------
+		// Get Current Price
+		// -----------------------------
+		SmartConnect smartconnect = angelOne.signIn();
+
+		if (!testFlag) {
+			// Live price
+			currentPrice = angelOneService.getcurrentPrice(smartconnect, resultVix.getExchange(), resultVix.getSymbol(),
+					resultVix.getToken());
+		} else {
+			// Backtest price
+			currentPrice = vix.getClose();
+		}
+
+		if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) == 0) {
+			return;
+		}
+
+		// -----------------------------
+		// Check SL / TARGET
+		// -----------------------------
+		String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType(), // BUY or SELL (NO
+																									// inversion)
+				name);
+
+		if (result == null) {
+			return; // trade still active
+		}
+
+		// -----------------------------
+		// EXIT TRANSACTION TYPE
+		// -----------------------------
+		// Exit must be OPPOSITE of entry
+		String exitTransactionType;
+
+		if ("BUY".equalsIgnoreCase(resultVix.getType())) {
+			exitTransactionType = Constants.TRANSACTION_TYPE_SELL;
+		} else if ("SELL".equalsIgnoreCase(resultVix.getType())) {
+			exitTransactionType = Constants.TRANSACTION_TYPE_BUY;
+		} else {
+			throw new IllegalStateException("Invalid trade type: " + resultVix.getType());
+		}
+
+		tradeFlag = "Y".equals(strategy.getLive());
+
+		logger.info("Exit Trade | Symbol={} | EntryType={} | ExitType={} | Result={} | EntryPrice={} | LTP={}", name,
+				resultVix.getType(), exitTransactionType, result, resultVix.getEntryPrice(), currentPrice);
+
+		// -----------------------------
+		// Place EXIT Order
+		// -----------------------------
+		Token token = placeOrder(setValues(resultVix), exitTransactionType, "S", tradeFlag);
+
+		closeOrder(resultVix, token, currentPrice, vix, testFlag, result);
 	}
+
 
 	// Check for SL and Target
-	public String checkPrice(BigDecimal currentPrice, BigDecimal executedPrice, String transactionType, String name) {
-	    BigDecimal targetThreshold;
-	    BigDecimal stopLossThreshold;
+	public static String checkPrice(
+            BigDecimal currentPrice,
+            BigDecimal executedPrice,
+            String transactionType,
+            String symbol) {
 
-	    // instrument-based thresholds
-	    if ("SILVERM".equalsIgnoreCase(name)) {
-	        targetThreshold = new BigDecimal("750.00");
-	        stopLossThreshold = new BigDecimal("250.00");
-	    } else { // Default: Nifty or others
-	        targetThreshold = new BigDecimal("20.00");
-	        stopLossThreshold = new BigDecimal("10.00");
-	    }
+        BigDecimal target = getTarget(symbol);
+        BigDecimal sl = getSL(symbol);
 
-	    // difference = how much premium moved
-	    BigDecimal difference = currentPrice.subtract(executedPrice);
+        BigDecimal move;
 
-	    // Since both CE and PE are BUY positions, same logic applies
-	    if (difference.compareTo(targetThreshold) >= 0) {
-	        return "TARGET";
-	    } else if (difference.compareTo(stopLossThreshold.negate()) <= 0) {
-	        return "SL";
-	    }
+        if (BUY.equalsIgnoreCase(transactionType)) {
+            // BUY → upside
+            move = currentPrice.subtract(executedPrice);
+        } else if (SELL.equalsIgnoreCase(transactionType)) {
+            // SELL → downside
+            move = executedPrice.subtract(currentPrice);
+        } else {
+            return null;
+        }
 
-	    return null; // still active
-	}
+        if (move.compareTo(target) >= 0) {
+            return "TARGET";
+        }
+
+        if (move.compareTo(sl.negate()) <= 0) {
+            return "SL";
+        }
+
+        return null; // still active
+    }
+
+    /* ==============================
+       HELPERS
+       ============================== */
+
+    private static BigDecimal getTarget(String symbol) {
+        return SYMBOL_SILVERM.equalsIgnoreCase(symbol)
+                ? SILVER_TARGET
+                : NIFTY_TARGET;
+    }
+
+    private static BigDecimal getSL(String symbol) {
+        return SYMBOL_SILVERM.equalsIgnoreCase(symbol)
+                ? SILVER_SL
+                : NIFTY_SL;
+    }
 
 
 	public StrategyDTO setValues(ResultVix resultVix) {
