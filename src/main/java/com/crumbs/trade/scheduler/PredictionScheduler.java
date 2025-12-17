@@ -31,24 +31,24 @@ public class PredictionScheduler {
     
     @Autowired StrategyRepo strategyRepo;
 
-    // --------------------------------------------------------
-    // Runs ONLY 15-min intervals within market hours (Mon–Fri):
-    //
-    // 09:15, 09:30, 09:45
-    // 10:00, 10:15, 10:30, 10:45
-    // 11:00, 11:15, 11:30, 11:45
-    // ...
-    // 15:00, 15:15, 15:30
-    //
-    // NO wake ups outside above times.
-    // --------------------------------------------------------
+	// --------------------------------------------------------
+	// Runs EVERY 5 minutes within market hours (Mon–Fri):
+	//
+	// 09:15, 09:20, 09:25, 09:30, ..., 09:55
+	// 10:00, 10:05, ..., 14:55
+	// 15:00, 15:05, 15:10, 15:15, 15:20, 15:25, 15:30
+	//
+	// NO wake ups outside market hours.
+	// --------------------------------------------------------
 
-    // 09:15, 09:30, 09:45
-    @Scheduled(cron = "0 15,30,45 9 * * MON-FRI", zone = "Asia/Kolkata")
-    // 10:00–14:45 (every 15 mins)
-    @Scheduled(cron = "0 0,15,30,45 10-14 * * MON-FRI", zone = "Asia/Kolkata")
-    // 15:00, 15:15, 15:30
-    @Scheduled(cron = "0 0,15,30 15 * * MON-FRI", zone = "Asia/Kolkata")
+	// 09:15 – 09:55 (every 5 mins)
+	@Scheduled(cron = "0 15-59/5 9 * * MON-FRI", zone = "Asia/Kolkata")
+
+	// 10:00 – 14:55 (every 5 mins)
+	@Scheduled(cron = "0 */5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
+
+	// 15:00 – 15:30 (every 5 mins)
+	@Scheduled(cron = "0 0-30/5 15 * * MON-FRI", zone = "Asia/Kolkata")
 	public void runMarketPrediction() throws SmartAPIException {
 
 		if ("Y".equalsIgnoreCase(strategyRepo.findByName("WEIGHTAGE").getActive())) {
