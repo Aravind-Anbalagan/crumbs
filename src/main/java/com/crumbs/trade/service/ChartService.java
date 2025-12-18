@@ -108,7 +108,7 @@ public class ChartService {
     private static final String SYMBOL_SILVERM = "SILVERM";
 
     // NIFTY (default)
-    private static final BigDecimal NIFTY_TARGET = new BigDecimal("20.00");
+    private static final BigDecimal NIFTY_TARGET = new BigDecimal("30.00");
     private static final BigDecimal NIFTY_SL = new BigDecimal("10.00");
 
     // SILVERM
@@ -1127,9 +1127,7 @@ public class ChartService {
 		// -----------------------------
 		// Check SL / TARGET
 		// -----------------------------
-		String result = checkPrice(currentPrice, resultVix.getEntryPrice(), resultVix.getType(), // BUY or SELL (NO
-																									// inversion)
-				name);
+		String result = checkPrice(currentPrice, resultVix.getEntryPrice(),name);
 
 		if (result == null) {
 			return; // trade still active
@@ -1164,37 +1162,29 @@ public class ChartService {
 
 
 	// Check for SL and Target
+	// Option Buyer Logic (CE BUY / PE BUY)
 	public static String checkPrice(
-            BigDecimal currentPrice,
-            BigDecimal executedPrice,
-            String transactionType,
-            String symbol) {
+	        BigDecimal currentPrice,
+	        BigDecimal executedPrice,
+	        String symbol) {
 
-        BigDecimal target = getTarget(symbol);
-        BigDecimal sl = getSL(symbol);
+	    BigDecimal target = getTarget(symbol); // positive value
+	    BigDecimal sl = getSL(symbol);          // positive value
 
-        BigDecimal move;
+	    // Common for CE & PE (both are option BUY)
+	    BigDecimal move = currentPrice.subtract(executedPrice);
 
-        if (BUY.equalsIgnoreCase(transactionType)) {
-            // BUY → upside
-            move = currentPrice.subtract(executedPrice);
-        } else if (SELL.equalsIgnoreCase(transactionType)) {
-            // SELL → downside
-            move = executedPrice.subtract(currentPrice);
-        } else {
-            return null;
-        }
+	    if (move.compareTo(target) >= 0) {
+	        return "TARGET";
+	    }
 
-        if (move.compareTo(target) >= 0) {
-            return "TARGET";
-        }
+	    if (move.compareTo(sl.negate()) <= 0) {
+	        return "SL";
+	    }
 
-        if (move.compareTo(sl.negate()) <= 0) {
-            return "SL";
-        }
+	    return null; // still active
+	}
 
-        return null; // still active
-    }
 
     /* ==============================
        HELPERS

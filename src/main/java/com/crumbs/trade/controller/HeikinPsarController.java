@@ -274,46 +274,49 @@ public class HeikinPsarController {
 	@Scheduled(cron = "*/10 0-59 16-22 * * MON-FRI", zone = "Asia/Kolkata") // 16:00–22:59
 	@Scheduled(cron = "*/10 0-30 23 * * MON-FRI", zone = "Asia/Kolkata")   // 23:00–23:30
 	public void runStrategy() {
-		LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
-		String symbol = null;
-		String timeframe = "FIVE_MINUTE";
-		// NIFTY: 09:15 – 15:30
-		if (!now.isBefore(LocalTime.of(9, 15)) && !now.isAfter(LocalTime.of(15, 30))) {
+		if ("Y".equalsIgnoreCase(strategyRepo.findByName("SR").getActive())) {
+			LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+			String symbol = null;
+			String timeframe = "FIVE_MINUTE";
+			// NIFTY: 09:15 – 15:30
+			if (!now.isBefore(LocalTime.of(9, 15)) && !now.isAfter(LocalTime.of(15, 30))) {
 
-			symbol = "NIFTY";
+				symbol = "NIFTY";
+			}
+
+			// SILVERM: 16:00 – 23:30
+			if (!now.isBefore(LocalTime.of(16, 0)) && !now.isAfter(LocalTime.of(23, 30))) {
+
+				symbol = "SILVERM";
+
+			}
+			BigDecimal ltp = chartService.getCurrentPrice(symbol);
+
+			// 1️⃣ Validate LTP
+			if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+				return;
+			}
+
+			// 2️⃣ Load levels
+			List<Level> levels = levelRepo.findBySymbolAndTimeframe(symbol, timeframe);
+			// 🔥 ADD THIS - Filters based on method
+			levels = levels.stream().filter(l -> tradeManagerService.isMethodAllowed(l.getMethod()))
+					.collect(Collectors.toList());
+
+			if (levels == null || levels.isEmpty()) {
+				return;
+			}
+
+			// 3️⃣ Analyze
+			LevelAnalysisResult analysis = LevelAnalysisUtil.analyze(symbol, ltp, levels);
+
+			// 4️⃣ Handle trade ENTRY (BUY / SELL only)
+			tradeManagerService.handleSignal(symbol, timeframe, analysis);
+
+			// 5️⃣ Handle trade EXIT (TARGET / SL)
+			tradeManagerService.monitorTrade(symbol, timeframe, ltp);
 		}
 
-		// SILVERM: 16:00 – 23:30
-		if (!now.isBefore(LocalTime.of(16, 0)) && !now.isAfter(LocalTime.of(23, 30))) {
-
-			symbol = "SILVERM";
-
-		}
-		BigDecimal ltp = chartService.getCurrentPrice(symbol);
-
-		// 1️⃣ Validate LTP
-		if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
-			return;
-		}
-
-		// 2️⃣ Load levels
-		List<Level> levels = levelRepo.findBySymbolAndTimeframe(symbol, timeframe);
-		// 🔥 ADD THIS - Filters based on method
-		levels = levels.stream().filter(l -> tradeManagerService.isMethodAllowed(l.getMethod()))
-				.collect(Collectors.toList());
-
-		if (levels == null || levels.isEmpty()) {
-			return;
-		}
-
-		// 3️⃣ Analyze
-		LevelAnalysisResult analysis = LevelAnalysisUtil.analyze(symbol, ltp, levels);
-
-		// 4️⃣ Handle trade ENTRY (BUY / SELL only)
-		tradeManagerService.handleSignal(symbol, timeframe, analysis);
-
-		// 5️⃣ Handle trade EXIT (TARGET / SL)
-		tradeManagerService.monitorTrade(symbol, timeframe, ltp);
 	}
 
 }
