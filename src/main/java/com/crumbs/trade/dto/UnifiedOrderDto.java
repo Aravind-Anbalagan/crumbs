@@ -19,11 +19,11 @@ public class UnifiedOrderDto {
     private String status;          // OPEN/CLOSED or derived
 
     private BigDecimal entryPrice;
-    private String entryTimeText;   // when original is String
+
     private LocalDateTime entryTime; 
 
     private BigDecimal exitPrice;
-    private String exitTimeText;
+    
     private LocalDateTime exitTime;
 
     private BigDecimal targetPrice;

@@ -153,15 +153,14 @@ public class TradeExecutionService {
 
         dto.setExchange(r.getExchange());
         dto.setToken(r.getToken());
+        DateTimeFormatter formatter =
+                DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
 
-        dto.setEntryTimeText(r.getEntryTime());
-        dto.setExitTimeText(r.getExitTime());
-        try {
-            LocalDateTime ts = LocalDateTime.parse(r.getTimestamp(), RV_TIMESTAMP_FMT);
-            dto.setEntryTime(ts);
-        } catch (Exception ex) {
-            dto.setEntryTime(null);
-        }
+    
+        dto.setEntryTime(LocalDateTime.parse(r.getEntryTime(), formatter));
+        dto.setExitTime(LocalDateTime.parse(r.getExitTime(), formatter));
+        
+     
 
         return dto;
     }
