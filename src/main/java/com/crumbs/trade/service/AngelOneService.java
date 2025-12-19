@@ -30,6 +30,7 @@ import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.OrderRepository;
+import com.crumbs.trade.repo.PredictionHistoryRepo;
 import com.crumbs.trade.repo.PriceHeikinashiMcxRepo;
 import com.crumbs.trade.repo.PriceHeikinashiNiftyRepo;
 import com.crumbs.trade.repo.PriceRepo;
@@ -124,6 +125,9 @@ public class AngelOneService {
 	
 	@Autowired
 	TradeExecutionRepo tradeExecutionRepo;
+	
+	@Autowired
+	PredictionHistoryRepo predictionHistoryRepo;
 	/*
 	 * Get current price
 	 */
@@ -169,6 +173,7 @@ public class AngelOneService {
 		cprRepo.deleteAll();
 		straddleIntradayRepo.deleteAll();
 		tradeExecutionRepo.deleteAll();
+		predictionHistoryRepo.deleteAll();
 	}
 	/*
 	 * Get current price
