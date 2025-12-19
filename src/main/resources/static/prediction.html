@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nifty 50 Live Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #151a35;
+            --bg-card: #1a2142;
+            --accent-green: #00ff9f;
+            --accent-red: #ff3366;
+            --accent-blue: #00d4ff;
+            --accent-yellow: #ffd700;
+            --text-primary: #ffffff;
+            --text-secondary: #8b95b8;
+            --text-muted: #5a6485;
+            --border-color: rgba(0, 255, 159, 0.15);
+            --glow-green: rgba(0, 255, 159, 0.3);
+            --glow-red: rgba(255, 51, 102, 0.3);
+            --gradient-start: rgba(0, 255, 159, 0.08);
+            --gradient-mid: rgba(0, 212, 255, 0.06);
+            --gradient-end: rgba(255, 51, 102, 0.04);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-yellow: #f59e0b;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border-color: rgba(0, 0, 0, 0.1);
+            --glow-green: rgba(16, 185, 129, 0.2);
+            --glow-red: rgba(239, 68, 68, 0.2);
+            --gradient-start: rgba(16, 185, 129, 0.05);
+            --gradient-mid: rgba(59, 130, 246, 0.04);
+            --gradient-end: rgba(239, 68, 68, 0.03);
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, var(--gradient-start) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, var(--gradient-mid) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, var(--gradient-end) 0%, transparent 50%);
+            animation: pulse 8s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 0.8; }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            animation: slideDown 0.6s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -2px;
+            text-shadow: 0 0 30px var(--glow-green);
+            position: relative;
+        }
+
+        .logo::before {
+            content: '▲';
+            position: absolute;
+            left: -35px;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .theme-toggle {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent-green);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px var(--glow-green);
+        }
+
+        .theme-icon {
+            font-size: 1.2rem;
+        }
+
+        .pulse-dot {
+            width: 12px;
+            height: 12px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 20px var(--glow-green);
+            animation: pulseDot 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.8); }
+        }
+
+        /* Summary Cards */
+        .summary-section {
+            margin-bottom: 20px;
+            animation: fadeIn 0.8s ease-out 0.2s backwards;
+            flex-shrink: 0;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 18px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .summary-card * {
+            transition: color 0.3s ease, background-color 0.3s ease;
+        }
+
+        .summary-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, transparent 0%, rgba(0, 255, 159, 0.05) 100%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--accent-green);
+            box-shadow: 0 20px 60px rgba(0, 255, 159, 0.2);
+        }
+
+        .summary-card:hover::before {
+            opacity: 1;
+        }
+
+        .summary-card.bullish {
+            border-left: 4px solid var(--accent-green);
+        }
+
+        .summary-card.bearish {
+            border-left: 4px solid var(--accent-red);
+        }
+
+        .card-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .card-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+            line-height: 1;
+        }
+
+        .card-value.bullish {
+            color: var(--accent-green);
+            text-shadow: 0 0 20px var(--glow-green);
+        }
+
+        .card-value.bearish {
+            color: var(--accent-red);
+            text-shadow: 0 0 20px var(--glow-red);
+        }
+
+        .card-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .trend-icon {
+            font-size: 1.2rem;
+        }
+
+        /* Visualization Section */
+        .viz-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 25px;
+            animation: fadeIn 0.8s ease-out 0.4s backwards;
+            backdrop-filter: blur(10px);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .viz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+            flex-shrink: 0;
+        }
+
+        .viz-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* View Selector */
+        .view-selector {
+            display: flex;
+            gap: 8px;
+            background: var(--bg-secondary);
+            padding: 6px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .view-btn {
+            padding: 12px 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .view-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .view-btn.active {
+            background: var(--accent-green);
+            color: var(--bg-primary);
+            box-shadow: 0 4px 20px var(--glow-green);
+        }
+
+        /* Chart Container */
+        .chart-container {
+            display: none;
+            position: relative;
+            animation: fadeInChart 0.5s ease-out;
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .chart-container.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        @keyframes fadeInChart {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        #lineChart, #barChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+            overflow-y: auto;
+            border-radius: 12px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .data-table thead {
+            background: var(--bg-secondary);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .data-table th {
+            padding: 14px 12px;
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .data-table tbody tr {
+            transition: all 0.2s ease;
+            background: transparent;
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(0, 255, 159, 0.05);
+            transform: translateX(4px);
+        }
+
+        .data-table td {
+            padding: 14px 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.9rem;
+        }
+
+        .data-table tbody tr.bullish td:first-child {
+            border-left: 3px solid var(--accent-green);
+            padding-left: 13px;
+        }
+
+        .data-table tbody tr.bearish td:first-child {
+            border-left: 3px solid var(--accent-red);
+            padding-left: 13px;
+        }
+
+        .sentiment-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .sentiment-badge.bullish {
+            background: rgba(0, 255, 159, 0.2);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+        }
+
+        .sentiment-badge.bearish {
+            background: rgba(255, 51, 102, 0.2);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+        }
+
+        .price-value {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 600;
+        }
+
+        .move-value {
+            font-weight: 600;
+        }
+
+        .move-value.positive {
+            color: var(--accent-green);
+        }
+
+        .move-value.negative {
+            color: var(--accent-red);
+        }
+
+        .confidence-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .confidence-progress {
+            flex: 1;
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            border-radius: 10px;
+            transition: width 0.6s ease;
+        }
+
+        .confidence-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            min-width: 45px;
+        }
+
+        /* Loading State */
+        .loading-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-muted);
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Smooth Updates - Prevent Flickering */
+        .updating {
+            pointer-events: none;
+        }
+
+        .fade-update {
+            animation: fadeUpdate 0.4s ease-in-out;
+        }
+
+        @keyframes fadeUpdate {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* Prevent table row flickering */
+        .data-table tbody tr {
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
+
+        /* Smooth chart transitions */
+        canvas {
+            transition: opacity 0.3s ease;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .logo {
+                font-size: 1.8rem;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .viz-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .view-selector {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .view-btn {
+                flex: 1;
+                padding: 10px 12px;
+                font-size: 0.75rem;
+            }
+
+            .data-table {
+                font-size: 0.8rem;
+            }
+
+            .data-table th,
+            .data-table td {
+                padding: 12px 8px;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-green);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-blue);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">NIFTY 50</div>
+            <div class="header-controls">
+                <button class="theme-toggle" id="themeToggle">
+                    <span class="theme-icon" id="themeIcon">🌙</span>
+                    <span id="themeText">Dark</span>
+                </button>
+                <div class="live-indicator">
+                    <div class="pulse-dot"></div>
+                    <span id="liveTime">LIVE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Cards Section -->
+        <div class="summary-section">
+            <div class="summary-grid" id="summaryGrid">
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading market data...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization Section -->
+        <div class="viz-section">
+            <div class="viz-header">
+                <h2 class="viz-title">Market Analysis</h2>
+                <div class="view-selector">
+                    <button class="view-btn active" data-view="line">📈 Line</button>
+                    <button class="view-btn" data-view="bar">📊 Bar</button>
+                    <button class="view-btn" data-view="table">📋 Table</button>
+                </div>
+            </div>
+
+            <!-- Line Chart -->
+            <div class="chart-container active" id="lineView">
+                <div style="flex: 1; position: relative; min-height: 0;">
+                    <canvas id="lineChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Bar Chart -->
+            <div class="chart-container" id="barView">
+                <div style="flex: 1; position: relative; min-height: 0;">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Table View -->
+            <div class="chart-container" id="tableView">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Current Price</th>
+                                <th>Target Price</th>
+                                <th>Move %</th>
+                                <th>Confidence</th>
+                                <th>Sentiment</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <tr>
+                                <td colspan="6" class="loading-state">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading predictions...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        const CONFIG = {
+            API_ENDPOINT: '/api/prediction/nifty/advanced',
+            REFRESH_INTERVAL: 20000,
+            TIMEOUT: 2000
+        };
+
+        // Demo data matching the API structure
+        const DEMO_DATA = {
+            predictionList: [
+                {
+                    timestamp: '2025-12-19T13:40:00Z',
+                    currentPrice: 26203,
+                    predictedPrice: 26191,
+                    percentageMove: -0.04,
+                    confidenceScore: 69.6,
+                    sentiment: 'BEARISH'
+                },
+                {
+                    timestamp: '2025-12-03T13:45:00Z',
+                    currentPrice: 25929,
+                    predictedPrice: 25828,
+                    percentageMove: -0.39,
+                    confidenceScore: 82.4,
+                    sentiment: 'BEARISH'
+                },
+                {
+                    timestamp: '2025-12-03T12:30:00Z',
+                    currentPrice: 25950,
+                    predictedPrice: 26150,
+                    percentageMove: 0.77,
+                    confidenceScore: 78.2,
+                    sentiment: 'BULLISH'
+                },
+                {
+                    timestamp: '2025-12-03T11:15:00Z',
+                    currentPrice: 25875,
+                    predictedPrice: 26025,
+                    percentageMove: 0.58,
+                    confidenceScore: 75.8,
+                    sentiment: 'BULLISH'
+                },
+                {
+                    timestamp: '2025-12-03T10:00:00Z',
+                    currentPrice: 25820,
+                    predictedPrice: 25750,
+                    percentageMove: -0.27,
+                    confidenceScore: 71.3,
+                    sentiment: 'BEARISH'
+                },
+                {
+                    timestamp: '2025-12-03T09:30:00Z',
+                    currentPrice: 25790,
+                    predictedPrice: 25920,
+                    percentageMove: 0.50,
+                    confidenceScore: 80.5,
+                    sentiment: 'BULLISH'
+                },
+                {
+                    timestamp: '2025-12-02T15:30:00Z',
+                    currentPrice: 25680,
+                    predictedPrice: 25580,
+                    percentageMove: -0.39,
+                    confidenceScore: 76.9,
+                    sentiment: 'BEARISH'
+                },
+                {
+                    timestamp: '2025-12-02T14:15:00Z',
+                    currentPrice: 25720,
+                    predictedPrice: 25850,
+                    percentageMove: 0.51,
+                    confidenceScore: 79.1,
+                    sentiment: 'BULLISH'
+                }
+            ]
+        };
+
+        // ==========================================
+        // THEME MANAGER
+        // ==========================================
+        const themeManager = {
+            init() {
+                const savedTheme = localStorage.getItem('nifty-theme') || 'dark';
+                this.setTheme(savedTheme, false); // Don't update charts on init
+                
+                document.getElementById('themeToggle').addEventListener('click', () => {
+                    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+                    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                    this.setTheme(newTheme, true); // Update charts on theme change
+                });
+            },
+            
+            setTheme(theme, updateCharts = false) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('nifty-theme', theme);
+                
+                const icon = document.getElementById('themeIcon');
+                const text = document.getElementById('themeText');
+                
+                if (theme === 'light') {
+                    icon.textContent = '☀️';
+                    text.textContent = 'Light';
+                } else {
+                    icon.textContent = '🌙';
+                    text.textContent = 'Dark';
+                }
+                
+                // Only recreate charts when theme changes, not on data updates
+                if (updateCharts && (state.charts.line || state.charts.bar)) {
+                    // Destroy and recreate for theme change
+                    if (state.charts.line) {
+                        state.charts.line.destroy();
+                        state.charts.line = null;
+                    }
+                    if (state.charts.bar) {
+                        state.charts.bar.destroy();
+                        state.charts.bar = null;
+                    }
+                    ui.renderCharts();
+                }
+            }
+        };
+
+        // ==========================================
+        // STATE
+        // ==========================================
+        const state = {
+            predictions: [],
+            currentView: 'line',
+            charts: {
+                line: null,
+                bar: null
+            }
+        };
+
+        // ==========================================
+        // UTILITIES
+        // ==========================================
+        const utils = {
+            formatCurrency: (value) => `₹${Math.round(value).toLocaleString('en-IN')}`,
+            
+            formatPercentage: (value) => {
+                const sign = value >= 0 ? '+' : '';
+                return `${sign}${value.toFixed(2)}%`;
+            },
+            
+            formatTimestamp: (timestamp) => {
+                const date = new Date(timestamp);
+                return date.toLocaleString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            },
+            
+            getLatestPrediction: () => state.predictions[0] || null,
+            
+            calculateStats: () => {
+                if (state.predictions.length === 0) return null;
+                
+                const bullish = state.predictions.filter(p => p.sentiment === 'BULLISH').length;
+                const bearish = state.predictions.filter(p => p.sentiment === 'BEARISH').length;
+                const avgMove = state.predictions.reduce((sum, p) => sum + p.percentageMove, 0) / state.predictions.length;
+                const avgConfidence = state.predictions.reduce((sum, p) => sum + p.confidenceScore, 0) / state.predictions.length;
+                
+                return { bullish, bearish, avgMove, avgConfidence, total: state.predictions.length };
+            }
+        };
+
+        // ==========================================
+        // DATA SERVICE
+        // ==========================================
+        const dataService = {
+            async fetchPredictions() {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), CONFIG.TIMEOUT);
+                    
+                    const response = await fetch(CONFIG.API_ENDPOINT, {
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        return data.predictionList || DEMO_DATA.predictionList;
+                    }
+                } catch (error) {
+                    console.warn('Using demo data:', error.message);
+                }
+                
+                return DEMO_DATA.predictionList;
+            }
+        };
+
+        // ==========================================
+        // UI RENDERING
+        // ==========================================
+        const ui = {
+            updateLiveTime() {
+                const now = new Date();
+                document.getElementById('liveTime').textContent = 
+                    now.toLocaleTimeString('en-IN', { hour12: false });
+            },
+            
+            renderSummary() {
+                const latest = utils.getLatestPrediction();
+                const stats = utils.calculateStats();
+                
+                if (!latest || !stats) {
+                    document.getElementById('summaryGrid').innerHTML = `
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            <p>No data available</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const sentiment = latest.sentiment.toLowerCase();
+                const sentimentClass = latest.percentageMove >= 0 ? 'bullish' : 'bearish';
+                
+                // Check if we need to create the cards or just update them
+                const existingCards = document.querySelectorAll('.summary-card');
+                
+                if (existingCards.length === 6) {
+                    // Update existing cards smoothly
+                    this.updateSummaryCards(latest, stats, sentimentClass);
+                } else {
+                    // Create cards for the first time
+                    document.getElementById('summaryGrid').innerHTML = `
+                        <div class="summary-card ${sentimentClass}" data-card="current-price">
+                            <div class="card-label">Current Price</div>
+                            <div class="card-value ${sentimentClass}">${utils.formatCurrency(latest.currentPrice)}</div>
+                            <div class="card-subtitle">
+                                <span class="trend-icon">${latest.percentageMove >= 0 ? '📈' : '📉'}</span>
+                                <span>Last updated now</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card ${sentimentClass}" data-card="target-price">
+                            <div class="card-label">Target Price</div>
+                            <div class="card-value ${sentimentClass}">${utils.formatCurrency(latest.predictedPrice)}</div>
+                            <div class="card-subtitle">
+                                <span>Expected: ${utils.formatPercentage(latest.percentageMove)}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card" data-card="market-signal">
+                            <div class="card-label">Market Signal</div>
+                            <div class="card-value ${sentimentClass}">${latest.sentiment}</div>
+                            <div class="card-subtitle">
+                                <span>${latest.confidenceScore.toFixed(1)}% confidence</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card" data-card="avg-move">
+                            <div class="card-label">Average Move</div>
+                            <div class="card-value ${stats.avgMove >= 0 ? 'bullish' : 'bearish'}">${utils.formatPercentage(stats.avgMove)}</div>
+                            <div class="card-subtitle">
+                                <span>Across ${stats.total} predictions</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card" data-card="bullish">
+                            <div class="card-label">Bullish Signals</div>
+                            <div class="card-value bullish">${stats.bullish}</div>
+                            <div class="card-subtitle">
+                                <span>${((stats.bullish / stats.total) * 100).toFixed(0)}% of predictions</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card" data-card="bearish">
+                            <div class="card-label">Bearish Signals</div>
+                            <div class="card-value bearish">${stats.bearish}</div>
+                            <div class="card-subtitle">
+                                <span>${((stats.bearish / stats.total) * 100).toFixed(0)}% of predictions</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            },
+            
+            updateSummaryCards(latest, stats, sentimentClass) {
+                // Smoothly update card values without recreating DOM
+                const cards = {
+                    'current-price': {
+                        value: utils.formatCurrency(latest.currentPrice),
+                        subtitle: `<span class="trend-icon">${latest.percentageMove >= 0 ? '📈' : '📉'}</span><span>Last updated now</span>`,
+                        sentiment: sentimentClass
+                    },
+                    'target-price': {
+                        value: utils.formatCurrency(latest.predictedPrice),
+                        subtitle: `<span>Expected: ${utils.formatPercentage(latest.percentageMove)}</span>`,
+                        sentiment: sentimentClass
+                    },
+                    'market-signal': {
+                        value: latest.sentiment,
+                        subtitle: `<span>${latest.confidenceScore.toFixed(1)}% confidence</span>`,
+                        sentiment: sentimentClass
+                    },
+                    'avg-move': {
+                        value: utils.formatPercentage(stats.avgMove),
+                        subtitle: `<span>Across ${stats.total} predictions</span>`,
+                        sentiment: stats.avgMove >= 0 ? 'bullish' : 'bearish'
+                    },
+                    'bullish': {
+                        value: stats.bullish,
+                        subtitle: `<span>${((stats.bullish / stats.total) * 100).toFixed(0)}% of predictions</span>`,
+                        sentiment: 'bullish'
+                    },
+                    'bearish': {
+                        value: stats.bearish,
+                        subtitle: `<span>${((stats.bearish / stats.total) * 100).toFixed(0)}% of predictions</span>`,
+                        sentiment: 'bearish'
+                    }
+                };
+                
+                Object.keys(cards).forEach(cardKey => {
+                    const card = document.querySelector(`[data-card="${cardKey}"]`);
+                    if (!card) return;
+                    
+                    const valueEl = card.querySelector('.card-value');
+                    const subtitleEl = card.querySelector('.card-subtitle');
+                    
+                    if (valueEl) {
+                        // Update value
+                        if (valueEl.textContent !== String(cards[cardKey].value)) {
+                            valueEl.textContent = cards[cardKey].value;
+                        }
+                        
+                        // Update sentiment class
+                        valueEl.className = `card-value ${cards[cardKey].sentiment}`;
+                    }
+                    
+                    if (subtitleEl) {
+                        subtitleEl.innerHTML = cards[cardKey].subtitle;
+                    }
+                    
+                    // Update card border class
+                    card.className = `summary-card ${cards[cardKey].sentiment === 'bullish' || cards[cardKey].sentiment === 'bearish' ? cards[cardKey].sentiment : ''}`;
+                    if (cardKey === 'current-price' || cardKey === 'target-price' || cardKey === 'market-signal') {
+                        if (sentimentClass) {
+                            card.classList.add(sentimentClass);
+                        }
+                    }
+                });
+            },
+            
+            renderTable() {
+                const tbody = document.getElementById('tableBody');
+                
+                if (state.predictions.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="loading-state">
+                                <p>No predictions available</p>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                // Sort predictions by timestamp descending (latest first)
+                const predictionsToShow = [...state.predictions].sort((a, b) => {
+                    return new Date(b.timestamp) - new Date(a.timestamp);
+                });
+                
+                // Check if we can update existing rows instead of recreating
+                const existingRows = tbody.querySelectorAll('tr');
+                const hasLoadingState = existingRows.length === 1 && existingRows[0].querySelector('.loading-state');
+                
+                if (hasLoadingState || existingRows.length !== predictionsToShow.length) {
+                    // Full re-render needed - show latest first
+                    tbody.innerHTML = predictionsToShow.map(pred => this.createTableRow(pred)).join('');
+                } else {
+                    // Update existing rows to prevent flickering
+                    predictionsToShow.forEach((pred, index) => {
+                        const row = existingRows[index];
+                        if (row) {
+                            this.updateTableRow(row, pred);
+                        }
+                    });
+                }
+            },
+            
+            createTableRow(pred) {
+                const sentimentClass = pred.sentiment.toLowerCase();
+                const moveClass = pred.percentageMove >= 0 ? 'positive' : 'negative';
+                
+                return `
+                    <tr class="${sentimentClass}" data-timestamp="${pred.timestamp}">
+                        <td>${utils.formatTimestamp(pred.timestamp)}</td>
+                        <td><span class="price-value">${utils.formatCurrency(pred.currentPrice)}</span></td>
+                        <td><span class="price-value">${utils.formatCurrency(pred.predictedPrice)}</span></td>
+                        <td><span class="move-value ${moveClass}">${utils.formatPercentage(pred.percentageMove)}</span></td>
+                        <td>
+                            <div class="confidence-bar">
+                                <div class="confidence-progress">
+                                    <div class="confidence-fill" style="width: ${pred.confidenceScore}%"></div>
+                                </div>
+                                <span class="confidence-text">${pred.confidenceScore.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                        <td><span class="sentiment-badge ${sentimentClass}">${pred.sentiment}</span></td>
+                    </tr>
+                `;
+            },
+            
+            updateTableRow(row, pred) {
+                const sentimentClass = pred.sentiment.toLowerCase();
+                const moveClass = pred.percentageMove >= 0 ? 'positive' : 'negative';
+                
+                // Only update if data has changed
+                const currentTimestamp = row.getAttribute('data-timestamp');
+                if (currentTimestamp === pred.timestamp) {
+                    // Check if values need updating
+                    const cells = row.querySelectorAll('td');
+                    
+                    // Update price values if changed
+                    const currentPriceEl = cells[1]?.querySelector('.price-value');
+                    if (currentPriceEl && currentPriceEl.textContent !== utils.formatCurrency(pred.currentPrice)) {
+                        currentPriceEl.textContent = utils.formatCurrency(pred.currentPrice);
+                    }
+                    
+                    const targetPriceEl = cells[2]?.querySelector('.price-value');
+                    if (targetPriceEl && targetPriceEl.textContent !== utils.formatCurrency(pred.predictedPrice)) {
+                        targetPriceEl.textContent = utils.formatCurrency(pred.predictedPrice);
+                    }
+                    
+                    // Update move value
+                    const moveEl = cells[3]?.querySelector('.move-value');
+                    if (moveEl) {
+                        moveEl.textContent = utils.formatPercentage(pred.percentageMove);
+                        moveEl.className = `move-value ${moveClass}`;
+                    }
+                    
+                    // Update confidence
+                    const confidenceFill = cells[4]?.querySelector('.confidence-fill');
+                    const confidenceText = cells[4]?.querySelector('.confidence-text');
+                    if (confidenceFill) {
+                        confidenceFill.style.width = `${pred.confidenceScore}%`;
+                    }
+                    if (confidenceText) {
+                        confidenceText.textContent = `${pred.confidenceScore.toFixed(1)}%`;
+                    }
+                    
+                    // Update sentiment
+                    const sentimentBadge = cells[5]?.querySelector('.sentiment-badge');
+                    if (sentimentBadge) {
+                        sentimentBadge.textContent = pred.sentiment;
+                        sentimentBadge.className = `sentiment-badge ${sentimentClass}`;
+                    }
+                    
+                    // Update row class
+                    row.className = sentimentClass;
+                    row.setAttribute('data-timestamp', pred.timestamp);
+                }
+            },
+            
+            renderCharts() {
+                this.renderLineChart();
+                this.renderBarChart();
+            },
+            
+            renderLineChart() {
+                const ctx = document.getElementById('lineChart');
+                if (!ctx) return;
+                
+                const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+                const gridColor = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
+                const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+                
+                // Reverse to show oldest to newest (left to right)
+                const labels = state.predictions.map(p => utils.formatTimestamp(p.timestamp)).reverse();
+                const currentPrices = state.predictions.map(p => p.currentPrice).reverse();
+                const targetPrices = state.predictions.map(p => p.predictedPrice).reverse();
+                
+                // Update existing chart instead of destroying
+                if (state.charts.line) {
+                    state.charts.line.data.labels = labels;
+                    state.charts.line.data.datasets[0].data = currentPrices;
+                    state.charts.line.data.datasets[1].data = targetPrices;
+                    
+                    // Update theme-dependent colors
+                    state.charts.line.options.plugins.legend.labels.color = textColor;
+                    state.charts.line.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
+                    state.charts.line.options.plugins.tooltip.titleColor = theme === 'light' ? '#0f172a' : '#ffffff';
+                    state.charts.line.options.plugins.tooltip.bodyColor = textColor;
+                    state.charts.line.options.scales.x.grid.color = gridColor;
+                    state.charts.line.options.scales.x.ticks.color = textColor;
+                    state.charts.line.options.scales.y.grid.color = gridColor;
+                    state.charts.line.options.scales.y.ticks.color = textColor;
+                    
+                    state.charts.line.data.datasets[0].pointBorderColor = theme === 'light' ? '#ffffff' : '#0a0e27';
+                    state.charts.line.data.datasets[1].pointBorderColor = theme === 'light' ? '#ffffff' : '#0a0e27';
+                    
+                    state.charts.line.update('none'); // Use 'none' mode for instant update without animation
+                    return;
+                }
+                
+                // Create chart for first time
+                state.charts.line = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Current Price',
+                                data: currentPrices,
+                                borderColor: '#00d4ff',
+                                backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                borderWidth: 3,
+                                tension: 0.4,
+                                fill: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#00d4ff',
+                                pointBorderColor: theme === 'light' ? '#ffffff' : '#0a0e27',
+                                pointBorderWidth: 2
+                            },
+                            {
+                                label: 'Target Price',
+                                data: targetPrices,
+                                borderColor: '#00ff9f',
+                                backgroundColor: 'rgba(0, 255, 159, 0.1)',
+                                borderWidth: 3,
+                                tension: 0.4,
+                                fill: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#00ff9f',
+                                pointBorderColor: theme === 'light' ? '#ffffff' : '#0a0e27',
+                                pointBorderWidth: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 0 // Disable animation on updates to prevent flickering
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    color: textColor,
+                                    font: {
+                                        family: 'IBM Plex Mono',
+                                        size: 12,
+                                        weight: '600'
+                                    },
+                                    padding: 20,
+                                    usePointStyle: true
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: theme === 'light' ? '#ffffff' : '#1a2142',
+                                titleColor: theme === 'light' ? '#0f172a' : '#ffffff',
+                                bodyColor: textColor,
+                                borderColor: '#00ff9f',
+                                borderWidth: 1,
+                                padding: 12,
+                                displayColors: true,
+                                titleFont: {
+                                    family: 'IBM Plex Mono',
+                                    size: 13,
+                                    weight: '600'
+                                },
+                                bodyFont: {
+                                    family: 'IBM Plex Mono',
+                                    size: 12
+                                },
+                                callbacks: {
+                                    label: function(context) {
+                                        return ` ${context.dataset.label}: ₹${context.parsed.y.toLocaleString('en-IN')}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    color: gridColor,
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: textColor,
+                                    font: {
+                                        family: 'IBM Plex Mono',
+                                        size: 10
+                                    },
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    color: gridColor,
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: textColor,
+                                    font: {
+                                        family: 'IBM Plex Mono',
+                                        size: 11
+                                    },
+                                    callback: function(value) {
+                                        return '₹' + value.toLocaleString('en-IN');
+                                    }
+                                }
+                            }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        }
+                    }
+                });
+            },
+            
+            renderBarChart() {
+                const ctx = document.getElementById('barChart');
+                if (!ctx) return;
+                
+                const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+                const gridColor = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
+                const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+                
+                const labels = state.predictions.map(p => utils.formatTimestamp(p.timestamp)).reverse();
+                const moves = state.predictions.map(p => p.percentageMove).reverse();
+                const colors = moves.map(m => m >= 0 ? 'rgba(0, 255, 159, 0.8)' : 'rgba(255, 51, 102, 0.8)');
+                
+                // Update existing chart instead of destroying
+                if (state.charts.bar) {
+                    state.charts.bar.data.labels = labels;
+                    state.charts.bar.data.datasets[0].data = moves;
+                    state.charts.bar.data.datasets[0].backgroundColor = colors;
+                    state.charts.bar.data.datasets[0].borderColor = moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366');
+                    
+                    // Update theme-dependent colors
+                    state.charts.bar.options.plugins.legend.labels.color = textColor;
+                    state.charts.bar.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
+                    state.charts.bar.options.plugins.tooltip.titleColor = theme === 'light' ? '#0f172a' : '#ffffff';
+                    state.charts.bar.options.plugins.tooltip.bodyColor = textColor;
+                    state.charts.bar.options.scales.x.grid.color = gridColor;
+                    state.charts.bar.options.scales.x.ticks.color = textColor;
+                    state.charts.bar.options.scales.y.grid.color = gridColor;
+                    state.charts.bar.options.scales.y.ticks.color = textColor;
+                    
+                    state.charts.bar.update('none'); // Use 'none' mode for instant update
+                    return;
+                }
+                
+                // Create chart for first time
+                state.charts.bar = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Percentage Move',
+                            data: moves,
+                            backgroundColor: colors,
+                            borderColor: moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366'),
+                            borderWidth: 2,
+                            borderRadius: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 0 // Disable animation on updates
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    color: textColor,
+                                    font: {
+                                        family: 'IBM Plex Mono',
+                                        size: 12,
+                                        weight: '600'
+                                    },
+                                    padding: 20
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: theme === 'light' ? '#ffffff' : '#1a2142',
+                                titleColor: theme === 'light' ? '#0f172a' : '#ffffff',
+                                bodyColor: textColor,
+                                borderColor: '#00ff9f',
+                                borderWidth: 1,
+                                padding: 12,
+                                titleFont: {
+                                    family: 'IBM Plex Mono',
+                                    size: 13,
+                                    weight: '600'
+                                },
+                                bodyFont: {
+                                    family: 'IBM Plex Mono',
+                                    size: 12
+                                },
+                                callbacks: {
+                                    label: function(context) {
+                                        const sign = context.parsed.y >= 0 ? '+' : '';
+                                        return ` Move: ${sign}${context.parsed.y.toFixed(2)}%`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    color: gridColor,
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: textColor,
+                                    font: {
+                                        family: 'IBM Plex Mono',
+                                        size: 10
+                                    },
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    color: gridColor,
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: textColor,
+                                    font: {
+                                        family: 'IBM Plex Mono',
+                                        size: 11
+                                    },
+                                    callback: function(value) {
+                                        return value + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            },
+            
+            switchView(view) {
+                state.currentView = view;
+                
+                // Update buttons
+                document.querySelectorAll('.view-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.view === view);
+                });
+                
+                // Update containers
+                document.querySelectorAll('.chart-container').forEach(container => {
+                    container.classList.remove('active');
+                });
+                
+                document.getElementById(`${view}View`).classList.add('active');
+            }
+        };
+
+        // ==========================================
+        // APP CONTROLLER
+        // ==========================================
+        const app = {
+            async init() {
+                console.log('🚀 Initializing Nifty 50 Dashboard...');
+                
+                // Initialize theme
+                themeManager.init();
+                
+                // Load demo data initially
+                state.predictions = DEMO_DATA.predictionList;
+                this.updateUI();
+                
+                // Setup event listeners
+                this.setupEventListeners();
+                
+                // Start intervals
+                setInterval(() => ui.updateLiveTime(), 1000);
+                setInterval(() => this.refreshData(), CONFIG.REFRESH_INTERVAL);
+                
+                // Fetch real data
+                await this.refreshData();
+                
+                console.log('✅ Dashboard ready');
+            },
+            
+            setupEventListeners() {
+                document.querySelectorAll('.view-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        ui.switchView(btn.dataset.view);
+                    });
+                });
+            },
+            
+            async refreshData() {
+                try {
+                    const predictions = await dataService.fetchPredictions();
+                    state.predictions = predictions;
+                    this.updateUI();
+                } catch (error) {
+                    console.error('Error refreshing data:', error);
+                }
+            },
+            
+            updateUI() {
+                ui.updateLiveTime();
+                ui.renderSummary();
+                ui.renderTable();
+                ui.renderCharts();
+            }
+        };
+
+        // ==========================================
+        // INITIALIZE
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+        });
+    </script>
+</body>
+</html>

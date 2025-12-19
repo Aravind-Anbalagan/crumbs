@@ -19,8 +19,10 @@ import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Prediction;
+import com.crumbs.trade.entity.PredictionHistory;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.IndexesRepo;
+import com.crumbs.trade.repo.PredictionHistoryRepo;
 import com.crumbs.trade.repo.PredictionRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 
@@ -58,6 +60,8 @@ public class PredictionService {
     
     @Autowired
     private AngelOne angelOne;
+    
+    @Autowired PredictionHistoryRepo predictionHistoryRepo;
 
 
     // ========================================
@@ -81,7 +85,8 @@ public class PredictionService {
         
         PredictionData data = preparePredictionData();
         AdvancedPredictionResult result = calculateAdvancedPrediction(data);
-        
+        List<PredictionHistory> predictionList = new ArrayList<>();
+        result.getPredictionList().addAll(predictionHistoryRepo.findAll());
         logger.info("Advanced prediction complete: Current={}, Predicted={}, Confidence={}, Sentiment={}", 
             result.currentPrice, result.predictedPrice, result.confidenceScore, result.sentiment);
         
@@ -528,8 +533,11 @@ public class PredictionService {
     }
 
     public static class AdvancedPredictionResult extends PredictionResult {
+
         public final double confidenceScore;
         public final String sentiment;
+
+        private final List<PredictionHistory> predictionList = new ArrayList<>();
 
         public AdvancedPredictionResult(
                 BigDecimal currentPrice,
@@ -540,9 +548,15 @@ public class PredictionService {
                 int totalStocks,
                 double confidenceScore,
                 String sentiment) {
+
             super(currentPrice, predictedPrice, difference, percentageMove, validStocks, totalStocks);
             this.confidenceScore = confidenceScore;
             this.sentiment = sentiment;
         }
+
+        public List<PredictionHistory> getPredictionList() {
+            return predictionList;
+        }
     }
+
 }

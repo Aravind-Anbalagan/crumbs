@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.crumbs.trade.entity.PredictionHistory;
 import com.crumbs.trade.service.PredictionService;
 import com.crumbs.trade.service.PredictionService.PredictionResult;
 import com.crumbs.trade.service.PredictionService.AdvancedPredictionResult;
@@ -48,7 +49,7 @@ public class PredictionController {
         response.setConfidenceScore(result.confidenceScore);
         response.setSentiment(result.sentiment);
         response.setTimestamp(new Date());
-        
+        response.setPredictionList(result.getPredictionList());
         // Add interpretation
         response.setInterpretation(generateInterpretation(result));
         
@@ -105,5 +106,7 @@ public class PredictionController {
         private double confidenceScore;
         private String sentiment;
         private String interpretation;
+        private List<PredictionHistory> predictionList = new ArrayList<>();
     }
+    
 }
