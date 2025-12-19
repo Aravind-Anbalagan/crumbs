@@ -243,6 +243,7 @@ public class StockController {
 
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {
+			dto.addHeader("EXECUTED_AT", formatTimestamp(ind.getExecutedDate().toString()), true);
 			dto.addHeader("UPDATED_AT", formatTimestamp(ind.getModifiedDate().toString()), true);
 			dto.addHeader("OPTION", ind.getOptions() != null ? ind.getOptions() : "N", true);
 			dto.addHeader("TYPE", ind.getTradetype(), true);

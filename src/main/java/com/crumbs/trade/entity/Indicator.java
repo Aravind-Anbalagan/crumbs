@@ -63,6 +63,8 @@ public class Indicator {
 	@LastModifiedDate
 	@Column(name = "modifiedDate")
 	LocalDateTime modifiedDate;
+	@Column(name = "executedDate")
+	LocalDateTime executedDate;
 	@Column(name = "last3daycandlehigh")
 	String last3daycandlehigh;
 	@Column(name = "first3FiveMinsCandle")

@@ -1128,6 +1128,7 @@ public class TaskService {
 
 		    indicator.setIntraday("UP");
 		    indicator.setTradetype("HOURLY");
+		    indicator.setExecutedDate(getCurrentDate());
 		    changed = true;
 		}
 
@@ -1136,6 +1137,7 @@ public class TaskService {
 
 		    indicator.setIntraday("DOWN");
 		    indicator.setTradetype("HOURLY");
+		    indicator.setExecutedDate(getCurrentDate());
 		    changed = true;
 		}
 
@@ -1145,6 +1147,11 @@ public class TaskService {
 		}
 	}
 
+	public LocalDateTime getCurrentDate() {
+		LocalDateTime istNow = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+		DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+		return istNow;
+	}
 
 	public BigDecimal convertStringToList(String input, String type) {
 		// Input string
@@ -2608,6 +2615,7 @@ public class TaskService {
 	    if ((isBullish && isUpSignal(stock)) || (!isBullish && isDownSignal(stock))) {
 	        stock.setIntraday(isBullish ? "UP" : "DOWN");
 	        stock.setTradetype("DAILY");
+	        stock.setExecutedDate(getCurrentDate());
 	        indicatorRepo.save(stock);
 	        resultService.saveNiftyResult(stock);
      
