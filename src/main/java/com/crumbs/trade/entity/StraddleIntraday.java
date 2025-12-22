@@ -60,6 +60,12 @@ public class StraddleIntraday {
     @Column(precision = 20, scale = 4)
     private BigDecimal combinedVwap;
 
+    @Column(precision = 20, scale = 4)
+    private BigDecimal ceVolume;
+
+    @Column(precision = 20, scale = 4)
+    private BigDecimal peVolume;
+    
     // --- CE ---
     @Column(precision = 20, scale = 4)
     private BigDecimal ceIntrinsic;

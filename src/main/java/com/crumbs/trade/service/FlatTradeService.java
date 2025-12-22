@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.controller.StrangleController;
 import com.crumbs.trade.dto.APIResponse;
+import com.crumbs.trade.dto.FlatTradeLtpResponse;
 import com.crumbs.trade.dto.JData;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.utility.Utility;
@@ -18,6 +19,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -26,6 +28,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -301,4 +305,41 @@ public class FlatTradeService {
         Instant now = Instant.now();
         return String.format("%06d", totp.generateOneTimePassword(secretKey, now));
     }
+    
+    public BigDecimal getCurrentPrice(String exch, String token) {
+
+        try {
+            String jKey = getTokenForFlatTrade();
+            if (jKey == null) {
+                logger.error("Flattrade token is null");
+                return null;
+            }
+
+            Map<String, String> jData = new HashMap<>();
+            jData.put("uid", USER_ID);
+            jData.put("exch", exch);
+            jData.put("token", token);
+
+            String jDataJson = objectMapper.writeValueAsString(jData);
+            String body = "jData=" + jDataJson + "&jKey=" + jKey;
+
+            FlatTradeLtpResponse response = webClient.post()
+                    .uri(BASE_URL + "/GetLTP")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(FlatTradeLtpResponse.class)
+                    .block();
+
+            if (response != null && "Ok".equalsIgnoreCase(response.getStat())) {
+                return new BigDecimal(response.getLtp());
+            }
+
+        } catch (Exception e) {
+            logger.error("Failed to fetch LTP from Flattrade", e);
+        }
+
+        return null;
+    }
+
 }

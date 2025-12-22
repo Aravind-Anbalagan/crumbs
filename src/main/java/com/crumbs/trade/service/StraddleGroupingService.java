@@ -25,6 +25,7 @@ public class StraddleGroupingService {
 	@Autowired StrategyRepo strategyRepo;
 	@Autowired StraddleIntradayService straddleIntradayService;
     @Autowired AngelOne angelOne;
+    @Autowired AngelOneService angelOneService;
 
 	public List<NameExpiryStrikeGroupedDto> getGrouped() {
 
@@ -45,13 +46,21 @@ public class StraddleGroupingService {
         }
 
         List<NameExpiryStrikeGroupedDto> result = new ArrayList<>();
-
+        Strategy strategy = strategyRepo.findByName("NIFTY_INDEX");
+        SmartConnect smartconnect = angelOne.signIn();
+        BigDecimal spotPrice = angelOneService.getcurrentPrice(
+                smartconnect,
+                strategy.getExchange(),
+                strategy.getTradingsymbol(),
+                strategy.getToken()
+        );
         for (var entry : grouped.entrySet()) {
             NameExpiryStrikeGroupedDto dto = new NameExpiryStrikeGroupedDto();
             dto.setName(entry.getKey());
             //Get Index Details
-    		Strategy strategy = strategyRepo.findByName(dto.getName());
-    		BigDecimal atmStrike = straddleIntradayService.getATMStrike(dto.getName(),strategy);
+    		
+    		
+    		BigDecimal atmStrike = straddleIntradayService.getATMStrike(dto.getName(),strategy,spotPrice);
             // convert Set<BigDecimal> → List<BigDecimal>
             Map<String, List<BigDecimal>> expToList = new LinkedHashMap<>();
             entry.getValue().forEach((exp, set) -> expToList.put(exp, new ArrayList<>(set)));

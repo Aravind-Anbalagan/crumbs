@@ -31,4 +31,20 @@ public interface LevelRepository extends JpaRepository<Level, Long> {
             String symbol,
             String timeframe
     );
+    
+    /**
+     * Find all resistance levels (SEQ < 0) for symbol and timeframe
+     */
+    List<Level> findBySymbolAndTimeframeAndSeqLessThan(
+            String symbol, 
+            String timeframe, 
+            Integer seq);
+
+    /**
+     * Find all support levels (SEQ > 0) for symbol and timeframe
+     */
+    List<Level> findBySymbolAndTimeframeAndSeqGreaterThan(
+            String symbol, 
+            String timeframe, 
+            Integer seq);
 }

@@ -26,6 +26,7 @@ public class StraddlePremiumDto {
 
     private BigDecimal ceVwap;
     private BigDecimal peVwap;
+    private BigDecimal combinedVwap;
 
     private BigDecimal intrinsicValue;   // CallIntrinsic + PutIntrinsic
     private BigDecimal extrinsicValue;   // CE Extrinsic + PE Extrinsic

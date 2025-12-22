@@ -33,5 +33,11 @@ public interface PsarIndexRepo extends JpaRepository<PSARIndex, Long>{
 	 @Transactional
 	 @Query("DELETE FROM PSARIndex p WHERE p.name = :name AND p.timeframe = :timeframe")
 	 void deleteByNameAndTimeframe(@Param("name") String name, @Param("timeframe") String timeframe);
-
+	   
+	 // ✅ Thread-safe fetch
+	    List<PSARIndex> findByNameAndTimeframeOrderByIdDesc(
+	        String name, 
+	        String timeframe, 
+	        Pageable pageable
+	    );
 }

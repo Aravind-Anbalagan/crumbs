@@ -394,9 +394,69 @@
             }
         }
 
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
         #lineChart, #barChart {
             width: 100% !important;
             height: 100% !important;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #lineChart.loaded, #barChart.loaded {
+            opacity: 1;
+        }
+
+        /* Chart Loading State */
+        .chart-loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-card);
+            z-index: 10;
+            border-radius: 12px;
+            transition: opacity 0.3s ease;
+        }
+
+        .chart-loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .chart-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid var(--border-color);
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .chart-loading-text {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .chart-loading-subtext {
+            color: var(--text-muted);
+            font-size: 0.8rem;
         }
 
         /* Table Styles */
@@ -542,35 +602,6 @@
             margin: 0 auto 20px;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Smooth Updates - Prevent Flickering */
-        .updating {
-            pointer-events: none;
-        }
-
-        .fade-update {
-            animation: fadeUpdate 0.4s ease-in-out;
-        }
-
-        @keyframes fadeUpdate {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
-        }
-
-        /* Prevent table row flickering */
-        .data-table tbody tr {
-            transition: background-color 0.2s ease, transform 0.2s ease;
-        }
-
-        /* Smooth chart transitions */
-        canvas {
-            transition: opacity 0.3s ease;
-        }
-
         /* Responsive */
         @media (max-width: 768px) {
             .container {
@@ -671,14 +702,24 @@
 
             <!-- Line Chart -->
             <div class="chart-container active" id="lineView">
-                <div style="flex: 1; position: relative; min-height: 0;">
+                <div class="chart-wrapper">
+                    <div class="chart-loading" id="lineLoading">
+                        <div class="chart-spinner"></div>
+                        <div class="chart-loading-text">Loading Line Chart</div>
+                        <div class="chart-loading-subtext">Fetching market predictions...</div>
+                    </div>
                     <canvas id="lineChart"></canvas>
                 </div>
             </div>
 
             <!-- Bar Chart -->
             <div class="chart-container" id="barView">
-                <div style="flex: 1; position: relative; min-height: 0;">
+                <div class="chart-wrapper">
+                    <div class="chart-loading" id="barLoading">
+                        <div class="chart-spinner"></div>
+                        <div class="chart-loading-text">Loading Bar Chart</div>
+                        <div class="chart-loading-subtext">Analyzing percentage moves...</div>
+                    </div>
                     <canvas id="barChart"></canvas>
                 </div>
             </div>
@@ -797,12 +838,12 @@
         const themeManager = {
             init() {
                 const savedTheme = localStorage.getItem('nifty-theme') || 'dark';
-                this.setTheme(savedTheme, false); // Don't update charts on init
+                this.setTheme(savedTheme, false);
                 
                 document.getElementById('themeToggle').addEventListener('click', () => {
                     const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
                     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-                    this.setTheme(newTheme, true); // Update charts on theme change
+                    this.setTheme(newTheme, true);
                 });
             },
             
@@ -821,9 +862,7 @@
                     text.textContent = 'Dark';
                 }
                 
-                // Only recreate charts when theme changes, not on data updates
                 if (updateCharts && (state.charts.line || state.charts.bar)) {
-                    // Destroy and recreate for theme change
                     if (state.charts.line) {
                         state.charts.line.destroy();
                         state.charts.line = null;
@@ -846,6 +885,11 @@
             charts: {
                 line: null,
                 bar: null
+            },
+            isLoading: true,
+            chartsLoaded: {
+                line: false,
+                bar: false
             }
         };
 
@@ -916,6 +960,29 @@
         // UI RENDERING
         // ==========================================
         const ui = {
+            showChartLoader(chartType) {
+                const loaderId = `${chartType}Loading`;
+                const loader = document.getElementById(loaderId);
+                if (loader) {
+                    loader.classList.remove('hidden');
+                }
+            },
+            
+            hideChartLoader(chartType) {
+                const loaderId = `${chartType}Loading`;
+                const loader = document.getElementById(loaderId);
+                const canvas = document.getElementById(`${chartType}Chart`);
+                
+                if (loader) {
+                    loader.classList.add('hidden');
+                }
+                if (canvas) {
+                    canvas.classList.add('loaded');
+                }
+                
+                state.chartsLoaded[chartType] = true;
+            },
+            
             updateLiveTime() {
                 const now = new Date();
                 document.getElementById('liveTime').textContent = 
@@ -939,14 +1006,11 @@
                 const sentiment = latest.sentiment.toLowerCase();
                 const sentimentClass = latest.percentageMove >= 0 ? 'bullish' : 'bearish';
                 
-                // Check if we need to create the cards or just update them
                 const existingCards = document.querySelectorAll('.summary-card');
                 
                 if (existingCards.length === 6) {
-                    // Update existing cards smoothly
                     this.updateSummaryCards(latest, stats, sentimentClass);
                 } else {
-                    // Create cards for the first time
                     document.getElementById('summaryGrid').innerHTML = `
                         <div class="summary-card ${sentimentClass}" data-card="current-price">
                             <div class="card-label">Current Price</div>
@@ -1001,7 +1065,6 @@
             },
             
             updateSummaryCards(latest, stats, sentimentClass) {
-                // Smoothly update card values without recreating DOM
                 const cards = {
                     'current-price': {
                         value: utils.formatCurrency(latest.currentPrice),
@@ -1043,12 +1106,9 @@
                     const subtitleEl = card.querySelector('.card-subtitle');
                     
                     if (valueEl) {
-                        // Update value
                         if (valueEl.textContent !== String(cards[cardKey].value)) {
                             valueEl.textContent = cards[cardKey].value;
                         }
-                        
-                        // Update sentiment class
                         valueEl.className = `card-value ${cards[cardKey].sentiment}`;
                     }
                     
@@ -1056,7 +1116,6 @@
                         subtitleEl.innerHTML = cards[cardKey].subtitle;
                     }
                     
-                    // Update card border class
                     card.className = `summary-card ${cards[cardKey].sentiment === 'bullish' || cards[cardKey].sentiment === 'bearish' ? cards[cardKey].sentiment : ''}`;
                     if (cardKey === 'current-price' || cardKey === 'target-price' || cardKey === 'market-signal') {
                         if (sentimentClass) {
@@ -1080,20 +1139,16 @@
                     return;
                 }
                 
-                // Sort predictions by timestamp descending (latest first)
                 const predictionsToShow = [...state.predictions].sort((a, b) => {
                     return new Date(b.timestamp) - new Date(a.timestamp);
                 });
                 
-                // Check if we can update existing rows instead of recreating
                 const existingRows = tbody.querySelectorAll('tr');
                 const hasLoadingState = existingRows.length === 1 && existingRows[0].querySelector('.loading-state');
                 
                 if (hasLoadingState || existingRows.length !== predictionsToShow.length) {
-                    // Full re-render needed - show latest first
                     tbody.innerHTML = predictionsToShow.map(pred => this.createTableRow(pred)).join('');
                 } else {
-                    // Update existing rows to prevent flickering
                     predictionsToShow.forEach((pred, index) => {
                         const row = existingRows[index];
                         if (row) {
@@ -1130,13 +1185,10 @@
                 const sentimentClass = pred.sentiment.toLowerCase();
                 const moveClass = pred.percentageMove >= 0 ? 'positive' : 'negative';
                 
-                // Only update if data has changed
                 const currentTimestamp = row.getAttribute('data-timestamp');
                 if (currentTimestamp === pred.timestamp) {
-                    // Check if values need updating
                     const cells = row.querySelectorAll('td');
                     
-                    // Update price values if changed
                     const currentPriceEl = cells[1]?.querySelector('.price-value');
                     if (currentPriceEl && currentPriceEl.textContent !== utils.formatCurrency(pred.currentPrice)) {
                         currentPriceEl.textContent = utils.formatCurrency(pred.currentPrice);
@@ -1147,14 +1199,12 @@
                         targetPriceEl.textContent = utils.formatCurrency(pred.predictedPrice);
                     }
                     
-                    // Update move value
                     const moveEl = cells[3]?.querySelector('.move-value');
                     if (moveEl) {
                         moveEl.textContent = utils.formatPercentage(pred.percentageMove);
                         moveEl.className = `move-value ${moveClass}`;
                     }
                     
-                    // Update confidence
                     const confidenceFill = cells[4]?.querySelector('.confidence-fill');
                     const confidenceText = cells[4]?.querySelector('.confidence-text');
                     if (confidenceFill) {
@@ -1164,20 +1214,20 @@
                         confidenceText.textContent = `${pred.confidenceScore.toFixed(1)}%`;
                     }
                     
-                    // Update sentiment
                     const sentimentBadge = cells[5]?.querySelector('.sentiment-badge');
                     if (sentimentBadge) {
                         sentimentBadge.textContent = pred.sentiment;
                         sentimentBadge.className = `sentiment-badge ${sentimentClass}`;
                     }
                     
-                    // Update row class
                     row.className = sentimentClass;
                     row.setAttribute('data-timestamp', pred.timestamp);
                 }
             },
             
             renderCharts() {
+                if (state.predictions.length === 0) return;
+                
                 this.renderLineChart();
                 this.renderBarChart();
             },
@@ -1186,22 +1236,24 @@
                 const ctx = document.getElementById('lineChart');
                 if (!ctx) return;
                 
+                // Show loader if chart doesn't exist yet
+                if (!state.charts.line) {
+                    this.showChartLoader('line');
+                }
+                
                 const theme = document.documentElement.getAttribute('data-theme') || 'dark';
                 const gridColor = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
                 const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
                 
-                // Reverse to show oldest to newest (left to right)
                 const labels = state.predictions.map(p => utils.formatTimestamp(p.timestamp)).reverse();
                 const currentPrices = state.predictions.map(p => p.currentPrice).reverse();
                 const targetPrices = state.predictions.map(p => p.predictedPrice).reverse();
                 
-                // Update existing chart instead of destroying
                 if (state.charts.line) {
                     state.charts.line.data.labels = labels;
                     state.charts.line.data.datasets[0].data = currentPrices;
                     state.charts.line.data.datasets[1].data = targetPrices;
                     
-                    // Update theme-dependent colors
                     state.charts.line.options.plugins.legend.labels.color = textColor;
                     state.charts.line.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
                     state.charts.line.options.plugins.tooltip.titleColor = theme === 'light' ? '#0f172a' : '#ffffff';
@@ -1214,11 +1266,10 @@
                     state.charts.line.data.datasets[0].pointBorderColor = theme === 'light' ? '#ffffff' : '#0a0e27';
                     state.charts.line.data.datasets[1].pointBorderColor = theme === 'light' ? '#ffffff' : '#0a0e27';
                     
-                    state.charts.line.update('none'); // Use 'none' mode for instant update without animation
+                    state.charts.line.update('none');
                     return;
                 }
                 
-                // Create chart for first time
                 state.charts.line = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -1258,7 +1309,10 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: {
-                            duration: 0 // Disable animation on updates to prevent flickering
+                            duration: 0,
+                            onComplete: () => {
+                                this.hideChartLoader('line');
+                            }
                         },
                         plugins: {
                             legend: {
@@ -1338,11 +1392,19 @@
                         }
                     }
                 });
+                
+                // Hide loader after chart is created
+                setTimeout(() => this.hideChartLoader('line'), 300);
             },
             
             renderBarChart() {
                 const ctx = document.getElementById('barChart');
                 if (!ctx) return;
+                
+                // Show loader if chart doesn't exist yet
+                if (!state.charts.bar) {
+                    this.showChartLoader('bar');
+                }
                 
                 const theme = document.documentElement.getAttribute('data-theme') || 'dark';
                 const gridColor = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
@@ -1352,14 +1414,12 @@
                 const moves = state.predictions.map(p => p.percentageMove).reverse();
                 const colors = moves.map(m => m >= 0 ? 'rgba(0, 255, 159, 0.8)' : 'rgba(255, 51, 102, 0.8)');
                 
-                // Update existing chart instead of destroying
                 if (state.charts.bar) {
                     state.charts.bar.data.labels = labels;
                     state.charts.bar.data.datasets[0].data = moves;
                     state.charts.bar.data.datasets[0].backgroundColor = colors;
                     state.charts.bar.data.datasets[0].borderColor = moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366');
                     
-                    // Update theme-dependent colors
                     state.charts.bar.options.plugins.legend.labels.color = textColor;
                     state.charts.bar.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
                     state.charts.bar.options.plugins.tooltip.titleColor = theme === 'light' ? '#0f172a' : '#ffffff';
@@ -1369,11 +1429,10 @@
                     state.charts.bar.options.scales.y.grid.color = gridColor;
                     state.charts.bar.options.scales.y.ticks.color = textColor;
                     
-                    state.charts.bar.update('none'); // Use 'none' mode for instant update
+                    state.charts.bar.update('none');
                     return;
                 }
                 
-                // Create chart for first time
                 state.charts.bar = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -1391,7 +1450,10 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: {
-                            duration: 0 // Disable animation on updates
+                            duration: 0,
+                            onComplete: () => {
+                                this.hideChartLoader('bar');
+                            }
                         },
                         plugins: {
                             legend: {
@@ -1466,17 +1528,18 @@
                         }
                     }
                 });
+                
+                // Hide loader after chart is created
+                setTimeout(() => this.hideChartLoader('bar'), 300);
             },
             
             switchView(view) {
                 state.currentView = view;
                 
-                // Update buttons
                 document.querySelectorAll('.view-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.view === view);
                 });
                 
-                // Update containers
                 document.querySelectorAll('.chart-container').forEach(container => {
                     container.classList.remove('active');
                 });
@@ -1492,22 +1555,18 @@
             async init() {
                 console.log('🚀 Initializing Nifty 50 Dashboard...');
                 
-                // Initialize theme
                 themeManager.init();
-                
-                // Load demo data initially
-                state.predictions = DEMO_DATA.predictionList;
-                this.updateUI();
-                
-                // Setup event listeners
                 this.setupEventListeners();
                 
-                // Start intervals
+                // Start time update interval
                 setInterval(() => ui.updateLiveTime(), 1000);
-                setInterval(() => this.refreshData(), CONFIG.REFRESH_INTERVAL);
+                ui.updateLiveTime();
                 
-                // Fetch real data
+                // Fetch and display data
                 await this.refreshData();
+                
+                // Start auto-refresh interval
+                setInterval(() => this.refreshData(), CONFIG.REFRESH_INTERVAL);
                 
                 console.log('✅ Dashboard ready');
             },
@@ -1522,11 +1581,14 @@
             
             async refreshData() {
                 try {
+                    state.isLoading = true;
                     const predictions = await dataService.fetchPredictions();
                     state.predictions = predictions;
+                    state.isLoading = false;
                     this.updateUI();
                 } catch (error) {
                     console.error('Error refreshing data:', error);
+                    state.isLoading = false;
                 }
             },
             

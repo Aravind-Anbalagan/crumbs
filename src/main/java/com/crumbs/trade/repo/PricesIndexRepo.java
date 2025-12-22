@@ -43,4 +43,6 @@ public interface PricesIndexRepo extends JpaRepository<PricesIndex, Long> {
 		@Modifying
 		@Query("DELETE FROM PricesIndex p WHERE p.name = :name")
 		void deleteByName(@Param("name") String name);
+		
+		List<PricesIndex> findByNameAndTimeframeOrderByIdDesc(String name, String timeframe, Pageable pageable);
 }

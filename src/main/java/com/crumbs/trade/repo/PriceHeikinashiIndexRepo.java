@@ -33,5 +33,11 @@ public interface PriceHeikinashiIndexRepo extends JpaRepository<PricesHeikinAshi
 	 @Transactional
 	 @Query("DELETE FROM PricesHeikinAshiIndex p WHERE p.name = :name AND p.timeframe = :timeframe")
 	 void deleteByNameAndTimeframe(@Param("name") String name, @Param("timeframe") String timeframe);
-
+	 
+	 // ✅ Thread-safe fetch
+	    List<PricesHeikinAshiIndex> findByNameAndTimeframeOrderByIdDesc(
+	        String name, 
+	        String timeframe, 
+	        Pageable pageable
+	    );
 }

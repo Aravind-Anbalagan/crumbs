@@ -172,7 +172,7 @@ public class AngelOneService {
 		signalsRepo.deleteAll();
 		cprRepo.deleteAll();
 		straddleIntradayRepo.deleteAll();
-		tradeExecutionRepo.deleteAll();
+		//tradeExecutionRepo.deleteAll();
 		predictionHistoryRepo.deleteAll();
 	}
 	/*

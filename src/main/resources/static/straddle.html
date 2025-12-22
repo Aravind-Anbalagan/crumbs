@@ -218,6 +218,10 @@
                     <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#86efac"></span> CE Open</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#fecaca"></span> PE Open</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#d6a65a"></span> Combined Open</div>
+                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
+                    <div class="checkout-item"><input type="checkbox" id="ce-vwap-check"> <span class="swatch" style="background:#a78bfa"></span> CE VWAP</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-vwap-check"> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-vwap-check"> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
                 </div>
             </div>
 
@@ -248,6 +252,9 @@
             <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
             <div class="item" data-line="peOpen"><span class="swatch" style="background:#fecaca"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div>
             <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#d6a65a"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div>
+            <div class="item" data-line="ceVwap"><span class="swatch" style="background:#a78bfa"></span><span class="label">CE VWAP:</span><strong id="val-ce-vwap">-</strong></div>
+            <div class="item" data-line="peVwap"><span class="swatch" style="background:#fb923c"></span><span class="label">PE VWAP:</span><strong id="val-pe-vwap">-</strong></div>
+            <div class="item" data-line="combinedVwap"><span class="swatch" style="background:#06b6d4"></span><span class="label">Comb VWAP:</span><strong id="val-combined-vwap">-</strong></div>
         </div>
     </div>
 
@@ -270,6 +277,7 @@
         spotSeries: [], ceSeries: [], peSeries: [], combinedPremiumSeries: [],
         extrinsicSeries: [], avgPriceSeries: [],
         ceExtrinsicSeries: [], peExtrinsicSeries: [],
+        ceVwapSeries: [], peVwapSeries: [], combinedVwapSeries: [],
         ceOpen: null, peOpen: null, combinedOpen: null
     };
 
@@ -291,7 +299,10 @@
         peExtrinsic: false,
         ceOpen: true,
         peOpen: true,
-        combinedOpen: true
+        combinedOpen: true,
+        ceVwap: false,
+        peVwap: false,
+        combinedVwap: false
     };
 
     function saveLineVisibility() {
@@ -328,7 +339,10 @@
             peExtrinsic: 'pe-extrinsic-check',
             ceOpen: 'ce-open-check',
             peOpen: 'pe-open-check',
-            combinedOpen: 'combined-open-check'
+            combinedOpen: 'combined-open-check',
+            ceVwap: 'ce-vwap-check',
+            peVwap: 'pe-vwap-check',
+            combinedVwap: 'combined-vwap-check'
         };
         Object.entries(map).forEach(([key, id]) => {
             const el = document.getElementById(id);
@@ -362,6 +376,9 @@
         document.getElementById('ce-open-check').checked = checked;
         document.getElementById('pe-open-check').checked = checked;
         document.getElementById('combined-open-check').checked = checked;
+        document.getElementById('ce-vwap-check').checked = checked;
+        document.getElementById('pe-vwap-check').checked = checked;
+        document.getElementById('combined-vwap-check').checked = checked;
 
         lines.spot.setData(checked ? currentSeries.spotSeries : []);
         lines.ce.setData(checked ? currentSeries.ceSeries : []);
@@ -370,6 +387,9 @@
         lines.avgPrice.setData(checked ? currentSeries.avgPriceSeries : []);
         lines.ceExtrinsic.setData(checked ? currentSeries.ceExtrinsicSeries : []);
         lines.peExtrinsic.setData(checked ? currentSeries.peExtrinsicSeries : []);
+        lines.ceVwap.setData(checked ? currentSeries.ceVwapSeries : []);
+        lines.peVwap.setData(checked ? currentSeries.peVwapSeries : []);
+        lines.combinedVwap.setData(checked ? currentSeries.combinedVwapSeries : []);
         drawOpenPriceLines();
 
         updateLegendLatest();
@@ -402,7 +422,10 @@
             extrinsic: [],
             avgPrice: [],
             ceExtrinsic: [],
-            peExtrinsic: []
+            peExtrinsic: [],
+            ceVwap: [],
+            peVwap: [],
+            combinedVwap: []
         };
 
         for (const row of apiArray) {
@@ -417,7 +440,10 @@
                 extrinsic: row.extrinsic != null ? Number(row.extrinsic) : null,
                 avgPrice: row.avgPrice != null ? Number(row.avgPrice) : null,
                 ceExtrinsic: row.ceExtrinsic != null ? Number(row.ceExtrinsic) : null,
-                peExtrinsic: row.peExtrinsic != null ? Number(row.peExtrinsic) : null
+                peExtrinsic: row.peExtrinsic != null ? Number(row.peExtrinsic) : null,
+                ceVwap: row.ceVwap != null ? Number(row.ceVwap) : null,
+                peVwap: row.peVwap != null ? Number(row.peVwap) : null,
+                combinedVwap: row.combinedVwap != null ? Number(row.combinedVwap) : null
             };
 
             if (!Number.isFinite(vals.spot)) continue;
@@ -435,6 +461,12 @@
                 series.ceExtrinsic.push({ time: t, value: vals.ceExtrinsic });
             if (vals.peExtrinsic != null && Number.isFinite(vals.peExtrinsic))
                 series.peExtrinsic.push({ time: t, value: vals.peExtrinsic });
+            if (vals.ceVwap != null && Number.isFinite(vals.ceVwap))
+                series.ceVwap.push({ time: t, value: vals.ceVwap });
+            if (vals.peVwap != null && Number.isFinite(vals.peVwap))
+                series.peVwap.push({ time: t, value: vals.peVwap });
+            if (vals.combinedVwap != null && Number.isFinite(vals.combinedVwap))
+                series.combinedVwap.push({ time: t, value: vals.combinedVwap });
         }
 
         if (apiArray.length > 0) {
@@ -452,7 +484,10 @@
             extrinsicSeries: series.extrinsic,
             avgPriceSeries: series.avgPrice,
             ceExtrinsicSeries: series.ceExtrinsic,
-            peExtrinsicSeries: series.peExtrinsic
+            peExtrinsicSeries: series.peExtrinsic,
+            ceVwapSeries: series.ceVwap,
+            peVwapSeries: series.peVwap,
+            combinedVwapSeries: series.combinedVwap
         });
 
         return series;
@@ -556,6 +591,27 @@
             color: '#d6a65a',
             lineStyle: 2,
             priceScaleId: 'right'
+        }),
+        ceVwap: chart.addLineSeries({
+            priceLineVisible: false,
+            lastValueVisible: true,
+            lineWidth: 2.5,
+            color: '#a78bfa',
+            priceScaleId: 'right'
+        }),
+        peVwap: chart.addLineSeries({
+            priceLineVisible: false,
+            lastValueVisible: true,
+            lineWidth: 2.5,
+            color: '#fb923c',
+            priceScaleId: 'right'
+        }),
+        combinedVwap: chart.addLineSeries({
+            priceLineVisible: false,
+            lastValueVisible: true,
+            lineWidth: 2.5,
+            color: '#06b6d4',
+            priceScaleId: 'right'
         })
     };
 
@@ -607,7 +663,7 @@
 
     function updateLegendLatest() {
         const values = {};
-        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceExtrinsic', 'peExtrinsic'].forEach(key => {
+        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceExtrinsic', 'peExtrinsic', 'ceVwap', 'peVwap', 'combinedVwap'].forEach(key => {
             const data = currentSeries[key + 'Series'];
             values[key] = data && data.length > 0 ? data[data.length - 1].value : null;
         });
@@ -619,6 +675,9 @@
         document.getElementById('val-avg').textContent = values.avgPrice !== null ? values.avgPrice.toFixed(2) : '-';
         document.getElementById('val-ce-extrinsic').textContent = values.ceExtrinsic !== null ? values.ceExtrinsic.toFixed(2) : '-';
         document.getElementById('val-pe-extrinsic').textContent = values.peExtrinsic !== null ? values.peExtrinsic.toFixed(2) : '-';
+        document.getElementById('val-ce-vwap').textContent = values.ceVwap !== null ? values.ceVwap.toFixed(2) : '-';
+        document.getElementById('val-pe-vwap').textContent = values.peVwap !== null ? values.peVwap.toFixed(2) : '-';
+        document.getElementById('val-combined-vwap').textContent = values.combinedVwap !== null ? values.combinedVwap.toFixed(2) : '-';
 
         document.getElementById('val-ce-open').textContent = Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen.toFixed(2) : '-';
         document.getElementById('val-pe-open').textContent = Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen.toFixed(2) : '-';
@@ -644,6 +703,9 @@
             avgPrice: getValue(getData(lines.avgPrice)),
             ceExtrinsic: getValue(getData(lines.ceExtrinsic)),
             peExtrinsic: getValue(getData(lines.peExtrinsic)),
+            ceVwap: getValue(getData(lines.ceVwap)),
+            peVwap: getValue(getData(lines.peVwap)),
+            combinedVwap: getValue(getData(lines.combinedVwap)),
             ceOpen: getValue(getData(lines.ceOpen)) ?? currentSeries.ceOpen,
             peOpen: getValue(getData(lines.peOpen)) ?? currentSeries.peOpen,
             combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen
@@ -658,6 +720,9 @@
         document.getElementById('val-avg').textContent = fmt(values.avgPrice);
         document.getElementById('val-ce-extrinsic').textContent = fmt(values.ceExtrinsic);
         document.getElementById('val-pe-extrinsic').textContent = fmt(values.peExtrinsic);
+        document.getElementById('val-ce-vwap').textContent = fmt(values.ceVwap);
+        document.getElementById('val-pe-vwap').textContent = fmt(values.peVwap);
+        document.getElementById('val-combined-vwap').textContent = fmt(values.combinedVwap);
         document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
         document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
         document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
@@ -852,6 +917,9 @@
         lines.avgPrice.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
         lines.ceExtrinsic.setData(lineVisibility.ceExtrinsic ? currentSeries.ceExtrinsicSeries : []);
         lines.peExtrinsic.setData(lineVisibility.peExtrinsic ? currentSeries.peExtrinsicSeries : []);
+        lines.ceVwap.setData(lineVisibility.ceVwap ? currentSeries.ceVwapSeries : []);
+        lines.peVwap.setData(lineVisibility.peVwap ? currentSeries.peVwapSeries : []);
+        lines.combinedVwap.setData(lineVisibility.combinedVwap ? currentSeries.combinedVwapSeries : []);
 
         drawOpenPriceLines();
 
@@ -899,7 +967,10 @@
             'pe-extrinsic-check': 'peExtrinsic',
             'ce-open-check': 'ceOpen',
             'pe-open-check': 'peOpen',
-            'combined-open-check': 'combinedOpen'
+            'combined-open-check': 'combinedOpen',
+            'ce-vwap-check': 'ceVwap',
+            'pe-vwap-check': 'peVwap',
+            'combined-vwap-check': 'combinedVwap'
         };
 
         Object.entries(checkboxHandlers).forEach(([id, key]) => {
@@ -916,7 +987,6 @@
                 updateLegendLatest();
                 saveLineVisibility();
                 updateAllCheckbox();
-                closeAllDropdowns();
             });
         });
 

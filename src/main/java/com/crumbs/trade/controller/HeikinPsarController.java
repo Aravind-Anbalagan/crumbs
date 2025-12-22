@@ -214,7 +214,7 @@ public class HeikinPsarController {
 			chartService.monitorSignal("NIFTY", "NFO", false, 0);
 		}
 
-		if ("Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY_OI").getActive())) {
+		if ("Y".equalsIgnoreCase(strategyRepo.findByName("NIFTY_INDEX").getActive())) {
 			oiService.getOptionChain("NIFTY_OI");
 		}
 		if ("Y".equalsIgnoreCase(strategyRepo.findByName("SR").getActive())) {
