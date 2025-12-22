@@ -36,9 +36,13 @@ public class PredictionController {
     }
     
     @GetMapping("/nifty/advanced")
-    public ResponseEntity<AdvancedPredictionResponse> getAdvancedPrediction() throws SmartAPIException {
-        AdvancedPredictionResult result = predictionService.predictNiftyAdvanced();
-        
+    public ResponseEntity<AdvancedPredictionResponse> getAdvancedPrediction(
+            @RequestParam(required = false) String days
+    ) throws SmartAPIException {
+
+        AdvancedPredictionResult result =
+                predictionService.predictNiftyAdvanced(days);
+
         AdvancedPredictionResponse response = new AdvancedPredictionResponse();
         response.setCurrentPrice(result.currentPrice);
         response.setPredictedPrice(result.predictedPrice);
@@ -50,11 +54,11 @@ public class PredictionController {
         response.setSentiment(result.sentiment);
         response.setTimestamp(new Date());
         response.setPredictionList(result.getPredictionList());
-        // Add interpretation
         response.setInterpretation(generateInterpretation(result));
-        
+
         return ResponseEntity.ok(response);
     }
+
     
     private String generateInterpretation(AdvancedPredictionResult result) {
         StringBuilder sb = new StringBuilder();

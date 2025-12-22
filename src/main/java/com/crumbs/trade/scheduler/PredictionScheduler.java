@@ -58,7 +58,7 @@ public class PredictionScheduler {
 
 			try {
 				// Use advanced version with confidence & sentiment
-				PredictionService.AdvancedPredictionResult result = predictionService.predictNiftyAdvanced();
+				PredictionService.AdvancedPredictionResult result = predictionService.predictNiftyAdvanced(null);
 
 				PredictionHistory hist = new PredictionHistory();
 				hist.setTimestamp(now);

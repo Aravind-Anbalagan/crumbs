@@ -694,6 +694,19 @@
             <div class="viz-header">
                 <h2 class="viz-title">Market Analysis</h2>
                 <div class="view-selector">
+                <div style="display:flex; gap:12px; align-items:center;">
+    <label style="font-size:0.75rem; color:var(--text-muted); letter-spacing:1px;">
+        DATA RANGE
+    </label>
+
+    <select id="daysFilter" class="view-btn" style="padding:10px 14px;">
+        <option value="">Today</option>
+        <option value="5">Last 5 Days</option>
+        <option value="10">Last 10 Days</option>
+        <option value="15">Last 15 Days</option>
+        <option value="all">All</option>
+    </select>
+</div>
                     <button class="view-btn active" data-view="line">📈 Line</button>
                     <button class="view-btn" data-view="bar">📊 Bar</button>
                     <button class="view-btn" data-view="table">📋 Table</button>
@@ -882,6 +895,7 @@
         const state = {
             predictions: [],
             currentView: 'line',
+            selectedDays: '',
             charts: {
                 line: null,
                 bar: null
@@ -933,25 +947,29 @@
         // DATA SERVICE
         // ==========================================
         const dataService = {
-            async fetchPredictions() {
+            async fetchPredictions(days = '') {
                 try {
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), CONFIG.TIMEOUT);
-                    
-                    const response = await fetch(CONFIG.API_ENDPOINT, {
+
+                    const url = days
+                        ? `${CONFIG.API_ENDPOINT}?days=${days}`
+                        : CONFIG.API_ENDPOINT;
+
+                    const response = await fetch(url, {
                         signal: controller.signal
                     });
-                    
+
                     clearTimeout(timeoutId);
-                    
+
                     if (response.ok) {
                         const data = await response.json();
-                        return data.predictionList || DEMO_DATA.predictionList;
+                        return data.predictionList || [];
                     }
                 } catch (error) {
                     console.warn('Using demo data:', error.message);
                 }
-                
+
                 return DEMO_DATA.predictionList;
             }
         };
@@ -1572,19 +1590,52 @@
             },
             
             setupEventListeners() {
+                // Line / Bar / Table buttons
                 document.querySelectorAll('.view-btn').forEach(btn => {
                     btn.addEventListener('click', () => {
                         ui.switchView(btn.dataset.view);
                     });
                 });
+
+                // Days dropdown handler
+                const daysFilter = document.getElementById('daysFilter');
+                if (daysFilter) {
+                    daysFilter.addEventListener('change', async (e) => {
+                        state.selectedDays = e.target.value;
+                        console.log('📅 Days selected:', state.selectedDays);
+
+                        // Destroy existing charts before reload
+                        if (state.charts.line) {
+                            state.charts.line.destroy();
+                            state.charts.line = null;
+                        }
+                        if (state.charts.bar) {
+                            state.charts.bar.destroy();
+                            state.charts.bar = null;
+                        }
+
+                        // Reset chart loaded states
+                        state.chartsLoaded.line = false;
+                        state.chartsLoaded.bar = false;
+
+                        // Fetch new data
+                        await app.refreshData();
+
+                        // Switch to line view to show the chart
+                        ui.switchView('line');
+                    });
+                }
             },
             
             async refreshData() {
                 try {
                     state.isLoading = true;
-                    const predictions = await dataService.fetchPredictions();
+
+                    const predictions = await dataService.fetchPredictions(state.selectedDays);
+
                     state.predictions = predictions;
                     state.isLoading = false;
+
                     this.updateUI();
                 } catch (error) {
                     console.error('Error refreshing data:', error);

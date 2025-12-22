@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -80,18 +81,53 @@ public class PredictionService {
         return result;
     }
 
-    public AdvancedPredictionResult predictNiftyAdvanced() throws SmartAPIException {
+    public AdvancedPredictionResult predictNiftyAdvanced(String days) throws SmartAPIException {
         logger.info("Starting advanced Nifty prediction");
         
         PredictionData data = preparePredictionData();
         AdvancedPredictionResult result = calculateAdvancedPrediction(data);
         List<PredictionHistory> predictionList = new ArrayList<>();
-        result.getPredictionList().addAll(predictionHistoryRepo.findAll());
+        List<PredictionHistory> history =
+                fetchPredictionHistoryByDays(days);
+
+        result.getPredictionList().addAll(history);
         logger.info("Advanced prediction complete: Current={}, Predicted={}, Confidence={}, Sentiment={}", 
             result.currentPrice, result.predictedPrice, result.confidenceScore, result.sentiment);
         
         return result;
     }
+    
+    private List<PredictionHistory> fetchPredictionHistoryByDays(String days) {
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfToday = now.toLocalDate().atStartOfDay();
+
+        // Default → today
+        if (days == null || days.isBlank()) {
+            return predictionHistoryRepo.findToday(startOfToday);
+        }
+
+        // All data
+        if ("all".equalsIgnoreCase(days)) {
+            return predictionHistoryRepo.findAll();
+        }
+
+        try {
+            int noOfDays = Integer.parseInt(days);
+
+            // Example:
+            // 5 → last 5 days including today
+            LocalDateTime fromDate =
+                    startOfToday.minusDays(noOfDays - 1);
+
+            return predictionHistoryRepo.findFromDate(fromDate);
+
+        } catch (NumberFormatException e) {
+            logger.warn("Invalid days param: {}. Falling back to today.", days);
+            return predictionHistoryRepo.findToday(startOfToday);
+        }
+    }
+
 
 
     // ========================================
@@ -100,10 +136,10 @@ public class PredictionService {
 
     private PredictionData preparePredictionData() throws SmartAPIException {
         SmartConnect smartconnect = angelOne.signIn();
-        Strategy strategy = strategyRepo.findByName("NIFTY_OI");
+        Strategy strategy = strategyRepo.findByName("NIFTY_INDEX");
         
         if (strategy == null) {
-            throw new IllegalStateException("Strategy 'NIFTY_OI' not found");
+            throw new IllegalStateException("Strategy 'NIFTY_INDEX' not found");
         }
 
         BigDecimal currentNifty = angelOneService.getcurrentPrice(
