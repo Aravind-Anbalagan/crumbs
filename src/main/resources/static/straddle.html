@@ -268,7 +268,6 @@
     const API_URL = '/api/straddle/combined-chart';
     const GROUPED_API_URL = '/api/straddle/grouped';
     const API_PARAMS = { name: 'NIFTY', expiry: '16DEC25', ceStrike: '26000', peStrike: '26000' };
-    const IST_OFFSET_SECONDS = 5.5 * 60 * 60;
     const STORAGE_KEY_LINES = 'nifty_lines_visibility_v1';
 
     let groupedData = [];
@@ -398,7 +397,32 @@
     }
 
     function toUnixSeconds(isoString) {
-        return Math.floor(new Date(isoString).getTime() / 1000) + IST_OFFSET_SECONDS;
+        // API sends timestamps like "2025-12-23T15:30:12+05:30" (IST)
+        // We want to display 15:30 on the chart
+        // Parse the timestamp and extract IST time components
+        const date = new Date(isoString);
+        
+        // Get IST time components
+        const istString = date.toLocaleString('en-US', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        
+        // Parse the IST string to get a date object (treated as UTC for chart purposes)
+        const [datePart, timePart] = istString.split(', ');
+        const [month, day, year] = datePart.split('/');
+        const [hour, minute, second] = timePart.split(':');
+        
+        // Create a UTC date with IST time values (this tricks the chart into showing IST times)
+        const utcDate = Date.UTC(year, month - 1, day, hour, minute, second);
+        
+        return Math.floor(utcDate / 1000);
     }
 
     function showError(message) {
@@ -498,13 +522,16 @@
         rightPriceScale: { borderVisible: false, visible: true },
         leftPriceScale: { borderVisible: false, visible: true },
         timeScale: {
-            borderVisible: false, timeVisible: true, secondsVisible: true,
+            borderVisible: false, 
+            timeVisible: true, 
+            secondsVisible: true,
             tickMarkFormatter: (time) => {
-                const istDate = new Date((time - IST_OFFSET_SECONDS) * 1000);
-                return istDate.toLocaleTimeString('en-IN', {
-                    timeZone: 'Asia/Kolkata', hour12: false,
-                    hour: '2-digit', minute: '2-digit', second: '2-digit'
-                });
+                // Time values are already IST (stored as UTC for display purposes)
+                const date = new Date(time * 1000);
+                const hours = String(date.getUTCHours()).padStart(2, '0');
+                const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                return `${hours}:${minutes}:${seconds}`;
             }
         },
         grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
@@ -776,11 +803,12 @@
         }
 
         container.innerHTML = allCrossings.map((c, i) => {
-            const istDate = new Date((c.time - IST_OFFSET_SECONDS) * 1000);
-            const timeStr = istDate.toLocaleTimeString('en-IN', {
-                timeZone: 'Asia/Kolkata', hour12: false,
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
+            // Time values are already IST (stored as UTC for display purposes)
+            const date = new Date(c.time * 1000);
+            const hours = String(date.getUTCHours()).padStart(2, '0');
+            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+            const timeStr = `${hours}:${minutes}:${seconds}`;
 
             return `
           <div class="crossing-item" data-crossing-index="${i}">

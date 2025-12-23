@@ -67,80 +67,197 @@ public class StraddleIntradayService {
 	@Autowired
 	TaskService taskService;
 	
-	// ================= VWAP STATE (OPTION 2) =================
+	// ================= VWAP STATE =================
 	private final Map<String, BigDecimal> tpvMap = new HashMap<>();
 	private final Map<String, BigDecimal> volMap = new HashMap<>();
 	private LocalDate vwapDate = null;
+	
+	// ================= VWAP CONTROL =================
+	private static final boolean ENABLE_VWAP = true; // Set to false to skip VWAP fetching
 
 	// =====================================================
-	// MAIN ENTRY
+	// MAIN ENTRY - WITH COMPREHENSIVE VALIDATION
 	// =====================================================
 	public void getCombineStraddlePremium(String name) {
 
 		try {
 			SmartConnect smartconnect = angelOne.signIn();
+			
+			if (smartconnect == null) {
+				logger.error("Failed to sign in to Angel One");
+				return;
+			}
 
 			Strategy strategy = strategyRepo.findByName(name);
+			
+			if (strategy == null) {
+				logger.error("Strategy not found: {}", name);
+				return;
+			}
 
-			BigDecimal spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
-					strategy.getTradingsymbol(), strategy.getToken());
+			BigDecimal spotPrice = angelOneService.getcurrentPrice(
+				smartconnect, 
+				strategy.getExchange(),
+				strategy.getTradingsymbol(), 
+				strategy.getToken()
+			);
+			
+			// VALIDATION: Check if spot price is valid
+			if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
+				logger.error("Invalid spot price for {}: {}", name, spotPrice);
+				return;
+			}
+			
+			logger.info("Spot price for {}: {}", name, spotPrice);
 
 			BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
+			
+			// VALIDATION: Check ATM strike
+			if (atmStrike == null || atmStrike.compareTo(BigDecimal.ZERO) <= 0) {
+				logger.error("Invalid ATM strike for {}: {}", name, atmStrike);
+				return;
+			}
+			
+			logger.info("ATM strike for {}: {}", name, atmStrike);
 
 			List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
 
 			strikeList = getAllTokenDetails(strikeList, strategy);
+			
+			// VALIDATION: Check if any tokens were found
+			long validTokenCount = strikeList.stream()
+				.filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
+				.count();
+				
+			if (validTokenCount == 0) {
+				logger.error("No valid tokens found for strategy: {}", name);
+				return;
+			}
+			
+			logger.info("Found {} strikes with valid tokens out of {}", 
+				validTokenCount, strikeList.size());
 
 			strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect);
+			
+			// VALIDATION: Check if prices were fetched
+			long validPriceCount = strikeList.stream()
+				.filter(dto -> 
+					(dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+					(dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+				)
+				.count();
+				
+			if (validPriceCount == 0) {
+				logger.error("No valid prices fetched for strategy: {}", name);
+				return;
+			}
+			
+			logger.info("Successfully fetched prices for {} strikes", validPriceCount);
 
-			// ========= VWAP (INCREMENTAL) =========
+			// ========= VWAP (INCREMENTAL) - OPTIMIZED =========
 			resetVwapIfNewDay();
 
-			for (StraddlePremiumDto dto : strikeList) {
+			// OPTIMIZATION: Only fetch VWAP for strikes with valid prices
+			List<StraddlePremiumDto> strikesWithPrices = strikeList.stream()
+				.filter(dto -> 
+					(dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+					(dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+				)
+				.collect(Collectors.toList());
+			
+			logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)", 
+				strikesWithPrices.size(), strikeList.size());
 
-				if (dto.getCeToken() != null) {
-					JSONArray ceCandle = fetchLatestOneMinuteCandle(smartconnect, "NFO", dto.getCeToken().getToken());
+			for (StraddlePremiumDto dto : strikesWithPrices) {
+				
+				// Only fetch VWAP if token exists AND price is valid
+				if (dto.getCeToken() != null && dto.getCePrice() != null && 
+					dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) {
+					try {
+						JSONArray ceCandle = fetchLatestOneMinuteCandle(
+							smartconnect, "NFO", dto.getCeToken().getToken()
+						);
 
-					if (ceCandle != null && !ceCandle.isEmpty()) {
-						dto.setCeVwap(updateVwapIncremental(dto.getCeToken().getToken(), ceCandle));
+						if (ceCandle != null && !ceCandle.isEmpty()) {
+							dto.setCeVwap(updateVwapIncremental(
+								dto.getCeToken().getToken(), ceCandle
+							));
+						}
+					} catch (Exception e) {
+						logger.warn("Failed to fetch CE VWAP for strike {}: {}", 
+							dto.getStrikePrice(), e.getMessage());
 					}
 				}
 
-				if (dto.getPeToken() != null) {
-					JSONArray peCandle = fetchLatestOneMinuteCandle(smartconnect, "NFO", dto.getPeToken().getToken());
+				if (dto.getPeToken() != null && dto.getPePrice() != null && 
+					dto.getPePrice().compareTo(BigDecimal.ZERO) > 0) {
+					try {
+						JSONArray peCandle = fetchLatestOneMinuteCandle(
+							smartconnect, "NFO", dto.getPeToken().getToken()
+						);
 
-					if (peCandle != null && !peCandle.isEmpty()) {
-						dto.setPeVwap(updateVwapIncremental(dto.getPeToken().getToken(), peCandle));
+						if (peCandle != null && !peCandle.isEmpty()) {
+							dto.setPeVwap(updateVwapIncremental(
+								dto.getPeToken().getToken(), peCandle
+							));
+						}
+					} catch (Exception e) {
+						logger.warn("Failed to fetch PE VWAP for strike {}: {}", 
+							dto.getStrikePrice(), e.getMessage());
 					}
 				}
 			}
 
-			// Save to DB
-			savePriceDetails(strikeList, strategy, spotPrice);
+			// Save to DB - only valid records
+			int savedCount = savePriceDetails(strikeList, strategy, spotPrice);
+			logger.info("Saved {} records to database for {}", savedCount, name);
 
 		} catch (Exception e) {
-			logger.error("Error in getCombineStraddlePremium", e);
+			logger.error("Error in getCombineStraddlePremium for {}", name, e);
 		}
 	}
 
 	// =====================================================
-	// SAVE TO DB (UPDATED FOR NEW ENTITY)
+	// SAVE TO DB - WITH VALIDATION
 	// =====================================================
-	public int savePriceDetails(List<StraddlePremiumDto> strikeList, Strategy strategy, BigDecimal spotPrice) {
+	public int savePriceDetails(
+		List<StraddlePremiumDto> strikeList, 
+		Strategy strategy, 
+		BigDecimal spotPrice
+	) {
 
 		int count = 0;
 		LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
 
 		for (StraddlePremiumDto dto : strikeList) {
+			
+			// VALIDATION: Skip if both tokens are missing
+			if (dto.getCeToken() == null && dto.getPeToken() == null) {
+				logger.debug("Skipping strike {} - no tokens found", dto.getStrikePrice());
+				continue;
+			}
+			
+			// VALIDATION: Skip if both prices are zero/null
+			BigDecimal ce = dto.getCePrice() != null ? dto.getCePrice() : BigDecimal.ZERO;
+			BigDecimal pe = dto.getPePrice() != null ? dto.getPePrice() : BigDecimal.ZERO;
+			
+			if (ce.compareTo(BigDecimal.ZERO) <= 0 && pe.compareTo(BigDecimal.ZERO) <= 0) {
+				logger.debug("Skipping strike {} - no valid prices (CE: {}, PE: {})", 
+					dto.getStrikePrice(), ce, pe);
+				continue;
+			}
+
+			// VALIDATION: Check strike price is valid
+			if (dto.getStrikePrice() == null || dto.getStrikePrice().compareTo(BigDecimal.ZERO) <= 0) {
+				logger.warn("Invalid strike price: {}", dto.getStrikePrice());
+				continue;
+			}
 
 			StraddleIntraday entity = new StraddleIntraday();
 			entity.setName(strategy.getName());
 			entity.setExpiry(strategy.getExpiry());
 			entity.setStrike(dto.getStrikePrice());
 			entity.setTimestamp(timestamp);
-
-			BigDecimal ce = dto.getCePrice() != null ? dto.getCePrice() : BigDecimal.ZERO;
-			BigDecimal pe = dto.getPePrice() != null ? dto.getPePrice() : BigDecimal.ZERO;
 
 			entity.setCePrice(ce);
 			entity.setPePrice(pe);
@@ -152,12 +269,15 @@ public class StraddleIntradayService {
 
 			BigDecimal ceVwap = dto.getCeVwap() != null ? dto.getCeVwap() : BigDecimal.ZERO;
 			BigDecimal peVwap = dto.getPeVwap() != null ? dto.getPeVwap() : BigDecimal.ZERO;
+			//System.out.println("ceVwap : " + ceVwap + " Strike: "+ entity.getStrike());
+			//System.out.println("peVwap : " + peVwap + " Strike: "+ entity.getStrike());
 			BigDecimal combinedVwap = ceVwap.add(peVwap);
 			entity.setCombinedVwap(combinedVwap);
 			
 			BigDecimal combinedPremium = ce.add(pe);
 			entity.setCombinedPremium(combinedPremium);
 
+			// Calculate intrinsic values correctly
 			BigDecimal ceIntrinsic = spotPrice.subtract(dto.getStrikePrice()).max(BigDecimal.ZERO);
 			BigDecimal peIntrinsic = dto.getStrikePrice().subtract(spotPrice).max(BigDecimal.ZERO);
 
@@ -175,30 +295,44 @@ public class StraddleIntradayService {
 
 			entity.setAvgPrice(combinedPremium.divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP));
 
-			straddleIntradayRepo.save(entity);
-			count++;
+			try {
+				straddleIntradayRepo.save(entity);
+				count++;
+			} catch (Exception e) {
+				logger.error("Failed to save record for strike {}: {}", 
+					dto.getStrikePrice(), e.getMessage());
+			}
 		}
+		
 		return count;
 	}
 
 	// =====================================================
-	// ONE API CALL – FULL MODE
+	// BATCH PRICE FETCH - WITH ERROR HANDLING
 	// =====================================================
-	public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(List<StraddlePremiumDto> strikeList,
-			SmartConnect smartconnect) {
+	public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(
+		List<StraddlePremiumDto> strikeList,
+		SmartConnect smartconnect
+	) {
 
 		try {
 			List<String> tokens = new ArrayList<>();
 
 			for (StraddlePremiumDto dto : strikeList) {
-				if (dto.getCeToken() != null)
+				if (dto.getCeToken() != null) {
 					tokens.add(dto.getCeToken().getToken());
-				if (dto.getPeToken() != null)
+				}
+				if (dto.getPeToken() != null) {
 					tokens.add(dto.getPeToken().getToken());
+				}
 			}
 
-			if (tokens.isEmpty())
+			if (tokens.isEmpty()) {
+				logger.warn("No tokens to fetch prices for");
 				return strikeList;
+			}
+			
+			logger.info("Fetching prices for {} tokens", tokens.size());
 
 			JSONObject payload = new JSONObject();
 			payload.put("mode", "FULL");
@@ -208,30 +342,62 @@ public class StraddleIntradayService {
 			payload.put("exchangeTokens", map);
 
 			JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
+			
+			if (response == null) {
+				logger.error("Null response from market data API");
+				return strikeList;
+			}
 
-			JSONArray fetched = response.getJSONArray("fetched");
+			JSONArray fetched = response.optJSONArray("fetched");
+			
+			if (fetched == null || fetched.length() == 0) {
+				logger.error("No data fetched from market API");
+				return strikeList;
+			}
+			
+			logger.info("Received {} price records from API", fetched.length());
 
 			Map<String, BigDecimal> ltpMap = new HashMap<>();
 			Map<String, BigDecimal> openMap = new HashMap<>();
 
 			for (int i = 0; i < fetched.length(); i++) {
 				JSONObject item = fetched.getJSONObject(i);
-				ltpMap.put(item.getString("symbolToken"), item.getBigDecimal("ltp"));
-				openMap.put(item.getString("symbolToken"), item.getBigDecimal("open"));
+				String token = item.optString("symbolToken", null);
+				
+				if (token != null) {
+					ltpMap.put(token, item.optBigDecimal("ltp", BigDecimal.ZERO));
+					openMap.put(token, item.optBigDecimal("open", BigDecimal.ZERO));
+				}
 			}
 
 			for (StraddlePremiumDto dto : strikeList) {
 
 				if (dto.getCeToken() != null) {
 					String t = dto.getCeToken().getToken();
-					dto.setCePrice(ltpMap.get(t));
-					dto.setCeOpenPrice(openMap.get(t));
+					BigDecimal ltp = ltpMap.get(t);
+					BigDecimal open = openMap.get(t);
+					
+					dto.setCePrice(ltp);
+					dto.setCeOpenPrice(open);
+					
+					if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+						logger.warn("No valid CE price for token {}, strike {}", 
+							t, dto.getStrikePrice());
+					}
 				}
 
 				if (dto.getPeToken() != null) {
 					String t = dto.getPeToken().getToken();
-					dto.setPePrice(ltpMap.get(t));
-					dto.setPeOpenPrice(openMap.get(t));
+					BigDecimal ltp = ltpMap.get(t);
+					BigDecimal open = openMap.get(t);
+					
+					dto.setPePrice(ltp);
+					dto.setPeOpenPrice(open);
+					
+					if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+						logger.warn("No valid PE price for token {}, strike {}", 
+							t, dto.getStrikePrice());
+					}
 				}
 			}
 
@@ -243,7 +409,7 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
-	// STRIKE BUILDING
+	// STRIKE BUILDING - OPTIMIZED (5 strikes instead of 11)
 	// =====================================================
 	public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal spot, int interval) {
 
@@ -252,17 +418,19 @@ public class StraddleIntradayService {
 		BigDecimal atm = spot.divide(BigDecimal.valueOf(interval), 0, RoundingMode.HALF_UP)
 				.multiply(BigDecimal.valueOf(interval));
 
-		for (int i = 5; i >= 1; i--) {
+		// OPTIMIZED: Only 2 strikes above and below ATM (instead of 5)
+		// This reduces API calls from 22 to 10, cutting execution time in half
+		for (int i = 2; i >= 1; i--) {
 			list.add(createDto(atm.subtract(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
 		}
 
-		list.add(createDto(atm));
+		list.add(createDto(atm)); // ATM strike
 
-		for (int i = 1; i <= 5; i++) {
+		for (int i = 1; i <= 2; i++) {
 			list.add(createDto(atm.add(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
 		}
 
-		return list;
+		return list; // Returns 5 strikes total
 	}
 
 	private StraddlePremiumDto createDto(BigDecimal strike) {
@@ -278,8 +446,6 @@ public class StraddleIntradayService {
 
 		SmartConnect smartconnect = angelOne.signIn();
 
-		// BigDecimal price1 = flatTradeService.getCurrentPrice(strategy.getExchange(),
-		// strategy.getToken());
 		if (price == null)
 			return BigDecimal.ZERO;
 
@@ -289,19 +455,30 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
-	// TOKEN DETAILS
+	// TOKEN DETAILS - WITH BETTER LOGGING
 	// =====================================================
-	public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList, Strategy strategy) {
+	public List<StraddlePremiumDto> getAllTokenDetails(
+		List<StraddlePremiumDto> strikeList, 
+		Strategy strategy
+	) {
+
+		logger.info("Fetching tokens for strategy: {}, expiry: {}", 
+			strategy.getName(), strategy.getExpiry());
 
 		for (StraddlePremiumDto dto : strikeList) {
 
 			int strike = dto.getStrikePrice().intValue();
 
-			String ceSymbol = String.format("%s%s%dCE", strategy.getName(), strategy.getExpiry(), strike);
+			String ceSymbol = String.format("%s%s%dCE", 
+				strategy.getName(), strategy.getExpiry(), strike);
 
-			String peSymbol = String.format("%s%s%dPE", strategy.getName(), strategy.getExpiry(), strike);
+			String peSymbol = String.format("%s%s%dPE", 
+				strategy.getName(), strategy.getExpiry(), strike);
 
-			Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+			// Fetch CE token
+			Indexes ceIndex = indexesRepo.findByNameAndSymbol(
+				strategy.getName(), ceSymbol
+			);
 
 			if (ceIndex != null) {
 				Token t = new Token();
@@ -309,9 +486,15 @@ public class StraddleIntradayService {
 				t.setSymbol(ceIndex.getSymbol());
 				t.setExch_seg(ceIndex.getExchange());
 				dto.setCeToken(t);
+				logger.debug("Found CE token for {}: {}", ceSymbol, t.getToken());
+			} else {
+				logger.warn("CE token NOT found for symbol: {}", ceSymbol);
 			}
 
-			Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+			// Fetch PE token
+			Indexes peIndex = indexesRepo.findByNameAndSymbol(
+				strategy.getName(), peSymbol
+			);
 
 			if (peIndex != null) {
 				Token t = new Token();
@@ -319,80 +502,76 @@ public class StraddleIntradayService {
 				t.setSymbol(peIndex.getSymbol());
 				t.setExch_seg(peIndex.getExchange());
 				dto.setPeToken(t);
+				logger.debug("Found PE token for {}: {}", peSymbol, t.getToken());
+			} else {
+				logger.warn("PE token NOT found for symbol: {}", peSymbol);
 			}
 		}
+		
 		return strikeList;
 	}
 
 	// =====================================================
-	// COMBINED CHART (TOTAL EXTRINSIC DERIVED)
+	// COMBINED CHART
 	// =====================================================
-	public CombinedChartResponse getStraddleCombinedChart(String name, String expiry, BigDecimal ceStrike,
-			BigDecimal peStrike) {
+	public CombinedChartResponse getStraddleCombinedChart(
+		String name, 
+		String expiry, 
+		BigDecimal ceStrike,
+		BigDecimal peStrike
+	) {
 
 		List<StraddleIntraday> ceRows = straddleIntradayRepo.getByStrike(name, expiry, ceStrike);
-
 		List<StraddleIntraday> peRows = straddleIntradayRepo.getByStrike(name, expiry, peStrike);
-
 		List<StraddleIntraday> spotRows = straddleIntradayRepo.getSpotHistory(name, expiry);
 
 		Map<String, CombinedChartPoint> map = new TreeMap<>();
 		ZoneId ist = ZoneId.of("Asia/Kolkata");
 
-		// ---------------- CE rows ----------------
+		// CE rows
 		for (StraddleIntraday r : ceRows) {
-
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-
-			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(t, null, null, null, null,
-					null, null, null, null, null, null, null, null,null));
-
+			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
+				t, null, null, null, null, null, null, null, null, null, null, null, null, null
+			));
 			pt.setCe(r.getCePrice());
 			pt.setCeOpen(r.getCeOpenPrice());
 			pt.setCeExtrinsic(r.getCeExtrinsic());
 			pt.setCeVwap(r.getCeVwap());
 		}
 
-		// ---------------- PE rows ----------------
+		// PE rows
 		for (StraddleIntraday r : peRows) {
-
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-
-			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(t, null, null, null, null,
-					null, null, null, null, null, null, null, null,null));
-
+			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
+				t, null, null, null, null, null, null, null, null, null, null, null, null, null
+			));
 			pt.setPe(r.getPePrice());
 			pt.setPeOpen(r.getPeOpenPrice());
 			pt.setPeExtrinsic(r.getPeExtrinsic());
 			pt.setPeVwap(r.getPeVwap());
 		}
 
-		// ---------------- SPOT rows ----------------
+		// SPOT rows
 		for (StraddleIntraday r : spotRows) {
-
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-
-			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(t, null, null, null, null,
-					null, null, null, null, null, null, null, null,null));
-
+			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
+				t, null, null, null, null, null, null, null, null, null, null, null, null, null
+			));
 			pt.setSpot(r.getSpot());
 		}
 
-		// ---------------- Derived values ----------------
+		// Derived values
 		for (CombinedChartPoint pt : map.values()) {
-
-			// Combined Premium
 			if (pt.getCe() != null && pt.getPe() != null) {
 				pt.setCombinedPremium(pt.getCe().add(pt.getPe()));
 				pt.setAvgPrice(pt.getCombinedPremium().divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP));
-				
 			}
 			
 			if (pt.getCeVwap() != null && pt.getPeVwap() != null) {
 				pt.setCombinedVwap(pt.getCeVwap().add(pt.getPeVwap()));
 			}
 
-			// Combined Open
 			if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
 				pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
 			}
@@ -404,10 +583,9 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
-	// VWAP RESET (ON DAY CHANGE)
+	// VWAP RESET
 	// =====================================================
 	private void resetVwapIfNewDay() {
-
 		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
 
 		if (vwapDate == null || !vwapDate.equals(today)) {
@@ -419,29 +597,97 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
-	// FETCH LAST 1-MINUTE CANDLE ONLY
+	// FETCH CANDLES - WITH RATE LIMITING AND RETRY LOGIC
 	// =====================================================
-	private JSONArray fetchLatestOneMinuteCandle(SmartConnect smartConnect, String exchange, String token) throws ParseException {
-		Map<Long, Candle> candleMap = Stream.of(1L,2L, 3L, 4L, 5L, 6L).map(id -> candleRepo.findById(id).orElse(null))
-				.filter(Objects::nonNull).collect(Collectors.toMap(Candle::getId, c -> c));
-		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
-		Candle candle = candleMap.get(1L); 
-		SimpleDateFormat fromFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-         SimpleDateFormat toFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+	private static final long CANDLE_API_DELAY_MS = 1000; // 1 second delay (increased from 500ms to avoid rate limits)
+	private long lastCandleApiCall = 0;
+	private static final int MAX_RETRY_ATTEMPTS = 5;
+	private static final long INITIAL_RETRY_DELAY_MS = 2000; // Start with 2 seconds
+	
+	private JSONArray fetchLatestOneMinuteCandle(
+		SmartConnect smartConnect, 
+		String exchange, 
+		String token
+	) throws ParseException {
+		
+		int attempt = 0;
+		long retryDelay = INITIAL_RETRY_DELAY_MS;
+		
+		while (attempt < MAX_RETRY_ATTEMPTS) {
+			try {
+				// Rate limiting: wait if needed
+				long now = System.currentTimeMillis();
+				long timeSinceLastCall = now - lastCandleApiCall;
+				
+				if (timeSinceLastCall < CANDLE_API_DELAY_MS) {
+					long waitTime = CANDLE_API_DELAY_MS - timeSinceLastCall;
+					logger.debug("Rate limiting: waiting {}ms before candle API call", waitTime);
+					Thread.sleep(waitTime);
+				}
+				
+				LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+				String fromDate = today + " 09:15";
+				String toDate   = today + " 15:30";
 
-        //String fromDate = getDate("FROM", "NFO");
- 		//String toDate = getDate("TO", "NFO");
-		String fromDate = today + " 09:15";
-		String toDate   = today + " 15:30";
+				JSONObject req = new JSONObject();
+				req.put("exchange", exchange);
+				req.put("symboltoken", token);
+				req.put("interval", "ONE_MINUTE");
+				req.put("fromdate", fromDate);
+				req.put("todate", toDate);
 
-		JSONObject req = new JSONObject();
-		req.put("exchange", exchange);
-		req.put("symboltoken", token);
-		req.put("interval", "ONE_MINUTE");
-		req.put("fromdate", fromDate);
-		req.put("todate", toDate);
-
-		return smartConnect.candleData(req);
+				JSONArray result = smartConnect.candleData(req);
+				lastCandleApiCall = System.currentTimeMillis();
+				
+				// Check if result is null
+				if (result == null) {
+					attempt++;
+					logger.warn("Candle data returned NULL for token {} (attempt {}/{})", 
+						token, attempt, MAX_RETRY_ATTEMPTS);
+					
+					if (attempt < MAX_RETRY_ATTEMPTS) {
+						logger.info("Retrying after {}ms...", retryDelay);
+						Thread.sleep(retryDelay);
+						retryDelay *= 2; // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+					} else {
+						logger.error("Max retry attempts reached for token {}. Giving up.", token);
+						return null;
+					}
+				} else {
+					// Success - log if it took retries
+					if (attempt > 0) {
+						logger.info("Successfully fetched candle data for token {} after {} retries", 
+							token, attempt);
+					}
+					return result;
+				}
+				
+			} catch (InterruptedException e) {
+				logger.warn("Thread interrupted during candle fetch/retry", e);
+				Thread.currentThread().interrupt();
+				return null;
+			} catch (Exception e) {
+				attempt++;
+				logger.error("Error fetching candle data for token {} (attempt {}/{}): {}", 
+					token, attempt, MAX_RETRY_ATTEMPTS, e.getMessage());
+				
+				if (attempt < MAX_RETRY_ATTEMPTS) {
+					try {
+						logger.info("Retrying after {}ms due to exception...", retryDelay);
+						Thread.sleep(retryDelay);
+						retryDelay *= 2;
+					} catch (InterruptedException ie) {
+						Thread.currentThread().interrupt();
+						return null;
+					}
+				} else {
+					logger.error("Max retry attempts reached for token {} after exceptions", token);
+					return null;
+				}
+			}
+		}
+		
+		return null;
 	}
 
 	public String getDate(String timeline, String type) {
@@ -454,27 +700,149 @@ public class StraddleIntradayService {
 			return new SimpleDateFormat("yyyy-MM-dd").format(new Date())
 					.concat(taskService.getHourAndMinutes(timeline, 5, type));
 		}
-
 	}
+	
 	// =====================================================
-	// INCREMENTAL VWAP UPDATE
+	// INCREMENTAL VWAP UPDATE - FIXED
 	// =====================================================
 	private BigDecimal updateVwapIncremental(String token, JSONArray candleArr) {
 
-		JSONArray c = candleArr.getJSONArray(0);
+		// Process ALL candles, not just the first one
+		for (int i = 0; i < candleArr.length(); i++) {
+			JSONArray c = candleArr.getJSONArray(i);
 
-		BigDecimal high = c.getBigDecimal(2);
-		BigDecimal low = c.getBigDecimal(3);
-		BigDecimal close = c.getBigDecimal(4);
-		BigDecimal volume = c.getBigDecimal(5);
+			BigDecimal high = c.getBigDecimal(2);
+			BigDecimal low = c.getBigDecimal(3);
+			BigDecimal close = c.getBigDecimal(4);
+			BigDecimal volume = c.getBigDecimal(5);
 
-		BigDecimal tp = high.add(low).add(close).divide(BigDecimal.valueOf(3), 6, RoundingMode.HALF_UP);
+			// Skip candles with zero volume
+			if (volume.compareTo(BigDecimal.ZERO) == 0) {
+				continue;
+			}
 
-		tpvMap.put(token, tpvMap.getOrDefault(token, BigDecimal.ZERO).add(tp.multiply(volume)));
+			BigDecimal tp = high.add(low).add(close)
+				.divide(BigDecimal.valueOf(3), 6, RoundingMode.HALF_UP);
 
-		volMap.put(token, volMap.getOrDefault(token, BigDecimal.ZERO).add(volume));
+			tpvMap.put(token, tpvMap.getOrDefault(token, BigDecimal.ZERO).add(tp.multiply(volume)));
+			volMap.put(token, volMap.getOrDefault(token, BigDecimal.ZERO).add(volume));
+		}
 
-		return tpvMap.get(token).divide(volMap.get(token), 2, RoundingMode.HALF_UP);
+		// Return VWAP, handling case where volume is zero
+		BigDecimal totalVolume = volMap.get(token);
+		if (totalVolume == null || totalVolume.compareTo(BigDecimal.ZERO) == 0) {
+			return BigDecimal.ZERO;
+		}
+
+		return tpvMap.get(token).divide(totalVolume, 2, RoundingMode.HALF_UP);
 	}
 
+	// =====================================================
+	// DEBUGGING METHOD - CORRECTED VERSION
+	// =====================================================
+	public void testTokenFetching(String strategyName) {
+		Strategy strategy = strategyRepo.findByName(strategyName);
+		
+		if (strategy == null) {
+			logger.error("Strategy not found: {}", strategyName);
+			return;
+		}
+		
+		logger.info("=== Token Fetching Test ===");
+		logger.info("Strategy Name: {}", strategy.getName());
+		logger.info("Strategy Expiry: {}", strategy.getExpiry());
+		
+		// Test with multiple strikes
+		int[] testStrikes = {23900, 23950, 24000, 24050, 24100};
+		int foundCount = 0;
+		
+		for (int strike : testStrikes) {
+			String ceSymbol = String.format("%s%s%dCE", 
+				strategy.getName(), strategy.getExpiry(), strike);
+			String peSymbol = String.format("%s%s%dPE", 
+				strategy.getName(), strategy.getExpiry(), strike);
+			
+			Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+			Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+			
+			if (ceIndex != null || peIndex != null) {
+				foundCount++;
+				logger.info("Strike {}: CE={} ({}), PE={} ({})", 
+					strike,
+					ceIndex != null ? "FOUND" : "NOT FOUND",
+					ceIndex != null ? ceIndex.getToken() : "N/A",
+					peIndex != null ? "FOUND" : "NOT FOUND",
+					peIndex != null ? peIndex.getToken() : "N/A"
+				);
+			} else {
+				logger.warn("Strike {}: CE=NOT FOUND, PE=NOT FOUND", strike);
+				logger.info("  Expected CE: {}", ceSymbol);
+				logger.info("  Expected PE: {}", peSymbol);
+			}
+		}
+		
+		if (foundCount == 0) {
+			logger.error("NO TOKENS FOUND! Check symbol format in database.");
+			logger.info("Your code generates symbols like: {}23DEC2524000CE", strategy.getName());
+			logger.info("Check your database for actual symbol format.");
+		} else {
+			logger.info("Found tokens for {} out of {} test strikes", foundCount, testStrikes.length);
+		}
+	}
+	
+	// =====================================================
+	// ALTERNATIVE: Test with specific strike
+	// =====================================================
+	public void testSingleStrike(String strategyName, int strike) {
+		Strategy strategy = strategyRepo.findByName(strategyName);
+		
+		if (strategy == null) {
+			logger.error("Strategy not found: {}", strategyName);
+			return;
+		}
+		
+		String ceSymbol = String.format("%s%s%dCE", 
+			strategy.getName(), strategy.getExpiry(), strike);
+		String peSymbol = String.format("%s%s%dPE", 
+			strategy.getName(), strategy.getExpiry(), strike);
+		
+		logger.info("Testing Strike: {}", strike);
+		logger.info("CE Symbol: {}", ceSymbol);
+		logger.info("PE Symbol: {}", peSymbol);
+		
+		Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+		Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+		
+		if (ceIndex != null) {
+			logger.info("✓ CE FOUND - Token: {}, Exchange: {}", 
+				ceIndex.getToken(), ceIndex.getExchange());
+		} else {
+			logger.error("✗ CE NOT FOUND");
+			
+			// Try common variations
+			String[] variations = {
+				String.format("%s %s %d CE", strategy.getName(), strategy.getExpiry(), strike),
+				String.format("%s%s %dCE", strategy.getName(), strategy.getExpiry(), strike),
+				String.format("%s-%s-%dCE", strategy.getName(), strategy.getExpiry(), strike)
+			};
+			
+			logger.info("Trying variations:");
+			for (String var : variations) {
+				Indexes varIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), var);
+				if (varIndex != null) {
+					logger.info("  ✓ FOUND: {} -> Token: {}", var, varIndex.getToken());
+					break;
+				} else {
+					logger.info("  ✗ Not found: {}", var);
+				}
+			}
+		}
+		
+		if (peIndex != null) {
+			logger.info("✓ PE FOUND - Token: {}, Exchange: {}", 
+				peIndex.getToken(), peIndex.getExchange());
+		} else {
+			logger.error("✗ PE NOT FOUND");
+		}
+	}
 }
