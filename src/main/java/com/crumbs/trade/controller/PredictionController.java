@@ -35,6 +35,13 @@ public class PredictionController {
         return ResponseEntity.ok(response);
     }
     
+    /**
+     * ========================================
+     * CALCULATION API (EXISTING)
+     * ========================================
+     * This calls Angel One API and calculates predictions
+     * Used by: Scheduler (internal), Manual testing
+     */
     @GetMapping("/nifty/advanced")
     public ResponseEntity<AdvancedPredictionResponse> getAdvancedPrediction(
             @RequestParam(required = false) String days
@@ -57,6 +64,47 @@ public class PredictionController {
         response.setInterpretation(generateInterpretation(result));
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * ========================================
+     * UI FETCH API (NEW - FOR DASHBOARD)
+     * ========================================
+     * Fetches predictions from database only (NO calculation, NO Angel One API)
+     * Works 24/7 - even outside market hours, weekends, holidays
+     * 
+     * THIS IS THE API YOUR UI SHOULD USE!
+     * 
+     * @param days - Filter:
+     *               null or "" = today only
+     *               "5" = last 5 days
+     *               "10" = last 10 days
+     *               "15" = last 15 days
+     *               "all" = all records
+     * 
+     * Examples:
+     * GET /api/prediction/nifty/fetch              -> Today's predictions
+     * GET /api/prediction/nifty/fetch?days=5       -> Last 5 days
+     * GET /api/prediction/nifty/fetch?days=all     -> All historical data
+     */
+    @GetMapping("/nifty/fetch")
+    public ResponseEntity<AdvancedPredictionResponse> fetchPredictions(
+            @RequestParam(required = false) String days) {
+        
+        try {
+            AdvancedPredictionResponse response = 
+                    predictionService.fetchPredictionsFromDB(days);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            // Return empty response with error message
+            AdvancedPredictionResponse errorResponse = new AdvancedPredictionResponse();
+            errorResponse.setInterpretation("Error fetching predictions: " + e.getMessage());
+            errorResponse.setTimestamp(new Date());
+            errorResponse.setPredictionList(new ArrayList<>());
+            return ResponseEntity.ok(errorResponse);
+        }
     }
 
     

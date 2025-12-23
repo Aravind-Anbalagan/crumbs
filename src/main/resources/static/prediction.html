@@ -602,6 +602,43 @@
             margin: 0 auto 20px;
         }
 
+        /* Data Range Filter */
+        .filter-group {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .filter-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        #daysFilter {
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #daysFilter:hover {
+            border-color: var(--accent-green);
+        }
+
+        #daysFilter:focus {
+            outline: none;
+            border-color: var(--accent-green);
+            box-shadow: 0 0 0 3px var(--glow-green);
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .container {
@@ -694,19 +731,16 @@
             <div class="viz-header">
                 <h2 class="viz-title">Market Analysis</h2>
                 <div class="view-selector">
-                <div style="display:flex; gap:12px; align-items:center;">
-    <label style="font-size:0.75rem; color:var(--text-muted); letter-spacing:1px;">
-        DATA RANGE
-    </label>
-
-    <select id="daysFilter" class="view-btn" style="padding:10px 14px;">
-        <option value="">Today</option>
-        <option value="5">Last 5 Days</option>
-        <option value="10">Last 10 Days</option>
-        <option value="15">Last 15 Days</option>
-        <option value="all">All</option>
-    </select>
-</div>
+                    <div class="filter-group">
+                        <label class="filter-label">DATA RANGE</label>
+                        <select id="daysFilter">
+                            <option value="">Today</option>
+                            <option value="5">Last 5 Days</option>
+                            <option value="10">Last 10 Days</option>
+                            <option value="15">Last 15 Days</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
                     <button class="view-btn active" data-view="line">📈 Line</button>
                     <button class="view-btn" data-view="bar">📊 Bar</button>
                     <button class="view-btn" data-view="table">📋 Table</button>
@@ -770,79 +804,9 @@
         // CONFIGURATION
         // ==========================================
         const CONFIG = {
-            API_ENDPOINT: '/api/prediction/nifty/advanced',
+            API_ENDPOINT: '/api/prediction/nifty/fetch',
             REFRESH_INTERVAL: 20000,
-            TIMEOUT: 2000
-        };
-
-        // Demo data matching the API structure
-        const DEMO_DATA = {
-            predictionList: [
-                {
-                    timestamp: '2025-12-19T13:40:00Z',
-                    currentPrice: 26203,
-                    predictedPrice: 26191,
-                    percentageMove: -0.04,
-                    confidenceScore: 69.6,
-                    sentiment: 'BEARISH'
-                },
-                {
-                    timestamp: '2025-12-03T13:45:00Z',
-                    currentPrice: 25929,
-                    predictedPrice: 25828,
-                    percentageMove: -0.39,
-                    confidenceScore: 82.4,
-                    sentiment: 'BEARISH'
-                },
-                {
-                    timestamp: '2025-12-03T12:30:00Z',
-                    currentPrice: 25950,
-                    predictedPrice: 26150,
-                    percentageMove: 0.77,
-                    confidenceScore: 78.2,
-                    sentiment: 'BULLISH'
-                },
-                {
-                    timestamp: '2025-12-03T11:15:00Z',
-                    currentPrice: 25875,
-                    predictedPrice: 26025,
-                    percentageMove: 0.58,
-                    confidenceScore: 75.8,
-                    sentiment: 'BULLISH'
-                },
-                {
-                    timestamp: '2025-12-03T10:00:00Z',
-                    currentPrice: 25820,
-                    predictedPrice: 25750,
-                    percentageMove: -0.27,
-                    confidenceScore: 71.3,
-                    sentiment: 'BEARISH'
-                },
-                {
-                    timestamp: '2025-12-03T09:30:00Z',
-                    currentPrice: 25790,
-                    predictedPrice: 25920,
-                    percentageMove: 0.50,
-                    confidenceScore: 80.5,
-                    sentiment: 'BULLISH'
-                },
-                {
-                    timestamp: '2025-12-02T15:30:00Z',
-                    currentPrice: 25680,
-                    predictedPrice: 25580,
-                    percentageMove: -0.39,
-                    confidenceScore: 76.9,
-                    sentiment: 'BEARISH'
-                },
-                {
-                    timestamp: '2025-12-02T14:15:00Z',
-                    currentPrice: 25720,
-                    predictedPrice: 25850,
-                    percentageMove: 0.51,
-                    confidenceScore: 79.1,
-                    sentiment: 'BULLISH'
-                }
-            ]
+            TIMEOUT: 10000 // Increased timeout to 10 seconds
         };
 
         // ==========================================
@@ -875,6 +839,7 @@
                     text.textContent = 'Dark';
                 }
                 
+                // When theme changes, recreate charts with new colors
                 if (updateCharts && (state.charts.line || state.charts.bar)) {
                     if (state.charts.line) {
                         state.charts.line.destroy();
@@ -884,7 +849,15 @@
                         state.charts.bar.destroy();
                         state.charts.bar = null;
                     }
-                    ui.renderCharts();
+                    
+                    // Reset chart loaded states
+                    state.chartsLoaded.line = false;
+                    state.chartsLoaded.bar = false;
+                    
+                    // Only render if we have actual data
+                    if (state.predictions && state.predictions.length > 0) {
+                        ui.renderCharts();
+                    }
                 }
             }
         };
@@ -929,7 +902,13 @@
                 });
             },
             
-            getLatestPrediction: () => state.predictions[0] || null,
+            getLatestPrediction: () => {
+                if (state.predictions.length === 0) return null;
+                // Sort by timestamp descending and get the most recent
+                return [...state.predictions].sort((a, b) => 
+                    new Date(b.timestamp) - new Date(a.timestamp)
+                )[0];
+            },
             
             calculateStats: () => {
                 if (state.predictions.length === 0) return null;
@@ -949,6 +928,8 @@
         const dataService = {
             async fetchPredictions(days = '') {
                 try {
+                    console.log(`📡 Fetching predictions${days ? ` for ${days} days` : ' for today'}...`);
+                    
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), CONFIG.TIMEOUT);
 
@@ -957,20 +938,63 @@
                         : CONFIG.API_ENDPOINT;
 
                     const response = await fetch(url, {
-                        signal: controller.signal
+                        signal: controller.signal,
+                        headers: {
+                            'Accept': 'application/json'
+                        }
                     });
 
                     clearTimeout(timeoutId);
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        return data.predictionList || [];
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
-                } catch (error) {
-                    console.warn('Using demo data:', error.message);
-                }
 
-                return DEMO_DATA.predictionList;
+                    const data = await response.json();
+                    
+                    // Validate data structure
+                    if (data) {
+                        let predictions = [];
+                        
+                        // If there's a current prediction at root level, add it
+                        if (data.timestamp && data.currentPrice && data.predictedPrice) {
+                            predictions.push({
+                                timestamp: data.timestamp,
+                                currentPrice: data.currentPrice,
+                                predictedPrice: data.predictedPrice,
+                                percentageMove: data.percentageMove,
+                                confidenceScore: data.confidenceScore,
+                                sentiment: data.sentiment
+                            });
+                        }
+                        
+                        // Add historical predictions from predictionList if available
+                        if (data.predictionList && Array.isArray(data.predictionList)) {
+                            predictions = [...predictions, ...data.predictionList];
+                        }
+                        
+                        if (predictions.length > 0) {
+                            console.log(`✅ API data loaded: ${predictions.length} predictions (${data.timestamp ? '1 current + ' : ''}${data.predictionList?.length || 0} historical)`);
+                            return predictions;
+                        } else {
+                            console.warn('⚠️ No prediction data found in API response');
+                            throw new Error('No prediction data available');
+                        }
+                    } else {
+                        console.warn('⚠️ Invalid data structure from API');
+                        throw new Error('Invalid data structure');
+                    }
+                    
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        console.error('❌ Request timeout - API took too long to respond');
+                    } else {
+                        console.error('❌ API Error:', error.message);
+                    }
+                    
+                    // Return empty array instead of demo data
+                    return [];
+                }
             }
         };
 
@@ -1014,8 +1038,8 @@
                 if (!latest || !stats) {
                     document.getElementById('summaryGrid').innerHTML = `
                         <div class="loading-state">
-                            <div class="loading-spinner"></div>
                             <p>No data available</p>
+                            <p style="font-size: 0.85rem; margin-top: 10px;">Please check API connection</p>
                         </div>
                     `;
                     return;
@@ -1244,7 +1268,10 @@
             },
             
             renderCharts() {
-                if (state.predictions.length === 0) return;
+                if (state.predictions.length === 0) {
+                    console.log('⚠️ No data available for charts');
+                    return;
+                }
                 
                 this.renderLineChart();
                 this.renderBarChart();
@@ -1263,15 +1290,22 @@
                 const gridColor = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
                 const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
                 
-                const labels = state.predictions.map(p => utils.formatTimestamp(p.timestamp)).reverse();
-                const currentPrices = state.predictions.map(p => p.currentPrice).reverse();
-                const targetPrices = state.predictions.map(p => p.predictedPrice).reverse();
+                // Sort by timestamp ascending (oldest to newest, left to right)
+                const sortedPredictions = [...state.predictions].sort((a, b) => 
+                    new Date(a.timestamp) - new Date(b.timestamp)
+                );
+                
+                const labels = sortedPredictions.map(p => utils.formatTimestamp(p.timestamp));
+                const currentPrices = sortedPredictions.map(p => p.currentPrice);
+                const targetPrices = sortedPredictions.map(p => p.predictedPrice);
                 
                 if (state.charts.line) {
+                    // Update existing chart
                     state.charts.line.data.labels = labels;
                     state.charts.line.data.datasets[0].data = currentPrices;
                     state.charts.line.data.datasets[1].data = targetPrices;
                     
+                    // Update colors for theme
                     state.charts.line.options.plugins.legend.labels.color = textColor;
                     state.charts.line.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
                     state.charts.line.options.plugins.tooltip.titleColor = theme === 'light' ? '#0f172a' : '#ffffff';
@@ -1288,6 +1322,7 @@
                     return;
                 }
                 
+                // Create new chart
                 state.charts.line = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -1411,7 +1446,6 @@
                     }
                 });
                 
-                // Hide loader after chart is created
                 setTimeout(() => this.hideChartLoader('line'), 300);
             },
             
@@ -1428,16 +1462,23 @@
                 const gridColor = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
                 const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
                 
-                const labels = state.predictions.map(p => utils.formatTimestamp(p.timestamp)).reverse();
-                const moves = state.predictions.map(p => p.percentageMove).reverse();
+                // Sort by timestamp ascending (oldest to newest, left to right)
+                const sortedPredictions = [...state.predictions].sort((a, b) => 
+                    new Date(a.timestamp) - new Date(b.timestamp)
+                );
+                
+                const labels = sortedPredictions.map(p => utils.formatTimestamp(p.timestamp));
+                const moves = sortedPredictions.map(p => p.percentageMove);
                 const colors = moves.map(m => m >= 0 ? 'rgba(0, 255, 159, 0.8)' : 'rgba(255, 51, 102, 0.8)');
                 
                 if (state.charts.bar) {
+                    // Update existing chart
                     state.charts.bar.data.labels = labels;
                     state.charts.bar.data.datasets[0].data = moves;
                     state.charts.bar.data.datasets[0].backgroundColor = colors;
                     state.charts.bar.data.datasets[0].borderColor = moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366');
                     
+                    // Update colors for theme
                     state.charts.bar.options.plugins.legend.labels.color = textColor;
                     state.charts.bar.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
                     state.charts.bar.options.plugins.tooltip.titleColor = theme === 'light' ? '#0f172a' : '#ffffff';
@@ -1451,6 +1492,7 @@
                     return;
                 }
                 
+                // Create new chart
                 state.charts.bar = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -1547,7 +1589,6 @@
                     }
                 });
                 
-                // Hide loader after chart is created
                 setTimeout(() => this.hideChartLoader('bar'), 300);
             },
             
@@ -1590,21 +1631,21 @@
             },
             
             setupEventListeners() {
-                // Line / Bar / Table buttons
-                document.querySelectorAll('.view-btn').forEach(btn => {
+                // View switcher buttons
+                document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
                     btn.addEventListener('click', () => {
                         ui.switchView(btn.dataset.view);
                     });
                 });
 
-                // Days dropdown handler
+                // Days filter dropdown
                 const daysFilter = document.getElementById('daysFilter');
                 if (daysFilter) {
                     daysFilter.addEventListener('change', async (e) => {
                         state.selectedDays = e.target.value;
-                        console.log('📅 Days selected:', state.selectedDays);
+                        console.log(`📅 Filter changed: ${state.selectedDays || 'Today'}`);
 
-                        // Destroy existing charts before reload
+                        // Destroy existing charts
                         if (state.charts.line) {
                             state.charts.line.destroy();
                             state.charts.line = null;
@@ -1614,15 +1655,12 @@
                             state.charts.bar = null;
                         }
 
-                        // Reset chart loaded states
+                        // Reset chart states
                         state.chartsLoaded.line = false;
                         state.chartsLoaded.bar = false;
 
                         // Fetch new data
-                        await app.refreshData();
-
-                        // Switch to line view to show the chart
-                        ui.switchView('line');
+                        await this.refreshData();
                     });
                 }
             },
@@ -1631,15 +1669,27 @@
                 try {
                     state.isLoading = true;
 
+                    // Fetch predictions from API
                     const predictions = await dataService.fetchPredictions(state.selectedDays);
 
+                    // Update state with new data
                     state.predictions = predictions;
                     state.isLoading = false;
 
+                    // Update UI
                     this.updateUI();
+                    
                 } catch (error) {
-                    console.error('Error refreshing data:', error);
+                    console.error('❌ Error refreshing data:', error);
                     state.isLoading = false;
+                    
+                    // Show error in UI
+                    document.getElementById('summaryGrid').innerHTML = `
+                        <div class="loading-state">
+                            <p>Error loading data</p>
+                            <p style="font-size: 0.85rem; margin-top: 10px;">${error.message}</p>
+                        </div>
+                    `;
                 }
             },
             
@@ -1652,7 +1702,7 @@
         };
 
         // ==========================================
-        // INITIALIZE
+        // INITIALIZE APP
         // ==========================================
         document.addEventListener('DOMContentLoaded', () => {
             app.init();

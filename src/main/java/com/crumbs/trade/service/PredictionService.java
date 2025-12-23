@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.controller.PredictionController.AdvancedPredictionResponse;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Prediction;
 import com.crumbs.trade.entity.PredictionHistory;
@@ -593,6 +594,120 @@ public class PredictionService {
         public List<PredictionHistory> getPredictionList() {
             return predictionList;
         }
+    }
+ // Add this method to your PredictionService.java class
+
+    /**
+     * ========================================
+     * FETCH FROM DATABASE (NO CALCULATION)
+     * ========================================
+     * This method fetches predictions from database without any calculation
+     * Used by: UI fetch API
+     */
+    public AdvancedPredictionResponse fetchPredictionsFromDB(String days) {
+        
+        logger.info("📊 Fetching predictions from database with days filter: {}", days != null ? days : "today");
+        
+        try {
+            // Get the latest prediction from database
+            PredictionHistory latest = predictionHistoryRepo.findFirstByOrderByTimestampDesc();
+            
+            if (latest == null) {
+                logger.warn("⚠️ No predictions found in database");
+                return buildEmptyResponse();
+            }
+
+            // Fetch historical predictions based on filter
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime startOfToday = now.toLocalDate().atStartOfDay();
+            List<PredictionHistory> historicalList = fetchPredictionHistoryByDays(days);
+
+            // Build response
+            AdvancedPredictionResponse response = new AdvancedPredictionResponse();
+            
+            // Set latest prediction data (root level)
+            response.setCurrentPrice(latest.getCurrentPrice());
+            response.setPredictedPrice(latest.getPredictedPrice());
+            response.setDifference(latest.getDifference());
+            response.setPercentageMove(latest.getPercentageMove());
+            response.setValidStocks(latest.getValidStocks());
+            response.setTotalStocks(latest.getTotalStocks());
+            response.setConfidenceScore(latest.getConfidenceScore().doubleValue());
+            response.setSentiment(latest.getSentiment());
+            response.setTimestamp(new Date());
+            
+            // Set historical predictions list
+            response.setPredictionList(historicalList);
+            
+            // Generate interpretation
+            response.setInterpretation(generateInterpretationFromHistory(latest));
+            
+            logger.info("✅ Fetched {} historical predictions, latest from: {}", 
+                    historicalList.size(), latest.getTimestamp());
+            
+            return response;
+            
+        } catch (Exception e) {
+            logger.error("❌ Error fetching predictions from database: {}", e.getMessage(), e);
+            return buildEmptyResponse();
+        }
+    }
+
+    /**
+     * Helper method to build empty response when no data is available
+     */
+    private AdvancedPredictionResponse buildEmptyResponse() {
+        AdvancedPredictionResponse response = new AdvancedPredictionResponse();
+        response.setCurrentPrice(BigDecimal.ZERO);
+        response.setPredictedPrice(BigDecimal.ZERO);
+        response.setDifference(BigDecimal.ZERO);
+        response.setPercentageMove(BigDecimal.ZERO);
+        response.setValidStocks(0);
+        response.setTotalStocks(50);
+        response.setConfidenceScore(0.0);
+        response.setSentiment("NONE");
+        response.setTimestamp(new Date());
+        response.setPredictionList(new ArrayList<>());
+        response.setInterpretation("No predictions available. Please wait for market hours or check if scheduler is running.");
+        return response;
+    }
+
+    /**
+     * Helper method to generate interpretation from PredictionHistory entity
+     */
+    private String generateInterpretationFromHistory(PredictionHistory hist) {
+        StringBuilder sb = new StringBuilder();
+        
+        // Coverage
+        double coverage = (double) hist.getValidStocks() / hist.getTotalStocks() * 100;
+        sb.append(String.format("Analysis based on %d out of %d Nifty 50 stocks (%.1f%% coverage). ",
+            hist.getValidStocks(), hist.getTotalStocks(), coverage));
+        
+        // Movement
+        if (hist.getDifference().abs().doubleValue() < 10) {
+            sb.append("Market showing minimal movement. ");
+        } else if (hist.getDifference().doubleValue() > 0) {
+            sb.append(String.format("Predicted upward movement of %.2f points. ", 
+                hist.getDifference().doubleValue()));
+        } else {
+            sb.append(String.format("Predicted downward movement of %.2f points. ", 
+                Math.abs(hist.getDifference().doubleValue())));
+        }
+        
+        // Confidence
+        double confidence = hist.getConfidenceScore().doubleValue();
+        if (confidence >= 75) {
+            sb.append("High confidence prediction. ");
+        } else if (confidence >= 50) {
+            sb.append("Moderate confidence prediction. ");
+        } else {
+            sb.append("Low confidence - mixed signals from constituent stocks. ");
+        }
+        
+        // Sentiment
+        sb.append(String.format("Overall market sentiment: %s.", hist.getSentiment()));
+        
+        return sb.toString();
     }
 
 }
