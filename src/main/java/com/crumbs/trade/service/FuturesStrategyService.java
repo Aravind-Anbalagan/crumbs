@@ -9,6 +9,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import org.apache.logging.log4j.LogManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.controller.FuturesStrategyController;
 import com.crumbs.trade.dto.FuturesConfigDto;
 import com.crumbs.trade.entity.Futures;
 import com.crumbs.trade.entity.FuturesConfig;
@@ -32,7 +34,7 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class FuturesStrategyService {
-
+	private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(FuturesStrategyService.class);
     @Autowired
     private FuturesRepo futuresRepo;
 
@@ -94,7 +96,10 @@ public class FuturesStrategyService {
                     fetchExpiryClosePrice(idx, expiryDate);
 
             if (expiryClose == null || expiryClose.compareTo(BigDecimal.ZERO) == 0)
-                continue;
+            {
+            	logger.error("Expiry Price is empty for {}" , idx.getName());
+            }
+              
 
             BigDecimal percentMove = todayPrice
                     .subtract(expiryClose)
@@ -103,7 +108,7 @@ public class FuturesStrategyService {
 
             if (percentMove.abs()
                     .compareTo(config.getMovementPercent()) < 0) {
-                continue;
+                //continue;
             }
 
             FuturesFilter ff = new FuturesFilter();
@@ -183,7 +188,7 @@ public class FuturesStrategyService {
                     NSEWorkingDays.isNSEWorkingDay(expiryDate)
                         ? expiryDate
                         : NSEWorkingDays.getLastWorkingDay(expiryDate);
-
+            Thread.sleep(5000);
             // ✅ 2-day interval (MANDATORY)
             LocalDate fromDate = tradingDate.minusDays(1);
 

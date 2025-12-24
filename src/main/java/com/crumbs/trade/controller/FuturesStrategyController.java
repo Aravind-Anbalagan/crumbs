@@ -2,8 +2,10 @@ package com.crumbs.trade.controller;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 
+import org.apache.logging.log4j.LogManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,12 +21,14 @@ import com.crumbs.trade.entity.FuturesFilter;
 import com.crumbs.trade.repo.FuturesFilterRepo;
 import com.crumbs.trade.service.FuturesStrategyService;
 
+import ch.qos.logback.classic.Logger;
+
 @RestController
 @RequestMapping("/api/futures")
 public class FuturesStrategyController {
-
-    private static final LocalTime MARKET_START = LocalTime.of(9, 15);
-    private static final LocalTime MARKET_END   = LocalTime.of(20, 30);
+	private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(FuturesStrategyController.class);
+	private static final LocalTime MARKET_START = LocalTime.of(9, 15);
+	private static final LocalTime MARKET_END   = LocalTime.of(15, 30);
 
     @Autowired
     private FuturesStrategyService futuresStrategyService;
@@ -32,18 +36,29 @@ public class FuturesStrategyController {
     @Autowired
     private FuturesFilterRepo futuresFilterRepo;
 
-    /**
-     * 🔁 Scheduler
-     * Runs every 1 hour, but executes only during market hours
-     */
-    @Scheduled(cron = "0 0 * * * MON-FRI")
-    public void hourlyScanDuringMarket() {
-    	
-        LocalTime now = LocalDateTime.now().toLocalTime();
+    @Scheduled(cron = "0 15 9-15 * * MON-FRI")
+    public void scheduler915to315() {
+        executeIfMarketOpen();
+    }
 
+    @Scheduled(cron = "0 30 15 * * MON-FRI")
+    public void scheduler330() {
+        executeIfMarketOpen();
+    }
+    
+
+    private void executeIfMarketOpen() {
+        LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
         if (now.isBefore(MARKET_START) || now.isAfter(MARKET_END)) {
-            return; // ❌ Outside market hours
+        	logger.info("Market Closed");
+            return;
         }
+        futuresFilterRepo.deleteAll();
+        futuresStrategyService.execute();
+    }
+    
+    @GetMapping("/filter")
+    private void executeIfMarketClose() {
         futuresFilterRepo.deleteAll();
         futuresStrategyService.execute();
     }
