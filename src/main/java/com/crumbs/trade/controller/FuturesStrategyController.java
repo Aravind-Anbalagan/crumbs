@@ -24,7 +24,7 @@ import com.crumbs.trade.service.FuturesStrategyService;
 public class FuturesStrategyController {
 
     private static final LocalTime MARKET_START = LocalTime.of(9, 15);
-    private static final LocalTime MARKET_END   = LocalTime.of(15, 30);
+    private static final LocalTime MARKET_END   = LocalTime.of(20, 30);
 
     @Autowired
     private FuturesStrategyService futuresStrategyService;
