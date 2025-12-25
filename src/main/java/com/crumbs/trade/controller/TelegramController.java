@@ -1,65 +1,109 @@
 package com.crumbs.trade.controller;
 
-
-
-import org.springframework.web.bind.annotation.*;
-
 import com.crumbs.trade.service.TelegramService;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/telegram")
 public class TelegramController {
-
+	private static final Logger logger = LogManager.getLogger(TelegramController.class);
     private final TelegramService telegramService;
 
     public TelegramController(TelegramService telegramService) {
         this.telegramService = telegramService;
     }
 
-    // Single message (optional)
+    // ------------------------
+    // Send single message
+    // ------------------------
     @PostMapping("/send")
-    public String send(@RequestBody Map<String, String> payload) {
-        String text = payload.getOrDefault("text", "Hello from Spring Boot!");
-        boolean ok = telegramService.sendMessage(text);
-        return ok ? "✅ Sent!" : "❌ Failed!";
-    }
+    public ResponseEntity<String> send(@RequestBody Map<String, String> payload) {
 
-    // 🔥 Broadcast message
-    @PostMapping("/broadcast")
-    public String broadcast(@RequestBody Map<String, String> payload) {
         String text = payload.get("text");
 
         if (text == null || text.isBlank()) {
-            return "❌ text is required";
+            return ResponseEntity.badRequest().body("❌ text is required");
+        }
+
+        boolean ok = telegramService.sendMessage(text);
+        return ResponseEntity.ok(ok ? "✅ Sent!" : "❌ Failed!");
+    }
+
+    // ------------------------
+    // Broadcast message
+    // ------------------------
+    @PostMapping("/broadcast")
+    public ResponseEntity<String> broadcast(@RequestBody Map<String, String> payload) {
+
+        String text = payload.get("text");
+
+        if (text == null || text.isBlank()) {
+            return ResponseEntity.badRequest().body("❌ text is required");
         }
 
         int count = telegramService.sendBroadcast(text);
-        return "✅ Broadcast sent to " + count + " users";
+        return ResponseEntity.ok("✅ Broadcast sent to " + count + " users");
     }
 
-    // ✅ Telegram webhook (called ONLY by Telegram)
+    // ------------------------
+    // Telegram Webhook
+    // ------------------------
     @PostMapping("/webhook")
-    public void onUpdate(@RequestBody Map<String, Object> update) {
+    public ResponseEntity<Void> onUpdate(@RequestBody Map<String, Object> update) {
+    	logger.info("Webhook Invoked");
+        try {
+            // Telegram sends "message" object
+            Object messageObj = update.get("message");
+            if (!(messageObj instanceof Map)) {
+                return ResponseEntity.ok().build(); // Always 200
+            }
 
-        Map<String, Object> message = (Map<String, Object>) update.get("message");
-        if (message == null) return;
+            Map<?, ?> message = (Map<?, ?>) messageObj;
 
-        Map<String, Object> chat = (Map<String, Object>) message.get("chat");
-        Map<String, Object> from = (Map<String, Object>) message.get("from");
+            Object chatObj = message.get("chat");
+            if (!(chatObj instanceof Map)) {
+                return ResponseEntity.ok().build();
+            }
 
-        Long chatId = ((Number) chat.get("id")).longValue();
-        String username = from != null ? (String) from.get("username") : null;
-        String text = (String) message.get("text");
+            Map<?, ?> chat = (Map<?, ?>) chatObj;
+            Object chatIdObj = chat.get("id");
 
-        if ("/start".equals(text)) {
-            telegramService.saveUser(chatId, username);
-            telegramService.sendToChat(
-                chatId,
-                "✅ You are subscribed for alerts"
-            );
+            if (!(chatIdObj instanceof Number)) {
+                return ResponseEntity.ok().build();
+            }
+
+            Long chatId = ((Number) chatIdObj).longValue();
+
+            // username (optional)
+            String username = null;
+            Object fromObj = message.get("from");
+            if (fromObj instanceof Map) {
+                username = (String) ((Map<?, ?>) fromObj).get("username");
+            }
+
+            String text = (String) message.get("text");
+
+            // Handle /start
+            if ("/start".equalsIgnoreCase(text)) {
+                telegramService.saveUser(chatId, username);
+                telegramService.sendToChat(
+                        chatId,
+                        "✅ You are subscribed for alerts"
+                );
+            }
+
+        } catch (Exception e) {
+            // NEVER let Telegram see an error
+            e.printStackTrace();
         }
+
+        // Telegram expects 200 OK always
+        return ResponseEntity.ok().build();
     }
 }
-
