@@ -237,29 +237,6 @@
             opacity: 0.6;
         }
 
-        .form-group select {
-            padding: 8px 10px;
-            border: 2px solid var(--input-border);
-            border-radius: 6px;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            background: var(--input-bg);
-            color: var(--text-primary);
-            cursor: pointer;
-        }
-
-        .form-group select:focus {
-            outline: none;
-            border-color: var(--input-focus);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .form-group select:disabled {
-            background: var(--secondary-bg);
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
         .button-group {
             display: flex;
             gap: 10px;
@@ -420,12 +397,6 @@
         .pagination-btn:disabled {
             opacity: 0.4;
             cursor: not-allowed;
-        }
-
-        .pagination-btn.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-color: #667eea;
         }
 
         .page-size-select {
@@ -662,7 +633,7 @@
                         <option value="-3to-2">-3% to -2%</option>
                         <option value="-2to-1">-2% to -1%</option>
                         <option value="-1to0">-1% to 0%</option>
-                        <option value="0to1">0% to 1%</option>
+                        <option value="0to1" selected>0% to 1%</option>
                         <option value="1to2">1% to 2%</option>
                         <option value="2to3">2% to 3%</option>
                         <option value="3to4">3% to 4%</option>
@@ -731,6 +702,15 @@
     <script>
         const API_BASE_URL = '/api/futures';
 
+        // Global state
+        window.fullData = null;
+        window.filteredData = null;
+        window.currentPage = 1;
+        window.pageSize = 10;
+        window.sortColumn = null;
+        window.sortDirection = 'asc';
+        window.percentColumnName = null;
+
         // Theme Management
         function initTheme() {
             const savedTheme = localStorage.getItem('theme') || 'light';
@@ -757,11 +737,8 @@
             const editToggle = document.getElementById('editToggle');
             const isEditMode = editToggle.checked;
             
-            // Enable/disable form inputs
             document.getElementById('expiryDate').disabled = !isEditMode;
             document.getElementById('movementPercent').disabled = !isEditMode;
-            
-            // Enable/disable buttons
             document.getElementById('reloadBtn').disabled = !isEditMode;
             document.getElementById('saveBtn').disabled = !isEditMode;
         }
@@ -789,7 +766,6 @@
 
                 const config = await response.json();
                 
-                // Populate form fields
                 if (config.expiryDate) {
                     document.getElementById('expiryDate').value = config.expiryDate;
                 }
@@ -797,7 +773,6 @@
                     document.getElementById('movementPercent').value = config.movementPercent;
                 }
 
-                // Only show success message if called manually (not on initial load)
                 if (window.configLoadedOnce) {
                     showMessage('configMessage', 'Configuration loaded successfully', 'success');
                     setTimeout(() => clearMessage('configMessage'), 3000);
@@ -841,7 +816,6 @@
 
                 showMessage('configMessage', 'Configuration saved successfully! Reloading filtered data...', 'success');
                 
-                // Reload filtered data after saving config
                 setTimeout(() => {
                     loadFilteredData();
                     clearMessage('configMessage');
@@ -858,7 +832,6 @@
             const loadingDiv = document.getElementById('dataLoading');
             const tableContainer = document.getElementById('tableContainer');
             
-            // Add subtle opacity effect instead of clearing content
             if (tableContainer.innerHTML) {
                 const tableDiv = tableContainer.querySelector('.table-container');
                 if (tableDiv) {
@@ -883,6 +856,8 @@
                 const data = await response.json();
                 loadingDiv.style.display = 'none';
 
+                console.log('✅ Data loaded:', data.length, 'records');
+
                 if (!data || data.length === 0) {
                     tableContainer.innerHTML = '';
                     showEmptyState();
@@ -890,22 +865,18 @@
                     return;
                 }
 
-                // Store full data globally
+                // Store data
                 window.fullData = data;
                 window.filteredData = data;
-                window.currentPage = 1;
-                window.pageSize = parseInt(document.getElementById('pageSize').value);
-                window.sortColumn = null;
-                window.sortDirection = 'asc';
 
-                // Auto-detect the percent move column name from actual data
+                // Auto-detect percent column
                 detectPercentColumn(data);
 
-                renderTable(data);
-                updateStats(data);
+                // Apply filters (this will respect the dropdown selection)
+                applyFilters();
+
                 document.getElementById('paginationContainer').style.display = 'block';
 
-                // Remove updating class after render
                 setTimeout(() => {
                     const tableDiv = tableContainer.querySelector('.table-container');
                     if (tableDiv) {
@@ -924,17 +895,7 @@
             }
         }
 
-        // Filter table based on search
-        function filterTable() {
-            applyFilters();
-        }
-
-        // Filter by percentage range
-        function filterByPercentage() {
-            applyFilters();
-        }
-
-        // Auto-detect percent column from actual data
+        // Detect percent column
         function detectPercentColumn(data) {
             if (!data || data.length === 0) {
                 window.percentColumnName = null;
@@ -944,14 +905,12 @@
             const firstRow = data[0];
             const keys = Object.keys(firstRow);
             
-            // Priority 1: Look for exact matches (case-insensitive)
             let percentKey = keys.find(key => 
                 key.toLowerCase() === 'percentmove' || 
                 key.toLowerCase() === 'percent move' ||
                 key.toLowerCase() === 'percentagemove'
             );
             
-            // Priority 2: Look for keys containing both 'percent' and 'move'
             if (!percentKey) {
                 percentKey = keys.find(key => {
                     const lower = key.toLowerCase();
@@ -959,7 +918,6 @@
                 });
             }
             
-            // Priority 3: Look for keys with 'percent' or 'change'
             if (!percentKey) {
                 percentKey = keys.find(key => {
                     const lower = key.toLowerCase();
@@ -970,35 +928,33 @@
                 });
             }
             
-            // Priority 4: Look for 'move' column
             if (!percentKey) {
                 percentKey = keys.find(key => key.toLowerCase().includes('move'));
             }
             
             window.percentColumnName = percentKey;
-            
-            // Debug: Log detected column
-            if (percentKey) {
-                console.log('✅ Detected percent column:', percentKey);
-            } else {
-                console.warn('⚠️ Could not detect percent column. Available columns:', keys);
-            }
+            console.log('✅ Detected percent column:', percentKey);
         }
 
-        // Get percent value from row using detected column
+        // Get percent value
         function getPercentValue(row) {
             if (!window.percentColumnName) return null;
             return row[window.percentColumnName];
         }
 
-        // Apply both percentage and search filters
+        // Apply filters
         function applyFilters() {
             const searchTerm = document.getElementById('searchBox').value.toLowerCase();
             const percentFilter = document.getElementById('percentFilter').value;
             
-            let filtered = window.fullData;
+            if (!window.fullData) {
+                console.log('⚠️ No fullData available');
+                return;
+            }
+            
+            let filtered = [...window.fullData];
 
-            // Apply percentage filter first
+            // Apply percentage filter
             if (percentFilter !== 'all' && window.percentColumnName) {
                 filtered = filtered.filter(row => {
                     const percentValue = getPercentValue(row);
@@ -1006,7 +962,6 @@
                     if (percentValue !== undefined && percentValue !== null) {
                         const pct = parseFloat(percentValue);
                         if (!isNaN(pct)) {
-                            // Handle special cases for > and <
                             if (percentFilter.startsWith('<')) {
                                 const threshold = parseFloat(percentFilter.substring(1));
                                 return pct < threshold;
@@ -1014,7 +969,6 @@
                                 const threshold = parseFloat(percentFilter.substring(1));
                                 return pct > threshold;
                             } else if (percentFilter.includes('to')) {
-                                // Handle range filters like "0to1" or "-2to-1"
                                 const [start, end] = percentFilter.split('to').map(v => parseFloat(v));
                                 return pct >= start && pct < end;
                             }
@@ -1033,9 +987,22 @@
                 });
             }
             
+            console.log('✅ Filtered:', filtered.length, 'records');
+            
             window.filteredData = filtered;
             window.currentPage = 1;
-            renderTable(window.filteredData);
+            
+            renderTable();
+            updateStats();
+        }
+
+        // Filter functions
+        function filterTable() {
+            applyFilters();
+        }
+
+        function filterByPercentage() {
+            applyFilters();
         }
 
         // Sort table
@@ -1051,11 +1018,9 @@
                 let valA = a[column];
                 let valB = b[column];
 
-                // Handle null/undefined
                 if (valA == null) return 1;
                 if (valB == null) return -1;
 
-                // Try to parse as number
                 const numA = parseFloat(valA);
                 const numB = parseFloat(valB);
 
@@ -1063,7 +1028,6 @@
                     return window.sortDirection === 'asc' ? numA - numB : numB - numA;
                 }
 
-                // String comparison
                 const strA = String(valA).toLowerCase();
                 const strB = String(valB).toLowerCase();
                 
@@ -1074,25 +1038,25 @@
                 }
             });
 
-            renderTable(window.filteredData);
+            renderTable();
         }
 
         // Pagination functions
         function changePageSize() {
             window.pageSize = parseInt(document.getElementById('pageSize').value);
             window.currentPage = 1;
-            renderTable(window.filteredData);
+            renderTable();
         }
 
         function goToFirstPage() {
             window.currentPage = 1;
-            renderTable(window.filteredData);
+            renderTable();
         }
 
         function previousPage() {
             if (window.currentPage > 1) {
                 window.currentPage--;
-                renderTable(window.filteredData);
+                renderTable();
             }
         }
 
@@ -1100,67 +1064,28 @@
             const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
             if (window.currentPage < totalPages) {
                 window.currentPage++;
-                renderTable(window.filteredData);
+                renderTable();
             }
         }
 
         function goToLastPage() {
             const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
             window.currentPage = totalPages;
-            renderTable(window.filteredData);
-        }
-
-        // Export to CSV
-        function exportToCSV() {
-            if (!window.fullData || window.fullData.length === 0) {
-                alert('No data to export');
-                return;
-            }
-
-            const data = window.filteredData || window.fullData;
-            const columns = Object.keys(data[0]);
-            
-            // Create CSV content
-            let csv = columns.join(',') + '\n';
-            
-            data.forEach(row => {
-                const values = columns.map(col => {
-                    const val = row[col];
-                    // Handle values with commas or quotes
-                    if (val === null || val === undefined) return '';
-                    const str = String(val);
-                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                        return '"' + str.replace(/"/g, '""') + '"';
-                    }
-                    return str;
-                });
-                csv += values.join(',') + '\n';
-            });
-
-            // Create download link
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute('href', url);
-            link.setAttribute('download', `futures_data_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            renderTable();
         }
 
         // Render table
-        function renderTable(data) {
+        function renderTable() {
             const tableContainer = document.getElementById('tableContainer');
             
-            if (!data || data.length === 0) {
+            if (!window.filteredData || window.filteredData.length === 0) {
+                console.log('⚠️ No data to display');
                 showEmptyState();
                 return;
             }
 
-            // Define exact columns to show from API (in order)
+            console.log('🎨 Rendering table with', window.filteredData.length, 'records');
+
             const columnsToShow = [
                 'name',
                 'lastExpiryDate', 
@@ -1171,19 +1096,13 @@
                 'direction'
             ];
 
-            // Filter to only show columns that exist in the data
-            const allKeys = Object.keys(data[0]);
+            const allKeys = Object.keys(window.filteredData[0]);
             const columns = columnsToShow.filter(col => allKeys.includes(col));
 
-            console.log('📋 Displaying columns:', columns);
-            console.log('📊 Available columns in data:', allKeys);
-
-            // Calculate pagination
             const startIndex = (window.currentPage - 1) * window.pageSize;
             const endIndex = startIndex + window.pageSize;
-            const paginatedData = data.slice(startIndex, endIndex);
+            const paginatedData = window.filteredData.slice(startIndex, endIndex);
 
-            // Generate sort icon
             const getSortIcon = (col) => {
                 if (window.sortColumn === col) {
                     return window.sortDirection === 'asc' ? '▲' : '▼';
@@ -1216,20 +1135,42 @@
             `;
 
             tableContainer.innerHTML = tableHTML;
+            console.log('✅ Table rendered successfully');
 
-            // Update pagination info
             updatePaginationInfo();
         }
 
         // Update pagination info
         function updatePaginationInfo() {
-            const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
-            document.getElementById('pageInfo').textContent = `Page ${window.currentPage} of ${totalPages}`;
+            if (!window.filteredData) return;
             
-            // Update showing count
-            const startIndex = (window.currentPage - 1) * window.pageSize;
-            const endIndex = Math.min(startIndex + window.pageSize, window.filteredData.length);
-            document.getElementById('showingCount').textContent = `${startIndex + 1}-${endIndex}`;
+            const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+            const pageInfoElem = document.getElementById('pageInfo');
+            
+            if (pageInfoElem) {
+                pageInfoElem.textContent = `Page ${window.currentPage} of ${totalPages}`;
+            }
+        }
+
+        // Update stats
+        function updateStats() {
+            const totalCountElem = document.getElementById('totalCount');
+            const showingCountElem = document.getElementById('showingCount');
+            const lastUpdateElem = document.getElementById('lastUpdate');
+            
+            if (totalCountElem && window.fullData) {
+                totalCountElem.textContent = window.fullData.length;
+            }
+            
+            if (showingCountElem && window.filteredData) {
+                const startIndex = (window.currentPage - 1) * window.pageSize;
+                const endIndex = Math.min(startIndex + window.pageSize, window.filteredData.length);
+                showingCountElem.textContent = `${startIndex + 1}-${endIndex} of ${window.filteredData.length}`;
+            }
+            
+            if (lastUpdateElem) {
+                lastUpdateElem.textContent = new Date().toLocaleTimeString();
+            }
         }
 
         // Format column names
@@ -1244,8 +1185,7 @@
         function formatCellValue(column, value) {
             if (value === null || value === undefined) return '-';
 
-            // Format percentages
-            if (column.toLowerCase().includes('change') || column.toLowerCase().includes('percent')) {
+            if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('change')) {
                 const num = parseFloat(value);
                 if (!isNaN(num)) {
                     const className = num >= 0 ? 'positive' : 'negative';
@@ -1253,7 +1193,6 @@
                 }
             }
 
-            // Format numbers
             if (typeof value === 'number') {
                 return value.toFixed(2);
             }
@@ -1261,13 +1200,42 @@
             return value;
         }
 
-        // Update statistics
-        function updateStats(data) {
-            document.getElementById('totalCount').textContent = window.fullData ? window.fullData.length : data.length;
-            const startIndex = (window.currentPage - 1) * window.pageSize;
-            const endIndex = Math.min(startIndex + window.pageSize, data.length);
-            document.getElementById('showingCount').textContent = `${startIndex + 1}-${endIndex} of ${data.length}`;
-            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        // Export to CSV
+        function exportToCSV() {
+            if (!window.fullData || window.fullData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            const data = window.filteredData || window.fullData;
+            const columns = Object.keys(data[0]);
+            
+            let csv = columns.join(',') + '\n';
+            
+            data.forEach(row => {
+                const values = columns.map(col => {
+                    const val = row[col];
+                    if (val === null || val === undefined) return '';
+                    const str = String(val);
+                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                        return '"' + str.replace(/"/g, '""') + '"';
+                    }
+                    return str;
+                });
+                csv += values.join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', `futures_data_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         // Show empty state
@@ -1295,10 +1263,10 @@
             document.getElementById(elementId).innerHTML = '';
         }
 
-        // Auto-refresh filtered data every 30 seconds
+        // Auto-refresh every 30 minutes
         setInterval(() => {
             loadFilteredData();
-        }, 30000);
+        }, 1800000);
     </script>
 </body>
 </html>
