@@ -2,10 +2,15 @@ package com.crumbs.trade.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+
+import com.crumbs.trade.entity.TelegramUser;
+import com.crumbs.trade.repo.TelegramUserRepo;
+
 import javax.annotation.PostConstruct;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +31,8 @@ public class TelegramService {
     
     private String cachedChatId;
     private Long updateOffset = 0L;
+    
+    @Autowired TelegramUserRepo telegramUserRepo;
     
     @PostConstruct
     public void initializeChatId() {
@@ -127,4 +134,60 @@ public class TelegramService {
         cachedChatId = null;
         fetchAndCacheChatId();
     }
+    
+ // 🔥 Broadcast logic
+    public int sendBroadcast(String text) {
+
+        List<TelegramUser> users = telegramUserRepo.findByActiveTrue();
+        int sent = 0;
+
+        for (TelegramUser user : users) {
+            try {
+                sendToChat(user.getChatId(), text);
+                sent++;
+                Thread.sleep(60); // Telegram rate limit
+            } catch (Exception e) {
+                logger.error("Failed to send to {}", user.getChatId(), e);
+            }
+        }
+        return sent;
+    }
+    public void sendToChat(Long chatId, String text) {
+
+        String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
+
+        Map<String, Object> body = Map.of(
+            "chat_id", chatId,   // Long is perfectly valid
+            "text", text,
+            "parse_mode", "HTML"
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        restTemplate.postForEntity(url, entity, String.class);
+    }
+    public void saveUser(Long chatId, String username) {
+
+        // If user already exists, just mark active
+        telegramUserRepo.findById(chatId).ifPresentOrElse(
+            user -> {
+                if (Boolean.FALSE.equals(user.getActive())) {
+                    user.setActive(true);
+                    telegramUserRepo.save(user);
+                }
+            },
+            () -> {
+                TelegramUser user = TelegramUser.builder()
+                        .chatId(chatId)
+                        .username(username)
+                        .active(true)
+                        .build();
+
+                telegramUserRepo.save(user);
+            }
+        );
+    }
+
 }
