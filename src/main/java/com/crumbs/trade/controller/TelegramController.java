@@ -1,5 +1,6 @@
 package com.crumbs.trade.controller;
 
+import com.crumbs.trade.dto.MessageRequest;
 import com.crumbs.trade.service.TelegramService;
 
 import org.apache.logging.log4j.LogManager;
@@ -12,7 +13,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/telegram")
 public class TelegramController {
-	private static final Logger logger = LogManager.getLogger(TelegramController.class);
+
+    private static final Logger logger = LogManager.getLogger(TelegramController.class);
     private final TelegramService telegramService;
 
     public TelegramController(TelegramService telegramService) {
@@ -23,15 +25,15 @@ public class TelegramController {
     // Send single message
     // ------------------------
     @PostMapping("/send")
-    public ResponseEntity<String> send(@RequestBody Map<String, String> payload) {
+    public ResponseEntity<String> send(@RequestBody MessageRequest request) {
 
-        String text = payload.get("text");
-
-        if (text == null || text.isBlank()) {
+        if (request.getText() == null || request.getText().isBlank()) {
             return ResponseEntity.badRequest().body("❌ text is required");
         }
 
-        boolean ok = telegramService.sendMessage(text);
+        logger.info("Sending message: {}", request.getText());
+
+        boolean ok = telegramService.sendMessage(request.getText());
         return ResponseEntity.ok(ok ? "✅ Sent!" : "❌ Failed!");
     }
 
@@ -39,32 +41,35 @@ public class TelegramController {
     // Broadcast message
     // ------------------------
     @PostMapping("/broadcast")
-    public ResponseEntity<String> broadcast(@RequestBody Map<String, String> payload) {
+    public ResponseEntity<String> broadcast(@RequestBody MessageRequest request) {
 
-        String text = payload.get("text");
-
-        if (text == null || text.isBlank()) {
+        if (request.getText() == null || request.getText().isBlank()) {
             return ResponseEntity.badRequest().body("❌ text is required");
         }
 
-        int count = telegramService.sendBroadcast(text);
+        logger.info("Broadcasting message: {}", request.getText());
+
+        int count = telegramService.sendBroadcast(request.getText());
         return ResponseEntity.ok("✅ Broadcast sent to " + count + " users");
     }
 
     // ------------------------
-    // Telegram Webhook
+    // Telegram Webhook (ONLY Telegram calls this)
     // ------------------------
     @PostMapping("/webhook")
     public ResponseEntity<Void> onUpdate(@RequestBody Map<String, Object> update) {
-    	logger.info("Webhook Invoked");
+
         try {
-            // Telegram sends "message" object
-            Object messageObj = update.get("message");
-            if (!(messageObj instanceof Map)) {
-                return ResponseEntity.ok().build(); // Always 200
+            Object msgObj = update.get("message");
+            if (msgObj == null) {
+                msgObj = update.get("edited_message");
             }
 
-            Map<?, ?> message = (Map<?, ?>) messageObj;
+            if (!(msgObj instanceof Map)) {
+                return ResponseEntity.ok().build();
+            }
+
+            Map<?, ?> message = (Map<?, ?>) msgObj;
 
             Object chatObj = message.get("chat");
             if (!(chatObj instanceof Map)) {
@@ -80,7 +85,6 @@ public class TelegramController {
 
             Long chatId = ((Number) chatIdObj).longValue();
 
-            // username (optional)
             String username = null;
             Object fromObj = message.get("from");
             if (fromObj instanceof Map) {
@@ -89,7 +93,8 @@ public class TelegramController {
 
             String text = (String) message.get("text");
 
-            // Handle /start
+            logger.info("Telegram update from chatId={}, text={}", chatId, text);
+
             if ("/start".equalsIgnoreCase(text)) {
                 telegramService.saveUser(chatId, username);
                 telegramService.sendToChat(
@@ -99,11 +104,10 @@ public class TelegramController {
             }
 
         } catch (Exception e) {
-            // NEVER let Telegram see an error
-            e.printStackTrace();
+            logger.error("Error processing Telegram webhook", e);
         }
 
-        // Telegram expects 200 OK always
+        // Telegram expects 200 always
         return ResponseEntity.ok().build();
     }
 }
