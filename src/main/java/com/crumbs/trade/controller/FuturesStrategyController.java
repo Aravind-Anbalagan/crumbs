@@ -57,7 +57,7 @@ public class FuturesStrategyController {
         futuresStrategyService.execute();
     }
     
-    @GetMapping("/filter")
+    @GetMapping("/getDetails")
     private void executeIfMarketClose() {
         futuresFilterRepo.deleteAll();
         futuresStrategyService.execute();

@@ -52,15 +52,19 @@ public class FuturesStrategyService {
 
     @Autowired
     private AngelOne angelOne;
+    
+    @Autowired
+    private TelegramService telegramService;
 
     private static final String EXCHANGE = "NSE";
 
     public List<FuturesFilter> execute() {
 
+    	
         FuturesConfig config = configRepo.findActive()
                 .orElseThrow(() ->
                         new IllegalStateException("No ACTIVE FUTURES_CONFIG found"));
-
+ 
         // ✅ Last completed expiry
         LocalDate expiryDate = resolveExecutionDate(config);
 
@@ -98,6 +102,7 @@ public class FuturesStrategyService {
             if (expiryClose == null || expiryClose.compareTo(BigDecimal.ZERO) == 0)
             {
             	logger.error("Expiry Price is empty for {}" , idx.getName());
+            	continue;   // ✅ THIS WAS MISSING
             }
               
 
@@ -131,9 +136,117 @@ public class FuturesStrategyService {
             ff.setLastTradedDate(LocalDate.now());
             result.add(ff);
         }
-
+       // 🔔 Notify before persisting
+        sendNotificationIfRequired(config, result);
+        //Save to DB
         return filterRepo.saveAll(result);
     }
+
+    private void sendNotificationIfRequired(
+            FuturesConfig config,
+            List<FuturesFilter> result
+    ) {
+
+        if (!"Y".equalsIgnoreCase(config.getNotificationRequired())) {
+            return;
+        }
+
+        BigDecimal threshold = config.getMovementPercent();
+        if (threshold == null || threshold.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        List<FuturesFilter> alertRows = result.stream()
+                .filter(Objects::nonNull)
+                .filter(f -> f.getPercentMove() != null)
+                .filter(f -> f.getPercentMove().abs().compareTo(threshold) <= 0)
+                .sorted(Comparator.comparing(FuturesFilter::getPercentMove).reversed())
+                .collect(Collectors.toList());
+
+
+        if (alertRows.isEmpty()) return;
+
+        sendTelegramInBatches(alertRows, threshold);
+    }
+
+    private void sendTelegramInBatches(
+            List<FuturesFilter> rows,
+            BigDecimal threshold
+    ) {
+
+        final int TELEGRAM_LIMIT = 3800; // safe buffer
+
+        String header = buildTableHeader(threshold);
+        String footer = "-----------------------------------------------------\n```";
+
+        StringBuilder batch = new StringBuilder(header);
+
+        for (FuturesFilter f : rows) {
+
+            String row = buildTableRow(f);
+
+            // ❗ Check size BEFORE adding row
+            if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
+
+                batch.append(footer);
+                telegramService.sendBroadcast(batch.toString());
+
+                // 🔄 Start new batch
+                batch = new StringBuilder(header);
+            }
+
+            batch.append(row);
+        }
+
+        // 🚀 Send last batch
+        if (batch.length() > header.length()) {
+            batch.append(footer);
+            telegramService.sendBroadcast(batch.toString());
+        }
+    }
+    
+    private String buildTableRow(FuturesFilter f) {
+
+        return String.format(
+            "%-18s | %18.2f | %18.2f%n",
+            f.getName(),
+            f.getLastExpiryPrice(),
+            f.getLastTradedPrice()
+        );
+    }
+
+
+
+
+
+    private String fixedWidth(String value, int width) {
+        if (value == null) return " ".repeat(width);
+        return value.length() > width
+                ? value.substring(0, width)
+                : String.format("%-" + width + "s", value);
+    }
+
+    private String buildTableHeader(BigDecimal threshold) {
+
+        return new StringBuilder()
+            .append("📊 *NIFTY 50 – Near Expiry Price* (±")
+            .append(threshold)
+            .append("%)\n\n")
+            .append("```\n")
+            .append("--------------------------------------------------------------------------------\n")
+            .append(String.format(
+                "%-18s | %18s | %18s%n",
+                "NAME", "EXPIRY CLOSE", "NOW"
+            ))
+            .append("--------------------------------------------------------------------------------\n")
+            .toString();
+    }
+
+
+
+
+
+
 
     /**
      * TODAY price via PredictionService (bulk marketData)
@@ -180,41 +293,59 @@ public class FuturesStrategyService {
      */
     private BigDecimal fetchExpiryClosePrice(Indexes idx, LocalDate expiryDate) {
 
-        try {
-            SmartConnect smartconnect = angelOne.signIn();
+        int maxRetries = 3;
+        int retryDelayMs = 2000;
 
-            // ✅ ensure valid trading day
-            LocalDate tradingDate =
-                    NSEWorkingDays.isNSEWorkingDay(expiryDate)
-                        ? expiryDate
-                        : NSEWorkingDays.getLastWorkingDay(expiryDate);
-            Thread.sleep(5000);
-            // ✅ 2-day interval (MANDATORY)
-            LocalDate fromDate = tradingDate.minusDays(1);
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                SmartConnect smartconnect = angelOne.signIn();
 
-            JSONObject req = new JSONObject();
-            req.put("exchange", idx.getExchange());
-            req.put("symboltoken", idx.getToken());
-            req.put("interval", "ONE_DAY");
-            req.put("fromdate", fromDate + " 15:30");
-            req.put("todate", tradingDate + " 15:30");
+                LocalDate tradingDate =
+                        NSEWorkingDays.isNSEWorkingDay(expiryDate)
+                            ? expiryDate
+                            : NSEWorkingDays.getLastWorkingDay(expiryDate);
 
-            JSONArray candles = smartconnect.candleData(req);
+                LocalDate fromDate = tradingDate.minusDays(1);
 
-            if (candles == null || candles.isEmpty()) {
-                return null;
+                JSONObject req = new JSONObject();
+                req.put("exchange", idx.getExchange());
+                req.put("symboltoken", idx.getToken());
+                req.put("interval", "ONE_DAY");
+                req.put("fromdate", fromDate + " 15:30");
+                req.put("todate", tradingDate + " 15:30");
+
+                JSONArray candles = smartconnect.candleData(req);
+
+                if (candles != null && !candles.isEmpty()) {
+                    JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+                    return lastCandle.getBigDecimal(4); // close
+                }
+
+                logger.warn(
+                    "Empty candle data (attempt {}/{}) for {}",
+                    attempt, maxRetries, idx.getName()
+                );
+
+            } catch (Exception e) {
+                logger.warn(
+                    "Error fetching expiry price (attempt {}/{}) for {} : {}",
+                    attempt, maxRetries, idx.getName(), e.getMessage()
+                );
             }
 
-            // ✅ ALWAYS take LAST candle
-            JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
-
-            // [time, open, high, low, close, volume]
-            return lastCandle.getBigDecimal(4);
-
-        } catch (Exception e) {
-            return null;
+            // ⏳ Backoff before retry
+            try {
+                Thread.sleep(retryDelayMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
+
+        logger.error("Failed to fetch expiry price after retries for {}", idx.getName());
+        return null;
     }
+
     private LocalDate resolveExecutionDate(FuturesConfig config) {
 
         if ("Y".equalsIgnoreCase(config.getUseNiftyExpiry())) {

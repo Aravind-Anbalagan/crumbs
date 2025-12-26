@@ -32,4 +32,7 @@ public class FuturesConfig {
 
     @Column(name = "active")
     private String active;
+    
+    @Column(name = "notificationRequired")
+    private String notificationRequired;
 }
