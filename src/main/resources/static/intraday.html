@@ -131,6 +131,11 @@
       gap: 20px;
       align-items: center;
     }
+    #toolbar .right-group {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
     #toolbar label {
       margin-right: 8px;
       font-weight: 500;
@@ -161,7 +166,7 @@
       box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
       transform: translateY(-1px);
     }
-    #refreshButton, #settingsButton {
+    #refreshButton, #settingsButton, #todayButton {
       background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
       color: white;
       border: none;
@@ -177,8 +182,13 @@
       user-select: none;
       transition: all 0.3s ease;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      font-size: 14px;
     }
-    #refreshButton:hover, #settingsButton:hover {
+    #todayButton {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      min-width: 80px;
+    }
+    #refreshButton:hover, #settingsButton:hover, #todayButton:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     }
@@ -497,6 +507,78 @@
       font-family: 'Monaco', 'Courier New', monospace;
       text-align: center;
     }
+    #currentPriceIndicator {
+      position: absolute;
+      top: 90px;
+      right: 24px;
+      z-index: 30;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      min-width: 200px;
+      display: none;
+    }
+    #currentPriceIndicator.visible {
+      display: block;
+      animation: slideDown 0.3s ease;
+    }
+    #currentPriceIndicator .price-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    #currentPriceIndicator .price-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: 'Monaco', 'Courier New', monospace;
+      margin-bottom: 8px;
+    }
+    #currentPriceIndicator .price-value.up {
+      color: #22c55e;
+    }
+    #currentPriceIndicator .price-value.down {
+      color: #ef4444;
+    }
+    #currentPriceIndicator .price-change {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #currentPriceIndicator .price-change.up {
+      color: #22c55e;
+    }
+    #currentPriceIndicator .price-change.down {
+      color: #ef4444;
+    }
+    #currentPriceIndicator .price-stats {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 12px;
+      color: #666;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #currentPriceIndicator .stat-row {
+      display: flex;
+      justify-content: space-between;
+    }
+    #currentPriceIndicator .stat-label {
+      font-weight: 500;
+    }
+    #currentPriceIndicator .stat-value {
+      font-weight: 700;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
   </style>
 </head>
 <body>
@@ -515,7 +597,10 @@
           <option value="FIFTEEN_MINUTE">15 Min</option>
         </select>
       </div>
-      <button id="refreshButton">Refresh</button>
+      <div class="right-group">
+        <button id="todayButton">📅 Today</button>
+        <button id="refreshButton">Refresh</button>
+      </div>
     </div>
     
     <div id="drawingTools">
@@ -525,6 +610,26 @@
       <input type="color" id="colorPicker" value="#22c55e" title="Line Color">
       <div class="color-divider"></div>
       <button class="draw-btn" id="clearDrawBtn" title="Clear All Drawings">✕</button>
+    </div>
+    
+    <div id="currentPriceIndicator">
+      <div class="price-label">Current Price</div>
+      <div class="price-value" id="currentPrice">-</div>
+      <div class="price-change" id="priceChange">-</div>
+      <div class="price-stats">
+        <div class="stat-row">
+          <span class="stat-label">Open:</span>
+          <span class="stat-value" id="openPrice">-</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">High:</span>
+          <span class="stat-value" id="highPrice">-</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Low:</span>
+          <span class="stat-value" id="lowPrice">-</span>
+        </div>
+      </div>
     </div>
     
     <div id="drawingModeIndicator">Click on chart to draw line</div>
@@ -563,6 +668,7 @@
         <label><input type="checkbox" id="toggleVolume" checked /> Volume</label>
         <label><input type="checkbox" id="toggleGrid" checked /> Grid</label>
         <label><input type="checkbox" id="toggleLive" checked /> Live</label>
+        <label><input type="checkbox" id="toggleIntradayFocus" /> Intraday Focus</label>
         <button id="uncheckAllButton">Uncheck All</button>
         <button id="resetButton">Reset Defaults</button>
         <button id="fitButton">Fit Chart</button>
@@ -584,7 +690,7 @@
 
   const settings = {
     paSupport: true, paResistance: true, fiboSupport: true, fiboResistance: true,
-    signals: true, volume: true, grid: true, live: true, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
+    signals: true, volume: true, grid: true, live: true, intradayFocus: false, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
   };
 
   const chartEl = document.getElementById('chart');
@@ -603,6 +709,7 @@
   const toggleVolumeCheckbox = document.getElementById('toggleVolume');
   const toggleGridCheckbox = document.getElementById('toggleGrid');
   const toggleLiveCheckbox = document.getElementById('toggleLive');
+  const toggleIntradayFocusCheckbox = document.getElementById('toggleIntradayFocus');
   const resetButton = document.getElementById('resetButton');
   const uncheckAllButton = document.getElementById('uncheckAllButton');
   const fitButton = document.getElementById('fitButton');
@@ -613,6 +720,14 @@
   const clearDrawBtn = document.getElementById('clearDrawBtn');
   const colorPicker = document.getElementById('colorPicker');
   const drawingModeIndicator = document.getElementById('drawingModeIndicator');
+  const todayButton = document.getElementById('todayButton');
+  
+  const currentPriceIndicator = document.getElementById('currentPriceIndicator');
+  const currentPriceEl = document.getElementById('currentPrice');
+  const priceChangeEl = document.getElementById('priceChange');
+  const openPriceEl = document.getElementById('openPrice');
+  const highPriceEl = document.getElementById('highPrice');
+  const lowPriceEl = document.getElementById('lowPrice');
   
   const signalPanel = document.getElementById('signalPanel');
   const signalValue = document.getElementById('signalValue');
@@ -670,6 +785,107 @@
     const fiboSup = toggleFiboSupportCheckbox.checked && lastData?.fiboSupport ? lastData.fiboSupport.map(l => l.level).join(',') : '';
     const fiboRes = toggleFiboResistanceCheckbox.checked && lastData?.fiboResistance ? lastData.fiboResistance.map(l => l.level).join(',') : '';
     return `${paSupport}|${paResist}|${fiboSup}|${fiboRes}`;
+  }
+
+  // Zoom to today's intraday session
+  function zoomToToday() {
+    if (!chart || !lastCandles || lastCandles.length === 0) return;
+    
+    // Get today's date in IST
+    const now = new Date();
+    const todayIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const todayStart = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate(), 0, 0, 0);
+    const todayStartTimestamp = Math.floor(todayStart.getTime() / 1000);
+    
+    // Find today's candles
+    const todayCandles = lastCandles.filter(candle => candle.time >= todayStartTimestamp);
+    
+    if (todayCandles.length > 0) {
+      const lastTodayTime = todayCandles[todayCandles.length - 1].time;
+      
+      // Calculate time range to show (about 40-50 candles visible)
+      let barsToShow = 50;
+      
+      // Adjust based on timeframe
+      if (selectedTimeFrame === 'ONE_MINUTE') {
+        barsToShow = 60; // Show 1 hour
+      } else if (selectedTimeFrame === 'FIVE_MINUTE') {
+        barsToShow = 50; // Show ~4 hours
+      } else if (selectedTimeFrame === 'FIFTEEN_MINUTE') {
+        barsToShow = 40; // Show ~10 hours
+      }
+      
+      // Calculate time per bar
+      let secondsPerBar = 300; // 5 minutes default
+      if (selectedTimeFrame === 'ONE_MINUTE') {
+        secondsPerBar = 60;
+      } else if (selectedTimeFrame === 'FIFTEEN_MINUTE') {
+        secondsPerBar = 900;
+      }
+      
+      const timeRangeToShow = barsToShow * secondsPerBar;
+      
+      // Center the current candle - show equal amount before and after
+      const fromTime = lastTodayTime - (timeRangeToShow * 0.6); // 60% before current
+      const toTime = lastTodayTime + (timeRangeToShow * 0.4); // 40% after current for breathing room
+      
+      try {
+        chart.timeScale().setVisibleRange({
+          from: Math.max(todayStartTimestamp, fromTime),
+          to: toTime
+        });
+      } catch (e) {
+        console.warn('Could not set visible range:', e);
+        chart.timeScale().fitContent();
+      }
+    } else {
+      // If no today's candles found, just fit content
+      chart.timeScale().fitContent();
+    }
+  }
+
+  // Update current price indicator
+  function updateCurrentPriceIndicator() {
+    if (!lastCandles || lastCandles.length === 0) {
+      currentPriceIndicator.classList.remove('visible');
+      return;
+    }
+    
+    const latestCandle = lastCandles[lastCandles.length - 1];
+    const currentPrice = latestCandle.close;
+    
+    // Get today's first candle for day open
+    const now = new Date();
+    const todayIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const todayStart = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate(), 0, 0, 0);
+    const todayStartTimestamp = Math.floor(todayStart.getTime() / 1000);
+    const todayCandles = lastCandles.filter(candle => candle.time >= todayStartTimestamp);
+    
+    if (todayCandles.length === 0) {
+      currentPriceIndicator.classList.remove('visible');
+      return;
+    }
+    
+    const dayOpen = todayCandles[0].open;
+    const dayHigh = Math.max(...todayCandles.map(c => c.high));
+    const dayLow = Math.min(...todayCandles.map(c => c.low));
+    
+    const priceChange = currentPrice - dayOpen;
+    const priceChangePercent = ((priceChange / dayOpen) * 100).toFixed(2);
+    
+    // Update display
+    currentPriceEl.textContent = currentPrice.toFixed(2);
+    currentPriceEl.className = 'price-value ' + (priceChange >= 0 ? 'up' : 'down');
+    
+    const arrow = priceChange >= 0 ? '▲' : '▼';
+    priceChangeEl.innerHTML = `${arrow} ${Math.abs(priceChange).toFixed(2)} (${Math.abs(priceChangePercent)}%)`;
+    priceChangeEl.className = 'price-change ' + (priceChange >= 0 ? 'up' : 'down');
+    
+    openPriceEl.textContent = dayOpen.toFixed(2);
+    highPriceEl.textContent = dayHigh.toFixed(2);
+    lowPriceEl.textContent = dayLow.toFixed(2);
+    
+    currentPriceIndicator.classList.add('visible');
   }
 
   function saveToSession(key, value) {
@@ -733,7 +949,8 @@
           signals: toggleSignalsCheckbox.checked,
           volume: toggleVolumeCheckbox.checked,
           grid: toggleGridCheckbox.checked,
-          live: toggleLiveCheckbox.checked
+          live: toggleLiveCheckbox.checked,
+          intradayFocus: toggleIntradayFocusCheckbox.checked
         }
       };
       saveToSession('chartState', chartState);
@@ -760,6 +977,7 @@
       toggleVolumeCheckbox.checked = savedState.settings.volume !== undefined ? savedState.settings.volume : true;
       toggleGridCheckbox.checked = savedState.settings.grid;
       toggleLiveCheckbox.checked = savedState.settings.live;
+      toggleIntradayFocusCheckbox.checked = savedState.settings.intradayFocus || false;
       updateSettings();
     }
     
@@ -775,17 +993,30 @@
       if (savedState.visibleRange && savedState.visibleRange.from && savedState.visibleRange.to) {
         setTimeout(() => {
           try {
-            chart.timeScale().setVisibleRange({
-              from: savedState.visibleRange.from,
-              to: savedState.visibleRange.to
-            });
+            // If intraday focus is enabled, ignore saved range and zoom to today
+            if (toggleIntradayFocusCheckbox.checked) {
+              zoomToToday();
+            } else {
+              chart.timeScale().setVisibleRange({
+                from: savedState.visibleRange.from,
+                to: savedState.visibleRange.to
+              });
+            }
           } catch (e) {
             console.warn('Could not restore visible range:', e);
-            chart.timeScale().fitContent();
+            if (toggleIntradayFocusCheckbox.checked) {
+              zoomToToday();
+            } else {
+              chart.timeScale().fitContent();
+            }
           }
         }, 100);
       } else {
-        chart.timeScale().fitContent();
+        if (toggleIntradayFocusCheckbox.checked) {
+          setTimeout(() => zoomToToday(), 100);
+        } else {
+          chart.timeScale().fitContent();
+        }
       }
       
       isFirstLoad = false;
@@ -844,6 +1075,8 @@
         updateSignalPanel(lastData);
       }
       
+      updateCurrentPriceIndicator();
+      
       chartEl.style.display = 'block';
       loaderEl.style.display = 'none';
       errorEl.style.display = 'none';
@@ -862,6 +1095,7 @@
     settings.volume = toggleVolumeCheckbox.checked;
     settings.grid = toggleGridCheckbox.checked;
     settings.live = toggleLiveCheckbox.checked;
+    settings.intradayFocus = toggleIntradayFocusCheckbox.checked;
     settings.symbol = selectedSymbol;
     settings.timeframe = selectedTimeFrame;
   }
@@ -1031,6 +1265,15 @@
     saveChartState();
   });
   toggleLiveCheckbox.addEventListener('change', () => { updateSettings(); updateLiveStatus(); saveChartState(); });
+  toggleIntradayFocusCheckbox.addEventListener('change', () => {
+    updateSettings();
+    if (toggleIntradayFocusCheckbox.checked) {
+      zoomToToday();
+    } else {
+      if (chart) chart.timeScale().fitContent();
+    }
+    saveChartState();
+  });
 
   resetButton.addEventListener('click', () => {
     togglePASupportCheckbox.checked = true;
@@ -1041,6 +1284,7 @@
     toggleVolumeCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
+    toggleIntradayFocusCheckbox.checked = false;
     updateSettings();
     redrawLines();
     if (chart) {
@@ -1049,6 +1293,7 @@
       });
       if (candleSeries) candleSeries.setMarkers(lastSignals);
       if (volumeSeries) volumeSeries.applyOptions({ visible: true });
+      chart.timeScale().fitContent();
     }
     updateLiveStatus();
     saveChartState();
@@ -1063,6 +1308,7 @@
     toggleVolumeCheckbox.checked = false;
     toggleGridCheckbox.checked = false;
     toggleLiveCheckbox.checked = false;
+    toggleIntradayFocusCheckbox.checked = false;
     updateSettings();
     redrawLines();
     if (chart) {
@@ -1336,7 +1582,13 @@
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
       })));
       lastCandles = candles.slice();
-      chart.timeScale().fitContent();
+      
+      // If intraday focus is enabled, zoom to today instead of fit content
+      if (toggleIntradayFocusCheckbox.checked) {
+        setTimeout(() => zoomToToday(), 100);
+      } else {
+        chart.timeScale().fitContent();
+      }
       isFirstLoad = false;
     } else {
       let lastCandle = candles[candles.length - 1];
@@ -1347,6 +1599,11 @@
         color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
       });
       lastCandles = candles.slice();
+      
+      // Auto-scroll to keep current candle centered if intraday focus is on
+      if (toggleIntradayFocusCheckbox.checked) {
+        setTimeout(() => zoomToToday(), 50);
+      }
     }
     redrawLines();
     
@@ -1363,6 +1620,7 @@
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
     
     updateSignalPanel(data);
+    updateCurrentPriceIndicator();
   }
   
   function updateSignalPanel(data) {
@@ -1554,6 +1812,10 @@
         refreshInterval = setInterval(() => refresh(false), 30000);
       }
     }).catch(() => {});
+  });
+
+  todayButton.addEventListener('click', () => {
+    zoomToToday();
   });
 
   settingsButton.addEventListener('click', () => {
