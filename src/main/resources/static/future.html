@@ -627,7 +627,7 @@
                 <div class="data-controls">
                     <select class="filter-select" id="percentFilter" onchange="filterByPercentage()">
                         <option value="all">All % Moves</option>
-                        <option value="<-5">< -5%</option>
+                        <option value="&lt;-5">&lt; -5%</option>
                         <option value="-5to-4">-5% to -4%</option>
                         <option value="-4to-3">-4% to -3%</option>
                         <option value="-3to-2">-3% to -2%</option>
@@ -638,7 +638,7 @@
                         <option value="2to3">2% to 3%</option>
                         <option value="3to4">3% to 4%</option>
                         <option value="4to5">4% to 5%</option>
-                        <option value=">5">> 5%</option>
+                        <option value="&gt;5">&gt; 5%</option>
                     </select>
                     <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search other fields..." onkeyup="filterTable()">
                     <button class="btn btn-primary btn-icon" onclick="exportToCSV()">
@@ -660,7 +660,7 @@
                     <strong id="showingCount">0</strong>
                 </div>
                 <div class="stat-item">
-                    <span>Last Updated:</span>
+                    <span>Last Trade Date:</span>
                     <strong id="lastUpdate">-</strong>
                 </div>
             </div>
@@ -862,6 +862,9 @@
                     tableContainer.innerHTML = '';
                     showEmptyState();
                     document.getElementById('paginationContainer').style.display = 'none';
+                    window.fullData = [];
+                    window.filteredData = [];
+                    updateStats();
                     return;
                 }
 
@@ -883,6 +886,8 @@
                         tableDiv.classList.remove('updating');
                     }
                 }, 100);
+
+                updateStats();
 
             } catch (error) {
                 console.error('Error loading filtered data:', error);
@@ -1041,6 +1046,36 @@
             renderTable();
         }
 
+        // Helper: format last traded date (DDDD-YYYY-MM-DD)
+        function formatLastTradedDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${weekday}-${y}-${m}-${day}`;
+        }
+
+        // Helper: format full last trade date-time for stats
+        function formatLastTradeDateTime(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+
+            const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+
+            // Only date-time part: Monday-2025-12-29 11:16:04
+            return `${weekday}-${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+        }
+
         // Pagination functions
         function changePageSize() {
             window.pageSize = parseInt(document.getElementById('pageSize').value);
@@ -1126,7 +1161,12 @@
                         <tbody>
                             ${paginatedData.map(row => `
                                 <tr>
-                                    ${columns.map(col => `<td>${formatCellValue(col, row[col])}</td>`).join('')}
+                                    ${columns.map(col => {
+                                        if (col === 'lastTradedDate') {
+                                            return `<td>${formatLastTradedDate(row[col])}</td>`;
+                                        }
+                                        return `<td>${formatCellValue(col, row[col])}</td>`;
+                                    }).join('')}
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -1169,7 +1209,25 @@
             }
             
             if (lastUpdateElem) {
-                lastUpdateElem.textContent = new Date().toLocaleTimeString();
+                let latestDate = null;
+                if (window.fullData && window.fullData.length > 0) {
+                    window.fullData.forEach(row => {
+                        if (row.lastTradedDate) {
+                            const d = new Date(row.lastTradedDate);
+                            if (!isNaN(d.getTime())) {
+                                if (!latestDate || d > latestDate) {
+                                    latestDate = d;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                if (latestDate) {
+                    lastUpdateElem.textContent = formatLastTradeDateTime(latestDate.toISOString());
+                } else {
+                    lastUpdateElem.textContent = '-';
+                }
             }
         }
 

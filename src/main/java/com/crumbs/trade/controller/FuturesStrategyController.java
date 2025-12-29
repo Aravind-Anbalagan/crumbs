@@ -53,13 +53,13 @@ public class FuturesStrategyController {
         	logger.info("Market Closed");
             return;
         }
-        futuresFilterRepo.deleteAll();
+        
         futuresStrategyService.execute();
     }
     
     @GetMapping("/getDetails")
     private void executeIfMarketClose() {
-        futuresFilterRepo.deleteAll();
+       
         futuresStrategyService.execute();
     }
 

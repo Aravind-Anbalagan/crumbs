@@ -2,6 +2,7 @@ package com.crumbs.trade.entity;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -25,5 +26,5 @@ public class FuturesFilter {
     private LocalDate lastExpiryDate;
 
 
-    private LocalDate lastTradedDate;
+    private LocalDateTime lastTradedDate;
 }
