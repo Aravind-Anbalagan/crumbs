@@ -666,6 +666,7 @@
         <label><input type="checkbox" id="toggleFiboResistance" checked /> Fibonacci Resistance</label>
         <label><input type="checkbox" id="toggleSignals" checked /> Signals</label>
         <label><input type="checkbox" id="toggleVolume" checked /> Volume</label>
+        <label><input type="checkbox" id="toggleCurrentPrice" checked /> Current Price</label>
         <label><input type="checkbox" id="toggleGrid" checked /> Grid</label>
         <label><input type="checkbox" id="toggleLive" checked /> Live</label>
         <label><input type="checkbox" id="toggleIntradayFocus" /> Intraday Focus</label>
@@ -690,7 +691,7 @@
 
   const settings = {
     paSupport: true, paResistance: true, fiboSupport: true, fiboResistance: true,
-    signals: true, volume: true, grid: true, live: true, intradayFocus: false, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
+    signals: true, volume: true, currentPrice: true, grid: true, live: true, intradayFocus: false, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
   };
 
   const chartEl = document.getElementById('chart');
@@ -707,6 +708,7 @@
   const toggleFiboResistanceCheckbox = document.getElementById('toggleFiboResistance');
   const toggleSignalsCheckbox = document.getElementById('toggleSignals');
   const toggleVolumeCheckbox = document.getElementById('toggleVolume');
+  const toggleCurrentPriceCheckbox = document.getElementById('toggleCurrentPrice');
   const toggleGridCheckbox = document.getElementById('toggleGrid');
   const toggleLiveCheckbox = document.getElementById('toggleLive');
   const toggleIntradayFocusCheckbox = document.getElementById('toggleIntradayFocus');
@@ -846,6 +848,11 @@
 
   // Update current price indicator
   function updateCurrentPriceIndicator() {
+    if (!toggleCurrentPriceCheckbox.checked) {
+      currentPriceIndicator.classList.remove('visible');
+      return;
+    }
+    
     if (!lastCandles || lastCandles.length === 0) {
       currentPriceIndicator.classList.remove('visible');
       return;
@@ -948,6 +955,7 @@
           fiboResistance: toggleFiboResistanceCheckbox.checked,
           signals: toggleSignalsCheckbox.checked,
           volume: toggleVolumeCheckbox.checked,
+          currentPrice: toggleCurrentPriceCheckbox.checked,
           grid: toggleGridCheckbox.checked,
           live: toggleLiveCheckbox.checked,
           intradayFocus: toggleIntradayFocusCheckbox.checked
@@ -975,6 +983,7 @@
       toggleFiboResistanceCheckbox.checked = savedState.settings.fiboResistance;
       toggleSignalsCheckbox.checked = savedState.settings.signals;
       toggleVolumeCheckbox.checked = savedState.settings.volume !== undefined ? savedState.settings.volume : true;
+      toggleCurrentPriceCheckbox.checked = savedState.settings.currentPrice !== undefined ? savedState.settings.currentPrice : true;
       toggleGridCheckbox.checked = savedState.settings.grid;
       toggleLiveCheckbox.checked = savedState.settings.live;
       toggleIntradayFocusCheckbox.checked = savedState.settings.intradayFocus || false;
@@ -1093,6 +1102,7 @@
     settings.fiboResistance = toggleFiboResistanceCheckbox.checked;
     settings.signals = toggleSignalsCheckbox.checked;
     settings.volume = toggleVolumeCheckbox.checked;
+    settings.currentPrice = toggleCurrentPriceCheckbox.checked;
     settings.grid = toggleGridCheckbox.checked;
     settings.live = toggleLiveCheckbox.checked;
     settings.intradayFocus = toggleIntradayFocusCheckbox.checked;
@@ -1253,6 +1263,11 @@
     });
     saveChartState();
   });
+  toggleCurrentPriceCheckbox.addEventListener('change', () => {
+    updateSettings();
+    updateCurrentPriceIndicator();
+    saveChartState();
+  });
   toggleGridCheckbox.addEventListener('change', () => {
     updateSettings();
     if (!chart) return;
@@ -1282,6 +1297,7 @@
     toggleFiboResistanceCheckbox.checked = true;
     toggleSignalsCheckbox.checked = true;
     toggleVolumeCheckbox.checked = true;
+    toggleCurrentPriceCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
     toggleIntradayFocusCheckbox.checked = false;
@@ -1295,6 +1311,7 @@
       if (volumeSeries) volumeSeries.applyOptions({ visible: true });
       chart.timeScale().fitContent();
     }
+    updateCurrentPriceIndicator();
     updateLiveStatus();
     saveChartState();
   });
@@ -1306,6 +1323,7 @@
     toggleFiboResistanceCheckbox.checked = false;
     toggleSignalsCheckbox.checked = false;
     toggleVolumeCheckbox.checked = false;
+    toggleCurrentPriceCheckbox.checked = false;
     toggleGridCheckbox.checked = false;
     toggleLiveCheckbox.checked = false;
     toggleIntradayFocusCheckbox.checked = false;
@@ -1319,6 +1337,7 @@
       if (volumeSeries) volumeSeries.applyOptions({ visible: false });
     }
     signalPanel.classList.remove('visible');
+    currentPriceIndicator.classList.remove('visible');
     updateLiveStatus();
     saveChartState();
   });
