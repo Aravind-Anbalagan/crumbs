@@ -74,7 +74,7 @@ public class StraddleIntradayService {
 	
 	// ================= VWAP CONTROL =================
 	private static final boolean ENABLE_VWAP = true; // Set to false to skip VWAP fetching
-
+	private List<StraddlePremiumDto> strikeList = new ArrayList<>();
 	// =====================================================
 	// MAIN ENTRY - WITH COMPREHENSIVE VALIDATION
 	// =====================================================
@@ -113,8 +113,11 @@ public class StraddleIntradayService {
 			}
 			
 			logger.info("ATM strike for {}: {}", name, atmStrike);
-
-			List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
+			if(strikeList.isEmpty())
+			{
+				strikeList = buildStraddleDtos(atmStrike, 50);
+			}
+			
 
 			strikeList = getAllTokenDetails(strikeList, strategy);
 			
@@ -403,29 +406,29 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
-	// STRIKE BUILDING - OPTIMIZED (5 strikes instead of 11)
+	// STRIKE BUILDING - FROM ATM (STATIC ±500 RANGE)
 	// =====================================================
-	public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal spot, int interval) {
+	public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal atmStrike, int interval) {
 
-		List<StraddlePremiumDto> list = new ArrayList<>();
+	    List<StraddlePremiumDto> list = new ArrayList<>();
 
-		BigDecimal atm = spot.divide(BigDecimal.valueOf(interval), 0, RoundingMode.HALF_UP)
-				.multiply(BigDecimal.valueOf(interval));
+	    BigDecimal step  = BigDecimal.valueOf(interval);
+	    BigDecimal range = BigDecimal.valueOf(300);   // ±500
 
-		// OPTIMIZED: Only 2 strikes above and below ATM (instead of 5)
-		// This reduces API calls from 22 to 10, cutting execution time in half
-		for (int i = 2; i >= 1; i--) {
-			list.add(createDto(atm.subtract(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
-		}
+	    BigDecimal start = atmStrike.subtract(range);
+	    BigDecimal end   = atmStrike.add(range);
 
-		list.add(createDto(atm)); // ATM strike
+	    for (BigDecimal strike = start;
+	         strike.compareTo(end) <= 0;
+	         strike = strike.add(step)) {
 
-		for (int i = 1; i <= 2; i++) {
-			list.add(createDto(atm.add(BigDecimal.valueOf(interval).multiply(BigDecimal.valueOf(i)))));
-		}
+	        list.add(createDto(strike));
+	    }
 
-		return list; // Returns 5 strikes total
+	    return list;
 	}
+
+
 
 	private StraddlePremiumDto createDto(BigDecimal strike) {
 		StraddlePremiumDto dto = new StraddlePremiumDto();
