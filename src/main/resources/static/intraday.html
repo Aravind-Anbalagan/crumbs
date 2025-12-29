@@ -471,6 +471,28 @@
       content: '🕐';
       font-size: 14px;
     }
+    #timezoneIndicator {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      z-index: 30;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 8px;
+      padding: 8px 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      font-size: 12px;
+      font-weight: 600;
+      color: #4a5568;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #timezoneIndicator::before {
+      content: '🌏';
+      font-size: 16px;
+    }
   </style>
 </head>
 <body>
@@ -514,6 +536,8 @@
       <div class="timestamp" id="signalTimestamp">Updated: -</div>
     </div>
     
+    <div id="timezoneIndicator">Timezone: IST (UTC+5:30)</div>
+    
     <div id="chart"></div>
     <div id="loader">
       <div class="spinner"></div>
@@ -539,6 +563,18 @@
     </div>
   </div>
 <script>
+  // Convert UTC timestamp to IST timestamp
+  // IST is UTC+5:30, which is 19800 seconds ahead
+  const IST_OFFSET_SECONDS = 19800;
+  
+  function convertToIST(utcTimestamp) {
+    return utcTimestamp + IST_OFFSET_SECONDS;
+  }
+  
+  function convertFromIST(istTimestamp) {
+    return istTimestamp - IST_OFFSET_SECONDS;
+  }
+
   const settings = {
     paSupport: true, paResistance: true, fiboSupport: true, fiboResistance: true,
     signals: true, grid: true, live: true, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
@@ -1038,6 +1074,17 @@
       grid: {
         vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
         horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
+      },
+      localization: {
+        timeFormatter: (timestamp) => {
+          const date = new Date(timestamp * 1000);
+          return date.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          });
+        }
       }
     });
     candleSeries = chart.addCandlestickSeries({
@@ -1185,28 +1232,34 @@
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
+    
+    // Timestamps are already in IST, use them directly
+    const candles = data.candles;
+    
     if (isFirstLoad) {
-      candleSeries.setData(data.candles);
-      volumeSeries.setData(data.candles.map(c => ({
+      candleSeries.setData(candles);
+      volumeSeries.setData(candles.map(c => ({
         time: c.time,
         value: c.volume,
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       })));
-      lastCandles = data.candles.slice();
+      lastCandles = candles.slice();
       chart.timeScale().fitContent();
       isFirstLoad = false;
     } else {
-      let lastCandle = data.candles[data.candles.length - 1];
+      let lastCandle = candles[candles.length - 1];
       candleSeries.update(lastCandle);
       volumeSeries.update({
         time: lastCandle.time,
         value: lastCandle.volume,
         color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.07)' : 'rgba(239, 83, 80, 0.07)'
       });
-      lastCandles = data.candles.slice();
+      lastCandles = candles.slice();
     }
     redrawLines();
+    
     if (Array.isArray(data.signals)) {
+      // Timestamps are already in IST, use them directly
       lastSignals = data.signals.map(signal => ({
         time: signal.time,
         position: 'aboveBar',
@@ -1269,13 +1322,15 @@
       reasonText.textContent = finalReason;
       
       const now = new Date();
-      const timeString = now.toLocaleTimeString('en-US', { 
+      const timeString = now.toLocaleTimeString('en-IN', { 
+        timeZone: 'Asia/Kolkata',
         hour: '2-digit', 
         minute: '2-digit', 
         second: '2-digit',
         hour12: true 
       });
-      const dateString = now.toLocaleDateString('en-US', { 
+      const dateString = now.toLocaleDateString('en-IN', { 
+        timeZone: 'Asia/Kolkata',
         month: 'short', 
         day: 'numeric' 
       });
@@ -1336,17 +1391,14 @@
         retryCountEl.textContent = `Attempt ${retryCount} of ${MAX_RETRIES}`;
         setTimeout(() => refresh(true), RETRY_DELAY);
       } else if (firstLoad) {
-        // Only show full error screen on first load after all retries
         loaderEl.style.display = 'none';
         chartEl.style.display = 'none';
         errorEl.textContent = `Failed after ${MAX_RETRIES} attempts: ${e.message}`;
         errorEl.style.display = 'block';
         retryCount = 0;
       } else {
-        // For subsequent updates, just show toast and keep chart visible
         showApiErrorToast('API Error - Retrying...');
         console.error('API update failed:', e.message);
-        // Chart remains visible with previous data
       }
     }
   }
