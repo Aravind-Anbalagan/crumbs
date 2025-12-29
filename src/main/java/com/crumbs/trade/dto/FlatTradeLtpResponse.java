@@ -8,4 +8,5 @@ public class FlatTradeLtpResponse {
     private String exch;
     private String tsym;
     private String ltp;
+    private String emsg;
 }

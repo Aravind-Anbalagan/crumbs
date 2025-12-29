@@ -4,6 +4,7 @@ import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.controller.StrangleController;
 import com.crumbs.trade.dto.APIResponse;
 import com.crumbs.trade.dto.FlatTradeLtpResponse;
+import com.crumbs.trade.dto.FlatTradeQuoteResponse;
 import com.crumbs.trade.dto.JData;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.utility.Utility;
@@ -53,6 +54,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class FlatTradeService {
 	private static final Logger logger = LogManager.getLogger(FlatTradeService.class);
 	private static final String BASE_URL = "https://piconnect.flattrade.in/PiConnectTP"; 
+	private static final String MARKET_URL =
+	        "https://piconnect.flattrade.in/PiConnectAPI";
 	private static final String ORDER_API_URL = "/PlaceOrder";
     private static final String API_KEY = "GHUDWU53H32MTHPA536Q32WR";
 
@@ -341,5 +344,46 @@ public class FlatTradeService {
 
         return null;
     }
+    
+    public BigDecimal getLtpFromFlatTrade(String exch, String token) {
+
+        try {
+            String jKey = getTokenForFlatTrade();
+            if (jKey == null) {
+                logger.error("Flattrade jKey is null");
+                return null;
+            }
+
+            Map<String, String> jData = new HashMap<>();
+            jData.put("uid", USER_ID);
+            jData.put("exch", exch);     // NSE / NFO
+            jData.put("token", token);   // e.g. "22"
+
+            String jDataJson = objectMapper.writeValueAsString(jData);
+            String body = "jData=" + jDataJson + "&jKey=" + jKey;
+
+            FlatTradeQuoteResponse response = webClient.post()
+                    .uri(BASE_URL + "/GetQuotes")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(FlatTradeQuoteResponse.class)
+                    .block();
+
+            if (response != null && "Ok".equalsIgnoreCase(response.getStat())) {
+                return new BigDecimal(response.getLp()); // ✅ THIS IS LTP
+            }
+
+            logger.error("GetQuotes failed: {}",
+                    response != null ? response.getEmsg() : "null");
+
+        } catch (Exception e) {
+            logger.error("Exception while fetching LTP", e);
+        }
+
+        return null;
+    }
+
+
 
 }

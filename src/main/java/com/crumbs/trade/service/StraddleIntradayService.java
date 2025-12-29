@@ -94,14 +94,8 @@ public class StraddleIntradayService {
 				logger.error("Strategy not found: {}", name);
 				return;
 			}
+			BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
 
-			BigDecimal spotPrice = angelOneService.getcurrentPrice(
-				smartconnect, 
-				strategy.getExchange(),
-				strategy.getTradingsymbol(), 
-				strategy.getToken()
-			);
-			
 			// VALIDATION: Check if spot price is valid
 			if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 				logger.error("Invalid spot price for {}: {}", name, spotPrice);
