@@ -5,7 +5,7 @@
   <title>Chart with Manual Load & State Persistence</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
-    @import url('httAps://fonts.googleapis.com/css2?family=Inter&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
     html, body, #container {
       margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
@@ -669,7 +669,6 @@
         <label><input type="checkbox" id="toggleCurrentPrice" checked /> Current Price</label>
         <label><input type="checkbox" id="toggleGrid" checked /> Grid</label>
         <label><input type="checkbox" id="toggleLive" checked /> Live</label>
-        <label><input type="checkbox" id="toggleIntradayFocus" /> Intraday Focus</label>
         <button id="uncheckAllButton">Uncheck All</button>
         <button id="resetButton">Reset Defaults</button>
         <button id="fitButton">Fit Chart</button>
@@ -691,7 +690,7 @@
 
   const settings = {
     paSupport: true, paResistance: true, fiboSupport: true, fiboResistance: true,
-    signals: true, volume: true, currentPrice: true, grid: true, live: true, intradayFocus: false, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
+    signals: true, volume: true, currentPrice: true, grid: true, live: true, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
   };
 
   const chartEl = document.getElementById('chart');
@@ -711,7 +710,6 @@
   const toggleCurrentPriceCheckbox = document.getElementById('toggleCurrentPrice');
   const toggleGridCheckbox = document.getElementById('toggleGrid');
   const toggleLiveCheckbox = document.getElementById('toggleLive');
-  const toggleIntradayFocusCheckbox = document.getElementById('toggleIntradayFocus');
   const resetButton = document.getElementById('resetButton');
   const uncheckAllButton = document.getElementById('uncheckAllButton');
   const fitButton = document.getElementById('fitButton');
@@ -957,8 +955,7 @@
           volume: toggleVolumeCheckbox.checked,
           currentPrice: toggleCurrentPriceCheckbox.checked,
           grid: toggleGridCheckbox.checked,
-          live: toggleLiveCheckbox.checked,
-          intradayFocus: toggleIntradayFocusCheckbox.checked
+          live: toggleLiveCheckbox.checked
         }
       };
       saveToSession('chartState', chartState);
@@ -986,7 +983,6 @@
       toggleCurrentPriceCheckbox.checked = savedState.settings.currentPrice !== undefined ? savedState.settings.currentPrice : true;
       toggleGridCheckbox.checked = savedState.settings.grid;
       toggleLiveCheckbox.checked = savedState.settings.live;
-      toggleIntradayFocusCheckbox.checked = savedState.settings.intradayFocus || false;
       updateSettings();
     }
     
@@ -1002,30 +998,17 @@
       if (savedState.visibleRange && savedState.visibleRange.from && savedState.visibleRange.to) {
         setTimeout(() => {
           try {
-            // If intraday focus is enabled, ignore saved range and zoom to today
-            if (toggleIntradayFocusCheckbox.checked) {
-              zoomToToday();
-            } else {
-              chart.timeScale().setVisibleRange({
-                from: savedState.visibleRange.from,
-                to: savedState.visibleRange.to
-              });
-            }
+            chart.timeScale().setVisibleRange({
+              from: savedState.visibleRange.from,
+              to: savedState.visibleRange.to
+            });
           } catch (e) {
             console.warn('Could not restore visible range:', e);
-            if (toggleIntradayFocusCheckbox.checked) {
-              zoomToToday();
-            } else {
-              chart.timeScale().fitContent();
-            }
+            chart.timeScale().fitContent();
           }
         }, 100);
       } else {
-        if (toggleIntradayFocusCheckbox.checked) {
-          setTimeout(() => zoomToToday(), 100);
-        } else {
-          chart.timeScale().fitContent();
-        }
+        chart.timeScale().fitContent();
       }
       
       isFirstLoad = false;
@@ -1105,7 +1088,6 @@
     settings.currentPrice = toggleCurrentPriceCheckbox.checked;
     settings.grid = toggleGridCheckbox.checked;
     settings.live = toggleLiveCheckbox.checked;
-    settings.intradayFocus = toggleIntradayFocusCheckbox.checked;
     settings.symbol = selectedSymbol;
     settings.timeframe = selectedTimeFrame;
   }
@@ -1280,15 +1262,6 @@
     saveChartState();
   });
   toggleLiveCheckbox.addEventListener('change', () => { updateSettings(); updateLiveStatus(); saveChartState(); });
-  toggleIntradayFocusCheckbox.addEventListener('change', () => {
-    updateSettings();
-    if (toggleIntradayFocusCheckbox.checked) {
-      zoomToToday();
-    } else {
-      if (chart) chart.timeScale().fitContent();
-    }
-    saveChartState();
-  });
 
   resetButton.addEventListener('click', () => {
     togglePASupportCheckbox.checked = true;
@@ -1300,7 +1273,6 @@
     toggleCurrentPriceCheckbox.checked = true;
     toggleGridCheckbox.checked = true;
     toggleLiveCheckbox.checked = true;
-    toggleIntradayFocusCheckbox.checked = false;
     updateSettings();
     redrawLines();
     if (chart) {
@@ -1309,7 +1281,6 @@
       });
       if (candleSeries) candleSeries.setMarkers(lastSignals);
       if (volumeSeries) volumeSeries.applyOptions({ visible: true });
-      chart.timeScale().fitContent();
     }
     updateCurrentPriceIndicator();
     updateLiveStatus();
@@ -1326,7 +1297,6 @@
     toggleCurrentPriceCheckbox.checked = false;
     toggleGridCheckbox.checked = false;
     toggleLiveCheckbox.checked = false;
-    toggleIntradayFocusCheckbox.checked = false;
     updateSettings();
     redrawLines();
     if (chart) {
@@ -1381,18 +1351,22 @@
 
   symbolDropdown.addEventListener('change', () => {
     selectedSymbol = symbolDropdown.value;
+    console.log('Symbol changed to:', selectedSymbol);
     clearChart();
     isFirstLoad = true;
     chartInitialized = false;
+    lastCandles = []; // Clear previous candles
     refresh(true);
     updateSettings();
   });
   
   timeframeDropdown.addEventListener('change', () => {
     selectedTimeFrame = timeframeDropdown.value;
+    console.log('Timeframe changed to:', selectedTimeFrame);
     clearChart();
     isFirstLoad = true;
     chartInitialized = false;
+    lastCandles = []; // Clear previous candles
     refresh(true);
     updateSettings();
   });
@@ -1593,7 +1567,10 @@
     // Timestamps are already in IST, use them directly
     const candles = data.candles;
     
+    console.log(`Update type check: isFirstLoad=${isFirstLoad}, lastCandles.length=${lastCandles.length}, new candles.length=${candles.length}`);
+    
     if (isFirstLoad) {
+      console.log('FIRST_LOAD: Setting initial data and fitting content');
       candleSeries.setData(candles);
       volumeSeries.setData(candles.map(c => ({
         time: c.time,
@@ -1602,44 +1579,100 @@
       })));
       lastCandles = candles.slice();
       
-      // If intraday focus is enabled, zoom to today instead of fit content
-      if (toggleIntradayFocusCheckbox.checked) {
-        setTimeout(() => zoomToToday(), 100);
-      } else {
-        chart.timeScale().fitContent();
+      redrawLines();
+      
+      if (Array.isArray(data.signals)) {
+        lastSignals = data.signals.map(signal => ({
+          time: signal.time,
+          position: 'aboveBar',
+          color: signal.type === 'buy' ? 'green' : 'red',
+          shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+          text: signal.type.toUpperCase()
+        }));
       }
+      if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+      
+      updateSignalPanel(data);
+      updateCurrentPriceIndicator();
+      
+      chart.timeScale().fitContent();
       isFirstLoad = false;
     } else {
-      let lastCandle = candles[candles.length - 1];
-      candleSeries.update(lastCandle);
-      volumeSeries.update({
-        time: lastCandle.time,
-        value: lastCandle.volume,
-        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-      });
-      lastCandles = candles.slice();
+      // AUTO-REFRESH: Only update changed candles, don't reload entire dataset
+      console.log('AUTO-REFRESH: Updating only changed data...');
       
-      // Auto-scroll to keep current candle centered if intraday focus is on
-      if (toggleIntradayFocusCheckbox.checked) {
-        setTimeout(() => zoomToToday(), 50);
+      // Find new or updated candles
+      const lastKnownTime = lastCandles.length > 0 ? lastCandles[lastCandles.length - 1].time : 0;
+      let hasChanges = false;
+      
+      // Check if last candle has been updated
+      if (lastCandles.length > 0 && candles.length > 0) {
+        const oldLastCandle = lastCandles[lastCandles.length - 1];
+        const newLastCandle = candles[candles.length - 1];
+        
+        if (oldLastCandle.time === newLastCandle.time) {
+          // Same candle, check if values changed
+          if (oldLastCandle.close !== newLastCandle.close || 
+              oldLastCandle.high !== newLastCandle.high || 
+              oldLastCandle.low !== newLastCandle.low || 
+              oldLastCandle.volume !== newLastCandle.volume) {
+            console.log('Updating existing candle:', newLastCandle.time);
+            candleSeries.update(newLastCandle);
+            volumeSeries.update({
+              time: newLastCandle.time,
+              value: newLastCandle.volume,
+              color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+            });
+            hasChanges = true;
+          }
+        } else if (newLastCandle.time > oldLastCandle.time) {
+          // New candle added
+          console.log('Adding new candle:', newLastCandle.time);
+          candleSeries.update(newLastCandle);
+          volumeSeries.update({
+            time: newLastCandle.time,
+            value: newLastCandle.volume,
+            color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+          });
+          hasChanges = true;
+        }
+      }
+      
+      // Only update lastCandles if there were changes
+      if (hasChanges) {
+        lastCandles = candles.slice();
+        console.log('✓ Chart updated incrementally, view preserved');
+      } else {
+        console.log('No changes detected, skipping update');
+      }
+      
+      // Update signals only if they changed
+      if (Array.isArray(data.signals)) {
+        const newSignals = data.signals.map(signal => ({
+          time: signal.time,
+          position: 'aboveBar',
+          color: signal.type === 'buy' ? 'green' : 'red',
+          shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+          text: signal.type.toUpperCase()
+        }));
+        
+        // Only update markers if signals changed
+        if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) {
+          lastSignals = newSignals;
+          if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+        }
+      }
+      
+      updateSignalPanel(data);
+      updateCurrentPriceIndicator();
+      
+      // Check if support/resistance lines changed, only redraw if needed
+      const currentHash = generateLineHash();
+      if (currentHash !== lastLineHash) {
+        console.log('Lines changed, redrawing...');
+        setTimeout(() => redrawLines(), 50);
       }
     }
-    redrawLines();
-    
-    if (Array.isArray(data.signals)) {
-      // Timestamps are already in IST, use them directly
-      lastSignals = data.signals.map(signal => ({
-        time: signal.time,
-        position: 'aboveBar',
-        color: signal.type === 'buy' ? 'green' : 'red',
-        shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: signal.type.toUpperCase()
-      }));
-    }
-    if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-    
-    updateSignalPanel(data);
-    updateCurrentPriceIndicator();
   }
   
   function updateSignalPanel(data) {
@@ -1726,6 +1759,7 @@
 
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
     const url = `/api/newIntraday?timeFrame=${timeFrame}&name=${name}`;
+    console.log(`Fetching data: ${name} - ${timeFrame}`);
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
     return resp.json();
@@ -1739,6 +1773,14 @@
       retryCount = 0;
       loaderText.textContent = 'Loading chart data...';
       retryCountEl.textContent = '';
+    } else {
+      // Add visual feedback during auto-refresh
+      const toolbar = document.getElementById('toolbar');
+      toolbar.style.transition = 'box-shadow 0.3s ease';
+      toolbar.style.boxShadow = '0 8px 32px rgba(74, 85, 104, 0.4)';
+      setTimeout(() => {
+        toolbar.style.boxShadow = '0 8px 32px rgba(0,0,0,0.15)';
+      }, 500);
     }
     try {
       const data = await fetchData(selectedTimeFrame, selectedSymbol);
@@ -1748,11 +1790,15 @@
       errorEl.style.display = 'none';
       chartEl.style.display = 'block';
       retryCount = 0;
-      setTimeout(() => {
-        if (chart) {
-          chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-        }
-      }, 50);
+      // REMOVED: chart resize on auto-refresh as it may reset view
+      // Only resize on first load
+      if (firstLoad) {
+        setTimeout(() => {
+          if (chart) {
+            chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+          }
+        }, 50);
+      }
     } catch (e) {
       if (firstLoad && retryCount < MAX_RETRIES) {
         retryCount++;
