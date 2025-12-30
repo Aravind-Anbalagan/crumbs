@@ -1405,14 +1405,31 @@
         horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
       },
       localization: {
+        locale: 'en-IN',
         timeFormatter: (timestamp) => {
+          // API returns UTC timestamps, we need to display in IST (UTC + 5:30)
           const date = new Date(timestamp * 1000);
-          return date.toLocaleString('en-IN', {
-            timeZone: 'Asia/Kolkata',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          });
+          
+          // Add IST offset (5 hours 30 minutes = 19800 seconds)
+          const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+          
+          const hours = istDate.getUTCHours();
+          const minutes = istDate.getUTCMinutes();
+          
+          const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+          
+          // Debug logging
+          if (!window.timeFormatterLogged) {
+            console.log('TimeFormatter debug:', {
+              timestamp,
+              utcDate: date.toString(),
+              istDate: istDate.toString(),
+              formatted: timeStr
+            });
+            window.timeFormatterLogged = true;
+          }
+          
+          return timeStr;
         }
       }
     });
@@ -1598,73 +1615,145 @@
       chart.timeScale().fitContent();
       isFirstLoad = false;
     } else {
-      // AUTO-REFRESH: Only update changed candles, don't reload entire dataset
-      console.log('AUTO-REFRESH: Updating only changed data...');
+      // AUTO-REFRESH: Check for gaps and update accordingly
+      console.log('AUTO-REFRESH: Checking for gaps...');
       
-      // Find new or updated candles
       const lastKnownTime = lastCandles.length > 0 ? lastCandles[lastCandles.length - 1].time : 0;
-      let hasChanges = false;
+      const newLastTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
       
-      // Check if last candle has been updated
-      if (lastCandles.length > 0 && candles.length > 0) {
-        const oldLastCandle = lastCandles[lastCandles.length - 1];
-        const newLastCandle = candles[candles.length - 1];
+      // Check if there are missing candles (gap detection)
+      let missingCandles = [];
+      if (lastCandles.length > 0 && candles.length > lastCandles.length) {
+        // More candles than before - likely missed some updates
+        console.log(`Gap detected! Had ${lastCandles.length} candles, now have ${candles.length}`);
         
-        if (oldLastCandle.time === newLastCandle.time) {
-          // Same candle, check if values changed
-          if (oldLastCandle.close !== newLastCandle.close || 
-              oldLastCandle.high !== newLastCandle.high || 
-              oldLastCandle.low !== newLastCandle.low || 
-              oldLastCandle.volume !== newLastCandle.volume) {
-            console.log('Updating existing candle:', newLastCandle.time);
+        // Find all new candles
+        const lastKnownIndex = candles.findIndex(c => c.time === lastKnownTime);
+        if (lastKnownIndex >= 0 && lastKnownIndex < candles.length - 1) {
+          missingCandles = candles.slice(lastKnownIndex + 1);
+          console.log(`Found ${missingCandles.length} missing candles to add`);
+        }
+      }
+      
+      // If there's a significant gap (more than 2 candles missed), do full reload
+      if (missingCandles.length > 2 || candles.length < lastCandles.length) {
+        console.log('Large gap detected or data mismatch - doing full reload');
+        candleSeries.setData(candles);
+        volumeSeries.setData(candles.map(c => ({
+          time: c.time,
+          value: c.volume,
+          color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+        })));
+        lastCandles = candles.slice();
+        
+        // Update signals
+        if (Array.isArray(data.signals)) {
+          lastSignals = data.signals.map(signal => ({
+            time: signal.time,
+            position: 'aboveBar',
+            color: signal.type === 'buy' ? 'green' : 'red',
+            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: signal.type.toUpperCase()
+          }));
+          if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+        }
+        
+        updateSignalPanel(data);
+        updateCurrentPriceIndicator();
+        
+        // Redraw lines for full reload
+        setTimeout(() => redrawLines(), 50);
+        
+      } else if (missingCandles.length > 0) {
+        // Fill the gap with missing candles
+        console.log('Filling gap with missing candles...');
+        missingCandles.forEach(candle => {
+          candleSeries.update(candle);
+          volumeSeries.update({
+            time: candle.time,
+            value: candle.volume,
+            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+          });
+        });
+        lastCandles = candles.slice();
+        console.log(`✓ Added ${missingCandles.length} missing candles`);
+        
+        // Update signals
+        if (Array.isArray(data.signals)) {
+          const newSignals = data.signals.map(signal => ({
+            time: signal.time,
+            position: 'aboveBar',
+            color: signal.type === 'buy' ? 'green' : 'red',
+            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: signal.type.toUpperCase()
+          }));
+          
+          if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) {
+            lastSignals = newSignals;
+            if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+          }
+        }
+        
+        updateSignalPanel(data);
+        updateCurrentPriceIndicator();
+        
+      } else {
+        // Normal incremental update - just update last candle if changed
+        if (lastCandles.length > 0 && candles.length > 0) {
+          const oldLastCandle = lastCandles[lastCandles.length - 1];
+          const newLastCandle = candles[candles.length - 1];
+          
+          if (oldLastCandle.time === newLastCandle.time) {
+            // Same candle, check if values changed
+            if (oldLastCandle.close !== newLastCandle.close || 
+                oldLastCandle.high !== newLastCandle.high || 
+                oldLastCandle.low !== newLastCandle.low || 
+                oldLastCandle.volume !== newLastCandle.volume) {
+              console.log('Updating existing candle:', newLastCandle.time);
+              candleSeries.update(newLastCandle);
+              volumeSeries.update({
+                time: newLastCandle.time,
+                value: newLastCandle.volume,
+                color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+              });
+              lastCandles[lastCandles.length - 1] = newLastCandle;
+              console.log('✓ Chart updated incrementally');
+            } else {
+              console.log('No changes detected, skipping update');
+            }
+          } else if (newLastCandle.time > oldLastCandle.time) {
+            // New candle added
+            console.log('Adding new candle:', newLastCandle.time);
             candleSeries.update(newLastCandle);
             volumeSeries.update({
               time: newLastCandle.time,
               value: newLastCandle.volume,
               color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
             });
-            hasChanges = true;
+            lastCandles = candles.slice();
+            console.log('✓ New candle added');
           }
-        } else if (newLastCandle.time > oldLastCandle.time) {
-          // New candle added
-          console.log('Adding new candle:', newLastCandle.time);
-          candleSeries.update(newLastCandle);
-          volumeSeries.update({
-            time: newLastCandle.time,
-            value: newLastCandle.volume,
-            color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-          });
-          hasChanges = true;
         }
-      }
-      
-      // Only update lastCandles if there were changes
-      if (hasChanges) {
-        lastCandles = candles.slice();
-        console.log('✓ Chart updated incrementally, view preserved');
-      } else {
-        console.log('No changes detected, skipping update');
-      }
-      
-      // Update signals only if they changed
-      if (Array.isArray(data.signals)) {
-        const newSignals = data.signals.map(signal => ({
-          time: signal.time,
-          position: 'aboveBar',
-          color: signal.type === 'buy' ? 'green' : 'red',
-          shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-          text: signal.type.toUpperCase()
-        }));
         
-        // Only update markers if signals changed
-        if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) {
-          lastSignals = newSignals;
-          if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+        // Update signals only if they changed
+        if (Array.isArray(data.signals)) {
+          const newSignals = data.signals.map(signal => ({
+            time: signal.time,
+            position: 'aboveBar',
+            color: signal.type === 'buy' ? 'green' : 'red',
+            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: signal.type.toUpperCase()
+          }));
+          
+          if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) {
+            lastSignals = newSignals;
+            if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
+          }
         }
+        
+        updateSignalPanel(data);
+        updateCurrentPriceIndicator();
       }
-      
-      updateSignalPanel(data);
-      updateCurrentPriceIndicator();
       
       // Check if support/resistance lines changed, only redraw if needed
       const currentHash = generateLineHash();
