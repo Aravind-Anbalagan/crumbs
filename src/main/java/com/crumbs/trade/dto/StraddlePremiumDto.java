@@ -35,4 +35,10 @@ public class StraddlePremiumDto {
     private BigDecimal ceOpenPrice;      // CE open price at 9:15
     private BigDecimal peOpenPrice;      // PE open price at 9:15
     private BigDecimal combinedOpenPrice; // CE open + PE open
+    
+    private BigDecimal ceOI;
+    private BigDecimal peOI;
+    
+    private BigDecimal ceVolume;
+    private BigDecimal peVolume;
 }

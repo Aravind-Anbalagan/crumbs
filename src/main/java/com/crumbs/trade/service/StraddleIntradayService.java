@@ -134,7 +134,7 @@ public class StraddleIntradayService {
 			logger.info("Found {} strikes with valid tokens out of {}", 
 				validTokenCount, strikeList.size());
 
-			strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect);
+			strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect,strategy.getExchange());
 			
 			// VALIDATION: Check if prices were fetched
 			long validPriceCount = strikeList.stream()
@@ -172,7 +172,7 @@ public class StraddleIntradayService {
 					dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) {
 					try {
 						JSONArray ceCandle = fetchLatestOneMinuteCandle(
-							smartconnect, "NFO", dto.getCeToken().getToken()
+							smartconnect, strategy.getExchange(), dto.getCeToken().getToken()
 						);
 
 						if (ceCandle != null && !ceCandle.isEmpty()) {
@@ -263,6 +263,12 @@ public class StraddleIntradayService {
 			entity.setPeIV(dto.getPeIv());
 			entity.setCeVwap(dto.getCeVwap());
 			entity.setPeVwap(dto.getPeVwap());
+			
+			// NEW: volume + OI
+			entity.setCeVolume(dto.getCeVolume());
+			entity.setPeVolume(dto.getPeVolume());
+			entity.setCeOi(dto.getCeOI());
+			entity.setPeOi(dto.getPeOI());
 
 			BigDecimal ceVwap = dto.getCeVwap() != null ? dto.getCeVwap() : BigDecimal.ZERO;
 			BigDecimal peVwap = dto.getPeVwap() != null ? dto.getPeVwap() : BigDecimal.ZERO;
@@ -309,7 +315,7 @@ public class StraddleIntradayService {
 	// =====================================================
 	public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(
 		List<StraddlePremiumDto> strikeList,
-		SmartConnect smartconnect
+		SmartConnect smartconnect, String exchange
 	) {
 
 		try {
@@ -335,7 +341,7 @@ public class StraddleIntradayService {
 			payload.put("mode", "FULL");
 
 			JSONObject map = new JSONObject();
-			map.put("NFO", tokens);
+			map.put(exchange, tokens);
 			payload.put("exchangeTokens", map);
 
 			JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
@@ -356,7 +362,9 @@ public class StraddleIntradayService {
 
 			Map<String, BigDecimal> ltpMap = new HashMap<>();
 			Map<String, BigDecimal> openMap = new HashMap<>();
-
+			Map<String, BigDecimal> oIMap = new HashMap<>();
+			Map<String, BigDecimal> volumeMap = new HashMap<>();
+			
 			for (int i = 0; i < fetched.length(); i++) {
 				JSONObject item = fetched.getJSONObject(i);
 				String token = item.optString("symbolToken", null);
@@ -364,6 +372,8 @@ public class StraddleIntradayService {
 				if (token != null) {
 					ltpMap.put(token, item.optBigDecimal("ltp", BigDecimal.ZERO));
 					openMap.put(token, item.optBigDecimal("open", BigDecimal.ZERO));
+					oIMap.put(token, item.optBigDecimal("opnInterest", BigDecimal.ZERO));
+					volumeMap.put(token, item.optBigDecimal("tradeVolume", BigDecimal.ZERO));
 				}
 			}
 
@@ -373,9 +383,13 @@ public class StraddleIntradayService {
 					String t = dto.getCeToken().getToken();
 					BigDecimal ltp = ltpMap.get(t);
 					BigDecimal open = openMap.get(t);
+					BigDecimal oi = oIMap.get(t);
+					BigDecimal volume = volumeMap.get(t);
 					
 					dto.setCePrice(ltp);
 					dto.setCeOpenPrice(open);
+					dto.setCeOI(oi);
+					dto.setCeVolume(volume);
 					
 					if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
 						logger.warn("No valid CE price for token {}, strike {}", 
@@ -387,9 +401,13 @@ public class StraddleIntradayService {
 					String t = dto.getPeToken().getToken();
 					BigDecimal ltp = ltpMap.get(t);
 					BigDecimal open = openMap.get(t);
-					
+					BigDecimal oi = oIMap.get(t);
+					BigDecimal volume = volumeMap.get(t);
+							
 					dto.setPePrice(ltp);
 					dto.setPeOpenPrice(open);
+					dto.setPeOI(oi);
+					dto.setPeVolume(volume);
 					
 					if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
 						logger.warn("No valid PE price for token {}, strike {}", 

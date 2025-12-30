@@ -38,6 +38,18 @@ public class StraddleChartController {
 			straddleIntradayService.getCombineStraddlePremium("NIFTY");
 		}
 	}
+	
+	@Schedules({
+	    @Scheduled(cron = "0 * 16-22 * * MON-FRI", zone = "Asia/Kolkata"), // 4:00 PM – 10:59 PM
+	    @Scheduled(cron = "0 0-45 23 * * MON-FRI", zone = "Asia/Kolkata")  // 11:00 PM – 11:45 PM
+	})
+	public void straddleIntradayCrude() {
+	    if ("Y".equalsIgnoreCase(strategyRepo.findByName("STRADDLE_PREMIUM").getActive())) {
+	        straddleIntradayService.getCombineStraddlePremium("CRUDEOIL");
+	    }
+	}
+
+
 
 	
 	@GetMapping("/combined-chart")

@@ -94,4 +94,10 @@ public class StraddleIntraday {
     
     @Column(precision = 20, scale = 4)
     private BigDecimal avgPrice;
+    
+    @Column(name = "ce_oi", precision = 20, scale = 0)
+    private BigDecimal ceOi;
+
+    @Column(name = "pe_oi", precision = 20, scale = 0)
+    private BigDecimal peOi;
 }
