@@ -2918,13 +2918,13 @@ public class TaskService {
 	}
 
 	public List<String[]> getEmailData() {
-		List<Indicator> stockList = indicatorRepo.findByIntradayIsNotNullOrderByIntradayAsc();
+		List<Indicator> stockList = indicatorRepo.findByIntradayIsNotNullAndTradetypeIn(Arrays.asList("DAILY"));
 		List<String[]> rows = new ArrayList<>();
-		rows.add(new String[] { "Stock Name", "Price", "Option", "Signal" });
+		rows.add(new String[] { "Stock Name", "Price", "Option", "Signal","Type" });
 		if (stockList != null) {
 			stockList.stream().forEach(stock -> {
 				rows.add(new String[] { stock.getName(), stock.getCurrentPrice().toString(), stock.getOptions(),
-						stock.getIntraday() });
+						stock.getIntraday(),stock.getTradetype() });
 
 			});
 		}

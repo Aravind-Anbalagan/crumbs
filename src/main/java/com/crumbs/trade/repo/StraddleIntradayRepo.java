@@ -1,7 +1,10 @@
 package com.crumbs.trade.repo;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -27,7 +30,70 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
 		""")
 	List<Object[]> fetchNameExpiryStrikeRaw();
 
+	@Query("""
+		    select s.name, s.expiry, s.strike
+		    from StraddleIntraday s
+		    where s.name = :name
+		    group by s.name, s.expiry, s.strike
+		    order by s.expiry, s.strike
+		""")
+		List<Object[]> fetchNameExpiryStrikeRaw(@Param("name") String name);
+	    
 	@Modifying
 	@Query("delete from StraddleIntraday o")
 	void deleteAll();
+	
+	 // Convenience wrapper (if you prefer direct call)
+    default StraddleIntraday findLatest(String name) {
+        return findFirstByNameOrderByTimestampDesc(name)
+                .orElse(null);
+    }
+	// =====================================================
+    // 1️⃣ Latest row (intraday)
+    // =====================================================
+    Optional<StraddleIntraday>
+        findFirstByNameOrderByTimestampDesc(String name);
+
+    // =====================================================
+    // 2️⃣ Full day data (EOD audit) – EXPLICIT QUERY
+    // =====================================================
+    @Query("""
+        SELECT s
+        FROM StraddleIntraday s
+        WHERE s.name = :name
+          AND s.timestamp BETWEEN :start AND :end
+        ORDER BY s.timestamp ASC
+    """)
+    List<StraddleIntraday> findByNameAndTimestampBetweenOrderByTimestamp(
+            @Param("name") String name,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
+    // =====================================================
+    // 3️⃣ Convenience wrapper (use this everywhere)
+    // =====================================================
+    default List<StraddleIntraday> findByNameAndTradeDateOrderByTimestamp(
+            String name,
+            LocalDate tradeDate) {
+
+        LocalDateTime start = tradeDate.atStartOfDay();
+        LocalDateTime end   = tradeDate.atTime(23, 59, 59);
+
+        return findByNameAndTimestampBetweenOrderByTimestamp(
+                name, start, end);
+    }
+    
+    @Query("""
+    	    SELECT s
+    	    FROM StraddleIntraday s
+    	    WHERE s.name = :name
+    	      AND s.timestamp = (
+    	          SELECT MAX(x.timestamp)
+    	          FROM StraddleIntraday x
+    	          WHERE x.name = :name
+    	      )
+    	""")
+    	List<StraddleIntraday> findLatestSnapshot(@Param("name") String name);
+
 }
