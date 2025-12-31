@@ -24,6 +24,7 @@ import com.crumbs.trade.service.AdviceAuditService;
 import com.crumbs.trade.service.AdviceObserverService;
 import com.crumbs.trade.service.MarketPressureService;
 import com.crumbs.trade.service.TradingAdvisorService;
+import com.crumbs.trade.utility.AdviceStatus;
 import com.crumbs.trade.utility.MarketDirection;
 import com.crumbs.trade.utility.PressureZone;
 import com.crumbs.trade.utility.TradingMode;
@@ -44,87 +45,90 @@ public class IntradayAdvisorScheduler {
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
-    // ---- in-memory guards (human behaviour)
-    private PressureZone lastZone = null;
-    private LocalDateTime lastExitTime = null;
-
     // =====================================================
-    // INTRADAY ADVISOR – NIFTY (EVERY MINUTE)
+    // INTRADAY ADVISOR – ALL INSTRUMENTS
     // =====================================================
     @Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
     public void runAdvisor() {
 
         LocalTime now = LocalTime.now(IST);
+        LocalDate today = LocalDate.now(IST);
 
         for (InstrumentConfig cfg : InstrumentRegistry.INSTRUMENTS) {
 
-            // ===============================
+            // ---------------------------------
             // Market hours guard
-            // ===============================
+            // ---------------------------------
             if (now.isBefore(cfg.start()) || now.isAfter(cfg.end())) {
                 continue;
             }
 
             String symbol = cfg.symbol();
 
-            // ===============================
-            // Fetch latest snapshot (multi-strike)
-            // ===============================
+            // ---------------------------------
+            // Latest snapshot (multi-strike)
+            // ---------------------------------
             List<StraddleIntraday> snapshot =
                     straddleRepo.findLatestSnapshot(symbol);
 
-            if (snapshot.isEmpty()) continue;
+            if (snapshot == null || snapshot.isEmpty()) {
+                continue;
+            }
 
             PressureInsightDTO pressure =
                     pressureService.calculateFromSnapshot(snapshot);
 
-            // ===============================
-            // Active advice check
-            // ===============================
+            // ---------------------------------
+            // ACTIVE advice check
+            // ---------------------------------
             Optional<TradingAdvice> active =
-                    adviceRepo.findFirstBySymbolAndTradeDateAndStatus(
-                            symbol, LocalDate.now(IST), "ACTIVE");
+                    adviceRepo.findActiveAdvice(symbol, today);
 
-            // ===============================
-            // OBSERVER (exit)
-            // ===============================
+            // ---------------------------------
+            // OBSERVER (EXIT ONLY)
+            // ---------------------------------
             if (active.isPresent()) {
+
                 TradingAdvice advice = active.get();
 
                 if (observerService.shouldExit(advice, pressure)) {
-                    advice.setStatus("EXITED");
+
+                    advice.setStatus(AdviceStatus.EXITED);
                     advice.setExitTime(LocalDateTime.now(IST));
-                    advice.setExitReason("Pressure invalidated belief");
+                    advice.setExitReason("PRESSURE_INVALIDATED");
+
                     adviceRepo.save(advice);
                 }
+
+                // Never create a new advice while one is active
                 continue;
             }
 
-            // ===============================
+            // ---------------------------------
             // COOLDOWN (per instrument)
-            // ===============================
+            // ---------------------------------
             Optional<TradingAdvice> last =
                     adviceRepo.findTopBySymbolAndTradeDateOrderByAdviceTimeDesc(
-                            symbol, LocalDate.now(IST));
+                            symbol, today);
 
-            if (last.isPresent() &&
-                last.get().getExitTime() != null &&
-                last.get().getExitTime()
-                    .plusMinutes(cfg.cooldownMinutes())
-                    .isAfter(LocalDateTime.now(IST))) {
+            if (last.isPresent()
+                    && last.get().getExitTime() != null
+                    && last.get().getExitTime()
+                        .plusMinutes(cfg.cooldownMinutes())
+                        .isAfter(LocalDateTime.now(IST))) {
                 continue;
             }
 
-            // ===============================
-            // PRESSURE CONFIRMATION
-            // ===============================
+            // ---------------------------------
+            // PRESSURE CONFIRMATION (2-tick rule)
+            // ---------------------------------
             if (!pressureService.isPressureStable(symbol, pressure)) {
                 continue;
             }
 
-            // ===============================
-            // ADVICE
-            // ===============================
+            // ---------------------------------
+            // ADVISOR DECISION
+            // ---------------------------------
             AdvisorDecisionDTO decision =
                     advisorService.advise(pressure);
 
@@ -135,20 +139,33 @@ public class IntradayAdvisorScheduler {
             MarketDirection direction =
                     pressureService.determineMarketDirection(snapshot);
 
+            if (direction == MarketDirection.NEUTRAL) {
+                continue;
+            }
+
+            // ---------------------------------
+            // CREATE NEW ADVICE
+            // ---------------------------------
             TradingAdvice advice = new TradingAdvice();
             advice.setSymbol(symbol);
-            advice.setTradeDate(LocalDate.now(IST));
+            advice.setTradeDate(today);
             advice.setAdviceTime(LocalDateTime.now(IST));
+
             advice.setRecommendedMode(decision.getRecommendedMode());
+            advice.setDirection(direction);
+
             advice.setEntryPressure(pressure.getPressure());
-            advice.setEntryZone(pressure.getZone().name());
-            advice.setDirection(direction.name());
-            advice.setStatus("ACTIVE");
+            advice.setEntryZone(pressure.getZone());
+
+            // Optional but recommended
+            advice.setEntrySpot(snapshot.get(0).getSpot());
+            advice.setEntryPremium(snapshot.get(0).getCombinedPremium());
+
+            advice.setStatus(AdviceStatus.ACTIVE);
 
             adviceRepo.save(advice);
         }
     }
-
 
     // =====================================================
     // EOD AUDIT – NIFTY
@@ -162,7 +179,7 @@ public class IntradayAdvisorScheduler {
     // EOD AUDIT – CRUDE
     // =====================================================
     @Scheduled(cron = "0 50 23 * * MON-FRI", zone = "Asia/Kolkata")
-    public void runAudit() {
+    public void runCrudeAudit() {
         runAuditForSymbol("CRUDEOIL", LocalDate.now(IST));
     }
 
@@ -174,7 +191,9 @@ public class IntradayAdvisorScheduler {
         List<TradingAdvice> advices =
                 adviceRepo.findBySymbolAndTradeDate(symbol, tradeDate);
 
-        if (advices.isEmpty()) return;
+        if (advices == null || advices.isEmpty()) {
+            return;
+        }
 
         for (TradingAdvice advice : advices) {
 
@@ -182,7 +201,9 @@ public class IntradayAdvisorScheduler {
                     straddleRepo.findByNameAndTradeDateOrderByTimestamp(
                             symbol, tradeDate);
 
-            if (data.isEmpty()) continue;
+            if (data == null || data.isEmpty()) {
+                continue;
+            }
 
             TradingAdviceAudit audit =
                     auditService.evaluate(advice, data, pressureService);

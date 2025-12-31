@@ -16,17 +16,17 @@ public class TradingAdvisorService {
             case LOW:
                 return new AdvisorDecisionDTO(
                         TradingMode.OPTION_SELL_RANGE,
-                        "Pressure LOW. Range option selling is safe.",
-                        "Premium decaying & OI balanced",
+                        "Pressure LOW. Market balanced.",
+                        "Premium decay expected, range likely",
                         p.getPressure(),
                         p.getZone()
                 );
 
             case MEDIUM:
                 return new AdvisorDecisionDTO(
-                        TradingMode.OPTION_SELL_DIRECTIONAL,
-                        "Pressure rising. Avoid straddle.",
-                        "Range may be tested",
+                        TradingMode.NO_TRADE,
+                        "Pressure building. Waiting for confirmation.",
+                        "Early imbalance detected",
                         p.getPressure(),
                         p.getZone()
                 );
@@ -34,8 +34,17 @@ public class TradingAdvisorService {
             case HIGH:
                 return new AdvisorDecisionDTO(
                         TradingMode.OPTION_BUY_DIRECTIONAL,
-                        "Pressure HIGH. Sellers at risk.",
-                        "Directional momentum building",
+                        "Pressure HIGH. Directional setup forming.",
+                        "Sellers under stress, momentum building",
+                        p.getPressure(),
+                        p.getZone()
+                );
+
+            case CRITICAL:
+                return new AdvisorDecisionDTO(
+                        TradingMode.OPTION_BUY_DIRECTIONAL,
+                        "Pressure CRITICAL. Trend acceleration.",
+                        "Strong imbalance, breakout conditions",
                         p.getPressure(),
                         p.getZone()
                 );
@@ -43,8 +52,8 @@ public class TradingAdvisorService {
             default:
                 return new AdvisorDecisionDTO(
                         TradingMode.NO_TRADE,
-                        "Pressure CRITICAL. No new trades.",
-                        "Market breaking structure",
+                        "Invalid pressure state.",
+                        "Unknown zone received",
                         p.getPressure(),
                         p.getZone()
                 );

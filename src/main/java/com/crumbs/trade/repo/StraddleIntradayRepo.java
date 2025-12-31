@@ -95,5 +95,20 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
     	      )
     	""")
     	List<StraddleIntraday> findLatestSnapshot(@Param("name") String name);
+    
+    @Query("""
+            select s
+            from StraddleIntraday s
+            where s.name = :name
+              and s.timestamp = (
+                  select max(x.timestamp)
+                  from StraddleIntraday x
+                  where x.name = :name
+              )
+            order by s.strike
+        """)
+        List<StraddleIntraday> findLatestByName(
+                @Param("name") String name
+        );
 
 }

@@ -4,7 +4,9 @@ import org.springframework.stereotype.Service;
 
 import com.crumbs.trade.dto.PressureInsightDTO;
 import com.crumbs.trade.entity.TradingAdvice;
+import com.crumbs.trade.utility.AdviceStatus;
 import com.crumbs.trade.utility.PressureZone;
+import com.crumbs.trade.utility.TradingMode;
 
 @Service
 public class AdviceObserverService {
@@ -13,9 +15,13 @@ public class AdviceObserverService {
             TradingAdvice advice,
             PressureInsightDTO p) {
 
-        if ("EXITED".equals(advice.getStatus())) return false;
+        if (advice.getStatus() != AdviceStatus.ACTIVE) {
+            return false;
+        }
 
-        switch (advice.getRecommendedMode()) {
+        TradingMode mode = advice.getRecommendedMode();
+
+        switch (mode) {
 
             case OPTION_SELL_RANGE:
                 return p.getZone() != PressureZone.LOW;
