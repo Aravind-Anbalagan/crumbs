@@ -855,7 +855,9 @@
     async function fetchDataFromAPI() {
         try {
             const params = new URLSearchParams(API_PARAMS);
-            const response = await fetch(`${API_URL}?${params}`);
+            const url = `${API_URL}?${params}`;
+            console.log('Fetching data from:', url); // Debug log
+            const response = await fetch(url);
             if (!response.ok) throw new Error(`API failed: ${response.status}`);
             const result = await response.json();
             document.getElementById('status-indicator').className = 'status-indicator live';
@@ -1042,19 +1044,30 @@
     }
 
     function initDropdowns() {
-        ['name-select', 'expiry-select', 'ce-strike-select', 'pe-strike-select'].forEach(id => {
-            document.getElementById(id).addEventListener('change', () => {
-                if (id === 'name-select') {
-                    populateExpirySelect();
-                } else if (id === 'expiry-select') {
-                    populateStrikeSelects();
-                } else if (id === 'ce-strike-select') {
-                    API_PARAMS.ceStrike = String(document.getElementById(id).value);
-                } else if (id === 'pe-strike-select') {
-                    API_PARAMS.peStrike = String(document.getElementById(id).value);
-                }
-                loadInitialData();
-            });
+        document.getElementById('name-select').addEventListener('change', (e) => {
+            API_PARAMS.name = e.target.value;
+            console.log('Name changed to:', API_PARAMS.name); // Debug log
+            populateExpirySelect();
+            loadInitialData();
+        });
+
+        document.getElementById('expiry-select').addEventListener('change', (e) => {
+            API_PARAMS.expiry = e.target.value;
+            console.log('Expiry changed to:', API_PARAMS.expiry); // Debug log
+            populateStrikeSelects();
+            loadInitialData();
+        });
+
+        document.getElementById('ce-strike-select').addEventListener('change', (e) => {
+            API_PARAMS.ceStrike = String(e.target.value);
+            console.log('CE Strike changed to:', API_PARAMS.ceStrike); // Debug log
+            loadInitialData();
+        });
+
+        document.getElementById('pe-strike-select').addEventListener('change', (e) => {
+            API_PARAMS.peStrike = String(e.target.value);
+            console.log('PE Strike changed to:', API_PARAMS.peStrike); // Debug log
+            loadInitialData();
         });
     }
 
