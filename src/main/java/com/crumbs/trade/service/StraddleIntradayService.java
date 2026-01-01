@@ -72,9 +72,25 @@ public class StraddleIntradayService {
 	private final Map<String, BigDecimal> volMap = new HashMap<>();
 	private LocalDate vwapDate = null;
 	
+	// ================= CROSSOVER STATE =================
+	private final Map<BigDecimal, PricePair> lastPrices = new HashMap<>();
+	private LocalDate crossoverDate = null;
+	
 	// ================= VWAP CONTROL =================
 	private static final boolean ENABLE_VWAP = true; // Set to false to skip VWAP fetching
 	private List<StraddlePremiumDto> strikeList = new ArrayList<>();
+	
+	// ================= CROSSOVER HELPER CLASS =================
+	private static class PricePair {
+		BigDecimal cePrice;
+		BigDecimal pePrice;
+		
+		PricePair(BigDecimal cePrice, BigDecimal pePrice) {
+			this.cePrice = cePrice;
+			this.pePrice = pePrice;
+		}
+	}
+	
 	// =====================================================
 	// MAIN ENTRY - WITH COMPREHENSIVE VALIDATION
 	// =====================================================
@@ -151,6 +167,10 @@ public class StraddleIntradayService {
 			
 			logger.info("Successfully fetched prices for {} strikes", validPriceCount);
 
+			// ========= NEW: CROSSOVER DETECTION =========
+			resetCrossoverIfNewDay();
+			detectCrossovers(strikeList, name);
+			
 			// ========= VWAP (INCREMENTAL) - OPTIMIZED =========
 			resetVwapIfNewDay();
 
@@ -215,6 +235,68 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
+	// NEW: CROSSOVER DETECTION
+	// =====================================================
+	private void detectCrossovers(List<StraddlePremiumDto> strikeList, String strategyName) {
+		for (StraddlePremiumDto dto : strikeList) {
+			BigDecimal strike = dto.getStrikePrice();
+			BigDecimal currentCe = dto.getCePrice();
+			BigDecimal currentPe = dto.getPePrice();
+			
+			// Skip if prices are invalid
+			if (strike == null || currentCe == null || currentPe == null ||
+				currentCe.compareTo(BigDecimal.ZERO) <= 0 || 
+				currentPe.compareTo(BigDecimal.ZERO) <= 0) {
+				continue;
+			}
+			
+			// Get last known prices for this strike
+			PricePair lastPair = lastPrices.get(strike);
+			
+			if (lastPair != null && lastPair.cePrice != null && lastPair.pePrice != null) {
+				// CE crosses ABOVE PE
+				if (lastPair.cePrice.compareTo(lastPair.pePrice) <= 0 && 
+					currentCe.compareTo(currentPe) > 0) {
+					
+					logger.info("🔺 CROSSOVER [{}] Strike {}: CE crossed ABOVE PE | CE: {} -> {}, PE: {} -> {}", 
+						strategyName, strike,
+						lastPair.cePrice, currentCe,
+						lastPair.pePrice, currentPe);
+					
+					dto.setCeCrossoverAbove(true);
+				}
+				
+				// PE crosses ABOVE CE
+				else if (lastPair.pePrice.compareTo(lastPair.cePrice) <= 0 && 
+					currentPe.compareTo(currentCe) > 0) {
+					
+					logger.info("🔻 CROSSOVER [{}] Strike {}: PE crossed ABOVE CE | CE: {} -> {}, PE: {} -> {}", 
+						strategyName, strike,
+						lastPair.cePrice, currentCe,
+						lastPair.pePrice, currentPe);
+					
+					dto.setPeCrossoverAbove(true);
+				}
+			}
+			
+			// Update last prices for next iteration
+			lastPrices.put(strike, new PricePair(currentCe, currentPe));
+		}
+	}
+	
+	// =====================================================
+	// NEW: RESET CROSSOVER STATE FOR NEW DAY
+	// =====================================================
+	private void resetCrossoverIfNewDay() {
+		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+		if (crossoverDate == null || !crossoverDate.equals(today)) {
+			lastPrices.clear();
+			crossoverDate = today;
+			logger.info("Crossover tracking reset for new trading day: {}", today);
+		}
+	}
+
+	// =====================================================
 	// SAVE TO DB - WITH VALIDATION
 	// =====================================================
 	public int savePriceDetails(
@@ -269,6 +351,10 @@ public class StraddleIntradayService {
 			entity.setPeVolume(dto.getPeVolume());
 			entity.setCeOi(dto.getCeOI());
 			entity.setPeOi(dto.getPeOI());
+			
+			// NEW: Crossover flags
+			entity.setCeCrossoverAbove(dto.isCeCrossoverAbove());
+			entity.setPeCrossoverAbove(dto.isPeCrossoverAbove());
 
 			BigDecimal ceVwap = dto.getCeVwap() != null ? dto.getCeVwap() : BigDecimal.ZERO;
 			BigDecimal peVwap = dto.getPeVwap() != null ? dto.getPeVwap() : BigDecimal.ZERO;

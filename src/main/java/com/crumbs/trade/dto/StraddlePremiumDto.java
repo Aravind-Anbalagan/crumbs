@@ -41,4 +41,7 @@ public class StraddlePremiumDto {
     
     private BigDecimal ceVolume;
     private BigDecimal peVolume;
+    
+    private boolean ceCrossoverAbove;
+    private boolean peCrossoverAbove;
 }

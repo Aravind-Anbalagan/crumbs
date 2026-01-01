@@ -100,4 +100,8 @@ public class StraddleIntraday {
 
     @Column(name = "pe_oi", precision = 20, scale = 0)
     private BigDecimal peOi;
+    
+ // NEW: Crossover detection flags
+    private Boolean ceCrossoverAbove;
+    private Boolean peCrossoverAbove;
 }
