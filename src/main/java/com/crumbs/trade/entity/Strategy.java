@@ -1,8 +1,5 @@
 package com.crumbs.trade.entity;
 
-import java.math.BigDecimal;
-import java.util.Date;
-
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import jakarta.persistence.*;
@@ -45,7 +42,8 @@ public class Strategy {
 	String papertrade;
 	@Column(name="dayCandle")
 	String dayCandle;
-	
+	@Column(name = "alert", nullable = false, length = 1)
+	private String alert = "N";
 	public String getDayCandle() {
 		return dayCandle;
 	}
@@ -137,6 +135,11 @@ public class Strategy {
 		this.expiry = expiry;
 	}
 
-	
+	public String getAlert() {
+		return alert;
+	}
+	public void setAlert(String alert) {
+		this.alert = alert;
+	}
 	
 }

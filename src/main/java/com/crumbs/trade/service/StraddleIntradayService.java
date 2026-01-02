@@ -24,6 +24,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
@@ -41,6 +43,8 @@ import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.StraddleIntradayRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
+
+import jakarta.transaction.Transactional;
 
 @Service
 public class StraddleIntradayService {
@@ -67,6 +71,8 @@ public class StraddleIntradayService {
 	CandleRepo candleRepo;
 	@Autowired
 	TaskService taskService;
+	@Autowired
+	TelegramService telegramService;
 	
 	// ================= VWAP STATE =================
 	private final Map<String, BigDecimal> tpvMap = new HashMap<>();
@@ -298,12 +304,17 @@ public class StraddleIntradayService {
 	}
 
 
-
+	private boolean isAlertRequired(String strategy) {
+        return "Y".equalsIgnoreCase(
+                strategyRepo.findByName(strategy).getAlert()
+        );
+    }
 	
 
 	// =====================================================
 	// SAVE TO DB - WITH VALIDATION
 	// =====================================================
+	
 	public int savePriceDetails(
 		List<StraddlePremiumDto> strikeList, 
 		Strategy strategy, 
@@ -394,6 +405,16 @@ public class StraddleIntradayService {
 			try {
 				straddleIntradayRepo.save(entity);
 				count++;
+				 // 🔔 Trigger Telegram ONLY if crossover happened
+			    if (Boolean.TRUE.equals(entity.getCeCrossoverAbove()) ||
+			        Boolean.TRUE.equals(entity.getPeCrossoverAbove())) {
+
+			        // 🚫 Prevent duplicate alerts
+			        if (isAlertRequired("STRADDLE_PREMIUM")) {
+
+			        	  sendTelegramAndMark(entity);
+			        }
+			    }
 			} catch (Exception e) {
 				logger.error("Failed to save record for strike {}: {}", 
 					dto.getStrikePrice(), e.getMessage());
@@ -402,6 +423,63 @@ public class StraddleIntradayService {
 		
 		return count;
 	}
+	
+	private void sendTelegramAndMark(StraddleIntraday s) {
+	    try {
+	        String message = buildTelegramMessage(s);
+
+	        boolean sent = telegramService.sendMessage(message);
+
+	        if (sent) {
+	            logger.info("CE-PE Crossover Notification has sent");
+	        }
+	    } catch (Exception ex) {
+	        logger.error("Telegram alert failed for {} {}", 
+	            s.getName(), s.getStrike(), ex);
+	    }
+	}
+	
+	// =====================================================
+    // MESSAGE FORMAT
+    // =====================================================
+    private String buildTelegramMessage(StraddleIntraday s) {
+
+        String direction;
+        String emoji;
+
+        if (Boolean.TRUE.equals(s.getCeCrossoverAbove())) {
+            direction = "CE crossed ABOVE PE";
+            emoji = "🟢";
+        } else {
+            direction = "PE crossed ABOVE CE";
+            emoji = "🔴";
+        }
+
+        return String.format(
+            """
+            🚨 CE–PE Crossover Trade Signal 🚨
+
+            📌 Symbol : %s
+            📌 Strike : %s
+            ⏰ Time   : %s
+
+            %s Signal : %s
+            💰 CE Price : %.2f
+            💰 PE Price : %.2f
+            📊 Combined : %.2f
+
+            ⚠️ Event-based crossover (one-time)
+            """,
+            s.getName(),
+            s.getStrike(),
+            s.getTimestamp(),
+            emoji,
+            direction,
+            s.getCePrice(),
+            s.getPePrice(),
+            s.getCombinedPremium()
+        );
+    }
 
 	// =====================================================
 	// BATCH PRICE FETCH - WITH ERROR HANDLING
