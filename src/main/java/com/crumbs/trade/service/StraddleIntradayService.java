@@ -228,37 +228,52 @@ public class StraddleIntradayService {
 	// =====================================================
 	private void detectCrossoverEvent(
 	        StraddlePremiumDto dto,
-	        String strategyName,
+	        String name,
 	        LocalDateTime currentTs
 	) {
+	    // 1️⃣ Always reset (EVENT, not STATE)
 	    dto.setCeCrossoverAbove(false);
 	    dto.setPeCrossoverAbove(false);
 
+	    // 2️⃣ Fetch last TWO saved rows for this strike
 	    List<StraddleIntraday> lastTwo =
 	        straddleIntradayRepo.findLastTwo(
-	            strategyName,
+	            name,
 	            dto.getStrikePrice(),
 	            PageRequest.of(0, 2)
 	        );
 
 	    if (lastTwo.size() < 2) return;
 
-	    StraddleIntraday prev = lastTwo.get(1);
+	    // latest saved candle (t-1)
+	    StraddleIntraday prev = lastTwo.get(0);
 
-	    // 🔥 CRITICAL FIX: ensure previous candle is contiguous
-	    long gapSeconds =
+	    // candle before that (t-2)
+	    StraddleIntraday beforePrev = lastTwo.get(1);
+
+	    // 3️⃣ Time-continuity guard (avoid DB gaps / scheduler skips)
+	    long gapSeconds = Math.abs(
 	        java.time.Duration.between(
 	            prev.getTimestamp(),
 	            currentTs
-	        ).getSeconds();
+	        ).getSeconds()
+	    );
 
-	    // allow only 1–2 minute gap
+	    // allow only ~1–2 minute gap
 	    if (gapSeconds > 120) {
 	        return;
 	    }
 
-	    BigDecimal prevCe = prev.getCePrice();
-	    BigDecimal prevPe = prev.getPePrice();
+	    // 4️⃣ Prevent duplicate same-direction crossover
+	    // (arrow must not repeat on consecutive candles)
+	    if (Boolean.TRUE.equals(prev.getCeCrossoverAbove()) ||
+	        Boolean.TRUE.equals(prev.getPeCrossoverAbove())) {
+	        return;
+	    }
+
+	    // 5️⃣ Price comparison (REAL crossover check)
+	    BigDecimal prevCe = beforePrev.getCePrice();
+	    BigDecimal prevPe = beforePrev.getPePrice();
 	    BigDecimal currCe = dto.getCePrice();
 	    BigDecimal currPe = dto.getPePrice();
 
@@ -266,17 +281,22 @@ public class StraddleIntradayService {
 	        currCe == null || currPe == null)
 	        return;
 
+	    // 🔺 CE crossed ABOVE PE (ONE candle only)
 	    if (prevCe.compareTo(prevPe) <= 0 &&
 	        currCe.compareTo(currPe) > 0) {
+
 	        dto.setCeCrossoverAbove(true);
 	        return;
 	    }
 
+	    // 🔻 PE crossed ABOVE CE (ONE candle only)
 	    if (prevPe.compareTo(prevCe) <= 0 &&
 	        currPe.compareTo(currCe) > 0) {
+
 	        dto.setPeCrossoverAbove(true);
 	    }
 	}
+
 
 
 	
