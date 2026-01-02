@@ -123,6 +123,32 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
     	        @Param("strike") BigDecimal strike,
     	        Pageable pageable
     	);
+ // Add these two methods to your existing StraddleIntradayRepo interface:
 
+    /**
+     * Get all records since a specific advice time
+     * Used for trailing stop calculations and historical analysis
+     */
+    @Query("""
+        SELECT s 
+        FROM StraddleIntraday s 
+        WHERE s.name = :name 
+          AND s.timestamp >= :sinceTime 
+        ORDER BY s.timestamp ASC
+    """)
+    List<StraddleIntraday> findSinceAdviceTime(
+        @Param("name") String name,
+        @Param("sinceTime") LocalDateTime sinceTime
+    );
+    
+    /**
+     * Get records from last N minutes (convenience wrapper)
+     * Used for volume confirmation in pressure stability checks
+     */
+    default List<StraddleIntraday> findLastNMinutes(String name, int minutes) {
+        LocalDateTime sinceTime = LocalDateTime.now()
+            .minusMinutes(minutes);
+        return findSinceAdviceTime(name, sinceTime);
+    }
 
 }

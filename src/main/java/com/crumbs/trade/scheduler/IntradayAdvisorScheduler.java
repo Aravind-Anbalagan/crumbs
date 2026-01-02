@@ -30,7 +30,9 @@ import com.crumbs.trade.utility.PressureZone;
 import com.crumbs.trade.utility.TradingMode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class IntradayAdvisorScheduler {
@@ -44,6 +46,12 @@ public class IntradayAdvisorScheduler {
     private final TradingAdviceAuditRepo auditRepo;
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+    
+    // =====================================================
+    // CRITICAL: OPENING RANGE PROTECTION
+    // =====================================================
+    private static final int OPENING_RANGE_MINUTES = 30;
+    private static final int CLOSING_BUFFER_MINUTES = 15;
 
     // =====================================================
     // INTRADAY ADVISOR – ALL INSTRUMENTS
@@ -56,57 +64,90 @@ public class IntradayAdvisorScheduler {
 
         for (InstrumentConfig cfg : InstrumentRegistry.INSTRUMENTS) {
 
-            // ---------------------------------
-            // Market hours guard
-            // ---------------------------------
+            String symbol = cfg.symbol();
+            
+            // =====================================================
+            // GUARD 1: MARKET HOURS CHECK
+            // =====================================================
             if (now.isBefore(cfg.start()) || now.isAfter(cfg.end())) {
                 continue;
             }
+            
+            // =====================================================
+            // GUARD 2: OPENING RANGE FILTER (CRITICAL FIX)
+            // Skip first 30 minutes - 80% of false signals occur here
+            // =====================================================
+            LocalTime openingRangeEnd = cfg.start()
+                .plusMinutes(OPENING_RANGE_MINUTES);
+            
+            if (now.isBefore(openingRangeEnd)) {
+                log.debug("{}: Skipping opening range (until {})", 
+                    symbol, openingRangeEnd);
+                continue;
+            }
+            
+            // =====================================================
+            // GUARD 3: CLOSING RANGE FILTER
+            // Don't enter new positions near market close
+            // =====================================================
+            LocalTime closingStart = cfg.end()
+                .minusMinutes(CLOSING_BUFFER_MINUTES);
+            
+            if (now.isAfter(closingStart)) {
+                log.debug("{}: Skipping closing range (after {})", 
+                    symbol, closingStart);
+                continue;
+            }
 
-            String symbol = cfg.symbol();
-
-            // ---------------------------------
-            // Latest snapshot (multi-strike)
-            // ---------------------------------
+            // =====================================================
+            // DATA FETCH: Latest snapshot (multi-strike)
+            // =====================================================
             List<StraddleIntraday> snapshot =
                     straddleRepo.findLatestSnapshot(symbol);
 
             if (snapshot == null || snapshot.isEmpty()) {
+                log.warn("{}: No market data available", symbol);
                 continue;
             }
 
             PressureInsightDTO pressure =
                     pressureService.calculateFromSnapshot(snapshot);
 
-            // ---------------------------------
-            // ACTIVE advice check
-            // ---------------------------------
+            // =====================================================
+            // ACTIVE ADVICE CHECK + EXIT MONITORING
+            // =====================================================
             Optional<TradingAdvice> active =
                     adviceRepo.findActiveAdvice(symbol, today);
 
-            // ---------------------------------
-            // OBSERVER (EXIT ONLY)
-            // ---------------------------------
+            // =====================================================
+            // OBSERVER MODE: EXIT CHECKS (WHEN TRADE IS ACTIVE)
+            // =====================================================
             if (active.isPresent()) {
 
                 TradingAdvice advice = active.get();
 
+                // Run all exit checks
                 if (observerService.shouldExit(advice, pressure)) {
-
+                    
                     advice.setStatus(AdviceStatus.EXITED);
                     advice.setExitTime(LocalDateTime.now(IST));
-                    advice.setExitReason("PRESSURE_INVALIDATED");
-
+                    // exitReason already set by observerService
+                    
                     adviceRepo.save(advice);
+                    
+                    log.info("{}: EXITED trade #{} - Reason: {}", 
+                        symbol, 
+                        advice.getId(), 
+                        advice.getExitReason());
                 }
 
                 // Never create a new advice while one is active
                 continue;
             }
 
-            // ---------------------------------
-            // COOLDOWN (per instrument)
-            // ---------------------------------
+            // =====================================================
+            // COOLDOWN CHECK (per instrument)
+            // =====================================================
             Optional<TradingAdvice> last =
                     adviceRepo.findTopBySymbolAndTradeDateOrderByAdviceTimeDesc(
                             symbol, today);
@@ -116,19 +157,21 @@ public class IntradayAdvisorScheduler {
                     && last.get().getExitTime()
                         .plusMinutes(cfg.cooldownMinutes())
                         .isAfter(LocalDateTime.now(IST))) {
+                log.debug("{}: In cooldown period", symbol);
                 continue;
             }
 
-            // ---------------------------------
-            // PRESSURE CONFIRMATION (2-tick rule)
-            // ---------------------------------
+            // =====================================================
+            // PRESSURE STABILITY CHECK (2-tick + volume/OI validation)
+            // =====================================================
             if (!pressureService.isPressureStable(symbol, pressure)) {
+                log.debug("{}: Pressure not stable yet", symbol);
                 continue;
             }
 
-            // ---------------------------------
+            // =====================================================
             // ADVISOR DECISION
-            // ---------------------------------
+            // =====================================================
             AdvisorDecisionDTO decision =
                     advisorService.advise(pressure);
 
@@ -140,12 +183,13 @@ public class IntradayAdvisorScheduler {
                     pressureService.determineMarketDirection(snapshot);
 
             if (direction == MarketDirection.NEUTRAL) {
+                log.debug("{}: Market direction is NEUTRAL", symbol);
                 continue;
             }
 
-            // ---------------------------------
+            // =====================================================
             // CREATE NEW ADVICE
-            // ---------------------------------
+            // =====================================================
             TradingAdvice advice = new TradingAdvice();
             advice.setSymbol(symbol);
             advice.setTradeDate(today);
@@ -157,13 +201,22 @@ public class IntradayAdvisorScheduler {
             advice.setEntryPressure(pressure.getPressure());
             advice.setEntryZone(pressure.getZone());
 
-            // Optional but recommended
+            // Critical: Store entry metrics for exit calculations
             advice.setEntrySpot(snapshot.get(0).getSpot());
             advice.setEntryPremium(snapshot.get(0).getCombinedPremium());
 
             advice.setStatus(AdviceStatus.ACTIVE);
 
             adviceRepo.save(advice);
+            
+            log.info("{}: NEW TRADE #{} - {} {} at {} (Pressure: {}/{})", 
+                symbol, 
+                advice.getId(),
+                advice.getRecommendedMode(),
+                advice.getDirection(),
+                advice.getEntrySpot(),
+                advice.getEntryPressure(),
+                advice.getEntryZone());
         }
     }
 
@@ -192,6 +245,7 @@ public class IntradayAdvisorScheduler {
                 adviceRepo.findBySymbolAndTradeDate(symbol, tradeDate);
 
         if (advices == null || advices.isEmpty()) {
+            log.info("{}: No trades to audit for {}", symbol, tradeDate);
             return;
         }
 
@@ -202,6 +256,7 @@ public class IntradayAdvisorScheduler {
                             symbol, tradeDate);
 
             if (data == null || data.isEmpty()) {
+                log.warn("{}: No market data for audit on {}", symbol, tradeDate);
                 continue;
             }
 
@@ -209,6 +264,11 @@ public class IntradayAdvisorScheduler {
                     auditService.evaluate(advice, data, pressureService);
 
             auditRepo.save(audit);
+            
+            log.info("{}: Audited trade #{} - Conclusion: {}", 
+                symbol, 
+                advice.getId(), 
+                audit.getAuditConclusion());
         }
     }
 }
