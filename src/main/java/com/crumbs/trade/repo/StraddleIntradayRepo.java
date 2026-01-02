@@ -13,7 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.crumbs.trade.entity.StraddleIntraday;
-
+import org.springframework.data.domain.Pageable;
 @Repository
 public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Long>  {
 
@@ -110,5 +110,19 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
         List<StraddleIntraday> findLatestByName(
                 @Param("name") String name
         );
+    
+    @Query("""
+    	    SELECT s
+    	    FROM StraddleIntraday s
+    	    WHERE s.name = :name
+    	      AND s.strike = :strike
+    	    ORDER BY s.timestamp DESC
+    	""")
+    	List<StraddleIntraday> findLastTwo(
+    	        @Param("name") String name,
+    	        @Param("strike") BigDecimal strike,
+    	        Pageable pageable
+    	);
+
 
 }
