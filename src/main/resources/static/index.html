@@ -352,7 +352,7 @@
         <li class="menu-item" data-url="straddle.html"><button class="menu-link">Straddle</button></li>
         <li class="menu-item" data-url="future.html"><button class="menu-link">Future</button></li>
         <li class="menu-item" data-url="intraday.html"><button class="menu-link">Intraday</button></li>
-         <li class="menu-item" data-url="prediction.html"><button class="menu-link">Prediction</button></li>
+        <li class="menu-item" data-url="prediction.html"><button class="menu-link">Prediction</button></li>
         <li class="menu-item" data-url="orders.html"><button class="menu-link">Orders</button></li>
         <li class="menu-item" data-url="log.html"><button class="menu-link">Log</button></li>
     </ul>
@@ -390,7 +390,49 @@
     const loginBtn = document.getElementById('loginBtn');
     const loginInput = document.getElementById('loginCodeInput');
     const loginError = document.getElementById('loginError');
+    const iframeContainer = document.getElementById('iframeContainer');
+    const nav = document.querySelector('nav');
     const body = document.body;
+
+    // ✅ Initialize UI from sessionStorage on load
+    function initAuthFromSession() {
+        try {
+            const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+
+            if (isLoggedIn) {
+                body.classList.add('authenticated');
+
+                // Hard-hide popup
+                loginPopup.style.display = 'none';
+                loginPopup.style.visibility = 'hidden';
+                loginPopup.style.opacity = '0';
+
+                iframeContainer.style.pointerEvents = 'auto';
+                iframeContainer.style.opacity = '1';
+                nav.style.pointerEvents = 'auto';
+                nav.style.opacity = '1';
+            } else {
+                body.classList.remove('authenticated');
+
+                loginPopup.style.display = 'flex';
+                loginPopup.style.visibility = 'visible';
+                loginPopup.style.opacity = '1';
+
+                iframeContainer.style.pointerEvents = 'none';
+                iframeContainer.style.opacity = '0.5';
+                nav.style.pointerEvents = 'none';
+                nav.style.opacity = '0.5';
+            }
+        } catch (e) {
+            console.error('Auth init error:', e);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAuthFromSession);
+    } else {
+        initAuthFromSession();
+    }
 
     async function validateKey(code) {
         try {
@@ -400,32 +442,45 @@
                 body: JSON.stringify({ secret: code })
             });
             if (!res.ok) return false;
-            return await res.json();
-        } catch {
+            const result = await res.json();
+            return result === true || result.success === true || result.valid === true || result.authenticated === true;
+        } catch (error) {
+            console.error('Validation error:', error);
             return false;
         }
     }
 
     loginBtn.onclick = async () => {
-    const val = loginInput.value.trim();
-    const ok = await validateKey(val);
-    if (ok) {
-        // Set authentication flag
-        sessionStorage.setItem('isLoggedIn', 'true');
-        
-        // Clear all stored user actions for a fresh session
-        localStorage.clear();
+        const val = loginInput.value.trim();
+        loginError.style.display = 'none';
 
-        body.classList.add('authenticated');
-        loginPopup.style.display = 'none';
-    } else {
-        loginError.style.display = 'block';
-        loginInput.classList.add('error-shake');
-        loginInput.value = '';
-        loginInput.focus();
-        setTimeout(() => loginInput.classList.remove('error-shake'), 500);
-    }
-};
+        const ok = await validateKey(val);
+
+        if (ok) {
+            sessionStorage.setItem('isLoggedIn', 'true');
+            localStorage.clear();
+
+            body.classList.add('authenticated');
+
+            loginPopup.style.display = 'none';
+            loginPopup.style.visibility = 'hidden';
+            loginPopup.style.opacity = '0';
+
+            iframeContainer.style.pointerEvents = 'auto';
+            iframeContainer.style.opacity = '1';
+            nav.style.pointerEvents = 'auto';
+            nav.style.opacity = '1';
+        } else {
+            loginError.style.display = 'block';
+            loginInput.classList.add('error-shake');
+            loginInput.value = '';
+            loginInput.focus();
+            setTimeout(() => {
+                loginInput.classList.remove('error-shake');
+                loginError.style.display = 'none';
+            }, 3000);
+        }
+    };
 
     loginInput.addEventListener('keyup', e => {
         if (e.key === 'Enter') loginBtn.click();
