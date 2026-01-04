@@ -6,6 +6,12 @@
 <title>SR + Fibonacci Chart (IST) - Improved (Resilient)</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+<script>
+    // Authentication check - must be at the top
+    if (!sessionStorage.getItem('isLoggedIn')) {
+        window.location.href = '/index.html';
+    }
+</script>
 <style>
   /* Reset and base */
   * {

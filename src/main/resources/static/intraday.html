@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <title>Chart with Manual Load & State Persistence</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <script>
+    // Authentication check - must be at the top
+    if (!sessionStorage.getItem('isLoggedIn')) {
+        window.location.href = '/index.html';
+    }
+</script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
     html, body, #container {

@@ -407,22 +407,25 @@
     }
 
     loginBtn.onclick = async () => {
-        const val = loginInput.value.trim();
-        const ok = await validateKey(val);
-        if (ok) {
-            // Clear all stored user actions for a fresh session
-            localStorage.clear();  // or removeItem for specific keys only [web:17]
+    const val = loginInput.value.trim();
+    const ok = await validateKey(val);
+    if (ok) {
+        // Set authentication flag
+        sessionStorage.setItem('isLoggedIn', 'true');
+        
+        // Clear all stored user actions for a fresh session
+        localStorage.clear();
 
-            body.classList.add('authenticated');
-            loginPopup.style.display = 'none';
-        } else {
-            loginError.style.display = 'block';
-            loginInput.classList.add('error-shake');
-            loginInput.value = '';
-            loginInput.focus();
-            setTimeout(() => loginInput.classList.remove('error-shake'), 500);
-        }
-    };
+        body.classList.add('authenticated');
+        loginPopup.style.display = 'none';
+    } else {
+        loginError.style.display = 'block';
+        loginInput.classList.add('error-shake');
+        loginInput.value = '';
+        loginInput.focus();
+        setTimeout(() => loginInput.classList.remove('error-shake'), 500);
+    }
+};
 
     loginInput.addEventListener('keyup', e => {
         if (e.key === 'Enter') loginBtn.click();
