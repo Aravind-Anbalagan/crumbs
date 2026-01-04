@@ -169,7 +169,7 @@ public class StockController {
 		dto.addHeader("exchange", ind.getExchange(), false);
 		dto.addHeader("symbol", ind.getTradingSymbol(), false);
 		if ("DAILY".equalsIgnoreCase(flag)) {
-			dto.addHeader("TREND", ind.getSuperTrendSignalDaily(), true);
+			dto.addHeader("SUPERTREND", ind.getSuperTrendSignalDaily(), true);
 			dto.addHeader("VWAP", ind.getVwapSignalDaily(), true);
 			dto.addHeader("RSI", ind.getDailyRSI(), true);
 			dto.addHeader("VOLUME", ind.getVolumeFlag(), true);
@@ -191,7 +191,7 @@ public class StockController {
 		}
 
 		if ("WEEKLY".equalsIgnoreCase(flag)) {
-			dto.addHeader("TREND", ind.getSuperTrendSignalWeekly(), true);
+			dto.addHeader("SUPERTREND", ind.getSuperTrendSignalWeekly(), true);
 			dto.addHeader("VWAP", ind.getVwapSignalWeekly(), true);
 			dto.addHeader("RSI", ind.getWeeklyRSI(), true);
 			dto.addHeader("VOLUME", ind.getWeeklyvolumeFlag(), true);
@@ -217,7 +217,7 @@ public class StockController {
 			//dto.addHeader("D_VOLUME", ind.getVolumeFlag(), true);
 			dto.addHeader("D_HEIKIN", ind.getHeikinAshiDay() , true);
 			dto.addHeader("D_PSAR", ind.getPsarFlagDay(), true);
-			dto.addHeader("D_TREND", ind.getSuperTrendSignalDaily(), true);
+			dto.addHeader("D_SUPERTREND", ind.getSuperTrendSignalDaily(), true);
 			dto.addHeader("D_VWAP", ind.getVwapSignalDaily(), true);
 			//dto.addHeader("D_SR", ind.getDaily_sr_signal(), true);
 			//dto.addHeader("D_FIBO", ind.getDaily_fibo_signal(), true);
@@ -226,7 +226,7 @@ public class StockController {
 			//dto.addHeader("W_VOLUME", ind.getWeeklyvolumeFlag(), true);
 			dto.addHeader("W_HEIKIN", ind.getHeikinAshiWeekly() , true);
 			dto.addHeader("W_PSAR", ind.getPsarFlagWeekly() , true);
-			dto.addHeader("W_TREND", ind.getSuperTrendSignalWeekly(), true);
+			dto.addHeader("W_SUPERTREND", ind.getSuperTrendSignalWeekly(), true);
 			dto.addHeader("W_VWAP", ind.getVwapSignalWeekly(), true);
 			//dto.addHeader("W_SR", ind.getWeekly_sr_signal(), true);
 			//dto.addHeader("W_FIBO", ind.getWeekly_fibo_signal(), true);
@@ -244,15 +244,15 @@ public class StockController {
 		}
 		if ("INTRADAY".equalsIgnoreCase(flag)) {
 			dto.addHeader("EXECUTED_AT", formatTimestamp(ind.getExecutedDate().toString()), true);
-			dto.addHeader("UPDATED_AT", formatTimestamp(ind.getModifiedDate().toString()), true);
 			dto.addHeader("OPTION", ind.getOptions() != null ? ind.getOptions() : "N", true);
 			dto.addHeader("TYPE", ind.getTradetype(), true);
 			dto.addHeader("D_HEIKIN", ind.getHeikinAshiDay() , true);
 			dto.addHeader("D_PSAR", ind.getPsarFlagDay(), true);
-			dto.addHeader("D_TREND", ind.getSuperTrendSignalDaily(), true);
+			dto.addHeader("D_SUPERTREND", ind.getSuperTrendSignalDaily(), true);
 			dto.addHeader("D_VWAP", ind.getVwapSignalDaily(), true);
 			dto.addHeader("INTRADAY", ind.getIntraday(), true);
 			dto.addHeader("RESULT", ind.getResult(), true);
+			dto.addHeader("UPDATED_AT", formatTimestamp(ind.getModifiedDate().toString()), true);
 		}
 
 	}
