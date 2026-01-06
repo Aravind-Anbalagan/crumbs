@@ -79,6 +79,12 @@ public class StraddleIntradayService {
 	private final Map<String, BigDecimal> volMap = new HashMap<>();
 	private LocalDate vwapDate = null;
 	
+	// ================= PREVIOUS DAY HIGH/LOW CACHE =================
+	// Strategy-specific cache: Map<StrategyName, Map<Token, BigDecimal>>
+	private final Map<String, Map<String, BigDecimal>> prevHighMap = new HashMap<>();
+	private final Map<String, Map<String, BigDecimal>> prevLowMap = new HashMap<>();
+	private LocalDate prevDayDataDate = null;
+	
 	
 	
 	// ================= VWAP CONTROL =================
@@ -146,7 +152,10 @@ public class StraddleIntradayService {
 			logger.info("Found {} strikes with valid tokens out of {}", 
 				validTokenCount, strikeList.size());
 
+		
+	        
 			strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect,strategy.getExchange());
+			
 			
 			// VALIDATION: Check if prices were fetched
 			long validPriceCount = strikeList.stream()
@@ -163,7 +172,34 @@ public class StraddleIntradayService {
 			
 			logger.info("Successfully fetched prices for {} strikes", validPriceCount);
 
+			// ✅ NEW: FETCH IV FROM GREEKS API
+	        Map<String, BigDecimal> ivMap = fetchIVFromGreeksAPI(
+	            smartconnect,
+	            strategy.getName(),
+	            strategy.getExpiry()
+	        );
+	        
+	        // ✅ NEW: POPULATE IV INTO DTOs
+	        populateIVFromGreeksMap(strikeList, ivMap);
 			
+			// ========= PREVIOUS DAY HIGH/LOW (ONCE PER DAY PER STRATEGY) =========
+			resetPrevDayDataIfNewDay();
+			
+			// Check if THIS STRATEGY has cached data
+			Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
+			Map<String, BigDecimal> strategyLowCache = prevLowMap.get(name);
+			
+			// Fetch previous day high/low ONLY if this strategy hasn't been fetched yet today
+			if (strategyHighCache == null || strategyLowCache == null || 
+				strategyHighCache.isEmpty() || strategyLowCache.isEmpty()) {
+				
+				logger.info("Fetching previous day high/low for strategy: {} (one-time fetch)", name);
+				fetchPreviousDayHighLowForAllStrikes(strikeList, smartconnect, strategy);
+			} else {
+				// Populate DTOs from cache for this strategy
+				logger.debug("Using cached previous day data for strategy: {}", name);
+				populatePrevDayDataFromCache(strikeList, name);
+			}
 			
 			// ========= VWAP (INCREMENTAL) - OPTIMIZED =========
 			resetVwapIfNewDay();
@@ -179,6 +215,7 @@ public class StraddleIntradayService {
 			logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)", 
 				strikesWithPrices.size(), strikeList.size());
 
+			
 			for (StraddlePremiumDto dto : strikesWithPrices) {
 				
 				// Only fetch VWAP if token exists AND price is valid
@@ -368,6 +405,17 @@ public class StraddleIntradayService {
 			entity.setCeOi(dto.getCeOI());
 			entity.setPeOi(dto.getPeOI());
 			
+			// NEW: Previous day high/low
+			entity.setCePrevHigh(dto.getCePrevHigh());
+			entity.setCePrevLow(dto.getCePrevLow());
+			entity.setPePrevHigh(dto.getPePrevHigh());
+			entity.setPePrevLow(dto.getPePrevLow());
+			
+			 // ✅ CALCULATE COMBINED IV
+	        BigDecimal combinedIV = calculateCombinedIV(dto.getCeIv(), dto.getPeIv());
+	        entity.setCombinedIv(combinedIV);
+	        dto.setCombinedIv(combinedIV); // Also set in DTO for signal calculations
+			
 			// ✅ EVENT-BASED CROSSOVER (DB aligned)
 			detectCrossoverEvent(dto, strategy.getName(), timestamp);
 			// NEW: Crossover flags
@@ -401,7 +449,10 @@ public class StraddleIntradayService {
 			}
 
 			entity.setAvgPrice(combinedPremium.divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP));
-
+			// 🔥 ADD HERE - RIGHT BEFORE SAVE
+	        calculateAndSetSignals(entity, dto, strategy, spotPrice);
+	        // ✅ ADD THIS
+	        enhanceSignalsWithIV(entity, dto);
 			try {
 				straddleIntradayRepo.save(entity);
 				count++;
@@ -718,31 +769,33 @@ public class StraddleIntradayService {
 		for (StraddleIntraday r : ceRows) {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
-				t, null, null, null, null, null, null, null, null, null, null, null, null, null
+				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
 			));
 			pt.setCe(r.getCePrice());
 			pt.setCeOpen(r.getCeOpenPrice());
 			pt.setCeExtrinsic(r.getCeExtrinsic());
 			pt.setCeVwap(r.getCeVwap());
+			pt.setCeIV(r.getCeIV());  // ✅ ADD
 		}
 
 		// PE rows
 		for (StraddleIntraday r : peRows) {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
-				t, null, null, null, null, null, null, null, null, null, null, null, null, null
+				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
 			));
 			pt.setPe(r.getPePrice());
 			pt.setPeOpen(r.getPeOpenPrice());
 			pt.setPeExtrinsic(r.getPeExtrinsic());
 			pt.setPeVwap(r.getPeVwap());
+			pt.setPeIV(r.getPeIV());  // ✅ ADD
 		}
 
 		// SPOT rows
 		for (StraddleIntraday r : spotRows) {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
-				t, null, null, null, null, null, null, null, null, null, null, null, null, null
+				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
 			));
 			pt.setSpot(r.getSpot());
 		}
@@ -761,6 +814,18 @@ public class StraddleIntradayService {
 			if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
 				pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
 			}
+			
+			// ✅ CALCULATE COMBINED IV
+	        if (pt.getCeIV() != null && pt.getPeIV() != null) {
+	            pt.setCombinedIV(
+	                pt.getCeIV().add(pt.getPeIV())
+	                    .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP)
+	            );
+	        } else if (pt.getCeIV() != null) {
+	            pt.setCombinedIV(pt.getCeIV());
+	        } else if (pt.getPeIV() != null) {
+	            pt.setCombinedIV(pt.getPeIV());
+	        }
 		}
 
 		CombinedChartResponse response = new CombinedChartResponse();
@@ -779,6 +844,193 @@ public class StraddleIntradayService {
 			volMap.clear();
 			vwapDate = today;
 			logger.info("VWAP reset for new trading day: {}", today);
+		}
+	}
+
+	// =====================================================
+	// PREVIOUS DAY HIGH/LOW RESET
+	// =====================================================
+	private void resetPrevDayDataIfNewDay() {
+		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+
+		if (prevDayDataDate == null || !prevDayDataDate.equals(today)) {
+			prevHighMap.clear();
+			prevLowMap.clear();
+			prevDayDataDate = today;
+			logger.info("Previous day high/low cache reset for new trading day: {}", today);
+		}
+	}
+
+	// =====================================================
+	// FETCH PREVIOUS DAY HIGH/LOW FOR ALL STRIKES (ONCE PER DAY PER STRATEGY)
+	// =====================================================
+	private void fetchPreviousDayHighLowForAllStrikes(
+		List<StraddlePremiumDto> strikeList,
+		SmartConnect smartConnect,
+		Strategy strategy
+	) {
+		
+		logger.info("=== FETCHING PREVIOUS DAY HIGH/LOW (ONE-TIME FOR {}) ===", strategy.getName());
+		
+		// Initialize nested maps for this strategy if not exists
+		prevHighMap.putIfAbsent(strategy.getName(), new HashMap<>());
+		prevLowMap.putIfAbsent(strategy.getName(), new HashMap<>());
+		
+		Map<String, BigDecimal> strategyHighCache = prevHighMap.get(strategy.getName());
+		Map<String, BigDecimal> strategyLowCache = prevLowMap.get(strategy.getName());
+		
+		// ✅ CORRECTED: Get date range for previous working day's data
+		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+		
+		// Step 1: Current trading date (today if working day, else last working day before today)
+		LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(today)
+			? today
+			: NSEWorkingDays.getLastWorkingDay(today);
+		
+		// Step 2: Previous working day (the target day whose data we want)
+		LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(tradingDate);
+		
+		// Step 3: Working day BEFORE previous working day (for fromdate range)
+		LocalDate dayBeforePrevious = NSEWorkingDays.getLastWorkingDay(previousWorkingDay.minusDays(1));
+		
+		// Step 4: Format date range
+		// From: Working day before target (at market close 15:30)
+		// To: Target day (at market close 15:30)
+		// Both dates MUST be working days
+		String fromDate = previousWorkingDay + " 15:30";
+		String toDate = tradingDate + " 15:30";
+		
+		
+		int successCount = 0;
+		int failureCount = 0;
+		
+		for (StraddlePremiumDto dto : strikeList) {
+			
+			// Fetch CE previous high/low
+			if (dto.getCeToken() != null) {
+				try {
+					JSONObject req = new JSONObject();
+					req.put("exchange", strategy.getExchange());
+					req.put("symboltoken", dto.getCeToken().getToken());
+					req.put("interval", "ONE_DAY");
+					req.put("fromdate", fromDate);
+					req.put("todate", toDate);
+					
+					// Add delay to avoid rate limiting
+					Thread.sleep(500);
+					
+					JSONArray candles = smartConnect.candleData(req);
+					
+					if (candles != null && candles.length() > 0) {
+						JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+						
+						BigDecimal high = lastCandle.getBigDecimal(2);
+						BigDecimal low = lastCandle.getBigDecimal(3);
+						
+						// Store in strategy-specific cache
+						strategyHighCache.put(dto.getCeToken().getToken(), high);
+						strategyLowCache.put(dto.getCeToken().getToken(), low);
+						
+						// Set in DTO
+						dto.setCePrevHigh(high);
+						dto.setCePrevLow(low);
+						
+						successCount++;
+						
+						logger.debug("CE Strike {}: PrevHigh={}, PrevLow={}", 
+							dto.getStrikePrice(), high, low);
+					} else {
+						logger.warn("No candle data for CE token: {} (date range: {} to {})", 
+							dto.getCeToken().getToken(), dayBeforePrevious, previousWorkingDay);
+						failureCount++;
+					}
+					
+				} catch (Exception e) {
+					logger.error("Failed to fetch CE prev day data for strike {}: {}", 
+						dto.getStrikePrice(), e.getMessage());
+					failureCount++;
+				}
+			}
+			
+			// Fetch PE previous high/low
+			if (dto.getPeToken() != null) {
+				try {
+					JSONObject req = new JSONObject();
+					req.put("exchange", strategy.getExchange());
+					req.put("symboltoken", dto.getPeToken().getToken());
+					req.put("interval", "ONE_DAY");
+					req.put("fromdate", fromDate);
+					req.put("todate", toDate);
+					
+					// Add delay to avoid rate limiting
+					Thread.sleep(500);
+					
+					JSONArray candles = smartConnect.candleData(req);
+					
+					if (candles != null && candles.length() > 0) {
+						JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+						
+						BigDecimal high = lastCandle.getBigDecimal(2);
+						BigDecimal low = lastCandle.getBigDecimal(3);
+						
+						// Store in strategy-specific cache
+						strategyHighCache.put(dto.getPeToken().getToken(), high);
+						strategyLowCache.put(dto.getPeToken().getToken(), low);
+						
+						// Set in DTO
+						dto.setPePrevHigh(high);
+						dto.setPePrevLow(low);
+						
+						successCount++;
+						
+						logger.debug("PE Strike {}: PrevHigh={}, PrevLow={}", 
+							dto.getStrikePrice(), high, low);
+					} else {
+						logger.warn("No candle data for PE token: {} (date range: {} to {})", 
+							dto.getPeToken().getToken(), dayBeforePrevious, previousWorkingDay);
+						failureCount++;
+					}
+					
+				} catch (Exception e) {
+					logger.error("Failed to fetch PE prev day data for strike {}: {}", 
+						dto.getStrikePrice(), e.getMessage());
+					failureCount++;
+				}
+			}
+		}
+		
+		logger.info("Previous day data fetch complete for {}: Success={}, Failure={}", 
+			strategy.getName(), successCount, failureCount);
+	}
+
+	// =====================================================
+	// POPULATE PREV DAY DATA FROM CACHE (SUBSEQUENT CALLS)
+	// =====================================================
+	private void populatePrevDayDataFromCache(List<StraddlePremiumDto> strikeList, String strategyName) {
+		
+		Map<String, BigDecimal> strategyHighCache = prevHighMap.get(strategyName);
+		Map<String, BigDecimal> strategyLowCache = prevLowMap.get(strategyName);
+		
+		if (strategyHighCache == null || strategyLowCache == null) {
+			logger.warn("Cache not found for strategy: {}", strategyName);
+			return;
+		}
+		
+		for (StraddlePremiumDto dto : strikeList) {
+			
+			// Populate CE from cache
+			if (dto.getCeToken() != null) {
+				String ceToken = dto.getCeToken().getToken();
+				dto.setCePrevHigh(strategyHighCache.get(ceToken));
+				dto.setCePrevLow(strategyLowCache.get(ceToken));
+			}
+			
+			// Populate PE from cache
+			if (dto.getPeToken() != null) {
+				String peToken = dto.getPeToken().getToken();
+				dto.setPePrevHigh(strategyHighCache.get(peToken));
+				dto.setPePrevLow(strategyLowCache.get(peToken));
+			}
 		}
 	}
 
@@ -1030,5 +1282,716 @@ public class StraddleIntradayService {
 		} else {
 			logger.error("✗ PE NOT FOUND");
 		}
+	}
+	
+	// =====================================================
+	// 🔥 TRADING SIGNAL CALCULATION METHODS
+	// =====================================================
+
+	/**
+	 * Main signal calculation method - call this before saving entity
+	 */
+	private void calculateAndSetSignals(
+	    StraddleIntraday entity,
+	    StraddlePremiumDto dto,
+	    Strategy strategy,
+	    BigDecimal spotPrice
+	) {
+	    // 1. Calculate % changes
+	    BigDecimal ceChangePct = calculatePercentChange(
+	        entity.getCePrice(), 
+	        entity.getCeOpenPrice()
+	    );
+	    
+	    BigDecimal peChangePct = calculatePercentChange(
+	        entity.getPePrice(), 
+	        entity.getPeOpenPrice()
+	    );
+	    
+	    BigDecimal combinedChangePct = calculatePercentChange(
+	        entity.getCombinedPremium(), 
+	        entity.getCombinedOpenPrice()
+	    );
+	    
+	    // 2. Calculate extrinsic ratio
+	    BigDecimal extrinsicRatio = calculateExtrinsicRatio(
+	        entity.getCeExtrinsic(),
+	        entity.getPeExtrinsic(),
+	        entity.getCombinedPremium()
+	    );
+	    
+	    // 3. Check if ATM
+	    boolean isAtm = isNearATM(spotPrice, entity.getStrike(), BigDecimal.valueOf(50));
+	    
+	    // 4. Calculate volume/OI ratios
+	    BigDecimal volumeRatio = calculateRatio(
+	        entity.getCeVolume(), 
+	        entity.getPeVolume()
+	    );
+	    
+	    BigDecimal oiRatio = calculateRatio(
+	        entity.getCeOi(), 
+	        entity.getPeOi()
+	    );
+	    
+	    // 5. Determine directional bias
+	    String directionalBias = determineDirectionalBias(ceChangePct, peChangePct);
+	    
+	    // 6. Determine primary signal
+	    String primarySignal = determinePrimarySignal(
+	        ceChangePct,
+	        peChangePct,
+	        extrinsicRatio,
+	        isAtm,
+	        directionalBias
+	    );
+	    
+	    // 7. Determine secondary signal
+	    String secondarySignal = determineSecondarySignal(
+	        volumeRatio,
+	        oiRatio,
+	        extrinsicRatio,
+	        isAtm
+	    );
+	    
+	    // 8. Calculate signal strength
+	    int signalStrength = calculateSignalStrength(
+	        primarySignal,
+	        ceChangePct,
+	        peChangePct,
+	        extrinsicRatio
+	    );
+	    
+	    // 9. Set all signal fields
+	    entity.setSignalPrimary(primarySignal);
+	    entity.setSignalSecondary(secondarySignal);
+	    entity.setSignalStrength(signalStrength);
+	    entity.setIsAtm(isAtm);
+	    entity.setCeChangePct(ceChangePct);
+	    entity.setPeChangePct(peChangePct);
+	    entity.setCombinedChangePct(combinedChangePct);
+	    entity.setExtrinsicRatio(extrinsicRatio);
+	    entity.setDirectionalBias(directionalBias);
+	    entity.setVolumeRatio(volumeRatio);
+	    entity.setOiRatio(oiRatio);
+	}
+
+	// =====================================================
+	// HELPER METHOD: Calculate % change
+	// =====================================================
+	private BigDecimal calculatePercentChange(BigDecimal current, BigDecimal open) {
+	    if (current == null || open == null || open.compareTo(BigDecimal.ZERO) == 0) {
+	        return BigDecimal.ZERO;
+	    }
+	    
+	    return current.subtract(open)
+	        .divide(open, 4, RoundingMode.HALF_UP)
+	        .multiply(BigDecimal.valueOf(100))
+	        .setScale(2, RoundingMode.HALF_UP);
+	}
+
+	// =====================================================
+	// HELPER METHOD: Calculate extrinsic ratio
+	// =====================================================
+	private BigDecimal calculateExtrinsicRatio(
+	    BigDecimal ceExtrinsic,
+	    BigDecimal peExtrinsic,
+	    BigDecimal combinedPremium
+	) {
+	    if (ceExtrinsic == null || peExtrinsic == null || 
+	        combinedPremium == null || combinedPremium.compareTo(BigDecimal.ZERO) == 0) {
+	        return BigDecimal.ZERO;
+	    }
+	    
+	    BigDecimal totalExtrinsic = ceExtrinsic.add(peExtrinsic);
+	    
+	    return totalExtrinsic
+	        .divide(combinedPremium, 4, RoundingMode.HALF_UP)
+	        .multiply(BigDecimal.valueOf(100))
+	        .setScale(2, RoundingMode.HALF_UP);
+	}
+
+	// =====================================================
+	// HELPER METHOD: Check if near ATM
+	// =====================================================
+	private boolean isNearATM(BigDecimal spot, BigDecimal strike, BigDecimal range) {
+	    if (spot == null || strike == null) {
+	        return false;
+	    }
+	    
+	    BigDecimal diff = spot.subtract(strike).abs();
+	    return diff.compareTo(range) <= 0;
+	}
+
+	// =====================================================
+	// HELPER METHOD: Calculate ratio (CE/PE)
+	// =====================================================
+	private BigDecimal calculateRatio(BigDecimal value1, BigDecimal value2) {
+	    if (value1 == null || value2 == null || value2.compareTo(BigDecimal.ZERO) == 0) {
+	        return BigDecimal.ZERO;
+	    }
+	    
+	    return value1.divide(value2, 2, RoundingMode.HALF_UP);
+	}
+
+	// =====================================================
+	// HELPER METHOD: Determine directional bias
+	// =====================================================
+	private String determineDirectionalBias(BigDecimal ceChangePct, BigDecimal peChangePct) {
+	    if (ceChangePct == null || peChangePct == null) {
+	        return "NEUTRAL";
+	    }
+	    
+	    // CE rising + PE falling = Bullish
+	    if (ceChangePct.compareTo(BigDecimal.valueOf(5)) > 0 && 
+	        peChangePct.compareTo(BigDecimal.valueOf(-5)) < 0) {
+	        return "BULLISH";
+	    }
+	    
+	    // PE rising + CE falling = Bearish
+	    if (peChangePct.compareTo(BigDecimal.valueOf(5)) > 0 && 
+	        ceChangePct.compareTo(BigDecimal.valueOf(-5)) < 0) {
+	        return "BEARISH";
+	    }
+	    
+	    return "NEUTRAL";
+	}
+
+	// =====================================================
+	// HELPER METHOD: Determine primary signal
+	// =====================================================
+	private String determinePrimarySignal(
+	    BigDecimal ceChangePct,
+	    BigDecimal peChangePct,
+	    BigDecimal extrinsicRatio,
+	    boolean isAtm,
+	    String directionalBias
+	) {
+	    if (ceChangePct == null || peChangePct == null || extrinsicRatio == null) {
+	        return "NEUTRAL";
+	    }
+	    
+	    // 1. PREMIUM DECAY (both falling)
+	    if (ceChangePct.compareTo(BigDecimal.valueOf(-5)) < 0 && 
+	        peChangePct.compareTo(BigDecimal.valueOf(-5)) < 0) {
+	        
+	        // Straddle Sell Setup: Decay happening + ATM + Low extrinsic
+	        if (isAtm && extrinsicRatio.compareTo(BigDecimal.valueOf(30)) < 0) {
+	            return "STRADDLE_SELL_SETUP";
+	        }
+	        
+	        return "PREMIUM_DECAY";
+	    }
+	    
+	    // 2. PREMIUM SURGE (both rising)
+	    if (ceChangePct.compareTo(BigDecimal.valueOf(5)) > 0 && 
+	        peChangePct.compareTo(BigDecimal.valueOf(5)) > 0) {
+	        
+	        // Straddle Buy Setup: Surge + High extrinsic (volatility expected)
+	        if (extrinsicRatio.compareTo(BigDecimal.valueOf(60)) > 0) {
+	            return "STRADDLE_BUY_SETUP";
+	        }
+	        
+	        return "PREMIUM_SURGE";
+	    }
+	    
+	    // 3. DIRECTIONAL MOVES (avoid straddle)
+	    if ("BULLISH".equals(directionalBias)) {
+	        return "BULLISH_MOVE";
+	    }
+	    
+	    if ("BEARISH".equals(directionalBias)) {
+	        return "BEARISH_MOVE";
+	    }
+	    
+	    // 4. RANGE BOUND (both stable)
+	    if (ceChangePct.abs().compareTo(BigDecimal.valueOf(3)) < 0 && 
+	        peChangePct.abs().compareTo(BigDecimal.valueOf(3)) < 0) {
+	        return "RANGE_BOUND";
+	    }
+	    
+	    return "NEUTRAL";
+	}
+
+	// =====================================================
+	// HELPER METHOD: Determine secondary signal
+	// =====================================================
+	private String determineSecondarySignal(
+	    BigDecimal volumeRatio,
+	    BigDecimal oiRatio,
+	    BigDecimal extrinsicRatio,
+	    boolean isAtm
+	) {
+	    // ATM takes priority
+	    if (isAtm) {
+	        return "ATM_STRIKE";
+	    }
+	    
+	    // High extrinsic (good to sell options)
+	    if (extrinsicRatio != null && extrinsicRatio.compareTo(BigDecimal.valueOf(70)) > 0) {
+	        return "HIGH_EXTRINSIC";
+	    }
+	    
+	    // Low extrinsic (avoid selling)
+	    if (extrinsicRatio != null && extrinsicRatio.compareTo(BigDecimal.valueOf(20)) < 0) {
+	        return "LOW_EXTRINSIC";
+	    }
+	    
+	    // Volume spike detection
+	    if (volumeRatio != null) {
+	        if (volumeRatio.compareTo(BigDecimal.valueOf(2.5)) > 0) {
+	            return "CE_VOLUME_SPIKE";
+	        }
+	        if (volumeRatio.compareTo(BigDecimal.valueOf(0.4)) < 0) {
+	            return "PE_VOLUME_SPIKE";
+	        }
+	    }
+	    
+	    // OI imbalance detection
+	    if (oiRatio != null) {
+	        if (oiRatio.compareTo(BigDecimal.valueOf(1.5)) > 0) {
+	            return "HIGH_CE_OI";
+	        }
+	        if (oiRatio.compareTo(BigDecimal.valueOf(0.67)) < 0) {
+	            return "HIGH_PE_OI";
+	        }
+	    }
+	    
+	    return null; // No secondary signal
+	}
+
+	// =====================================================
+	// HELPER METHOD: Calculate signal strength (1-5)
+	// =====================================================
+	private int calculateSignalStrength(
+	    String primarySignal,
+	    BigDecimal ceChangePct,
+	    BigDecimal peChangePct,
+	    BigDecimal extrinsicRatio
+	) {
+	    if (primarySignal == null || "NEUTRAL".equals(primarySignal)) {
+	        return 1;
+	    }
+	    
+	    int strength = 3; // Base strength
+	    
+	    // Increase strength based on magnitude of change
+	    if (ceChangePct != null && peChangePct != null) {
+	        BigDecimal avgChange = ceChangePct.add(peChangePct)
+	            .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP)
+	            .abs();
+	        
+	        if (avgChange.compareTo(BigDecimal.valueOf(15)) > 0) {
+	            strength = 5; // Very strong signal
+	        } else if (avgChange.compareTo(BigDecimal.valueOf(10)) > 0) {
+	            strength = 4; // Strong signal
+	        }
+	    }
+	    
+	    // Boost for straddle setups with ideal conditions
+	    if ("STRADDLE_BUY_SETUP".equals(primarySignal) && 
+	        extrinsicRatio != null && extrinsicRatio.compareTo(BigDecimal.valueOf(70)) > 0) {
+	        strength = Math.min(5, strength + 1);
+	    }
+	    
+	    if ("STRADDLE_SELL_SETUP".equals(primarySignal) && 
+	        extrinsicRatio != null && extrinsicRatio.compareTo(BigDecimal.valueOf(25)) < 0) {
+	        strength = Math.min(5, strength + 1);
+	    }
+	    
+	    return strength;
+	}
+	
+	/**
+	 * Fetch Implied Volatility from Angel One Option Greeks API
+	 * Returns Map<StrikePrice_OptionType, IV> for easy lookup
+	 */
+	private Map<String, BigDecimal> fetchIVFromGreeksAPI(
+	    SmartConnect smartConnect,
+	    String name,
+	    String expiry
+	) {
+	    
+	    Map<String, BigDecimal> ivMap = new HashMap<>();
+	    
+	    try {
+	        JSONObject request = new JSONObject();
+	        request.put("name", name);           // e.g., "CRUDEOIL", "NIFTY"
+	        request.put("expirydate", normalizeExpiry(expiry));   // e.g., "06JAN2026"
+	        
+	        logger.info("Fetching Greeks for {} expiry {}", name, expiry);
+	        
+	        // Call Angel One's optionGreek API
+	        JSONObject response = smartConnect.optionGreek(request);
+	        
+	        if (response == null || !response.has("data")) {
+	            logger.warn("No Greeks data returned for {} {}", name, expiry);
+	            return ivMap;
+	        }
+	        
+	        JSONArray data = response.getJSONArray("data");
+	        logger.info("Received Greeks data for {} strikes", data.length());
+	        
+	        for (int i = 0; i < data.length(); i++) {
+	            JSONObject item = data.getJSONObject(i);
+	            
+	            try {
+	                String optionType = item.optString("optionType", "");  // "CE" or "PE"
+	                BigDecimal strike = item.optBigDecimal("strikePrice", null);
+	                BigDecimal iv = item.optBigDecimal("impliedVolatility", null);
+	                
+	                if (strike != null && iv != null && !optionType.isEmpty()) {
+	                    
+	                    // ✅ VALIDATE: IV must be positive (can't be zero or negative)
+	                    if (iv.compareTo(BigDecimal.ZERO) <= 0) {
+	                        logger.warn("Invalid IV value {} for {} strike {} - skipping", 
+	                            iv, optionType, strike);
+	                        continue; // Skip this entry
+	                    }
+	                    
+	                    String key = strike.intValue() + "_" + optionType;
+	                    ivMap.put(key, iv);
+	                    
+	                    logger.debug("Mapped: {} -> IV = {}", key, iv);
+	                } else {
+	                    logger.warn("Incomplete Greeks data at index {}: strike={}, iv={}, optionType={}", 
+	                        i, strike, iv, optionType);
+	                }
+	                
+	            } catch (Exception e) {
+	                logger.warn("Failed to parse Greeks item: {}", e.getMessage());
+	            }
+	        }
+	        
+	        logger.info("Successfully fetched IV for {} option strikes", ivMap.size());
+	        
+	    } catch (Exception | SmartAPIException e) {
+	        logger.error("Failed to fetch IV from Greeks API: {}", e.getMessage(), e);
+	    }
+	    
+	    return ivMap;
+	}
+	
+	public static String normalizeExpiry(String shortExpiry) {
+	    // Example input: 14JAN26
+	    if (shortExpiry == null || shortExpiry.length() != 7) {
+	        throw new IllegalArgumentException("Invalid expiry format");
+	    }
+
+	    String day = shortExpiry.substring(0, 2);
+	    String month = shortExpiry.substring(2, 5);
+	    String year2 = shortExpiry.substring(5, 7);
+
+	    int year = Integer.parseInt(year2);
+
+	    // NSE/MCX logic: assume 2000+
+	    year += 2000;
+
+	    return day + month + year;
+	}
+
+	/**
+	 * Populate IV values into strike list from Greeks API data
+	 */
+	private void populateIVFromGreeksMap(
+		    List<StraddlePremiumDto> strikeList,
+		    Map<String, BigDecimal> ivMap
+		) {
+		    
+		    int ceCount = 0;
+		    int peCount = 0;
+		    
+		    logger.info("=== IV POPULATION DEBUG ===");
+		    logger.info("Total IV entries in map: {}", ivMap.size());
+		    
+		    for (StraddlePremiumDto dto : strikeList) {
+		        
+		        if (dto.getStrikePrice() == null) continue;
+		        
+		        int strike = dto.getStrikePrice().intValue();
+		        
+		        // Lookup CE IV
+		        String ceKey = strike + "_CE";
+		        BigDecimal ceIV = ivMap.get(ceKey);
+		        
+		        // ✅ Only set if valid (not null AND not zero)
+		        if (ceIV != null && ceIV.compareTo(BigDecimal.ZERO) > 0) {
+		            dto.setCeIv(ceIV);
+		            ceCount++;
+		            logger.debug("✓ Set CE IV for strike {}: {}", strike, ceIV);
+		        } else {
+		            logger.warn("✗ Invalid/Zero CE IV for strike {} (value: {})", strike, ceIV);
+		            dto.setCeIv(null); // ✅ Explicitly set to null
+		        }
+		        
+		        // Lookup PE IV
+		        String peKey = strike + "_PE";
+		        BigDecimal peIV = ivMap.get(peKey);
+		        
+		        // ✅ Only set if valid (not null AND not zero)
+		        if (peIV != null && peIV.compareTo(BigDecimal.ZERO) > 0) {
+		            dto.setPeIv(peIV);
+		            peCount++;
+		            logger.debug("✓ Set PE IV for strike {}: {}", strike, peIV);
+		        } else {
+		            logger.warn("✗ Invalid/Zero PE IV for strike {} (value: {})", strike, peIV);
+		            dto.setPeIv(null); // ✅ Explicitly set to null
+		        }
+		    }
+		    
+		    logger.info("IV Population Complete - CE: {}/{}, PE: {}/{}", 
+		        ceCount, strikeList.size(), peCount, strikeList.size());
+		}
+	
+	/**
+	 * Enhanced IV-based signal analysis using Combined IV
+	 */
+	private void enhanceSignalsWithIV(
+	    StraddleIntraday entity,
+	    StraddlePremiumDto dto
+	) {
+	    
+	    BigDecimal ceIV = entity.getCeIV();
+	    BigDecimal peIV = entity.getPeIV();
+	    BigDecimal combinedIV = entity.getCombinedIv();
+	    
+	    if (combinedIV == null) {
+	        logger.debug("Skipping IV analysis - Combined IV not available for strike {}", 
+	            entity.getStrike());
+	        return;
+	    }
+	    
+	    // 1. Calculate IV Skew (CE - PE)
+	    BigDecimal ivSkew = BigDecimal.ZERO;
+	    if (ceIV != null && peIV != null) {
+	        ivSkew = ceIV.subtract(peIV);
+	    }
+	    
+	    // 2. Log IV metrics
+	    logger.debug("Strike {}: Combined IV = {}%, CE IV = {}%, PE IV = {}%, Skew = {}%",
+	        entity.getStrike(), combinedIV, ceIV, peIV, ivSkew);
+	    
+	    // 3. Determine IV regime (for the instrument)
+	    String ivRegime = determineIVRegime(combinedIV, entity.getName());
+	    
+	    // 4. Boost/modify signals based on IV
+	    String currentSignal = entity.getSignalPrimary();
+	    int currentStrength = entity.getSignalStrength();
+	    
+	    // HIGH IV SCENARIOS (Good for selling premium)
+	    if ("HIGH".equals(ivRegime)) {
+	        
+	        if ("STRADDLE_SELL_SETUP".equals(currentSignal)) {
+	            // Perfect setup: High IV + Sell signal
+	            entity.setSignalStrength(Math.min(5, currentStrength + 1));
+	            entity.setSignalSecondary("HIGH_IV_SELL_OPPORTUNITY");
+	            logger.info("⭐ STRONG SELL SIGNAL: High IV ({}) + Sell Setup at strike {}", 
+	                combinedIV, entity.getStrike());
+	        }
+	        
+	        if ("PREMIUM_SURGE".equals(currentSignal)) {
+	            // Premium surging with high IV - volatility spike
+	            entity.setSignalSecondary("VOLATILITY_SPIKE");
+	            logger.info("🔥 VOLATILITY SPIKE: Combined IV = {} at strike {}", 
+	                combinedIV, entity.getStrike());
+	        }
+	        
+	        if ("BULLISH_MOVE".equals(currentSignal) || "BEARISH_MOVE".equals(currentSignal)) {
+	            // Directional move with high IV - consider spreads instead of naked
+	            entity.setSignalSecondary("HIGH_IV_USE_SPREADS");
+	        }
+	    }
+	    
+	    // LOW IV SCENARIOS (Good for buying premium)
+	    if ("LOW".equals(ivRegime)) {
+	        
+	        if ("STRADDLE_BUY_SETUP".equals(currentSignal)) {
+	            // Perfect setup: Low IV + Buy signal
+	            entity.setSignalStrength(Math.min(5, currentStrength + 1));
+	            entity.setSignalSecondary("LOW_IV_BUY_OPPORTUNITY");
+	            logger.info("⭐ STRONG BUY SIGNAL: Low IV ({}) + Buy Setup at strike {}", 
+	                combinedIV, entity.getStrike());
+	        }
+	        
+	        if ("PREMIUM_DECAY".equals(currentSignal)) {
+	            // Premium decaying with low IV - might be bottoming
+	            entity.setSignalSecondary("IV_FLOOR_POTENTIAL");
+	        }
+	        
+	        if ("RANGE_BOUND".equals(currentSignal)) {
+	            // Low IV + Range bound = potential breakout setup
+	            entity.setSignalSecondary("BREAKOUT_WATCH");
+	        }
+	    }
+	    
+	    // 5. IV SKEW ANALYSIS (Directional bias confirmation)
+	    if (ceIV != null && peIV != null) {
+	        
+	        BigDecimal skewThreshold = BigDecimal.valueOf(3.0); // 3% difference
+	        
+	        // Strong Call Skew (CE IV > PE IV)
+	        if (ivSkew.compareTo(skewThreshold) > 0) {
+	            
+	            if ("BULLISH".equals(entity.getDirectionalBias())) {
+	                entity.setSignalStrength(Math.min(5, currentStrength + 1));
+	                logger.debug("✓ IV Skew confirms bullish bias: CE IV ({}%) > PE IV ({}%)", 
+	                    ceIV, peIV);
+	            } else if ("BEARISH".equals(entity.getDirectionalBias())) {
+	                // Conflicting signal - IV says bullish but price action says bearish
+	                entity.setSignalStrength(Math.max(1, currentStrength - 1));
+	                entity.setSignalSecondary("CONFLICTING_IV_SIGNAL");
+	                logger.warn("⚠️ CONFLICT: Bearish bias but CE IV > PE IV at strike {}", 
+	                    entity.getStrike());
+	            }
+	        }
+	        
+	        // Strong Put Skew (PE IV > CE IV)
+	        if (ivSkew.compareTo(skewThreshold.negate()) < 0) {
+	            
+	            if ("BEARISH".equals(entity.getDirectionalBias())) {
+	                entity.setSignalStrength(Math.min(5, currentStrength + 1));
+	                logger.debug("✓ IV Skew confirms bearish bias: PE IV ({}%) > CE IV ({}%)", 
+	                    peIV, ceIV);
+	            } else if ("BULLISH".equals(entity.getDirectionalBias())) {
+	                // Conflicting signal
+	                entity.setSignalStrength(Math.max(1, currentStrength - 1));
+	                entity.setSignalSecondary("CONFLICTING_IV_SIGNAL");
+	                logger.warn("⚠️ CONFLICT: Bullish bias but PE IV > CE IV at strike {}", 
+	                    entity.getStrike());
+	            }
+	        }
+	    }
+	    
+	    // 6. ATM Strike Special Handling
+	    if (Boolean.TRUE.equals(entity.getIsAtm())) {
+	        
+	        if ("HIGH".equals(ivRegime) && entity.getExtrinsicRatio().compareTo(BigDecimal.valueOf(70)) > 0) {
+	            // ATM + High IV + High Extrinsic = Prime short straddle candidate
+	            entity.setSignalSecondary("ATM_SHORT_STRADDLE_SETUP");
+	            logger.info("🎯 ATM SHORT STRADDLE SETUP: IV = {}, Extrinsic = {}% at strike {}", 
+	                combinedIV, entity.getExtrinsicRatio(), entity.getStrike());
+	        }
+	        
+	        if ("LOW".equals(ivRegime) && entity.getExtrinsicRatio().compareTo(BigDecimal.valueOf(30)) < 0) {
+	            // ATM + Low IV + Low Extrinsic = Prime long straddle candidate
+	            entity.setSignalSecondary("ATM_LONG_STRADDLE_SETUP");
+	            logger.info("🎯 ATM LONG STRADDLE SETUP: IV = {}, Extrinsic = {}% at strike {}", 
+	                combinedIV, entity.getExtrinsicRatio(), entity.getStrike());
+	        }
+	    }
+	}
+
+	/**
+	 * Determine IV regime based on instrument-specific thresholds
+	 */
+	private String determineIVRegime(BigDecimal combinedIV, String instrument) {
+	    
+	    if (combinedIV == null) {
+	        return "UNKNOWN";
+	    }
+	    
+	    // Instrument-specific IV thresholds
+	    BigDecimal highThreshold;
+	    BigDecimal lowThreshold;
+	    
+	    switch (instrument.toUpperCase()) {
+	        case "NIFTY":
+	        case "NIFTY50":
+	            highThreshold = BigDecimal.valueOf(18.0);  // >18% is high for NIFTY
+	            lowThreshold = BigDecimal.valueOf(10.0);   // <10% is low
+	            break;
+	            
+	        case "BANKNIFTY":
+	            highThreshold = BigDecimal.valueOf(20.0);  // >20% is high for BANKNIFTY
+	            lowThreshold = BigDecimal.valueOf(12.0);   // <12% is low
+	            break;
+	            
+	        case "CRUDEOIL":
+	        case "CRUDE":
+	            highThreshold = BigDecimal.valueOf(40.0);  // >40% is high for CRUDE
+	            lowThreshold = BigDecimal.valueOf(20.0);   // <20% is low
+	            break;
+	            
+	        case "FINNIFTY":
+	            highThreshold = BigDecimal.valueOf(19.0);
+	            lowThreshold = BigDecimal.valueOf(11.0);
+	            break;
+	            
+	        default:
+	            // Generic thresholds
+	            highThreshold = BigDecimal.valueOf(30.0);
+	            lowThreshold = BigDecimal.valueOf(15.0);
+	    }
+	    
+	    if (combinedIV.compareTo(highThreshold) > 0) {
+	        return "HIGH";
+	    } else if (combinedIV.compareTo(lowThreshold) < 0) {
+	        return "LOW";
+	    } else {
+	        return "NORMAL";
+	    }
+	}
+
+	/**
+	 * Determine trading strategy based on IV levels
+	 */
+	private String determineIVStrategy(BigDecimal avgIV, BigDecimal ivSkew) {
+	    
+	    // These thresholds are for CRUDE OIL - adjust based on instrument
+	    // For NIFTY, thresholds would be different (typically 12-20 range)
+	    
+	    if (avgIV.compareTo(BigDecimal.valueOf(40)) > 0) {
+	        return "HIGH_IV_SELL"; // Sell premium (straddle/strangle sellers)
+	    }
+	    
+	    if (avgIV.compareTo(BigDecimal.valueOf(20)) < 0) {
+	        return "LOW_IV_BUY"; // Buy premium (straddle/strangle buyers)
+	    }
+	    
+	    // Check for skew
+	    if (ivSkew.abs().compareTo(BigDecimal.valueOf(5)) > 0) {
+	        return ivSkew.compareTo(BigDecimal.ZERO) > 0 
+	            ? "CALL_SKEW" 
+	            : "PUT_SKEW";
+	    }
+	    
+	    return "NEUTRAL_IV";
+	}
+	
+	/**
+	 * Calculate Combined IV (average of CE and PE IV)
+	 * Treats ZERO as invalid data (same as null)
+	 */
+	private BigDecimal calculateCombinedIV(BigDecimal ceIV, BigDecimal peIV) {
+	    
+	    // ✅ Treat zero as invalid (IV can't be 0% in practice)
+	    boolean ceValid = ceIV != null && ceIV.compareTo(BigDecimal.ZERO) > 0;
+	    boolean peValid = peIV != null && peIV.compareTo(BigDecimal.ZERO) > 0;
+	    
+	    // Both invalid - return null
+	    if (!ceValid && !peValid) {
+	        logger.debug("Both CE IV and PE IV are invalid (null or zero)");
+	        return null;
+	    }
+	    
+	    // Only CE valid
+	    if (ceValid && !peValid) {
+	        logger.debug("Using only CE IV: {}", ceIV);
+	        return ceIV;
+	    }
+	    
+	    // Only PE valid
+	    if (!ceValid && peValid) {
+	        logger.debug("Using only PE IV: {}", peIV);
+	        return peIV;
+	    }
+	    
+	    // Both valid - return average
+	    BigDecimal combined = ceIV.add(peIV)
+	        .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+	    
+	    logger.debug("Combined IV: ({} + {}) / 2 = {}", ceIV, peIV, combined);
+	    
+	    return combined;
 	}
 }

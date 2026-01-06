@@ -11,14 +11,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.crumbs.trade.service.HeikinPsarExecutionService;
-
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.annotation.Schedules;
 @Component
-@ConditionalOnProperty(
-    prefix = "scheduler",
-    name = "enabled",
-    havingValue = "true",
-    matchIfMissing = true
-)
 public class HeikinPsarScheduler {
 
     private static final Logger logger = LogManager.getLogger(HeikinPsarScheduler.class);
@@ -30,20 +25,34 @@ public class HeikinPsarScheduler {
 
     // ------------------- NIFTY -------------------
 
-    @Scheduled(cron = "5 20-55/5 9 * * MON-FRI", zone = "Asia/Kolkata")
-    @Scheduled(cron = "5 0/5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
-    @Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = "Asia/Kolkata")
+    @Schedules({
+        // 09:20 – 09:59
+        @Scheduled(cron = "5 20-59 9 * * MON-FRI", zone = "Asia/Kolkata"),
+
+        // 10:00 – 14:59
+        @Scheduled(cron = "5 * 10-14 * * MON-FRI", zone = "Asia/Kolkata"),
+
+        // 15:00 – 15:15
+        @Scheduled(cron = "5 0-15 15 * * MON-FRI", zone = "Asia/Kolkata")
+    })
     public void runNifty() {
         runSafely("NIFTY-EXEC", () -> executionService.commonExecutionNifty());
     }
 
+
     // ------------------- SILVERM -------------------
 
-    @Scheduled(cron = "5 0/5 16-22 * * MON-FRI", zone = "Asia/Kolkata")
-    @Scheduled(cron = "5 0-15/5 23 * * MON-FRI", zone = "Asia/Kolkata")
+    @Schedules({
+        // 16:00 – 22:59
+        @Scheduled(cron = "5 * 16-22 * * MON-FRI", zone = "Asia/Kolkata"),
+
+        // 23:00 – 23:15
+        @Scheduled(cron = "5 0-15 23 * * MON-FRI", zone = "Asia/Kolkata")
+    })
     public void runSilverm() {
         runSafely("SILVERM-EXEC", () -> executionService.commonExecutionMcx());
     }
+
 
     // ------------------- ORDER MONITOR -------------------
 

@@ -44,4 +44,10 @@ public class StraddlePremiumDto {
     
     private boolean ceCrossoverAbove;
     private boolean peCrossoverAbove;
+    
+    private BigDecimal cePrevHigh;  // NEW
+    private BigDecimal cePrevLow;   // NEW
+    
+    private BigDecimal pePrevHigh;  // NEW
+    private BigDecimal pePrevLow;   // NEW
 }

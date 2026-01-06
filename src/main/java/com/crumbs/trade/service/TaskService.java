@@ -3081,8 +3081,8 @@ public class TaskService {
 					// Date()).concat(getHourAndMinutes("FROM",5,type));
 					// toDate = new SimpleDateFormat("yyyy-MM-dd").format(new
 					// Date()).concat(getHourAndMinutes("TO",5,type));
-					fromDate = chartService.getDate("FROM", type);
-					toDate = chartService.getDate("TO", type);
+					fromDate = chartService.getDate("FROM", type,5);
+					toDate = chartService.getDate("TO", type,5);
 				}
 
 				JSONArray responseArray = new JSONArray();

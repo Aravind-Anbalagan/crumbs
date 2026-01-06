@@ -31,4 +31,9 @@ public class CombinedChartPoint {
     private BigDecimal ceVwap;
     private BigDecimal peVwap;
     private BigDecimal combinedVwap;
+    
+ // ✅ ADD THESE
+    private BigDecimal ceIV;
+    private BigDecimal peIV;
+    private BigDecimal combinedIV;
 }

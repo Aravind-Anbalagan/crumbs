@@ -59,8 +59,8 @@ public class HeikinPsarExecutionService {
     private void executeNiftyInternal()
             throws SmartAPIException, IOException, AddressException, MessagingException {
 
-        String from = chartService.getDate("FROM", "NSE");
-        String to   = chartService.getDate("TO", "NSE");
+        String from = chartService.getDate("FROM", "NSE",1);
+        String to   = chartService.getDate("TO", "NSE",1);
 
         vixRepo.deleteAll();
 
@@ -72,9 +72,9 @@ public class HeikinPsarExecutionService {
             );
         }
 
-        if (isActive("NIFTY")) {
+        if (isActive("HEIKIN-PSAR")) {
             chartService.readChartData(
-                    "FIVE_MINUTE", "NFO", false, "NIFTY",
+                    "ONE_MINUTE", "NFO", false, "NIFTY",
                     from, to,
                     strategyRepo.findByName("NIFTY").getTradingsymbol()
             );
@@ -94,23 +94,23 @@ public class HeikinPsarExecutionService {
     private void executeMcxInternal()
             throws SmartAPIException, IOException, AddressException, MessagingException {
 
-        String from = chartService.getDate("FROM", "MCX");
-        String to   = chartService.getDate("TO", "MCX");
+        String from = chartService.getDate("FROM", "MCX",1);
+        String to   = chartService.getDate("TO", "MCX",1);
 
         vixRepo.deleteAll();
 
-        if (isActive("SILVERM")) {
+        if (isActive("HEIKIN-PSAR")) {
             chartService.readChartData(
-                    "FIVE_MINUTE", "MCX", false, "SILVERM",
+                    "ONE_MINUTE", "MCX", false, "CRUDEOIL",
                     from, to,
-                    strategyRepo.findByName("SILVERM").getTradingsymbol()
+                    strategyRepo.findByName("CRUDEOIL").getTradingsymbol()
             );
-            chartService.monitorSignal("SILVERM", "MCX", false, 0);
+            chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
         }
 
         if (isActive("SR")) {
-            ChartDataDTO dto = srService.analyzeIntraday("SILVERM", "FIVE_MINUTE");
-            srService.saveLevels("SILVERM", "FIVE_MINUTE", dto);
+            ChartDataDTO dto = srService.analyzeIntraday("CRUDEOIL", "FIVE_MINUTE");
+            srService.saveLevels("CRUDEOIL", "FIVE_MINUTE", dto);
         }
     }
 

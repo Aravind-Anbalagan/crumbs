@@ -216,7 +216,11 @@
                     <div class="checkout-item"><input type="checkbox" id="pe-check" checked> <span class="swatch" style="background:#ef4444"></span> PE</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
                     <div class="checkout-item"><input type="checkbox" id="avg-check"> <span class="swatch" style="background:#301934"></span> Avg Price</div>
-                    <!-- Removed combined Extrinsic -->
+                    <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
+                    <div class="checkout-item"><input type="checkbox" id="ce-iv-check"> <span class="swatch" style="background:#ec4899"></span> CE IV</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-iv-check"> <span class="swatch" style="background:#6366f1"></span> PE IV</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-iv-check"> <span class="swatch" style="background:#14b8a6"></span> Combined IV</div>
+                    <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
                     <div class="checkout-item"><input type="checkbox" id="ce-extrinsic-check"> <span class="swatch" style="background:#16a34a"></span> CE Extrinsic</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-extrinsic-check"> <span class="swatch" style="background:#b91c1c"></span> PE Extrinsic</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
@@ -251,7 +255,9 @@
             <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
             <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#3b82f6"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div>
             <div class="item" data-line="avgPrice"><span class="swatch" style="background:#301934"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div>
-            <!-- Removed combined Extrinsic legend -->
+            <div class="item" data-line="ceIv"><span class="swatch" style="background:#ec4899"></span><span class="label">CE IV:</span><strong id="val-ce-iv">-</strong></div>
+            <div class="item" data-line="peIv"><span class="swatch" style="background:#6366f1"></span><span class="label">PE IV:</span><strong id="val-pe-iv">-</strong></div>
+            <div class="item" data-line="combinedIv"><span class="swatch" style="background:#14b8a6"></span><span class="label">Comb IV:</span><strong id="val-combined-iv">-</strong></div>
             <div class="item" data-line="ceExtrinsic"><span class="swatch" style="background:#16a34a"></span><span class="label">CE Ext:</span><strong id="val-ce-extrinsic">-</strong></div>
             <div class="item" data-line="peExtrinsic"><span class="swatch" style="background:#b91c1c"></span><span class="label">PE Ext:</span><strong id="val-pe-extrinsic">-</strong></div>
             <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
@@ -282,6 +288,7 @@
         extrinsicSeries: [], avgPriceSeries: [],
         ceExtrinsicSeries: [], peExtrinsicSeries: [],
         ceVwapSeries: [], peVwapSeries: [], combinedVwapSeries: [],
+        ceIvSeries: [], peIvSeries: [], combinedIvSeries: [],
         ceOpen: null, peOpen: null, combinedOpen: null
     };
 
@@ -298,7 +305,9 @@
         pe: true,
         combinedPremium: true,
         avgPrice: false,
-        // extrinsic removed from UI
+        ceIv: false,
+        peIv: false,
+        combinedIv: false,
         ceExtrinsic: false,
         peExtrinsic: false,
         ceOpen: true,
@@ -339,6 +348,9 @@
             pe: 'pe-check',
             combinedPremium: 'combined-premium-check',
             avgPrice: 'avg-check',
+            ceIv: 'ce-iv-check',
+            peIv: 'pe-iv-check',
+            combinedIv: 'combined-iv-check',
             ceExtrinsic: 'ce-extrinsic-check',
             peExtrinsic: 'pe-extrinsic-check',
             ceOpen: 'ce-open-check',
@@ -375,6 +387,9 @@
         document.getElementById('pe-check').checked = checked;
         document.getElementById('combined-premium-check').checked = checked;
         document.getElementById('avg-check').checked = checked;
+        document.getElementById('ce-iv-check').checked = checked;
+        document.getElementById('pe-iv-check').checked = checked;
+        document.getElementById('combined-iv-check').checked = checked;
         document.getElementById('ce-extrinsic-check').checked = checked;
         document.getElementById('pe-extrinsic-check').checked = checked;
         document.getElementById('ce-open-check').checked = checked;
@@ -389,6 +404,9 @@
         lines.pe.setData(checked ? currentSeries.peSeries : []);
         lines.combinedPremium.setData(checked ? currentSeries.combinedPremiumSeries : []);
         lines.avgPrice.setData(checked ? currentSeries.avgPriceSeries : []);
+        lines.ceIv.setData(checked ? currentSeries.ceIvSeries : []);
+        lines.peIv.setData(checked ? currentSeries.peIvSeries : []);
+        lines.combinedIv.setData(checked ? currentSeries.combinedIvSeries : []);
         lines.ceExtrinsic.setData(checked ? currentSeries.ceExtrinsicSeries : []);
         lines.peExtrinsic.setData(checked ? currentSeries.peExtrinsicSeries : []);
         lines.ceVwap.setData(checked ? currentSeries.ceVwapSeries : []);
@@ -450,6 +468,9 @@
             combinedPremium: [],
             extrinsic: [],
             avgPrice: [],
+            ceIv: [],
+            peIv: [],
+            combinedIv: [],
             ceExtrinsic: [],
             peExtrinsic: [],
             ceVwap: [],
@@ -468,6 +489,9 @@
                 combinedPremium: row.combinedPremium != null ? Number(row.combinedPremium) : null,
                 extrinsic: row.extrinsic != null ? Number(row.extrinsic) : null,
                 avgPrice: row.avgPrice != null ? Number(row.avgPrice) : null,
+                ceIv: row.ceIV != null ? Number(row.ceIV) : null,
+                peIv: row.peIV != null ? Number(row.peIV) : null,
+                combinedIv: row.combinedIV != null ? Number(row.combinedIV) : null,
                 ceExtrinsic: row.ceExtrinsic != null ? Number(row.ceExtrinsic) : null,
                 peExtrinsic: row.peExtrinsic != null ? Number(row.peExtrinsic) : null,
                 ceVwap: row.ceVwap != null ? Number(row.ceVwap) : null,
@@ -486,6 +510,12 @@
                 series.extrinsic.push({ time: t, value: vals.extrinsic });
             if (vals.avgPrice != null && Number.isFinite(vals.avgPrice))
                 series.avgPrice.push({ time: t, value: vals.avgPrice });
+            if (vals.ceIv != null && Number.isFinite(vals.ceIv))
+                series.ceIv.push({ time: t, value: vals.ceIv });
+            if (vals.peIv != null && Number.isFinite(vals.peIv))
+                series.peIv.push({ time: t, value: vals.peIv });
+            if (vals.combinedIv != null && Number.isFinite(vals.combinedIv))
+                series.combinedIv.push({ time: t, value: vals.combinedIv });
             if (vals.ceExtrinsic != null && Number.isFinite(vals.ceExtrinsic))
                 series.ceExtrinsic.push({ time: t, value: vals.ceExtrinsic });
             if (vals.peExtrinsic != null && Number.isFinite(vals.peExtrinsic))
@@ -512,6 +542,9 @@
             combinedPremiumSeries: series.combinedPremium,
             extrinsicSeries: series.extrinsic,
             avgPriceSeries: series.avgPrice,
+            ceIvSeries: series.ceIv,
+            peIvSeries: series.peIv,
+            combinedIvSeries: series.combinedIv,
             ceExtrinsicSeries: series.ceExtrinsic,
             peExtrinsicSeries: series.peExtrinsic,
             ceVwapSeries: series.ceVwap,
@@ -577,6 +610,27 @@
             lastValueVisible: true,
             lineWidth: 2,
             color: '#301934',
+            priceScaleId: 'right'
+        }),
+        ceIv: chart.addLineSeries({
+            priceLineVisible: false,
+            lastValueVisible: true,
+            lineWidth: 2.5,
+            color: '#ec4899',
+            priceScaleId: 'right'
+        }),
+        peIv: chart.addLineSeries({
+            priceLineVisible: false,
+            lastValueVisible: true,
+            lineWidth: 2.5,
+            color: '#6366f1',
+            priceScaleId: 'right'
+        }),
+        combinedIv: chart.addLineSeries({
+            priceLineVisible: false,
+            lastValueVisible: true,
+            lineWidth: 2.5,
+            color: '#14b8a6',
             priceScaleId: 'right'
         }),
         extrinsic: chart.addLineSeries({     // kept internally but not surfaced
@@ -695,7 +749,7 @@
 
     function updateLegendLatest() {
         const values = {};
-        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceExtrinsic', 'peExtrinsic', 'ceVwap', 'peVwap', 'combinedVwap'].forEach(key => {
+        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceIv', 'peIv', 'combinedIv', 'ceExtrinsic', 'peExtrinsic', 'ceVwap', 'peVwap', 'combinedVwap'].forEach(key => {
             const data = currentSeries[key + 'Series'];
             values[key] = data && data.length > 0 ? data[data.length - 1].value : null;
         });
@@ -705,6 +759,9 @@
         document.getElementById('val-pe').textContent = values.pe !== null ? values.pe.toFixed(2) : '-';
         document.getElementById('val-combined-premium').textContent = values.combinedPremium !== null ? values.combinedPremium.toFixed(2) : '-';
         document.getElementById('val-avg').textContent = values.avgPrice !== null ? values.avgPrice.toFixed(2) : '-';
+        document.getElementById('val-ce-iv').textContent = values.ceIv !== null ? values.ceIv.toFixed(2) : '-';
+        document.getElementById('val-pe-iv').textContent = values.peIv !== null ? values.peIv.toFixed(2) : '-';
+        document.getElementById('val-combined-iv').textContent = values.combinedIv !== null ? values.combinedIv.toFixed(2) : '-';
         document.getElementById('val-ce-extrinsic').textContent = values.ceExtrinsic !== null ? values.ceExtrinsic.toFixed(2) : '-';
         document.getElementById('val-pe-extrinsic').textContent = values.peExtrinsic !== null ? values.peExtrinsic.toFixed(2) : '-';
         document.getElementById('val-ce-vwap').textContent = values.ceVwap !== null ? values.ceVwap.toFixed(2) : '-';
@@ -733,6 +790,9 @@
             pe: getValue(getData(lines.pe)),
             combinedPremium: getValue(getData(lines.combinedPremium)),
             avgPrice: getValue(getData(lines.avgPrice)),
+            ceIv: getValue(getData(lines.ceIv)),
+            peIv: getValue(getData(lines.peIv)),
+            combinedIv: getValue(getData(lines.combinedIv)),
             ceExtrinsic: getValue(getData(lines.ceExtrinsic)),
             peExtrinsic: getValue(getData(lines.peExtrinsic)),
             ceVwap: getValue(getData(lines.ceVwap)),
@@ -750,6 +810,9 @@
         document.getElementById('val-pe').textContent = fmt(values.pe);
         document.getElementById('val-combined-premium').textContent = fmt(values.combinedPremium);
         document.getElementById('val-avg').textContent = fmt(values.avgPrice);
+        document.getElementById('val-ce-iv').textContent = fmt(values.ceIv);
+        document.getElementById('val-pe-iv').textContent = fmt(values.peIv);
+        document.getElementById('val-combined-iv').textContent = fmt(values.combinedIv);
         document.getElementById('val-ce-extrinsic').textContent = fmt(values.ceExtrinsic);
         document.getElementById('val-pe-extrinsic').textContent = fmt(values.peExtrinsic);
         document.getElementById('val-ce-vwap').textContent = fmt(values.ceVwap);
@@ -950,6 +1013,9 @@
         lines.pe.setData(lineVisibility.pe ? currentSeries.peSeries : []);
         lines.combinedPremium.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
         lines.avgPrice.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
+        lines.ceIv.setData(lineVisibility.ceIv ? currentSeries.ceIvSeries : []);
+        lines.peIv.setData(lineVisibility.peIv ? currentSeries.peIvSeries : []);
+        lines.combinedIv.setData(lineVisibility.combinedIv ? currentSeries.combinedIvSeries : []);
         lines.ceExtrinsic.setData(lineVisibility.ceExtrinsic ? currentSeries.ceExtrinsicSeries : []);
         lines.peExtrinsic.setData(lineVisibility.peExtrinsic ? currentSeries.peExtrinsicSeries : []);
         lines.ceVwap.setData(lineVisibility.ceVwap ? currentSeries.ceVwapSeries : []);
@@ -998,6 +1064,9 @@
             'pe-check': 'pe',
             'combined-premium-check': 'combinedPremium',
             'avg-check': 'avgPrice',
+            'ce-iv-check': 'ceIv',
+            'pe-iv-check': 'peIv',
+            'combined-iv-check': 'combinedIv',
             'ce-extrinsic-check': 'ceExtrinsic',
             'pe-extrinsic-check': 'peExtrinsic',
             'ce-open-check': 'ceOpen',

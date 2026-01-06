@@ -105,15 +105,15 @@ public class ChartService {
     @Autowired
     StrategyRepo strategyRepo;
 
-    private static final String SYMBOL_SILVERM = "SILVERM";
+    private static final String MCX_SYMBOL = "CRUDEOIL";
 
     // NIFTY (default)
     private static final BigDecimal NIFTY_TARGET = new BigDecimal("30.00");
     private static final BigDecimal NIFTY_SL = new BigDecimal("10.00");
 
     // SILVERM
-    private static final BigDecimal SILVER_TARGET = new BigDecimal("750.00");
-    private static final BigDecimal SILVER_SL = new BigDecimal("250.00");
+    private static final BigDecimal MCX_TARGET = new BigDecimal("50.00");
+    private static final BigDecimal MCX_SL = new BigDecimal("25.00");
 
     private static final String BUY = "BUY";
     private static final String SELL = "SELL";
@@ -172,7 +172,7 @@ public class ChartService {
 	/*
 	 * Calculate FROM and TO
 	 */
-	public String getDate(String timeline, String type) {
+	public String getDate(String timeline, String type,int interval) {
 		LocalDate today = LocalDate.now();
 		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
 
@@ -180,7 +180,7 @@ public class ChartService {
 			return lastWorkingDay.toString().concat(taskService.getHourAndMinutes(timeline, 5, type));
 		} else {
 			return new SimpleDateFormat("yyyy-MM-dd").format(new Date())
-					.concat(taskService.getHourAndMinutes(timeline, 5, type));
+					.concat(taskService.getHourAndMinutes(timeline, interval, type));
 		}
 
 	}
@@ -533,7 +533,7 @@ public class ChartService {
 	            //&& "BUY".equalsIgnoreCase(vix.getVwapSignal());
 	            // PSAR maybe ignored for NIFTY for faster signals
 	    } 
-	    else if ("SILVERM".equalsIgnoreCase(name)) {
+	    else if (MCX_SYMBOL.equalsIgnoreCase(name)) {
 	        // Conditions for SILVERM BUY
 	        return "BUY".equalsIgnoreCase(vix.getHeikinachi())
 	            && "BUY".equalsIgnoreCase(vix.getPsar())
@@ -736,13 +736,17 @@ public class ChartService {
 			}
 			resultVixRepo.save(resultVix);
 			
-			//Notification
-            String message = String.format(
-                    "ENTRY %s | %s",
-                    strategy.getName(),
-                    type
-            );
-			notifyTelegram(type);
+			if("Y".equalsIgnoreCase(strategy.getAlert()))
+			{
+				//Notification
+	            String message = String.format(
+	                    "ENTRY %s | %s",
+	                    strategy.getName(),
+	                    type
+	            );
+				notifyTelegram(type);
+			}
+			
 
 		} else if (resultVix.getType() != null && !type.equalsIgnoreCase(resultVix.getType())) {
 				//&& (resultVix.getType().equalsIgnoreCase(resultVix.getMa()))) {
@@ -809,13 +813,17 @@ public class ChartService {
 			//logger.info("Execute the Next Trade for {} ", resultVix.getName());
 			//monitorSignal(resultVix.getName(), resultVix.getExchange(), false, 0);
 			
-			//Notification
-            String message = String.format(
-                    "EXIT %s | %s",
-                    strategy.getName(),
-                    type
-            );
-			notifyTelegram(message);
+			if("Y".equalsIgnoreCase(strategy.getAlert()))
+			{
+				//Notification
+	            String message = String.format(
+	                    "EXIT %s | %s",
+	                    strategy.getName(),
+	                    type
+	            );
+				notifyTelegram(message);
+			}
+			
 			
 		}
 		
@@ -1191,14 +1199,14 @@ public class ChartService {
        ============================== */
 
     private static BigDecimal getTarget(String symbol) {
-        return SYMBOL_SILVERM.equalsIgnoreCase(symbol)
-                ? SILVER_TARGET
+        return MCX_SYMBOL.equalsIgnoreCase(symbol)
+                ? MCX_TARGET
                 : NIFTY_TARGET;
     }
 
     private static BigDecimal getSL(String symbol) {
-        return SYMBOL_SILVERM.equalsIgnoreCase(symbol)
-                ? SILVER_SL
+        return MCX_SYMBOL.equalsIgnoreCase(symbol)
+                ? MCX_SL
                 : NIFTY_SL;
     }
 
