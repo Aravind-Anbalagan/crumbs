@@ -179,8 +179,13 @@ public class StraddleIntradayService {
 	            strategy.getExpiry()
 	        );
 	        
-	        // ✅ NEW: POPULATE IV INTO DTOs
-	        populateIVFromGreeksMap(strikeList, ivMap);
+	     // ✅ Populate IV ONLY if map is valid
+	        if (ivMap != null && !ivMap.isEmpty()) {
+	            populateIVFromGreeksMap(strikeList, ivMap);
+	        } else {
+	            logger.warn("IV map is null/empty for {} {}", 
+	                strategy.getName(), strategy.getExpiry());
+	        }
 			
 			// ========= PREVIOUS DAY HIGH/LOW (ONCE PER DAY PER STRATEGY) =========
 			resetPrevDayDataIfNewDay();
@@ -1628,7 +1633,10 @@ public class StraddleIntradayService {
 	            logger.warn("No Greeks data returned for {} {}", name, expiry);
 	            return ivMap;
 	        }
-	        
+	        if (!response.optBoolean("status", false)) {
+	        	logger.warn("No Greeks data returned for {} {}", name, expiry);
+	            return ivMap;
+	        }
 	        JSONArray data = response.getJSONArray("data");
 	        logger.info("Received Greeks data for {} strikes", data.length());
 	        
