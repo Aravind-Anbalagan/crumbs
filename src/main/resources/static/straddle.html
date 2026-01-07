@@ -183,7 +183,7 @@
 </head>
 <body>
 <div class="container">
-    <div class="card">
+    <div class="card" id="chart-card">
         <button id="btn-max-chart" class="btn-icon">⛶</button>
 
         <div class="header">
@@ -280,6 +280,7 @@
     const GROUPED_API_URL = '/api/straddle/grouped';
     const API_PARAMS = { name: 'NIFTY', expiry: '16DEC25', ceStrike: '26000', peStrike: '26000' };
     const STORAGE_KEY_LINES = 'nifty_lines_visibility_v1';
+    const STORAGE_KEY_FULLSCREEN = 'nifty_fullscreen_state';
 
     let groupedData = [];
     let apiData = [];
@@ -297,6 +298,10 @@
     let isDarkTheme = false;
     let autoRefreshInterval = null;
     let autoUpdateEnabled = true;
+    let isFullscreen = false;
+    let isInitialLoad = true;
+    let savedVisibleRange = null;
+    let lastUpdateTimestamp = null;
 
     // Default: CE, PE, Combined, opens ON; others OFF
     let lineVisibility = {
@@ -339,6 +344,44 @@
         } catch (e) {
             console.warn('Failed to load line visibility', e);
         }
+    }
+
+    function saveFullscreenState() {
+        try {
+            localStorage.setItem(STORAGE_KEY_FULLSCREEN, JSON.stringify(isFullscreen));
+        } catch (e) {
+            console.warn('Failed to save fullscreen state', e);
+        }
+    }
+
+    function loadFullscreenState() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY_FULLSCREEN);
+            if (raw !== null) {
+                isFullscreen = JSON.parse(raw);
+            }
+        } catch (e) {
+            console.warn('Failed to load fullscreen state', e);
+        }
+    }
+
+    function applyFullscreenState() {
+        const card = document.getElementById('chart-card');
+        if (isFullscreen) {
+            card.classList.add('chart-fullscreen');
+        } else {
+            card.classList.remove('chart-fullscreen');
+        }
+        
+        // Resize chart to fit container after applying state
+        setTimeout(() => {
+            const chartDiv = document.getElementById('chart');
+            chart.applyOptions({
+                width: chartDiv.clientWidth,
+                height: chartDiv.clientHeight
+            });
+            // Don't call fitContent here - it will override saved viewport position
+        }, 50);
     }
 
     function syncCheckboxesFromVisibility() {
@@ -1000,6 +1043,15 @@
     }
 
     async function loadInitialData() {
+        // Save current visible range before reload (if not initial load)
+        if (!isInitialLoad) {
+            try {
+                savedVisibleRange = chart.timeScale().getVisibleRange();
+            } catch (e) {
+                console.log('Could not save visible range:', e);
+            }
+        }
+
         apiData = await fetchDataFromAPI();
         if (apiData.length === 0) {
             showError('No data available for the selected filters.');
@@ -1040,7 +1092,29 @@
         }
 
         updateLegendLatest();
-        chart.timeScale().fitContent();
+        
+        // Store last timestamp for incremental updates
+        if (apiData.length > 0) {
+            lastUpdateTimestamp = apiData[apiData.length - 1].timestamp;
+            console.log('Stored last timestamp:', lastUpdateTimestamp);
+        }
+        
+        // Restore viewport position
+        if (isInitialLoad) {
+            // Only fit content on first load
+            chart.timeScale().fitContent();
+            isInitialLoad = false;
+        } else if (savedVisibleRange) {
+            // Restore saved viewport on subsequent reloads
+            try {
+                chart.timeScale().setVisibleRange(savedVisibleRange);
+            } catch (e) {
+                console.log('Could not restore visible range:', e);
+            }
+        }
+        
+        // Apply fullscreen state after data load
+        applyFullscreenState();
     }
 
     function initCheckoutDropdown() {
@@ -1095,8 +1169,19 @@
         });
 
         document.getElementById('btn-max-chart').addEventListener('click', () => {
-            const card = document.querySelector('.card');
-            card.classList.toggle('chart-fullscreen');
+            const card = document.getElementById('chart-card');
+            isFullscreen = !isFullscreen;
+            
+            // Save current viewport before toggling
+            const currentRange = chart.timeScale().getVisibleRange();
+            
+            if (isFullscreen) {
+                card.classList.add('chart-fullscreen');
+            } else {
+                card.classList.remove('chart-fullscreen');
+            }
+
+            saveFullscreenState();
 
             setTimeout(() => {
                 const chartDiv = document.getElementById('chart');
@@ -1106,7 +1191,10 @@
                     height: chartDiv.clientHeight
                 });
 
-                chart.timeScale().fitContent();
+                // Restore viewport position after resize
+                if (currentRange) {
+                    chart.timeScale().setVisibleRange(currentRange);
+                }
             }, 200);
         });
 
@@ -1121,6 +1209,8 @@
         document.getElementById('name-select').addEventListener('change', (e) => {
             API_PARAMS.name = e.target.value;
             console.log('Name changed to:', API_PARAMS.name); // Debug log
+            isInitialLoad = true; // Reset to fit content for new data
+            lastUpdateTimestamp = null; // Reset timestamp for new data
             populateExpirySelect();
             loadInitialData();
         });
@@ -1128,6 +1218,8 @@
         document.getElementById('expiry-select').addEventListener('change', (e) => {
             API_PARAMS.expiry = e.target.value;
             console.log('Expiry changed to:', API_PARAMS.expiry); // Debug log
+            isInitialLoad = true; // Reset to fit content for new data
+            lastUpdateTimestamp = null; // Reset timestamp for new data
             populateStrikeSelects();
             loadInitialData();
         });
@@ -1135,19 +1227,146 @@
         document.getElementById('ce-strike-select').addEventListener('change', (e) => {
             API_PARAMS.ceStrike = String(e.target.value);
             console.log('CE Strike changed to:', API_PARAMS.ceStrike); // Debug log
+            isInitialLoad = true; // Reset to fit content for new data
+            lastUpdateTimestamp = null; // Reset timestamp for new data
             loadInitialData();
         });
 
         document.getElementById('pe-strike-select').addEventListener('change', (e) => {
             API_PARAMS.peStrike = String(e.target.value);
             console.log('PE Strike changed to:', API_PARAMS.peStrike); // Debug log
+            isInitialLoad = true; // Reset to fit content for new data
+            lastUpdateTimestamp = null; // Reset timestamp for new data
             loadInitialData();
         });
     }
 
+    async function updateIncrementalData() {
+        // Incremental update - only append new data points
+        try {
+            const newData = await fetchDataFromAPI();
+            if (newData.length === 0) return;
+
+            // Find new records since last update
+            const lastTimestamp = lastUpdateTimestamp;
+            const newRecords = lastTimestamp 
+                ? newData.filter(row => row.timestamp > lastTimestamp)
+                : newData;
+
+            if (newRecords.length === 0) {
+                console.log('No new data to update');
+                updateLastUpdateTime();
+                return;
+            }
+
+            console.log(`Updating ${newRecords.length} new data points`);
+
+            // Update each new record
+            for (const row of newRecords) {
+                const t = toUnixSeconds(row.timestamp);
+                if (!isFinite(t) || row.spot == null) continue;
+
+                const vals = {
+                    spot: Number(row.spot),
+                    ce: Number(row.ce),
+                    pe: Number(row.pe),
+                    combinedPremium: row.combinedPremium != null ? Number(row.combinedPremium) : null,
+                    avgPrice: row.avgPrice != null ? Number(row.avgPrice) : null,
+                    ceIv: row.ceIV != null ? Number(row.ceIV) : null,
+                    peIv: row.peIV != null ? Number(row.peIV) : null,
+                    combinedIv: row.combinedIV != null ? Number(row.combinedIV) : null,
+                    ceExtrinsic: row.ceExtrinsic != null ? Number(row.ceExtrinsic) : null,
+                    peExtrinsic: row.peExtrinsic != null ? Number(row.peExtrinsic) : null,
+                    ceVwap: row.ceVwap != null ? Number(row.ceVwap) : null,
+                    peVwap: row.peVwap != null ? Number(row.peVwap) : null,
+                    combinedVwap: row.combinedVwap != null ? Number(row.combinedVwap) : null
+                };
+
+                if (!Number.isFinite(vals.spot)) continue;
+
+                // Update series data
+                if (lineVisibility.spot && Number.isFinite(vals.spot)) {
+                    lines.spot.update({ time: t, value: vals.spot });
+                    currentSeries.spotSeries.push({ time: t, value: vals.spot });
+                }
+                if (lineVisibility.ce && Number.isFinite(vals.ce)) {
+                    lines.ce.update({ time: t, value: vals.ce });
+                    currentSeries.ceSeries.push({ time: t, value: vals.ce });
+                }
+                if (lineVisibility.pe && Number.isFinite(vals.pe)) {
+                    lines.pe.update({ time: t, value: vals.pe });
+                    currentSeries.peSeries.push({ time: t, value: vals.pe });
+                }
+                if (lineVisibility.combinedPremium && vals.combinedPremium != null && Number.isFinite(vals.combinedPremium)) {
+                    lines.combinedPremium.update({ time: t, value: vals.combinedPremium });
+                    currentSeries.combinedPremiumSeries.push({ time: t, value: vals.combinedPremium });
+                }
+                if (lineVisibility.avgPrice && vals.avgPrice != null && Number.isFinite(vals.avgPrice)) {
+                    lines.avgPrice.update({ time: t, value: vals.avgPrice });
+                    currentSeries.avgPriceSeries.push({ time: t, value: vals.avgPrice });
+                }
+                if (lineVisibility.ceIv && vals.ceIv != null && Number.isFinite(vals.ceIv)) {
+                    lines.ceIv.update({ time: t, value: vals.ceIv });
+                    currentSeries.ceIvSeries.push({ time: t, value: vals.ceIv });
+                }
+                if (lineVisibility.peIv && vals.peIv != null && Number.isFinite(vals.peIv)) {
+                    lines.peIv.update({ time: t, value: vals.peIv });
+                    currentSeries.peIvSeries.push({ time: t, value: vals.peIv });
+                }
+                if (lineVisibility.combinedIv && vals.combinedIv != null && Number.isFinite(vals.combinedIv)) {
+                    lines.combinedIv.update({ time: t, value: vals.combinedIv });
+                    currentSeries.combinedIvSeries.push({ time: t, value: vals.combinedIv });
+                }
+                if (lineVisibility.ceExtrinsic && vals.ceExtrinsic != null && Number.isFinite(vals.ceExtrinsic)) {
+                    lines.ceExtrinsic.update({ time: t, value: vals.ceExtrinsic });
+                    currentSeries.ceExtrinsicSeries.push({ time: t, value: vals.ceExtrinsic });
+                }
+                if (lineVisibility.peExtrinsic && vals.peExtrinsic != null && Number.isFinite(vals.peExtrinsic)) {
+                    lines.peExtrinsic.update({ time: t, value: vals.peExtrinsic });
+                    currentSeries.peExtrinsicSeries.push({ time: t, value: vals.peExtrinsic });
+                }
+                if (lineVisibility.ceVwap && vals.ceVwap != null && Number.isFinite(vals.ceVwap)) {
+                    lines.ceVwap.update({ time: t, value: vals.ceVwap });
+                    currentSeries.ceVwapSeries.push({ time: t, value: vals.ceVwap });
+                }
+                if (lineVisibility.peVwap && vals.peVwap != null && Number.isFinite(vals.peVwap)) {
+                    lines.peVwap.update({ time: t, value: vals.peVwap });
+                    currentSeries.peVwapSeries.push({ time: t, value: vals.peVwap });
+                }
+                if (lineVisibility.combinedVwap && vals.combinedVwap != null && Number.isFinite(vals.combinedVwap)) {
+                    lines.combinedVwap.update({ time: t, value: vals.combinedVwap });
+                    currentSeries.combinedVwapSeries.push({ time: t, value: vals.combinedVwap });
+                }
+            }
+
+            // Update last timestamp
+            lastUpdateTimestamp = newRecords[newRecords.length - 1].timestamp;
+
+            // Check for new crossovers
+            if (crossoverEnabled && lineVisibility.ce && lineVisibility.pe && newRecords.length > 0) {
+                const newCrossings = detectCrossovers(
+                    currentSeries.ceSeries.slice(-newRecords.length - 1),
+                    currentSeries.peSeries.slice(-newRecords.length - 1),
+                    'CE', 'PE'
+                );
+                if (newCrossings.length > 0) {
+                    allCrossings.push(...newCrossings);
+                    allCrossings.sort((a, b) => a.time - b.time);
+                    addCrossingMarkers();
+                    updateCrossingsDisplay();
+                }
+            }
+
+            updateLegendLatest();
+        } catch (err) {
+            console.error('Error updating incremental data:', err);
+        }
+    }
+
     function startAutoRefresh() {
         if (autoRefreshInterval) return;
-        autoRefreshInterval = setInterval(() => loadInitialData(), 30000);
+        // Use incremental update for auto-refresh
+        autoRefreshInterval = setInterval(() => updateIncrementalData(), 30000);
     }
 
     function stopAutoRefresh() {
@@ -1209,11 +1428,22 @@
 
     async function init() {
         loadLineVisibility();
+        loadFullscreenState();
+        
+        // Apply fullscreen state immediately
+        const card = document.getElementById('chart-card');
+        if (isFullscreen) {
+            card.classList.add('chart-fullscreen');
+        }
 
         document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
         document.getElementById('toggle-container').addEventListener('click', toggleCrossover);
         document.getElementById('auto-update-toggle').addEventListener('click', toggleAutoUpdate);
-        document.getElementById('btn-reset').addEventListener('click', loadInitialData);
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            isInitialLoad = true; // Reset viewport on manual reset
+            lastUpdateTimestamp = null; // Reset timestamp for full reload
+            loadInitialData();
+        });
 
         initCheckoutDropdown();
         syncCheckboxesFromVisibility();
@@ -1223,7 +1453,11 @@
         startAutoRefresh();
 
         window.addEventListener('resize', () => {
-            chart.applyOptions({ width: document.getElementById('chart').clientWidth });
+            const chartDiv = document.getElementById('chart');
+            chart.applyOptions({ 
+                width: chartDiv.clientWidth,
+                height: chartDiv.clientHeight 
+            });
         });
     }
 

@@ -443,8 +443,12 @@ public class StraddleIntradayService {
 
 			entity.setCeIntrinsic(ceIntrinsic);
 			entity.setPeIntrinsic(peIntrinsic);
-			entity.setCeExtrinsic(ce.subtract(ceIntrinsic));
-			entity.setPeExtrinsic(pe.subtract(peIntrinsic));
+			BigDecimal ceExtrinsic = ce.subtract(ceIntrinsic).max(BigDecimal.ZERO);
+			BigDecimal peExtrinsic = pe.subtract(peIntrinsic).max(BigDecimal.ZERO);
+
+			entity.setCeExtrinsic(ceExtrinsic);
+			entity.setPeExtrinsic(peExtrinsic);
+
 
 			entity.setCeOpenPrice(dto.getCeOpenPrice());
 			entity.setPeOpenPrice(dto.getPeOpenPrice());
@@ -1325,6 +1329,7 @@ public class StraddleIntradayService {
 	        entity.getCombinedPremium()
 	    );
 	    
+	    
 	    // 3. Check if ATM
 	    boolean isAtm = isNearATM(spotPrice, entity.getStrike(), BigDecimal.valueOf(50));
 	    
@@ -1399,22 +1404,35 @@ public class StraddleIntradayService {
 	// HELPER METHOD: Calculate extrinsic ratio
 	// =====================================================
 	private BigDecimal calculateExtrinsicRatio(
-	    BigDecimal ceExtrinsic,
-	    BigDecimal peExtrinsic,
-	    BigDecimal combinedPremium
-	) {
-	    if (ceExtrinsic == null || peExtrinsic == null || 
-	        combinedPremium == null || combinedPremium.compareTo(BigDecimal.ZERO) == 0) {
-	        return BigDecimal.ZERO;
-	    }
-	    
-	    BigDecimal totalExtrinsic = ceExtrinsic.add(peExtrinsic);
-	    
-	    return totalExtrinsic
-	        .divide(combinedPremium, 4, RoundingMode.HALF_UP)
-	        .multiply(BigDecimal.valueOf(100))
-	        .setScale(2, RoundingMode.HALF_UP);
-	}
+		    BigDecimal ceExtrinsic,
+		    BigDecimal peExtrinsic,
+		    BigDecimal combinedPremium
+		) {
+		    if (combinedPremium == null || combinedPremium.signum() <= 0) {
+		        return BigDecimal.ZERO;
+		    }
+
+		    BigDecimal safeCe = ceExtrinsic == null ? BigDecimal.ZERO : ceExtrinsic.max(BigDecimal.ZERO);
+		    BigDecimal safePe = peExtrinsic == null ? BigDecimal.ZERO : peExtrinsic.max(BigDecimal.ZERO);
+
+		    BigDecimal totalExtrinsic = safeCe.add(safePe);
+
+		    // 🔒 Prevent explosion on collapsed premiums
+		    if (combinedPremium.compareTo(BigDecimal.ONE) < 0) {
+		        return BigDecimal.ZERO;
+		    }
+
+		    BigDecimal ratio = totalExtrinsic
+		        .divide(combinedPremium, 4, RoundingMode.HALF_UP)
+		        .multiply(BigDecimal.valueOf(100));
+
+		    // 🔒 Final financial sanity
+		    return ratio
+		        .max(BigDecimal.ZERO)
+		        .min(BigDecimal.valueOf(200))   // allow volatility spikes
+		        .setScale(2, RoundingMode.HALF_UP);
+		}
+
 
 	// =====================================================
 	// HELPER METHOD: Check if near ATM
