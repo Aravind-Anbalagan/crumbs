@@ -89,7 +89,7 @@ public class StraddleIntradayService {
 	
 	// ================= VWAP CONTROL =================
 	private static final boolean ENABLE_VWAP = true; // Set to false to skip VWAP fetching
-	private List<StraddlePremiumDto> strikeList = new ArrayList<>();
+	
 	
 	
 	
@@ -131,12 +131,7 @@ public class StraddleIntradayService {
 			}
 			
 			logger.info("ATM strike for {}: {}", name, atmStrike);
-			if(strikeList.isEmpty())
-			{
-				strikeList = buildStraddleDtos(atmStrike, 50);
-			}
-			
-
+			List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
 			strikeList = getAllTokenDetails(strikeList, strategy);
 			
 			// VALIDATION: Check if any tokens were found
