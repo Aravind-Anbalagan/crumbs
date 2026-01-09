@@ -248,7 +248,7 @@ public class StraddleIntradayService {
 					dto.getPePrice().compareTo(BigDecimal.ZERO) > 0) {
 					try {
 						JSONArray peCandle = fetchLatestOneMinuteCandle(
-							smartconnect, "NFO", dto.getPeToken().getToken()
+							smartconnect, strategy.getExchange(), dto.getPeToken().getToken()
 						);
 
 						if (peCandle != null && !peCandle.isEmpty()) {
@@ -300,16 +300,18 @@ public class StraddleIntradayService {
 	// =====================================================
 	// ✅ EVENT-BASED CE / PE CROSSOVER (1-MINUTE ONLY)
 	// =====================================================
+	private static final BigDecimal MIN_DOMINANCE_GAP = BigDecimal.valueOf(2); // ₹2 filter
+
 	private void detectCrossoverEvent(
-	        StraddlePremiumDto dto,
-	        String name,
-	        LocalDateTime currentTs
+	    StraddlePremiumDto dto,
+	    String name,
+	    LocalDateTime currentTs
 	) {
-	    // 1️⃣ Always reset (EVENT, not STATE)
+	    // 1️⃣ Reset event flags
 	    dto.setCeCrossoverAbove(false);
 	    dto.setPeCrossoverAbove(false);
 
-	    // 2️⃣ Fetch last TWO saved rows for this strike
+	    // 2️⃣ Fetch last TWO persisted rows
 	    List<StraddleIntraday> lastTwo =
 	        straddleIntradayRepo.findLastTwo(
 	            name,
@@ -319,13 +321,10 @@ public class StraddleIntradayService {
 
 	    if (lastTwo.size() < 2) return;
 
-	    // latest saved candle (t-1)
-	    StraddleIntraday prev = lastTwo.get(0);
+	    StraddleIntraday prev = lastTwo.get(0);        // t-1
+	    StraddleIntraday beforePrev = lastTwo.get(1); // t-2
 
-	    // candle before that (t-2)
-	    StraddleIntraday beforePrev = lastTwo.get(1);
-
-	    // 3️⃣ Time-continuity guard (avoid DB gaps / scheduler skips)
+	    // 3️⃣ Time-continuity guard
 	    long gapSeconds = Math.abs(
 	        java.time.Duration.between(
 	            prev.getTimestamp(),
@@ -333,43 +332,66 @@ public class StraddleIntradayService {
 	        ).getSeconds()
 	    );
 
-	    // allow only ~1–2 minute gap
-	    if (gapSeconds > 120) {
-	        return;
-	    }
+	    if (gapSeconds > 120) return;
 
-	    // 4️⃣ Prevent duplicate same-direction crossover
-	    // (arrow must not repeat on consecutive candles)
+	    // 4️⃣ Prevent duplicate arrows
 	    if (Boolean.TRUE.equals(prev.getCeCrossoverAbove()) ||
 	        Boolean.TRUE.equals(prev.getPeCrossoverAbove())) {
 	        return;
 	    }
 
-	    // 5️⃣ Price comparison (REAL crossover check)
+	    // 5️⃣ Extract current + previous prices
 	    BigDecimal prevCe = beforePrev.getCePrice();
 	    BigDecimal prevPe = beforePrev.getPePrice();
 	    BigDecimal currCe = dto.getCePrice();
 	    BigDecimal currPe = dto.getPePrice();
 
+	    BigDecimal currCeVwap = dto.getCeVwap();
+	    BigDecimal currPeVwap = dto.getPeVwap();
+
 	    if (prevCe == null || prevPe == null ||
-	        currCe == null || currPe == null)
+	        currCe == null || currPe == null ||
+	        currCeVwap == null || currPeVwap == null)
 	        return;
 
-	    // 🔺 CE crossed ABOVE PE (ONE candle only)
-	    if (prevCe.compareTo(prevPe) <= 0 &&
-	        currCe.compareTo(currPe) > 0) {
+	    // 6️⃣ Dominance gap (strength filter)
+	    BigDecimal dominanceGap =
+	        currCe.subtract(currPe).abs();
 
+	    if (dominanceGap.compareTo(MIN_DOMINANCE_GAP) < 0)
+	        return; // 🚫 Weak cross — ignore
+
+	    // ================================
+	    // 🟢 CE CROSSOVER + VWAP CONFIRM
+	    // ================================
+	    boolean cePriceCross =
+	        prevCe.compareTo(prevPe) <= 0 &&
+	        currCe.compareTo(currPe) > 0;
+
+	    boolean ceVwapConfirm =
+	        currCe.compareTo(currCeVwap) > 0;
+
+	    if (cePriceCross && ceVwapConfirm) {
 	        dto.setCeCrossoverAbove(true);
 	        return;
 	    }
 
-	    // 🔻 PE crossed ABOVE CE (ONE candle only)
-	    if (prevPe.compareTo(prevCe) <= 0 &&
-	        currPe.compareTo(currCe) > 0) {
+	    // ================================
+	    // 🔴 PE CROSSOVER + VWAP CONFIRM
+	    // ================================
+	    boolean pePriceCross =
+	        prevPe.compareTo(prevCe) <= 0 &&
+	        currPe.compareTo(currCe) > 0;
 
+	    boolean peVwapConfirm =
+	        currPe.compareTo(currPeVwap) > 0;
+
+	    if (pePriceCross && peVwapConfirm) {
 	        dto.setPeCrossoverAbove(true);
 	    }
 	}
+
+
 
 
 	private boolean isAlertRequired(String strategy) {
