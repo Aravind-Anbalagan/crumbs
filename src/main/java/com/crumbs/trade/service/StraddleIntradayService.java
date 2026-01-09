@@ -89,7 +89,12 @@ public class StraddleIntradayService {
 	
 	// ================= VWAP CONTROL =================
 	private static final boolean ENABLE_VWAP = true; // Set to false to skip VWAP fetching
-	
+	// name → strike list (built once)
+	private final Map<String, List<StraddlePremiumDto>> strikeListCache = new HashMap<>();
+
+	// name → date when strikes were built
+	private final Map<String, LocalDate> strikeInitDate = new HashMap<>();
+
 	
 	
 	
@@ -131,7 +136,9 @@ public class StraddleIntradayService {
 			}
 			
 			logger.info("ATM strike for {}: {}", name, atmStrike);
-			List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
+			// ⚠️ ATM used ONLY for first build
+			List<StraddlePremiumDto> strikeList =
+			    getOrBuildStrikeList(name, atmStrike);
 			strikeList = getAllTokenDetails(strikeList, strategy);
 			
 			// VALIDATION: Check if any tokens were found
@@ -264,6 +271,30 @@ public class StraddleIntradayService {
 			logger.error("Error in getCombineStraddlePremium for {}", name, e);
 		}
 	}
+	private List<StraddlePremiumDto> getOrBuildStrikeList(
+		    String name,
+		    BigDecimal atmStrike
+		) {
+		    LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+
+		    // Check if already built today
+		    if (
+		        strikeListCache.containsKey(name) &&
+		        today.equals(strikeInitDate.get(name))
+		    ) {
+		        return strikeListCache.get(name);
+		    }
+
+		    // First call of the day for this name
+		    logger.info("Building strike list ONCE for {} using ATM {}", name, atmStrike);
+
+		    List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
+
+		    strikeListCache.put(name, strikeList);
+		    strikeInitDate.put(name, today);
+
+		    return strikeList;
+		}
 
 	
 	// =====================================================
