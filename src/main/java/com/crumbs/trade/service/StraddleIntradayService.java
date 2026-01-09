@@ -14,6 +14,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -221,47 +226,9 @@ public class StraddleIntradayService {
 			
 			logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)", 
 				strikesWithPrices.size(), strikeList.size());
-
+			fetchVwapInParallel(strikesWithPrices, smartconnect, strategy.getExchange());
 			
-			for (StraddlePremiumDto dto : strikesWithPrices) {
-				
-				// Only fetch VWAP if token exists AND price is valid
-				if (dto.getCeToken() != null && dto.getCePrice() != null && 
-					dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) {
-					try {
-						JSONArray ceCandle = fetchLatestOneMinuteCandle(
-							smartconnect, strategy.getExchange(), dto.getCeToken().getToken()
-						);
 
-						if (ceCandle != null && !ceCandle.isEmpty()) {
-							dto.setCeVwap(updateVwapIncremental(
-								dto.getCeToken().getToken(), ceCandle
-							));
-						}
-					} catch (Exception e) {
-						logger.warn("Failed to fetch CE VWAP for strike {}: {}", 
-							dto.getStrikePrice(), e.getMessage());
-					}
-				}
-
-				if (dto.getPeToken() != null && dto.getPePrice() != null && 
-					dto.getPePrice().compareTo(BigDecimal.ZERO) > 0) {
-					try {
-						JSONArray peCandle = fetchLatestOneMinuteCandle(
-							smartconnect, strategy.getExchange(), dto.getPeToken().getToken()
-						);
-
-						if (peCandle != null && !peCandle.isEmpty()) {
-							dto.setPeVwap(updateVwapIncremental(
-								dto.getPeToken().getToken(), peCandle
-							));
-						}
-					} catch (Exception e) {
-						logger.warn("Failed to fetch PE VWAP for strike {}: {}", 
-							dto.getStrikePrice(), e.getMessage());
-					}
-				}
-			}
 
 			// Save to DB - only valid records
 			int savedCount = savePriceDetails(strikeList, strategy, spotPrice);
@@ -271,6 +238,90 @@ public class StraddleIntradayService {
 			logger.error("Error in getCombineStraddlePremium for {}", name, e);
 		}
 	}
+	
+	private void fetchVwapInParallel(
+		    List<StraddlePremiumDto> strikesWithPrices,
+		    SmartConnect smartConnect,
+		    String exchange
+		) {
+		    
+		    // Create thread pool (limit to 5 concurrent requests to avoid rate limits)
+		    ExecutorService executor = Executors.newFixedThreadPool(5);
+		    List<Future<?>> futures = new ArrayList<>();
+		    
+		    for (StraddlePremiumDto dto : strikesWithPrices) {
+		        
+		        // Submit CE VWAP fetch
+		        if (dto.getCeToken() != null && dto.getCePrice() != null && 
+		            dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) {
+		            
+		            Future<?> ceFuture = executor.submit(() -> {
+		                try {
+		                    JSONArray ceCandle = fetchLatestOneMinuteCandle(
+		                        smartConnect, exchange, dto.getCeToken().getToken()
+		                    );
+		                    
+		                    if (ceCandle != null && !ceCandle.isEmpty()) {
+		                        BigDecimal vwap = updateVwapIncremental(
+		                            dto.getCeToken().getToken(), ceCandle
+		                        );
+		                        dto.setCeVwap(vwap);
+		                    }
+		                } catch (Exception e) {
+		                    logger.warn("Failed to fetch CE VWAP for strike {}: {}", 
+		                        dto.getStrikePrice(), e.getMessage());
+		                }
+		            });
+		            futures.add(ceFuture);
+		        }
+		        
+		        // Submit PE VWAP fetch
+		        if (dto.getPeToken() != null && dto.getPePrice() != null && 
+		            dto.getPePrice().compareTo(BigDecimal.ZERO) > 0) {
+		            
+		            Future<?> peFuture = executor.submit(() -> {
+		                try {
+		                    JSONArray peCandle = fetchLatestOneMinuteCandle(
+		                        smartConnect, exchange, dto.getPeToken().getToken()
+		                    );
+		                    
+		                    if (peCandle != null && !peCandle.isEmpty()) {
+		                        BigDecimal vwap = updateVwapIncremental(
+		                            dto.getPeToken().getToken(), peCandle
+		                        );
+		                        dto.setPeVwap(vwap);
+		                    }
+		                } catch (Exception e) {
+		                    logger.warn("Failed to fetch PE VWAP for strike {}: {}", 
+		                        dto.getStrikePrice(), e.getMessage());
+		                }
+		            });
+		            futures.add(peFuture);
+		        }
+		    }
+		    
+		    // Wait for all tasks to complete
+		    for (Future<?> future : futures) {
+		        try {
+		            future.get(30, TimeUnit.SECONDS); // 30 second timeout per task
+		        } catch (TimeoutException e) {
+		            logger.error("VWAP fetch timed out");
+		            future.cancel(true);
+		        } catch (Exception e) {
+		            logger.error("VWAP fetch failed: {}", e.getMessage());
+		        }
+		    }
+		    
+		    executor.shutdown();
+		    try {
+		        if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+		            executor.shutdownNow();
+		        }
+		    } catch (InterruptedException e) {
+		        executor.shutdownNow();
+		        Thread.currentThread().interrupt();
+		    }
+		}
 	private List<StraddlePremiumDto> getOrBuildStrikeList(
 		    String name,
 		    BigDecimal atmStrike
@@ -1096,90 +1147,128 @@ public class StraddleIntradayService {
 	private static final int MAX_RETRY_ATTEMPTS = 5;
 	private static final long INITIAL_RETRY_DELAY_MS = 2000; // Start with 2 seconds
 	
+	// =====================================================
+	// FIXED: FETCH CANDLES WITH MCX/NSE AWARE TIMING
+	// =====================================================
 	private JSONArray fetchLatestOneMinuteCandle(
-		SmartConnect smartConnect, 
-		String exchange, 
-		String token
+	    SmartConnect smartConnect, 
+	    String exchange, 
+	    String token
 	) throws ParseException {
-		
-		int attempt = 0;
-		long retryDelay = INITIAL_RETRY_DELAY_MS;
-		
-		while (attempt < MAX_RETRY_ATTEMPTS) {
-			try {
-				// Rate limiting: wait if needed
-				long now = System.currentTimeMillis();
-				long timeSinceLastCall = now - lastCandleApiCall;
-				
-				if (timeSinceLastCall < CANDLE_API_DELAY_MS) {
-					long waitTime = CANDLE_API_DELAY_MS - timeSinceLastCall;
-					logger.debug("Rate limiting: waiting {}ms before candle API call", waitTime);
-					Thread.sleep(waitTime);
-				}
-				
-				LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
-				String fromDate = today + " 09:15";
-				String toDate   = today + " 15:30";
+	    
+	    int attempt = 0;
+	    long retryDelay = INITIAL_RETRY_DELAY_MS;
+	    
+	    while (attempt < MAX_RETRY_ATTEMPTS) {
+	        try {
+	            // Rate limiting: wait if needed
+	            long now = System.currentTimeMillis();
+	            long timeSinceLastCall = now - lastCandleApiCall;
+	            
+	            if (timeSinceLastCall < CANDLE_API_DELAY_MS) {
+	                long waitTime = CANDLE_API_DELAY_MS - timeSinceLastCall;
+	                logger.debug("Rate limiting: waiting {}ms before candle API call", waitTime);
+	                Thread.sleep(waitTime);
+	            }
+	            
+	            LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	            
+	            // ✅ FIX: Exchange-specific trading hours
+	            String fromDate;
+	            String toDate;
+	            
+	            if ("MCX".equalsIgnoreCase(exchange)) {
+	                // MCX trades 09:00 - 23:55 (extended hours)
+	                fromDate = today + " 09:00";  // Changed from 09:15
+	                toDate = today + " 23:55";     // Changed from 15:30
+	                logger.debug("Using MCX hours: {} to {}", fromDate, toDate);
+	            } else {
+	                // NSE/NFO trades 09:15 - 15:30
+	                fromDate = today + " 09:15";
+	                toDate = today + " 15:30";
+	                logger.debug("Using NSE hours: {} to {}", fromDate, toDate);
+	            }
 
-				JSONObject req = new JSONObject();
-				req.put("exchange", exchange);
-				req.put("symboltoken", token);
-				req.put("interval", "ONE_MINUTE");
-				req.put("fromdate", fromDate);
-				req.put("todate", toDate);
+	            JSONObject req = new JSONObject();
+	            req.put("exchange", exchange);
+	            req.put("symboltoken", token);
+	            req.put("interval", "ONE_MINUTE");
+	            req.put("fromdate", fromDate);
+	            req.put("todate", toDate);
 
-				JSONArray result = smartConnect.candleData(req);
-				lastCandleApiCall = System.currentTimeMillis();
-				
-				// Check if result is null
-				if (result == null) {
-					attempt++;
-					logger.warn("Candle data returned NULL for token {} (attempt {}/{})", 
-						token, attempt, MAX_RETRY_ATTEMPTS);
-					
-					if (attempt < MAX_RETRY_ATTEMPTS) {
-						logger.info("Retrying after {}ms...", retryDelay);
-						Thread.sleep(retryDelay);
-						retryDelay *= 2; // Exponential backoff: 2s, 4s, 8s, 16s, 32s
-					} else {
-						logger.error("Max retry attempts reached for token {}. Giving up.", token);
-						return null;
-					}
-				} else {
-					// Success - log if it took retries
-					if (attempt > 0) {
-						logger.info("Successfully fetched candle data for token {} after {} retries", 
-							token, attempt);
-					}
-					return result;
-				}
-				
-			} catch (InterruptedException e) {
-				logger.warn("Thread interrupted during candle fetch/retry", e);
-				Thread.currentThread().interrupt();
-				return null;
-			} catch (Exception e) {
-				attempt++;
-				logger.error("Error fetching candle data for token {} (attempt {}/{}): {}", 
-					token, attempt, MAX_RETRY_ATTEMPTS, e.getMessage());
-				
-				if (attempt < MAX_RETRY_ATTEMPTS) {
-					try {
-						logger.info("Retrying after {}ms due to exception...", retryDelay);
-						Thread.sleep(retryDelay);
-						retryDelay *= 2;
-					} catch (InterruptedException ie) {
-						Thread.currentThread().interrupt();
-						return null;
-					}
-				} else {
-					logger.error("Max retry attempts reached for token {} after exceptions", token);
-					return null;
-				}
-			}
-		}
-		
-		return null;
+	            JSONArray result = smartConnect.candleData(req);
+	            lastCandleApiCall = System.currentTimeMillis();
+	            
+	            // ✅ ADDED: Log actual response for debugging
+	            if (result == null) {
+	                attempt++;
+	                logger.warn("Candle data returned NULL for {} token {} (attempt {}/{})", 
+	                    exchange, token, attempt, MAX_RETRY_ATTEMPTS);
+	                
+	                if (attempt < MAX_RETRY_ATTEMPTS) {
+	                    logger.info("Retrying after {}ms...", retryDelay);
+	                    Thread.sleep(retryDelay);
+	                    retryDelay *= 2;
+	                } else {
+	                    logger.error("Max retry attempts reached for {} token {}. Giving up.", 
+	                        exchange, token);
+	                    return null;
+	                }
+	            } else if (result.length() == 0) {
+	                // ✅ NEW: Log when empty array is returned
+	                logger.warn("Candle data returned EMPTY array for {} token {} (time range: {} to {})", 
+	                    exchange, token, fromDate, toDate);
+	                
+	                // Check if we're querying outside trading hours
+	                LocalDateTime currentTime = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+	                int currentHour = currentTime.getHour();
+	                
+	                if ("MCX".equalsIgnoreCase(exchange) && currentHour < 9) {
+	                    logger.error("⚠️ MCX market hasn't opened yet (current hour: {})", currentHour);
+	                } else if (!"MCX".equalsIgnoreCase(exchange) && currentHour < 9) {
+	                    logger.error("⚠️ NSE market hasn't opened yet (current hour: {})", currentHour);
+	                }
+	                
+	                return null;
+	            } else {
+	                // Success - log details
+	                if (attempt > 0) {
+	                    logger.info("✓ Successfully fetched {} candles for {} token {} after {} retries", 
+	                        result.length(), exchange, token, attempt);
+	                } else {
+	                    logger.debug("✓ Fetched {} candles for {} token {}", 
+	                        result.length(), exchange, token);
+	                }
+	                return result;
+	            }
+	            
+	        } catch (InterruptedException e) {
+	            logger.warn("Thread interrupted during candle fetch/retry", e);
+	            Thread.currentThread().interrupt();
+	            return null;
+	        } catch (Exception e) {
+	            attempt++;
+	            logger.error("Error fetching candle data for {} token {} (attempt {}/{}): {}", 
+	                exchange, token, attempt, MAX_RETRY_ATTEMPTS, e.getMessage());
+	            
+	            if (attempt < MAX_RETRY_ATTEMPTS) {
+	                try {
+	                    logger.info("Retrying after {}ms due to exception...", retryDelay);
+	                    Thread.sleep(retryDelay);
+	                    retryDelay *= 2;
+	                } catch (InterruptedException ie) {
+	                    Thread.currentThread().interrupt();
+	                    return null;
+	                }
+	            } else {
+	                logger.error("Max retry attempts reached for {} token {} after exceptions", 
+	                    exchange, token);
+	                return null;
+	            }
+	        }
+	    }
+	    
+	    return null;
 	}
 
 	public String getDate(String timeline, String type) {
