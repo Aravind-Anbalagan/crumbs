@@ -34,6 +34,9 @@ public class Prediction {
     
     @Column(name = "exchange", nullable = false)
     private String exchange;   // RELIANCE, HDFCBANK, etc.
+    
+    @Column(name = "sector", nullable = true)
+    private String sector;   // RELIANCE, HDFCBANK, etc.
 
 
 }

@@ -9,6 +9,8 @@ import com.crumbs.trade.entity.PredictionHistory;
 import com.crumbs.trade.service.PredictionService;
 import com.crumbs.trade.service.PredictionService.PredictionResult;
 import com.crumbs.trade.service.PredictionService.AdvancedPredictionResult;
+import com.crumbs.trade.service.PredictionService.SectorImpact;
+import com.crumbs.trade.service.PredictionService.CrossoverPoint;
 import lombok.Data;
 import java.util.*;
 
@@ -37,10 +39,11 @@ public class PredictionController {
     
     /**
      * ========================================
-     * CALCULATION API (EXISTING)
+     * CALCULATION API (EXISTING - NOW WITH SECTORS)
      * ========================================
      * This calls Angel One API and calculates predictions
      * Used by: Scheduler (internal), Manual testing
+     * NEW: Now includes sector impacts
      */
     @GetMapping("/nifty/advanced")
     public ResponseEntity<AdvancedPredictionResponse> getAdvancedPrediction(
@@ -62,18 +65,26 @@ public class PredictionController {
         response.setTimestamp(new Date());
         response.setPredictionList(result.getPredictionList());
         response.setInterpretation(generateInterpretation(result));
+        
+        // NEW: Add sector impacts
+        response.setSectorImpacts(result.sectorImpacts);
+        
+        // NEW: Add crossover detection
+        response.setCrossoverPoints(predictionService.detectCrossovers(days));
 
         return ResponseEntity.ok(response);
     }
 
     /**
      * ========================================
-     * UI FETCH API (NEW - FOR DASHBOARD)
+     * UI FETCH API (ENHANCED - FOR DASHBOARD)
      * ========================================
      * Fetches predictions from database only (NO calculation, NO Angel One API)
      * Works 24/7 - even outside market hours, weekends, holidays
      * 
      * THIS IS THE API YOUR UI SHOULD USE!
+     * 
+     * NEW: Now includes crossover points for chart plotting
      * 
      * @param days - Filter:
      *               null or "" = today only
@@ -83,9 +94,9 @@ public class PredictionController {
      *               "all" = all records
      * 
      * Examples:
-     * GET /api/prediction/nifty/fetch              -> Today's predictions
-     * GET /api/prediction/nifty/fetch?days=5       -> Last 5 days
-     * GET /api/prediction/nifty/fetch?days=all     -> All historical data
+     * GET /api/prediction/nifty/fetch              -> Today's predictions + crossovers
+     * GET /api/prediction/nifty/fetch?days=5       -> Last 5 days + crossovers
+     * GET /api/prediction/nifty/fetch?days=all     -> All historical data + crossovers
      */
     @GetMapping("/nifty/fetch")
     public ResponseEntity<AdvancedPredictionResponse> fetchPredictions(
@@ -103,6 +114,7 @@ public class PredictionController {
             errorResponse.setInterpretation("Error fetching predictions: " + e.getMessage());
             errorResponse.setTimestamp(new Date());
             errorResponse.setPredictionList(new ArrayList<>());
+            errorResponse.setCrossoverPoints(new ArrayList<>()); // NEW
             return ResponseEntity.ok(errorResponse);
         }
     }
@@ -159,6 +171,12 @@ public class PredictionController {
         private String sentiment;
         private String interpretation;
         private List<PredictionHistory> predictionList = new ArrayList<>();
+        
+        // ✨ NEW: Sector impacts
+        private Map<String, SectorImpact> sectorImpacts;
+        
+        // ✨ NEW: Crossover points for chart plotting
+        private List<CrossoverPoint> crossoverPoints = new ArrayList<>();
     }
     
 }

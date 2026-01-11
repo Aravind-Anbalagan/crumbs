@@ -63,7 +63,8 @@ public class PredictionService {
     @Autowired
     private AngelOne angelOne;
     
-    @Autowired PredictionHistoryRepo predictionHistoryRepo;
+    @Autowired 
+    PredictionHistoryRepo predictionHistoryRepo;
 
 
     // ========================================
@@ -87,11 +88,10 @@ public class PredictionService {
         
         PredictionData data = preparePredictionData();
         AdvancedPredictionResult result = calculateAdvancedPrediction(data);
-        List<PredictionHistory> predictionList = new ArrayList<>();
-        List<PredictionHistory> history =
-                fetchPredictionHistoryByDays(days);
+        List<PredictionHistory> history = fetchPredictionHistoryByDays(days);
 
         result.getPredictionList().addAll(history);
+        
         logger.info("Advanced prediction complete: Current={}, Predicted={}, Confidence={}, Sentiment={}", 
             result.currentPrice, result.predictedPrice, result.confidenceScore, result.sentiment);
         
@@ -128,7 +128,6 @@ public class PredictionService {
             return predictionHistoryRepo.findToday(startOfToday);
         }
     }
-
 
 
     // ========================================
@@ -388,7 +387,7 @@ public class PredictionService {
             return new AdvancedPredictionResult(
                 data.currentNifty, data.currentNifty,
                 ZERO, ZERO, 0, data.totalStocks,
-                0.0, "NONE"
+                0.0, "NONE", null
             );
         }
 
@@ -402,12 +401,243 @@ public class PredictionService {
         double confidence = calculateConfidence(data.validStocks.size(), data.totalStocks, 
                                                 metrics.positive, metrics.negative);
         String sentiment = determineSentiment(metrics.positive, metrics.negative);
+        
+        // NEW: Calculate sector impacts
+        Map<String, SectorImpact> sectorImpacts = calculateSectorImpacts(data.validStocks);
 
         return new AdvancedPredictionResult(
             data.currentNifty, predicted, diff, pctMove,
             data.validStocks.size(), data.totalStocks,
-            confidence, sentiment
+            confidence, sentiment, sectorImpacts
         );
+    }
+
+
+    // ========================================
+    // SECTOR ANALYSIS (NEW FEATURE)
+    // ========================================
+    
+    /**
+     * Calculate sector-wise contribution to Nifty movement
+     */
+    private Map<String, SectorImpact> calculateSectorImpacts(List<Prediction> validStocks) {
+        Map<String, SectorImpact> sectorMap = new HashMap<>();
+        
+        for (Prediction p : validStocks) {
+            String sector = p.getSector() != null ? p.getSector() : "UNKNOWN";
+            
+            if (p.getPrevclose().compareTo(ZERO) == 0) {
+                continue;
+            }
+            
+            // Calculate individual stock's percentage change
+            BigDecimal pctChange = p.getLtp()
+                .subtract(p.getPrevclose())
+                .divide(p.getPrevclose(), SCALE, RoundingMode.HALF_UP)
+                .multiply(HUNDRED);
+            
+            // Calculate impact (weighted percentage change)
+            BigDecimal impact = pctChange.multiply(p.getWeight())
+                .divide(HUNDRED, SCALE, RoundingMode.HALF_UP);
+            
+            // Update or create sector impact
+            sectorMap.compute(sector, (key, existing) -> {
+                if (existing == null) {
+                    return new SectorImpact(sector, impact, p.getWeight(), 1, 
+                        pctChange.compareTo(ZERO) > 0 ? 1 : 0,
+                        pctChange.compareTo(ZERO) < 0 ? 1 : 0);
+                } else {
+                    return new SectorImpact(
+                        sector,
+                        existing.totalImpact.add(impact),
+                        existing.totalWeight.add(p.getWeight()),
+                        existing.stockCount + 1,
+                        existing.positiveCount + (pctChange.compareTo(ZERO) > 0 ? 1 : 0),
+                        existing.negativeCount + (pctChange.compareTo(ZERO) < 0 ? 1 : 0)
+                    );
+                }
+            });
+        }
+        
+        logger.info("📊 Sector analysis: {} sectors analyzed", sectorMap.size());
+        
+        return sectorMap;
+    }
+
+
+    // ========================================
+    // CROSSOVER DETECTION (NEW FEATURE)
+    // ========================================
+
+    /**
+     * Detect crossover points from historical data
+     */
+    public List<CrossoverPoint> detectCrossovers(String days) {
+        logger.info("🔍 Detecting crossover points");
+        
+        List<PredictionHistory> history = fetchPredictionHistoryByDays(days);
+        
+        if (history.size() < 2) {
+            logger.warn("⚠️ Need at least 2 data points to detect crossovers");
+            return Collections.emptyList();
+        }
+        
+        // Sort by timestamp ascending
+        history.sort(Comparator.comparing(PredictionHistory::getTimestamp));
+        
+        List<CrossoverPoint> crossovers = new ArrayList<>();
+        
+        for (int i = 1; i < history.size(); i++) {
+            PredictionHistory prev = history.get(i - 1);
+            PredictionHistory curr = history.get(i);
+            
+            CrossoverPoint crossover = detectCrossoverBetween(prev, curr);
+            if (crossover != null) {
+                crossovers.add(crossover);
+                logger.info("✓ Crossover: {} at {}", crossover.type, crossover.timestamp);
+            }
+        }
+        
+        logger.info("📊 Found {} crossover events", crossovers.size());
+        return crossovers;
+    }
+
+    /**
+     * Detect if crossover happened between two consecutive points
+     */
+    private CrossoverPoint detectCrossoverBetween(PredictionHistory prev, PredictionHistory curr) {
+        
+        BigDecimal prevDiff = prev.getPredictedPrice().subtract(prev.getCurrentPrice());
+        BigDecimal currDiff = curr.getPredictedPrice().subtract(curr.getCurrentPrice());
+        
+        // Check if sign changed
+        if (prevDiff.compareTo(ZERO) > 0 && currDiff.compareTo(ZERO) <= 0) {
+            // BEARISH CROSSOVER
+            return buildCrossoverPoint(
+                CrossoverType.BEARISH_CROSSOVER,
+                prev, curr,
+                "Predicted crossed BELOW current"
+            );
+            
+        } else if (prevDiff.compareTo(ZERO) < 0 && currDiff.compareTo(ZERO) >= 0) {
+            // BULLISH CROSSOVER
+            return buildCrossoverPoint(
+                CrossoverType.BULLISH_CROSSOVER,
+                prev, curr,
+                "Predicted crossed ABOVE current"
+            );
+        }
+        
+        return null;
+    }
+
+    /**
+     * Build crossover point with details
+     */
+    private CrossoverPoint buildCrossoverPoint(
+            CrossoverType type,
+            PredictionHistory prev,
+            PredictionHistory curr,
+            String description) {
+        
+        BigDecimal crossoverPrice = estimateCrossoverPrice(
+            prev.getCurrentPrice(),
+            prev.getPredictedPrice(),
+            curr.getCurrentPrice(),
+            curr.getPredictedPrice()
+        );
+        
+        LocalDateTime crossoverTime = estimateCrossoverTime(
+            prev.getTimestamp(),
+            curr.getTimestamp(),
+            prev.getCurrentPrice(),
+            prev.getPredictedPrice(),
+            curr.getCurrentPrice(),
+            curr.getPredictedPrice()
+        );
+        
+        return new CrossoverPoint(
+            type,
+            crossoverTime,
+            crossoverPrice,
+            prev.getTimestamp(),
+            curr.getTimestamp(),
+            prev.getCurrentPrice(),
+            prev.getPredictedPrice(),
+            curr.getCurrentPrice(),
+            curr.getPredictedPrice(),
+            prev.getSentiment(),
+            curr.getSentiment(),
+            curr.getConfidenceScore(),
+            description
+        );
+    }
+
+    /**
+     * Estimate crossover price using linear interpolation
+     */
+    private BigDecimal estimateCrossoverPrice(
+            BigDecimal prevCurrent,
+            BigDecimal prevPredicted,
+            BigDecimal currCurrent,
+            BigDecimal currPredicted) {
+        
+        try {
+            BigDecimal prevDiff = prevPredicted.subtract(prevCurrent);
+            BigDecimal currDiff = currPredicted.subtract(currCurrent);
+            BigDecimal totalChange = currDiff.subtract(prevDiff);
+            
+            if (totalChange.compareTo(ZERO) == 0) {
+                return prevCurrent.add(currCurrent).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+            }
+            
+            BigDecimal ratio = prevDiff.negate().divide(totalChange, 4, RoundingMode.HALF_UP);
+            
+            if (ratio.compareTo(ZERO) < 0) ratio = ZERO;
+            if (ratio.compareTo(ONE) > 0) ratio = ONE;
+            
+            BigDecimal priceChange = currCurrent.subtract(prevCurrent);
+            return prevCurrent.add(priceChange.multiply(ratio)).setScale(2, RoundingMode.HALF_UP);
+            
+        } catch (Exception e) {
+            return prevCurrent.add(currCurrent).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+        }
+    }
+
+    /**
+     * Estimate crossover time using linear interpolation
+     */
+    private LocalDateTime estimateCrossoverTime(
+            LocalDateTime prevTime,
+            LocalDateTime currTime,
+            BigDecimal prevCurrent,
+            BigDecimal prevPredicted,
+            BigDecimal currCurrent,
+            BigDecimal currPredicted) {
+        
+        try {
+            BigDecimal prevDiff = prevPredicted.subtract(prevCurrent);
+            BigDecimal currDiff = currPredicted.subtract(currCurrent);
+            BigDecimal totalChange = currDiff.subtract(prevDiff);
+            
+            if (totalChange.compareTo(ZERO) == 0) {
+                long seconds = java.time.Duration.between(prevTime, currTime).getSeconds();
+                return prevTime.plusSeconds(seconds / 2);
+            }
+            
+            BigDecimal ratio = prevDiff.negate().divide(totalChange, 4, RoundingMode.HALF_UP);
+            
+            if (ratio.compareTo(ZERO) < 0) ratio = ZERO;
+            if (ratio.compareTo(ONE) > 0) ratio = ONE;
+            
+            long secondsBetween = java.time.Duration.between(prevTime, currTime).getSeconds();
+            long crossoverSeconds = (long) (secondsBetween * ratio.doubleValue());
+            
+            return prevTime.plusSeconds(crossoverSeconds);
+            
+        } catch (Exception e) {
+            return currTime;
+        }
     }
 
 
@@ -573,6 +803,7 @@ public class PredictionService {
 
         public final double confidenceScore;
         public final String sentiment;
+        public final Map<String, SectorImpact> sectorImpacts;  // NEW
 
         private final List<PredictionHistory> predictionList = new ArrayList<>();
 
@@ -584,25 +815,136 @@ public class PredictionService {
                 int validStocks,
                 int totalStocks,
                 double confidenceScore,
-                String sentiment) {
+                String sentiment,
+                Map<String, SectorImpact> sectorImpacts) {
 
             super(currentPrice, predictedPrice, difference, percentageMove, validStocks, totalStocks);
             this.confidenceScore = confidenceScore;
             this.sentiment = sentiment;
+            this.sectorImpacts = sectorImpacts;
         }
 
         public List<PredictionHistory> getPredictionList() {
             return predictionList;
         }
     }
- // Add this method to your PredictionService.java class
+    
+    
+    // ========================================
+    // NEW DATA CLASSES (SECTOR & CROSSOVER)
+    // ========================================
+    
+    /**
+     * Sector-wise impact analysis
+     */
+    public static class SectorImpact {
+        public final String sectorName;
+        public final BigDecimal totalImpact;
+        public final BigDecimal totalWeight;
+        public final int stockCount;
+        public final int positiveCount;
+        public final int negativeCount;
+        
+        public SectorImpact(String sectorName, BigDecimal totalImpact, 
+                           BigDecimal totalWeight, int stockCount,
+                           int positiveCount, int negativeCount) {
+            this.sectorName = sectorName;
+            this.totalImpact = totalImpact;
+            this.totalWeight = totalWeight;
+            this.stockCount = stockCount;
+            this.positiveCount = positiveCount;
+            this.negativeCount = negativeCount;
+        }
+        
+        public String getSentiment() {
+            if (positiveCount > negativeCount) return "BULLISH";
+            if (negativeCount > positiveCount) return "BEARISH";
+            return "NEUTRAL";
+        }
+        
+        public BigDecimal getAverageImpact() {
+            return stockCount > 0 
+                ? totalImpact.divide(new BigDecimal(stockCount), SCALE, RoundingMode.HALF_UP)
+                : ZERO;
+        }
+    }
 
     /**
-     * ========================================
-     * FETCH FROM DATABASE (NO CALCULATION)
-     * ========================================
+     * Crossover event types
+     */
+    public enum CrossoverType {
+        BULLISH_CROSSOVER,   // Predicted crossed ABOVE current
+        BEARISH_CROSSOVER    // Predicted crossed BELOW current
+    }
+
+    /**
+     * Crossover point in time
+     */
+    public static class CrossoverPoint {
+        public final CrossoverType type;
+        public final LocalDateTime timestamp;
+        public final BigDecimal crossoverPrice;
+        
+        public final LocalDateTime beforeTime;
+        public final LocalDateTime afterTime;
+        public final BigDecimal beforeCurrent;
+        public final BigDecimal beforePredicted;
+        public final BigDecimal afterCurrent;
+        public final BigDecimal afterPredicted;
+        
+        public final String sentimentBefore;
+        public final String sentimentAfter;
+        public final BigDecimal confidence;
+        public final String description;
+        
+        public CrossoverPoint(
+                CrossoverType type,
+                LocalDateTime timestamp,
+                BigDecimal crossoverPrice,
+                LocalDateTime beforeTime,
+                LocalDateTime afterTime,
+                BigDecimal beforeCurrent,
+                BigDecimal beforePredicted,
+                BigDecimal afterCurrent,
+                BigDecimal afterPredicted,
+                String sentimentBefore,
+                String sentimentAfter,
+                BigDecimal confidence,
+                String description) {
+            
+            this.type = type;
+            this.timestamp = timestamp;
+            this.crossoverPrice = crossoverPrice;
+            this.beforeTime = beforeTime;
+            this.afterTime = afterTime;
+            this.beforeCurrent = beforeCurrent;
+            this.beforePredicted = beforePredicted;
+            this.afterCurrent = afterCurrent;
+            this.afterPredicted = afterPredicted;
+            this.sentimentBefore = sentimentBefore;
+            this.sentimentAfter = sentimentAfter;
+            this.confidence = confidence;
+            this.description = description;
+        }
+        
+        public String getSignal() {
+            return type == CrossoverType.BULLISH_CROSSOVER ? "BUY" : "SELL";
+        }
+        
+        public String getEmoji() {
+            return type == CrossoverType.BULLISH_CROSSOVER ? "🟢" : "🔴";
+        }
+    }
+
+
+    // ========================================
+    // FETCH FROM DATABASE (UPDATED WITH NEW FEATURES)
+    // ========================================
+    
+    /**
      * This method fetches predictions from database without any calculation
      * Used by: UI fetch API
+     * UPDATED: Now includes sector impacts and crossover points
      */
     public AdvancedPredictionResponse fetchPredictionsFromDB(String days) {
         
@@ -618,8 +960,6 @@ public class PredictionService {
             }
 
             // Fetch historical predictions based on filter
-            LocalDateTime now = LocalDateTime.now();
-            LocalDateTime startOfToday = now.toLocalDate().atStartOfDay();
             List<PredictionHistory> historicalList = fetchPredictionHistoryByDays(days);
 
             // Build response
@@ -641,6 +981,9 @@ public class PredictionService {
             
             // Generate interpretation
             response.setInterpretation(generateInterpretationFromHistory(latest));
+            
+            // NEW: Add crossover detection
+            response.setCrossoverPoints(detectCrossovers(days));
             
             logger.info("✅ Fetched {} historical predictions, latest from: {}", 
                     historicalList.size(), latest.getTimestamp());
@@ -669,6 +1012,7 @@ public class PredictionService {
         response.setTimestamp(new Date());
         response.setPredictionList(new ArrayList<>());
         response.setInterpretation("No predictions available. Please wait for market hours or check if scheduler is running.");
+        response.setCrossoverPoints(new ArrayList<>());  // NEW
         return response;
     }
 
@@ -709,5 +1053,4 @@ public class PredictionService {
         
         return sb.toString();
     }
-
 }
