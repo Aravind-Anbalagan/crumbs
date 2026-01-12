@@ -21,7 +21,7 @@ public class SpreadController {
 	StrategyRepo strategyRepo;
 	
 	@PostMapping("/execute")
-	@Scheduled(cron = "0 20 09 * * MON-FRI", zone = "Asia/Kolkata")
+	//@Scheduled(cron = "0 20 09 * * MON-FRI", zone = "Asia/Kolkata")
 	public void executeSpread() {
 		if (strategyRepo.findByName("SPREAD_STRATEGY").getActive().equals("Y")) {
 			spreadService.getStockList();

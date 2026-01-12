@@ -41,6 +41,7 @@ import com.crumbs.trade.repo.ResultRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.ResultService;
 import com.crumbs.trade.service.SectorUpdateService;
+import com.crumbs.trade.service.SpreadService;
 import com.crumbs.trade.service.TaskService;
 import com.crumbs.trade.service.TimeLookup;
 import com.crumbs.trade.utility.AppConstant;
@@ -74,6 +75,9 @@ public class StockController {
 	
 	@Autowired
 	SectorUpdateService sectorUpdateService;
+	
+	@Autowired
+	SpreadService spreadService;
 
 	@GetMapping("/getStocks/{indexName}/{symbol}")
 	public String indicator(@PathVariable("indexName") String indexName, @PathVariable("symbol") String symbol)
@@ -118,6 +122,9 @@ public class StockController {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			taskService.findBullishStocks();
 			taskService.callAI();
+			if (strategyRepo.findByName("SPREAD_STRATEGY").getActive().equals("Y")) {
+				spreadService.getStockList();
+			}
 			return "Completed";
 		}
 		return "STOCK Strategy Disabled";
