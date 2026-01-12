@@ -36,12 +36,25 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Enhanced SpreadService with improved error handling, margin validation,
- * position tracking, and robust rollback mechanism.
- *
- * Version: 2.0
- *
- * NOTE: This refactor preserves behavior — only readability / formatting changed.
+ * Enhanced SpreadService with HONEST naming convention.
+ * 
+ * IMPORTANT: This service uses STRIKE DISTANCE strategy, NOT actual probability-based POP.
+ * The "distance levels" are fixed strike intervals that do NOT account for:
+ *   - Implied Volatility (IV)
+ *   - Time to Expiration (DTE)
+ *   - Actual option Greeks (Delta, Gamma, etc.)
+ * 
+ * Use this for:
+ *   ✓ Simple, consistent strike selection
+ *   ✓ Backtesting relative strategies
+ *   ✓ Low-volatility, stable market conditions
+ * 
+ * DO NOT use this for:
+ *   ✗ Precise risk management
+ *   ✗ High-volatility environments
+ *   ✗ Guaranteed probability outcomes
+ * 
+ * Version: 2.1 (Honest Naming)
  */
 @Service
 @RequiredArgsConstructor
@@ -66,56 +79,72 @@ public class SpreadService {
     private static final int NAKED_HEDGE_DISTANCE = 10;
     private static final int ORDER_STATUS_POLL_ATTEMPTS = 10;
     private static final int ORDER_STATUS_POLL_DELAY_MS = 500;
-    private static final BigDecimal MIN_MARGIN_BUFFER = new BigDecimal("1.2"); // 20% buffer
+    private static final BigDecimal MIN_MARGIN_BUFFER = new BigDecimal("1.2");
     private static final int MAX_SPREADS_PER_DAY = 10;
 
-    // In-memory tracking (consider moving to Redis for production)
     private final Set<String> processedIndicatorsToday = Collections.synchronizedSet(new HashSet<>());
     private int spreadsPlacedToday = 0;
 
     // ---------------------------------------------------------------------
-    // Enums & POP mapping
+    // Enums with HONEST names
     // ---------------------------------------------------------------------
     public enum SpreadType {
         BULL_CALL, BEAR_CALL, BULL_PUT, BEAR_PUT, NAKED_CALL_HEDGE, NAKED_PUT_HEDGE
     }
 
-    public enum POPLevel {
-        POP50, POP55, POP60, POP65, POP70, POP75, POP80
+    /**
+     * RENAMED: StrikeDistanceLevel (was POPLevel)
+     * 
+     * These represent DISTANCE from ATM in strike steps, NOT probability.
+     * 
+     * Example: If step size = 100 points:
+     *   - ATM:         Current price (e.g., 44,000)
+     *   - NEAR_OTM:    1 step away (e.g., 43,900 or 44,100)
+     *   - MID_OTM:     2 steps away (e.g., 43,800 or 44,200)
+     *   - FAR_OTM:     3 steps away (e.g., 43,700 or 44,300)
+     * 
+     * WARNING: Actual win probability will vary based on market volatility!
+     *   - In calm markets (low IV): These may be 65-75% safe
+     *   - In volatile markets (high IV): These may be 50-60% safe
+     */
+    public enum StrikeDistanceLevel {
+        ATM,       // 0 steps
+        NEAR_OTM,  // 1 step
+        MID_OTM,   // 2 steps
+        FAR_OTM    // 3 steps
     }
 
-    // POP level → strike steps (0 = ATM, 1 = OTM+1, 2 = OTM+2, etc.)
-    private static final Map<POPLevel, Integer> POP_STEPS_MAP = Map.of(
-            POPLevel.POP50, 0, // ATM
-            POPLevel.POP55, 0, // ATM
-            POPLevel.POP60, 1, // OTM + 1
-            POPLevel.POP65, 1, // OTM + 1
-            POPLevel.POP70, 2, // OTM + 2
-            POPLevel.POP75, 2, // OTM + 2
-            POPLevel.POP80, 3  // OTM + 3 (very safe)
+    /**
+     * Maps distance levels to strike steps.
+     * NOTE: This is FIXED distance, not probability-adjusted!
+     */
+    private static final Map<StrikeDistanceLevel, Integer> DISTANCE_STEPS_MAP = Map.of(
+            StrikeDistanceLevel.ATM, 0,
+            StrikeDistanceLevel.NEAR_OTM, 1,
+            StrikeDistanceLevel.MID_OTM, 2,
+            StrikeDistanceLevel.FAR_OTM, 3
     );
 
-    private int getStepsFromPOP(POPLevel pop) {
-        return POP_STEPS_MAP.getOrDefault(pop, 0);
+    private int getStepsFromDistance(StrikeDistanceLevel level) {
+        return DISTANCE_STEPS_MAP.getOrDefault(level, 1);
     }
 
     // ---------------------------------------------------------------------
-    // PUBLIC API
+    // PUBLIC API (updated signatures)
     // ---------------------------------------------------------------------
 
     /**
      * Entry point - fetch indicators and attempt spread placements
      */
     public void getStockList() {
-    	List<String> signals = List.of("FIRST BUY", "FIRST SELL");
+        List<String> signals = List.of("FIRST BUY", "FIRST SELL");
 
-    	List<Indicator> rawList =
-    	        indicatorRepo.findByHeikinAshiDayInAndPsarFlagDayInAndOptions(
-    	            signals, signals, "Y");
+        List<Indicator> rawList =
+                indicatorRepo.findByTradetypeAndOptions("DAILY", "Y");
 
-    	List<Indicator> indicatorList = rawList.stream()
-    	        .filter(i -> i.getHeikinAshiDay().equals(i.getPsarFlagDay()))
-    	        .toList();
+        List<Indicator> indicatorList = rawList.stream()
+                .filter(i -> i.getHeikinAshiDay().equals(i.getPsarFlagDay()))
+                .toList();
 
         SmartConnect smartConnect = angelOne.signIn();
 
@@ -137,12 +166,12 @@ public class SpreadService {
     }
 
     /**
-     * Determine spread type from indicator signal and delegate
+     * Determine spread type from indicator signal
      */
     public void processIndicator(SmartConnect smartConnect, Indicator indicator) {
         String signal = indicator.getHeikinAshiDay();
         SpreadType spreadType;
-        POPLevel popLevel = POPLevel.POP60;
+        StrikeDistanceLevel distanceLevel = StrikeDistanceLevel.ATM; // Default: 1 step OTM
 
         if ("FIRST BUY".equalsIgnoreCase(signal)) {
             spreadType = SpreadType.BULL_PUT;
@@ -153,26 +182,28 @@ public class SpreadService {
             return;
         }
 
-        log.info("Placing spread {} for {} based on signal {}", spreadType,
-                 indicator.getTradingSymbol(), signal);
+        log.info("Placing spread {} for {} at distance level {} based on signal {}", 
+                 spreadType, indicator.getTradingSymbol(), distanceLevel, signal);
 
-        processIndicator(smartConnect, indicator, spreadType, popLevel);
+        processIndicator(smartConnect, indicator, spreadType, distanceLevel);
     }
 
     public void processIndicator(SmartConnect smartConnect, Indicator indicator, SpreadType spreadType) {
-        processIndicator(smartConnect, indicator, spreadType, POPLevel.POP60);
+        processIndicator(smartConnect, indicator, spreadType, StrikeDistanceLevel.NEAR_OTM);
     }
 
     /**
-     * Main processing method. This is intentionally left as the single,
-     * transactional operation to preserve original behavior.
+     * Main processing method with honest parameter naming.
+     * 
+     * @param distanceLevel - How far from ATM to place strikes (NOT probability!)
      */
     @Transactional
     public void processIndicator(SmartConnect smartConnect, Indicator indicator,
-                                 SpreadType spreadType, POPLevel popLevel) {
+                                 SpreadType spreadType, StrikeDistanceLevel distanceLevel) {
 
-        log.info("=== Processing Spread for {} | Type: {} | POP: {} ===",
-                 indicator.getTradingSymbol(), spreadType, popLevel);
+        log.info("=== Processing Spread for {} | Type: {} | Distance: {} ===",
+                 indicator.getTradingSymbol(), spreadType, distanceLevel);
+        log.warn("⚠️  Using FIXED strike distance ({}), NOT probability-based POP!", distanceLevel);
 
         // Duplicate prevention
         String indicatorKey = indicator.getTradingSymbol() + "_" + spreadType.name();
@@ -208,7 +239,8 @@ public class SpreadService {
         try {
             expiryDate = LocalDate.parse(normalized, formatter);
         } catch (Exception e) {
-            log.error("Failed to parse expiry {} -> normalized='{}'. Error: {}", expiryName, normalized, e.getMessage());
+            log.error("Failed to parse expiry {} -> normalized='{}'. Error: {}", 
+                     expiryName, normalized, e.getMessage());
             return;
         }
 
@@ -219,31 +251,38 @@ public class SpreadService {
                             expiryDate.getMonth() == today.getMonth();
 
         if (sameMonth && currentDay >= 15) {
-            log.warn("Skipping action: expiry {} is current month and today={} >= 15.", expiryName, currentDay);
+            log.warn("Skipping action: expiry {} is current month and today={} >= 15.", 
+                    expiryName, currentDay);
             return;
         }
         log.info("Expiry {} valid. Continuing…", expiryName);
 
         // Fetch strikes
-        List<BigDecimal> strikes = fetchAllStrikesForInstrument(indicator.getName(), expiry.getExpirydate());
+        List<BigDecimal> strikes = fetchAllStrikesForInstrument(
+            indicator.getName(), expiry.getExpirydate());
         if (strikes.isEmpty()) {
-            log.error("No strikes found for {} expiry {}", indicator.getTradingSymbol(), expiry.getExpirydate());
+            log.error("No strikes found for {} expiry {}", 
+                     indicator.getTradingSymbol(), expiry.getExpirydate());
             return;
         }
 
-        // Calculate spread
-        SpreadCalculation calc = calculateSpread(ltp, strikes, spreadType, popLevel);
+        // Calculate spread using DISTANCE (not POP!)
+        SpreadCalculation calc = calculateSpread(ltp, strikes, spreadType, distanceLevel);
         if (!calc.isValid()) {
-            log.error("Invalid spread calculation for {}: {}", indicator.getTradingSymbol(), calc.getErrorMessage());
+            log.error("Invalid spread calculation for {}: {}", 
+                     indicator.getTradingSymbol(), calc.getErrorMessage());
             return;
         }
 
         log.info("Spread calculation: LTP={} | ATM={} | Step={} | BuyStrike={} | SellStrike={}",
                  ltp, calc.atmStrike, calc.stepSize, calc.buyStrike, calc.sellStrike);
+        log.info("⚠️  ACTUAL win probability NOT calculated - depends on current market volatility!");
 
         // Build tokens
-        Token buyLeg = buildToken(indicator, expiry, calc.buyStrike, calc.buyOptionType, Constants.TRANSACTION_TYPE_BUY);
-        Token sellLeg = buildToken(indicator, expiry, calc.sellStrike, calc.sellOptionType, Constants.TRANSACTION_TYPE_SELL);
+        Token buyLeg = buildToken(indicator, expiry, calc.buyStrike, 
+                                 calc.buyOptionType, Constants.TRANSACTION_TYPE_BUY);
+        Token sellLeg = buildToken(indicator, expiry, calc.sellStrike, 
+                                  calc.sellOptionType, Constants.TRANSACTION_TYPE_SELL);
 
         if (buyLeg == null || sellLeg == null) {
             log.error("Failed to build tokens for {}", indicator.getTradingSymbol());
@@ -258,18 +297,18 @@ public class SpreadService {
         BigDecimal maxRisk = calculateMaxRisk(buyLeg, sellLeg, calc);
         BigDecimal maxProfit = calculateMaxProfit(buyLeg, sellLeg, calc);
 
-        // Avoid division by zero
         BigDecimal rr = BigDecimal.ZERO;
         if (maxRisk.compareTo(BigDecimal.ZERO) != 0) {
             rr = maxProfit.divide(maxRisk, 2, RoundingMode.HALF_UP);
         }
 
-        log.info("Spread P&L: MaxRisk={} | MaxProfit={} | Risk:Reward=1:{}", maxRisk, maxProfit, rr);
+        log.info("Spread P&L: MaxRisk={} | MaxProfit={} | Risk:Reward=1:{}", 
+                maxRisk, maxProfit, rr);
 
         // Validate margin
-        // kept for parity with original code
         if (!validateMarginRequirement(smartConnect)) {
-            log.error("Insufficient margin for {} spread - aborting", indicator.getTradingSymbol());
+            log.error("Insufficient margin for {} spread - aborting", 
+                     indicator.getTradingSymbol());
             return;
         }
 
@@ -278,12 +317,13 @@ public class SpreadService {
         if (success) {
             processedIndicatorsToday.add(indicatorKey);
             spreadsPlacedToday++;
-            log.info("Spread placed successfully! Total today: {}/{}", spreadsPlacedToday, MAX_SPREADS_PER_DAY);
+            log.info("Spread placed successfully! Total today: {}/{}", 
+                    spreadsPlacedToday, MAX_SPREADS_PER_DAY);
         }
     }
 
     // ---------------------------------------------------------------------
-    // SPREAD CALCULATION
+    // SPREAD CALCULATION (renamed parameter)
     // ---------------------------------------------------------------------
     private static class SpreadCalculation {
         BigDecimal atmStrike;
@@ -303,8 +343,16 @@ public class SpreadService {
         }
     }
 
+    /**
+     * Calculate spread strikes based on FIXED DISTANCE from ATM.
+     * 
+     * NOTE: This does NOT calculate actual probability!
+     * 
+     * @param distanceLevel - Strike distance (ATM, NEAR_OTM, MID_OTM, FAR_OTM)
+     */
     private SpreadCalculation calculateSpread(BigDecimal ltp, List<BigDecimal> strikes,
-                                               SpreadType spreadType, POPLevel popLevel) {
+                                               SpreadType spreadType, 
+                                               StrikeDistanceLevel distanceLevel) {
         SpreadCalculation calc = new SpreadCalculation();
 
         calc.atmStrike = findNearestStrike(ltp, strikes);
@@ -315,10 +363,15 @@ public class SpreadService {
             return calc;
         }
 
-        int steps = getStepsFromPOP(popLevel);
+        int steps = getStepsFromDistance(distanceLevel);
+        
+        log.debug("Using fixed distance: {} steps = {} points from ATM", 
+                 steps, calc.stepSize.multiply(BigDecimal.valueOf(steps)));
 
-        BigDecimal sellStrikePut = calc.atmStrike.subtract(calc.stepSize.multiply(BigDecimal.valueOf(steps)));
-        BigDecimal sellStrikeCall = calc.atmStrike.add(calc.stepSize.multiply(BigDecimal.valueOf(steps)));
+        BigDecimal sellStrikePut = calc.atmStrike.subtract(
+            calc.stepSize.multiply(BigDecimal.valueOf(steps)));
+        BigDecimal sellStrikeCall = calc.atmStrike.add(
+            calc.stepSize.multiply(BigDecimal.valueOf(steps)));
         BigDecimal hedgeLower = sellStrikePut.subtract(calc.stepSize);
         BigDecimal hedgeUpper = sellStrikeCall.add(calc.stepSize);
 
@@ -353,7 +406,8 @@ public class SpreadService {
 
             case NAKED_CALL_HEDGE:
                 calc.sellStrike = sellStrikeCall;
-                calc.buyStrike = calc.sellStrike.add(calc.stepSize.multiply(BigDecimal.valueOf(NAKED_HEDGE_DISTANCE)));
+                calc.buyStrike = calc.sellStrike.add(
+                    calc.stepSize.multiply(BigDecimal.valueOf(NAKED_HEDGE_DISTANCE)));
                 calc.buyOptionType = "CE";
                 calc.sellOptionType = "CE";
                 log.info("NAKED_CALL_HEDGE: Selling {} CE, Buying {} CE hedge ({}x away)",
@@ -362,7 +416,8 @@ public class SpreadService {
 
             case NAKED_PUT_HEDGE:
                 calc.sellStrike = sellStrikePut;
-                calc.buyStrike = calc.sellStrike.subtract(calc.stepSize.multiply(BigDecimal.valueOf(NAKED_HEDGE_DISTANCE)));
+                calc.buyStrike = calc.sellStrike.subtract(
+                    calc.stepSize.multiply(BigDecimal.valueOf(NAKED_HEDGE_DISTANCE)));
                 calc.buyOptionType = "PE";
                 calc.sellOptionType = "PE";
                 log.info("NAKED_PUT_HEDGE: Selling {} PE, Buying {} PE hedge ({}x away)",
@@ -371,8 +426,10 @@ public class SpreadService {
         }
 
         if (!isValidStrike(calc.buyStrike, strikes)) {
-            if (spreadType == SpreadType.NAKED_CALL_HEDGE || spreadType == SpreadType.NAKED_PUT_HEDGE) {
-                BigDecimal furthest = findFurthestStrike(strikes, spreadType == SpreadType.NAKED_CALL_HEDGE);
+            if (spreadType == SpreadType.NAKED_CALL_HEDGE || 
+                spreadType == SpreadType.NAKED_PUT_HEDGE) {
+                BigDecimal furthest = findFurthestStrike(strikes, 
+                    spreadType == SpreadType.NAKED_CALL_HEDGE);
                 log.warn("Buy strike {} not available for {}. Using furthest strike: {}",
                          calc.buyStrike, spreadType, furthest);
                 calc.buyStrike = furthest;
@@ -404,29 +461,27 @@ public class SpreadService {
     // ---------------------------------------------------------------------
     private BigDecimal calculateMaxRisk(Token buyLeg, Token sellLeg, SpreadCalculation calc) {
         BigDecimal strikeWidth = calc.sellStrike.subtract(calc.buyStrike).abs();
-        BigDecimal premium = BigDecimal.valueOf(sellLeg.getPrice()).subtract(BigDecimal.valueOf(buyLeg.getPrice()));
+        BigDecimal premium = BigDecimal.valueOf(sellLeg.getPrice())
+            .subtract(BigDecimal.valueOf(buyLeg.getPrice()));
 
-        // For credit spreads: max risk = strike width - net credit
-        // For debit spreads: max risk = net debit
         if (premium.compareTo(BigDecimal.ZERO) > 0) {
-            // Credit spread
-            return strikeWidth.subtract(premium).multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
+            return strikeWidth.subtract(premium)
+                .multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
         } else {
-            // Debit spread
             return premium.abs().multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
         }
     }
 
     private BigDecimal calculateMaxProfit(Token buyLeg, Token sellLeg, SpreadCalculation calc) {
-        BigDecimal premium = BigDecimal.valueOf(sellLeg.getPrice()).subtract(BigDecimal.valueOf(buyLeg.getPrice()));
+        BigDecimal premium = BigDecimal.valueOf(sellLeg.getPrice())
+            .subtract(BigDecimal.valueOf(buyLeg.getPrice()));
 
         if (premium.compareTo(BigDecimal.ZERO) > 0) {
-            // Credit spread: max profit = net credit
             return premium.multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
         } else {
-            // Debit spread: max profit = strike width - net debit
             BigDecimal strikeWidth = calc.sellStrike.subtract(calc.buyStrike).abs();
-            return strikeWidth.subtract(premium.abs()).multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
+            return strikeWidth.subtract(premium.abs())
+                .multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
         }
     }
 
@@ -443,7 +498,8 @@ public class SpreadService {
                 log.info("Sufficient margin available. AvailableCash = {}", availableCash);
                 return true;
             } else {
-                log.warn("Insufficient margin. Required = {}, AvailableCash = {}", required, availableCash);
+                log.warn("Insufficient margin. Required = {}, AvailableCash = {}", 
+                        required, availableCash);
                 return false;
             }
         } catch (Exception e) {
@@ -452,94 +508,49 @@ public class SpreadService {
         }
     }
 
-    private BigDecimal getMarginForLeg(SmartConnect smartConnect, Token token) {
-        List<MarginParams> marginParamsList = new ArrayList<>();
-        MarginParams marginParams = new MarginParams();
-        marginParams.quantity = token.getQuantity();
-        marginParams.token = token.getToken();
-        marginParams.exchange = token.getExch_seg();
-        marginParams.productType = Constants.PRODUCT_CARRYFORWARD;
-        marginParams.price = token.getPrice();
-        marginParams.tradeType = token.getTransactionType();
-        marginParamsList.add(marginParams);
-
-        try {
-            JSONObject jsonObject = smartConnect.getMarginDetails(marginParamsList);
-            log.debug("Margin response for {}: {}", token.getSymbol(), jsonObject);
-
-            if (jsonObject.has("data")) {
-                JSONObject data = jsonObject.getJSONObject("data");
-                if (data.has("totalMarginRequired")) {
-                    return new BigDecimal(data.getString("totalMarginRequired"));
-                }
-            }
-
-            // Fallback: estimate as 10% of notional
-            BigDecimal notional = BigDecimal.valueOf(token.getPrice()).multiply(BigDecimal.valueOf(token.getQuantity()));
-            return notional.multiply(new BigDecimal("0.10"));
-        } catch (IOException | SmartAPIException e) {
-            log.error("Failed to get margin for {}: {}", token.getSymbol(), e.getMessage());
-            return null;
-        }
-    }
-
-    private BigDecimal getAvailableMargin(SmartConnect smartConnect) {
-        try {
-            // TODO: Implement actual RMS API call to get available margin
-            // JSONObject rms = smartConnect.rmsLimit();
-            // return new BigDecimal(rms.getJSONObject("data").getString("availablecash"));
-
-            // Placeholder: return a large value
-            return new BigDecimal("1000000");
-        } catch (Exception e) {
-            log.error("Failed to fetch available margin: {}", e.getMessage());
-            return BigDecimal.ZERO;
-        }
-    }
-
     // ---------------------------------------------------------------------
-    // ORDER PLACEMENT WITH ENHANCED ROLLBACK
+    // ORDER PLACEMENT
     // ---------------------------------------------------------------------
     public boolean placeSpreadOrder(SmartConnect smartConnect, Token buyLeg, Token sellLeg,
                                     Indicator indicator, SpreadType spreadType) {
 
         Strategy strategy = strategyRepo.findByName(AppConstant.SPREAD_STRATEGY);
         if (strategy == null) {
-            log.warn("Strategy '{}' not found -> skipping order placement", AppConstant.SPREAD_STRATEGY);
+            log.warn("Strategy '{}' not found -> skipping order placement", 
+                    AppConstant.SPREAD_STRATEGY);
             return false;
         }
 
-        // PAPER TRADE
         if ("Y".equalsIgnoreCase(strategy.getPapertrade())) {
             saveOrders(buyLeg, sellLeg);
             log.info("Paper trade orders saved for {}", indicator.getTradingSymbol());
         }
 
-        // LIVE TRADE CHECK
         if (!"Y".equalsIgnoreCase(strategy.getLive())) {
             log.info("Strategy not live - skipping actual order placement");
             return false;
         }
 
         log.info("Placing LIVE spread: BUY {} @ {} | SELL {} @ {}",
-                 buyLeg.getSymbol(), buyLeg.getQuantity(), sellLeg.getSymbol(), sellLeg.getQuantity());
+                 buyLeg.getSymbol(), buyLeg.getQuantity(), 
+                 sellLeg.getSymbol(), sellLeg.getQuantity());
 
-        // Place BUY leg first
         OrderResult buyResult = placeSingleOrder(smartConnect, buyLeg);
         if (!buyResult.isSuccess()) {
-            log.error("Buy leg failed for {} - aborting spread. Error: {}", buyLeg.getSymbol(), buyResult.getErrorMessage());
+            log.error("Buy leg failed for {} - aborting spread. Error: {}", 
+                     buyLeg.getSymbol(), buyResult.getErrorMessage());
             return false;
         }
-        log.info("Buy leg successful: {} - OrderID: {}", buyLeg.getSymbol(), buyResult.getOrderId());
+        log.info("Buy leg successful: {} - OrderID: {}", 
+                buyLeg.getSymbol(), buyResult.getOrderId());
 
-        // Wait for buy order to be filled
         if (!waitForOrderCompletion(smartConnect, buyResult.getOrderId())) {
-            log.error("Buy leg order {} did not complete in time - aborting spread", buyResult.getOrderId());
+            log.error("Buy leg order {} did not complete in time - aborting spread", 
+                     buyResult.getOrderId());
             attemptCancelOrder(smartConnect, buyResult.getOrderId());
             return false;
         }
 
-        // Place SELL leg
         OrderResult sellResult = placeSingleOrder(smartConnect, sellLeg);
         if (!sellResult.isSuccess()) {
             log.error("CRITICAL: Sell leg failed for {}. Buy leg OrderID: {}. Error: {}",
@@ -551,14 +562,15 @@ public class SpreadService {
             if (!rollbackSuccess) {
                 log.error("MANUAL INTERVENTION REQUIRED: Unable to rollback buy leg {}. OrderID: {}",
                           buyLeg.getSymbol(), buyResult.getOrderId());
-                sendAlert("CRITICAL: Failed rollback for " + buyLeg.getSymbol() + " OrderID: " + buyResult.getOrderId());
+                sendAlert("CRITICAL: Failed rollback for " + buyLeg.getSymbol() + 
+                         " OrderID: " + buyResult.getOrderId());
             }
             return false;
         }
 
-        log.info("✓ Spread placement SUCCESSFUL! Buy: {} | Sell: {}", buyResult.getOrderId(), sellResult.getOrderId());
+        log.info("✓ Spread placement SUCCESSFUL! Buy: {} | Sell: {}", 
+                buyResult.getOrderId(), sellResult.getOrderId());
 
-        // Save position tracking (implement SpreadPositionRepo if needed)
         saveSpreadPosition(indicator, spreadType, buyResult, sellResult, buyLeg, sellLeg);
         return true;
     }
@@ -574,7 +586,7 @@ public class SpreadService {
     }
 
     // ---------------------------------------------------------------------
-    // ORDER RESULT / PLACEMENT HELPERS
+    // ORDER RESULT / HELPERS
     // ---------------------------------------------------------------------
     private static class OrderResult {
         private final boolean success;
@@ -594,29 +606,32 @@ public class SpreadService {
 
     private OrderResult placeSingleOrder(SmartConnect sc, Token token) {
         try {
-            log.info("Placing {} order for {} qty {}", token.getTransactionType(), token.getSymbol(), token.getQuantity());
+            log.info("Placing {} order for {} qty {}", 
+                    token.getTransactionType(), token.getSymbol(), token.getQuantity());
 
             Token orderResponse = angelOneService.placeOrder(sc, token);
             if (orderResponse != null) {
                 String orderId = extractOrderId(orderResponse);
-                log.info("Order placed successfully: {} - OrderID: {}", token.getSymbol(), orderId);
+                log.info("Order placed successfully: {} - OrderID: {}", 
+                        token.getSymbol(), orderId);
                 return new OrderResult(true, orderId, null);
             } else {
                 return new OrderResult(false, null, "Order response was null");
             }
 
         } catch (SmartAPIException e) {
-            log.error("SmartAPI exception placing order for {}: {}", token.getSymbol(), e.getMessage(), e);
+            log.error("SmartAPI exception placing order for {}: {}", 
+                     token.getSymbol(), e.getMessage(), e);
             return new OrderResult(false, null, e.getMessage());
         } catch (Exception e) {
-            log.error("Unexpected exception placing order for {}: {}", token.getSymbol(), e.getMessage(), e);
+            log.error("Unexpected exception placing order for {}: {}", 
+                     token.getSymbol(), e.getMessage(), e);
             return new OrderResult(false, null, e.getMessage());
         }
     }
 
     private String extractOrderId(Token orderResponse) {
         try {
-            // Try common getter names via reflection
             try {
                 java.lang.reflect.Method m = orderResponse.getClass().getMethod("getOrderId");
                 Object rv = m.invoke(orderResponse);
@@ -639,7 +654,6 @@ public class SpreadService {
             log.debug("Reflection failed while extracting order id: {}", e.getMessage());
         }
 
-        // Fallback ID
         String fallbackId = "ORDER_" + System.currentTimeMillis();
         log.warn("Could not extract order ID from response, using fallback: {}", fallbackId);
         return fallbackId;
@@ -653,12 +667,6 @@ public class SpreadService {
                 TimeUnit.MILLISECONDS.sleep(ORDER_STATUS_POLL_DELAY_MS);
 
                 // TODO: Implement actual order status check
-                // JSONObject orderStatus = sc.getOrderStatus(orderId);
-                // String status = orderStatus.getString("status");
-                // if ("COMPLETE".equals(status)) return true;
-                // if ("REJECTED".equals(status) || "CANCELLED".equals(status)) return false;
-
-                // Placeholder: assume success after a few attempts
                 if (attempt >= 3) {
                     log.info("Order {} assumed complete", orderId);
                     return true;
@@ -681,7 +689,6 @@ public class SpreadService {
         try {
             log.info("Attempting to cancel order {}", orderId);
             // TODO: Implement actual cancellation
-            // sc.cancelOrder(orderId);
             log.info("Cancel request sent for order {}", orderId);
         } catch (Exception e) {
             log.error("Failed to cancel order {}: {}", orderId, e.getMessage());
@@ -689,9 +696,9 @@ public class SpreadService {
     }
 
     private boolean rollbackBuyLeg(SmartConnect sc, Token buyLeg, String orderId) {
-        log.warn("Initiating rollback for buy leg {} (OrderID: {})", buyLeg.getSymbol(), orderId);
+        log.warn("Initiating rollback for buy leg {} (OrderID: {})", 
+                buyLeg.getSymbol(), orderId);
 
-        // Strategy 1: Try to cancel
         try {
             boolean cancelled = attemptCancelOrderWithRetry(sc, orderId);
             if (cancelled) {
@@ -702,13 +709,13 @@ public class SpreadService {
             log.debug("Cancel attempt failed (order may be filled): {}", e.getMessage());
         }
 
-        // Strategy 2: Place exit order
         try {
             Token exitToken = createExitToken(buyLeg, sc);
             OrderResult exitResult = placeSingleOrder(sc, exitToken);
 
             if (exitResult.isSuccess()) {
-                log.info("Successfully rolled back buy leg {} with exit order {}", buyLeg.getSymbol(), exitResult.getOrderId());
+                log.info("Successfully rolled back buy leg {} with exit order {}", 
+                        buyLeg.getSymbol(), exitResult.getOrderId());
                 return true;
             } else {
                 log.error("Exit order failed: {}", exitResult.getErrorMessage());
@@ -724,9 +731,6 @@ public class SpreadService {
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
                 // TODO: Implement actual cancellation
-                // JSONObject result = sc.cancelOrder(orderId);
-                // if (result.getBoolean("success")) return true;
-
                 log.info("Cancel attempt {} for order {}", attempt, orderId);
                 TimeUnit.MILLISECONDS.sleep(300);
 
@@ -762,7 +766,6 @@ public class SpreadService {
                                     Token buyLeg, Token sellLeg) {
         try {
             // TODO: Implement SpreadPosition entity and repository
-            // Save relevant details to DB when SpreadPosition exists
             log.info("Spread position tracked: {} {} - Buy:{} Sell:{}",
                      indicator.getTradingSymbol(), spreadType,
                      buyResult.getOrderId(), sellResult.getOrderId());
@@ -773,7 +776,7 @@ public class SpreadService {
     }
 
     private void sendAlert(String message) {
-        // TODO: Implement alerting (email, Slack, SMS, etc.)
+        // TODO: Implement alerting
         log.error("ALERT: {}", message);
     }
 
@@ -790,7 +793,8 @@ public class SpreadService {
                 "ltp"
             );
         } catch (Exception e) {
-            log.error("Failed to fetch LTP for {}: {}", indicator.getTradingSymbol(), e.getMessage(), e);
+            log.error("Failed to fetch LTP for {}: {}", 
+                     indicator.getTradingSymbol(), e.getMessage(), e);
             return null;
         }
     }
@@ -886,9 +890,6 @@ public class SpreadService {
         return token;
     }
 
-    /**
-     * Convert expiry like "25NOV2025" or "5JAN2026" -> "25NOV25" or "05JAN26"
-     */
     public String toShortExpiry(String expiryCode) {
         if (expiryCode == null) {
             log.warn("Invalid expiry code: null");
@@ -936,18 +937,12 @@ public class SpreadService {
     // ---------------------------------------------------------------------
     // UTILITY METHODS
     // ---------------------------------------------------------------------
-    /**
-     * Reset daily counters (call this from a scheduled job at start of day)
-     */
     public void resetDailyCounters() {
         processedIndicatorsToday.clear();
         spreadsPlacedToday = 0;
         log.info("Daily counters reset");
     }
 
-    /**
-     * Get current spread statistics
-     */
     public Map<String, Object> getSpreadStatistics() {
         Map<String, Object> stats = new HashMap<>();
         stats.put("spreadsPlacedToday", spreadsPlacedToday);

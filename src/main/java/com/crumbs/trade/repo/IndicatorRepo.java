@@ -127,5 +127,7 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 
 	List<Indicator> findByHeikinAshiDayInAndPsarFlagDayInAndOptions(List<String> signals, List<String> signals2,
 			String option);
+	
+	List<Indicator> findByTradetypeAndOptions(String type,String option);
 
 }
