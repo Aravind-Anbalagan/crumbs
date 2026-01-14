@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -36,25 +37,15 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Enhanced SpreadService with HONEST naming convention.
+ * Enhanced SpreadService with INTELLIGENT strike selection based on OI and IV.
  * 
- * IMPORTANT: This service uses STRIKE DISTANCE strategy, NOT actual probability-based POP.
- * The "distance levels" are fixed strike intervals that do NOT account for:
- *   - Implied Volatility (IV)
- *   - Time to Expiration (DTE)
- *   - Actual option Greeks (Delta, Gamma, etc.)
+ * Selection Modes:
+ *   1. DISTANCE_BASED (original) - Fixed strike intervals from ATM
+ *   2. OI_BASED - Select strikes with strong OI support/resistance
+ *   3. IV_BASED - Select strikes with optimal IV levels
+ *   4. COMBINED - Use both OI and IV for best strike selection
  * 
- * Use this for:
- *   ✓ Simple, consistent strike selection
- *   ✓ Backtesting relative strategies
- *   ✓ Low-volatility, stable market conditions
- * 
- * DO NOT use this for:
- *   ✗ Precise risk management
- *   ✗ High-volatility environments
- *   ✗ Guaranteed probability outcomes
- * 
- * Version: 2.1 (Honest Naming)
+ * Version: 3.0 (Intelligent Strike Selection)
  */
 @Service
 @RequiredArgsConstructor
@@ -70,6 +61,7 @@ public class SpreadService {
     @Autowired private ExpiryRepo expiryRepo;
     @Autowired private IndexesRepo indexesRepo;
     @Autowired private StrategyRepo strategyRepo;
+    @Autowired private PredictionService predictionService;
 
     // ---------------------------------------------------------------------
     // Configuration constants
@@ -86,26 +78,24 @@ public class SpreadService {
     private int spreadsPlacedToday = 0;
 
     // ---------------------------------------------------------------------
-    // Enums with HONEST names
+    // Enums
     // ---------------------------------------------------------------------
     public enum SpreadType {
         BULL_CALL, BEAR_CALL, BULL_PUT, BEAR_PUT, NAKED_CALL_HEDGE, NAKED_PUT_HEDGE
     }
 
     /**
-     * RENAMED: StrikeDistanceLevel (was POPLevel)
-     * 
-     * These represent DISTANCE from ATM in strike steps, NOT probability.
-     * 
-     * Example: If step size = 100 points:
-     *   - ATM:         Current price (e.g., 44,000)
-     *   - NEAR_OTM:    1 step away (e.g., 43,900 or 44,100)
-     *   - MID_OTM:     2 steps away (e.g., 43,800 or 44,200)
-     *   - FAR_OTM:     3 steps away (e.g., 43,700 or 44,300)
-     * 
-     * WARNING: Actual win probability will vary based on market volatility!
-     *   - In calm markets (low IV): These may be 65-75% safe
-     *   - In volatile markets (high IV): These may be 50-60% safe
+     * Strike Selection Strategy
+     */
+    public enum StrikeSelectionMode {
+        DISTANCE_BASED,  // Original: Fixed distance from ATM
+        OI_BASED,        // Select based on OI support/resistance
+        IV_BASED,        // Select based on IV levels
+        COMBINED         // Use both OI and IV (RECOMMENDED)
+    }
+
+    /**
+     * Distance levels for DISTANCE_BASED mode (backward compatibility)
      */
     public enum StrikeDistanceLevel {
         ATM,       // 0 steps
@@ -114,10 +104,6 @@ public class SpreadService {
         FAR_OTM    // 3 steps
     }
 
-    /**
-     * Maps distance levels to strike steps.
-     * NOTE: This is FIXED distance, not probability-adjusted!
-     */
     private static final Map<StrikeDistanceLevel, Integer> DISTANCE_STEPS_MAP = Map.of(
             StrikeDistanceLevel.ATM, 0,
             StrikeDistanceLevel.NEAR_OTM, 1,
@@ -125,31 +111,125 @@ public class SpreadService {
             StrikeDistanceLevel.FAR_OTM, 3
     );
 
-    private int getStepsFromDistance(StrikeDistanceLevel level) {
-        return DISTANCE_STEPS_MAP.getOrDefault(level, 1);
+    // ---------------------------------------------------------------------
+    // Configuration Class for Strike Selection
+    // ---------------------------------------------------------------------
+    public static class StrikeSelectionConfig {
+        private StrikeSelectionMode mode = StrikeSelectionMode.COMBINED;
+        
+        // OI Configuration
+        private BigDecimal minOIThreshold = BigDecimal.valueOf(1000);      // Minimum OI to consider
+        private BigDecimal oiSupportMultiplier = BigDecimal.valueOf(1.5);   // OI must be 1.5x average
+        
+        // IV Configuration
+        private BigDecimal maxIVThreshold = BigDecimal.valueOf(50);        // Max IV for selling
+        private BigDecimal minIVThreshold = BigDecimal.valueOf(15);        // Min IV for buying
+        private BigDecimal idealIVForSelling = BigDecimal.valueOf(30);     // Target IV for credit spreads
+        
+        // Combined Configuration
+        private BigDecimal oiWeight = BigDecimal.valueOf(0.6);             // 60% weight to OI
+        private BigDecimal ivWeight = BigDecimal.valueOf(0.4);             // 40% weight to IV
+        
+        // Search Range
+        private int strikeSearchRange = 5;  // How many strikes to scan from ATM
+        
+        // Fallback Configuration
+        private StrikeDistanceLevel fallbackDistance = StrikeDistanceLevel.NEAR_OTM;
+        
+        // Getters and Setters
+        public StrikeSelectionMode getMode() { return mode; }
+        public void setMode(StrikeSelectionMode mode) { this.mode = mode; }
+        
+        public BigDecimal getMinOIThreshold() { return minOIThreshold; }
+        public void setMinOIThreshold(BigDecimal minOIThreshold) { this.minOIThreshold = minOIThreshold; }
+        
+        public BigDecimal getOiSupportMultiplier() { return oiSupportMultiplier; }
+        public void setOiSupportMultiplier(BigDecimal oiSupportMultiplier) { 
+            this.oiSupportMultiplier = oiSupportMultiplier; 
+        }
+        
+        public BigDecimal getMaxIVThreshold() { return maxIVThreshold; }
+        public void setMaxIVThreshold(BigDecimal maxIVThreshold) { this.maxIVThreshold = maxIVThreshold; }
+        
+        public BigDecimal getMinIVThreshold() { return minIVThreshold; }
+        public void setMinIVThreshold(BigDecimal minIVThreshold) { this.minIVThreshold = minIVThreshold; }
+        
+        public BigDecimal getIdealIVForSelling() { return idealIVForSelling; }
+        public void setIdealIVForSelling(BigDecimal idealIVForSelling) { 
+            this.idealIVForSelling = idealIVForSelling; 
+        }
+        
+        public BigDecimal getOiWeight() { return oiWeight; }
+        public void setOiWeight(BigDecimal oiWeight) { this.oiWeight = oiWeight; }
+        
+        public BigDecimal getIvWeight() { return ivWeight; }
+        public void setIvWeight(BigDecimal ivWeight) { this.ivWeight = ivWeight; }
+        
+        public int getStrikeSearchRange() { return strikeSearchRange; }
+        public void setStrikeSearchRange(int strikeSearchRange) { 
+            this.strikeSearchRange = strikeSearchRange; 
+        }
+        
+        public StrikeDistanceLevel getFallbackDistance() { return fallbackDistance; }
+        public void setFallbackDistance(StrikeDistanceLevel fallbackDistance) { 
+            this.fallbackDistance = fallbackDistance; 
+        }
     }
 
     // ---------------------------------------------------------------------
-    // PUBLIC API (updated signatures)
+    // Strike Data Class
+    // ---------------------------------------------------------------------
+    private static class StrikeData {
+        BigDecimal strike;
+        String optionType;  // "CE" or "PE"
+        BigDecimal price;
+        BigDecimal oi;
+        BigDecimal iv;
+        BigDecimal volume;
+        String token;
+        String symbol;
+        BigDecimal score;  // Composite score for ranking
+        
+        public StrikeData(BigDecimal strike, String optionType) {
+            this.strike = strike;
+            this.optionType = optionType;
+        }
+        
+        @Override
+        public String toString() {
+            return String.format("Strike: %s %s, Price: %s, OI: %s, IV: %s, Score: %s",
+                strike, optionType, price, oi, iv, score);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // PUBLIC API - WITH CONFIGURATION
     // ---------------------------------------------------------------------
 
     /**
-     * Entry point - fetch indicators and attempt spread placements
+     * Entry point with default COMBINED mode
      */
     public void getStockList() {
+        StrikeSelectionConfig config = new StrikeSelectionConfig();
+        config.setMode(StrikeSelectionMode.COMBINED);
+        getStockListWithConfig(config);
+    }
+
+    /**
+     * Entry point with custom configuration
+     */
+    public void getStockListWithConfig(StrikeSelectionConfig config) {
         List<String> signals = List.of("FIRST BUY", "FIRST SELL");
 
-        List<Indicator> rawList =
-                indicatorRepo.findByTradetypeAndOptions("DAILY", "Y");
-
+        List<Indicator> rawList = indicatorRepo.findByTradetypeAndOptions("DAILY", "Y");
         List<Indicator> indicatorList = rawList.stream()
                 .filter(i -> i.getHeikinAshiDay().equals(i.getPsarFlagDay()))
                 .toList();
 
         SmartConnect smartConnect = angelOne.signIn();
 
-        log.info("Processing {} indicators for spread placement (Daily limit: {})",
-                 indicatorList.size(), MAX_SPREADS_PER_DAY);
+        log.info("Processing {} indicators with {} mode (Daily limit: {})",
+                 indicatorList.size(), config.getMode(), MAX_SPREADS_PER_DAY);
 
         for (Indicator indicator : indicatorList) {
             if (spreadsPlacedToday >= MAX_SPREADS_PER_DAY) {
@@ -158,7 +238,7 @@ public class SpreadService {
             }
 
             try {
-                processIndicator(smartConnect, indicator);
+                processIndicatorWithConfig(smartConnect, indicator, config);
             } catch (Exception e) {
                 log.error("Failed processing {}: {}", indicator.getTradingSymbol(), e.getMessage(), e);
             }
@@ -166,12 +246,12 @@ public class SpreadService {
     }
 
     /**
-     * Determine spread type from indicator signal
+     * Process indicator with intelligent strike selection
      */
-    public void processIndicator(SmartConnect smartConnect, Indicator indicator) {
+    public void processIndicatorWithConfig(SmartConnect smartConnect, Indicator indicator, 
+                                          StrikeSelectionConfig config) {
         String signal = indicator.getHeikinAshiDay();
         SpreadType spreadType;
-        StrikeDistanceLevel distanceLevel = StrikeDistanceLevel.ATM; // Default: 1 step OTM
 
         if ("FIRST BUY".equalsIgnoreCase(signal)) {
             spreadType = SpreadType.BULL_PUT;
@@ -182,28 +262,25 @@ public class SpreadService {
             return;
         }
 
-        log.info("Placing spread {} for {} at distance level {} based on signal {}", 
-                 spreadType, indicator.getTradingSymbol(), distanceLevel, signal);
+        log.info("Placing {} spread for {} using {} mode based on signal {}", 
+                 spreadType, indicator.getTradingSymbol(), config.getMode(), signal);
 
-        processIndicator(smartConnect, indicator, spreadType, distanceLevel);
+        processIndicatorIntelligent(smartConnect, indicator, spreadType, config);
     }
 
-    public void processIndicator(SmartConnect smartConnect, Indicator indicator, SpreadType spreadType) {
-        processIndicator(smartConnect, indicator, spreadType, StrikeDistanceLevel.NEAR_OTM);
-    }
+    // ---------------------------------------------------------------------
+    // INTELLIGENT STRIKE SELECTION
+    // ---------------------------------------------------------------------
 
     /**
-     * Main processing method with honest parameter naming.
-     * 
-     * @param distanceLevel - How far from ATM to place strikes (NOT probability!)
+     * Main processing method with intelligent strike selection
      */
     @Transactional
-    public void processIndicator(SmartConnect smartConnect, Indicator indicator,
-                                 SpreadType spreadType, StrikeDistanceLevel distanceLevel) {
+    public void processIndicatorIntelligent(SmartConnect smartConnect, Indicator indicator,
+                                           SpreadType spreadType, StrikeSelectionConfig config) {
 
-        log.info("=== Processing Spread for {} | Type: {} | Distance: {} ===",
-                 indicator.getTradingSymbol(), spreadType, distanceLevel);
-        log.warn("⚠️  Using FIXED strike distance ({}), NOT probability-based POP!", distanceLevel);
+        log.info("=== Processing Intelligent Spread for {} | Type: {} | Mode: {} ===",
+                 indicator.getTradingSymbol(), spreadType, config.getMode());
 
         // Duplicate prevention
         String indicatorKey = indicator.getTradingSymbol() + "_" + spreadType.name();
@@ -226,38 +303,13 @@ public class SpreadService {
             return;
         }
         Expiry expiry = optionalExpiry.get();
-        String expiryName = expiry.getExpirydate();
 
-        // Normalize expiry and parse
-        String normalized = expiryName.substring(0, 2)
-            + expiryName.substring(2, 3).toUpperCase()
-            + expiryName.substring(3, 5).toLowerCase()
-            + expiryName.substring(5);
-
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMMyyyy", Locale.ENGLISH);
-        LocalDate expiryDate;
-        try {
-            expiryDate = LocalDate.parse(normalized, formatter);
-        } catch (Exception e) {
-            log.error("Failed to parse expiry {} -> normalized='{}'. Error: {}", 
-                     expiryName, normalized, e.getMessage());
+        // Validate expiry date
+        if (!validateExpiryDate(expiry)) {
             return;
         }
 
-        LocalDate today = LocalDate.now();
-        int currentDay = today.getDayOfMonth();
-
-        boolean sameMonth = expiryDate.getYear() == today.getYear() &&
-                            expiryDate.getMonth() == today.getMonth();
-
-        if (sameMonth && currentDay >= 15) {
-            log.warn("Skipping action: expiry {} is current month and today={} >= 15.", 
-                    expiryName, currentDay);
-            return;
-        }
-        log.info("Expiry {} valid. Continuing…", expiryName);
-
-        // Fetch strikes
+        // Fetch all available strikes
         List<BigDecimal> strikes = fetchAllStrikesForInstrument(
             indicator.getName(), expiry.getExpirydate());
         if (strikes.isEmpty()) {
@@ -266,17 +318,35 @@ public class SpreadService {
             return;
         }
 
-        // Calculate spread using DISTANCE (not POP!)
-        SpreadCalculation calc = calculateSpread(ltp, strikes, spreadType, distanceLevel);
+        // Find ATM strike
+        BigDecimal atmStrike = findNearestStrike(ltp, strikes);
+        BigDecimal stepSize = findStrikeInterval(strikes);
+
+        log.info("Market Data: LTP={} | ATM={} | Step={}", ltp, atmStrike, stepSize);
+
+        // Fetch OI and IV data for strike selection
+        Map<String, StrikeData> strikeDataMap = fetchStrikeDataForRange(
+            smartConnect, indicator, expiry, atmStrike, strikes, config.getStrikeSearchRange());
+
+        if (strikeDataMap.isEmpty()) {
+            log.error("Failed to fetch strike data for {}", indicator.getTradingSymbol());
+            return;
+        }
+
+        // Select optimal strikes based on configuration
+        SpreadCalculation calc = selectOptimalStrikes(
+            ltp, atmStrike, stepSize, strikes, spreadType, config, strikeDataMap);
+
         if (!calc.isValid()) {
             log.error("Invalid spread calculation for {}: {}", 
                      indicator.getTradingSymbol(), calc.getErrorMessage());
             return;
         }
 
-        log.info("Spread calculation: LTP={} | ATM={} | Step={} | BuyStrike={} | SellStrike={}",
-                 ltp, calc.atmStrike, calc.stepSize, calc.buyStrike, calc.sellStrike);
-        log.info("⚠️  ACTUAL win probability NOT calculated - depends on current market volatility!");
+        log.info("Selected Strikes: Buy={} {} | Sell={} {} | Selection Score: {}",
+                 calc.buyStrike, calc.buyOptionType, 
+                 calc.sellStrike, calc.sellOptionType,
+                 calc.selectionScore);
 
         // Build tokens
         Token buyLeg = buildToken(indicator, expiry, calc.buyStrike, 
@@ -304,6 +374,8 @@ public class SpreadService {
 
         log.info("Spread P&L: MaxRisk={} | MaxProfit={} | Risk:Reward=1:{}", 
                 maxRisk, maxProfit, rr);
+        log.info("Strike Selection Details: SellStrike OI={}, IV={} | BuyStrike OI={}, IV={}",
+                calc.sellStrikeOI, calc.sellStrikeIV, calc.buyStrikeOI, calc.buyStrikeIV);
 
         // Validate margin
         if (!validateMarginRequirement(smartConnect)) {
@@ -323,7 +395,632 @@ public class SpreadService {
     }
 
     // ---------------------------------------------------------------------
-    // SPREAD CALCULATION (renamed parameter)
+    // FETCH OI AND IV DATA FOR STRIKE RANGE
+    // ---------------------------------------------------------------------
+
+    /**
+     * Fetch OI, IV, and price data for a range of strikes around ATM
+     */
+    private Map<String, StrikeData> fetchStrikeDataForRange(
+            SmartConnect smartConnect,
+            Indicator indicator,
+            Expiry expiry,
+            BigDecimal atmStrike,
+            List<BigDecimal> allStrikes,
+            int searchRange) {
+
+        Map<String, StrikeData> dataMap = new HashMap<>();
+        BigDecimal stepSize = findStrikeInterval(allStrikes);
+
+        // Build list of strikes to fetch
+        List<BigDecimal> strikesToFetch = new ArrayList<>();
+        for (int i = -searchRange; i <= searchRange; i++) {
+            BigDecimal strike = atmStrike.add(stepSize.multiply(BigDecimal.valueOf(i)));
+            if (isValidStrike(strike, allStrikes)) {
+                strikesToFetch.add(strike);
+            }
+        }
+
+        log.info("Fetching OI/IV data for {} strikes around ATM {}", 
+                strikesToFetch.size(), atmStrike);
+
+        // Fetch Greeks (IV) data
+        Map<String, BigDecimal> ivMap = fetchIVFromGreeksAPI(
+            smartConnect, indicator.getName(), expiry.getExpirydate());
+
+        // Fetch price and OI data in batch
+        List<String> tokens = new ArrayList<>();
+        Map<String, StrikeData> tokenToStrikeData = new HashMap<>();
+
+        for (BigDecimal strike : strikesToFetch) {
+            // CE data
+            StrikeData ceData = createStrikeData(strike, "CE", indicator, expiry);
+            if (ceData != null && ceData.token != null) {
+                tokens.add(ceData.token);
+                tokenToStrikeData.put(ceData.token, ceData);
+                String key = strike.intValue() + "_CE";
+                dataMap.put(key, ceData);
+                
+                // Set IV from Greeks API
+                BigDecimal iv = ivMap.get(key);
+                if (iv != null && iv.compareTo(BigDecimal.ZERO) > 0) {
+                    ceData.iv = iv;
+                }
+            }
+
+            // PE data
+            StrikeData peData = createStrikeData(strike, "PE", indicator, expiry);
+            if (peData != null && peData.token != null) {
+                tokens.add(peData.token);
+                tokenToStrikeData.put(peData.token, peData);
+                String key = strike.intValue() + "_PE";
+                dataMap.put(key, peData);
+                
+                // Set IV from Greeks API
+                BigDecimal iv = ivMap.get(key);
+                if (iv != null && iv.compareTo(BigDecimal.ZERO) > 0) {
+                    peData.iv = iv;
+                }
+            }
+        }
+
+        if (tokens.isEmpty()) {
+            log.error("No valid tokens found for strike range");
+            return dataMap;
+        }
+
+        // Batch fetch price and OI
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("mode", "FULL");
+
+            JSONObject map = new JSONObject();
+            map.put("NFO", tokens);
+            payload.put("exchangeTokens", map);
+
+            JSONObject response = predictionService.callMarketDataWithRetry(smartConnect, payload);
+
+            if (response != null && response.has("fetched")) {
+                JSONArray fetched = response.getJSONArray("fetched");
+
+                for (int i = 0; i < fetched.length(); i++) {
+                    JSONObject item = fetched.getJSONObject(i);
+                    String token = item.optString("symbolToken", null);
+
+                    if (token != null && tokenToStrikeData.containsKey(token)) {
+                        StrikeData data = tokenToStrikeData.get(token);
+                        data.price = item.optBigDecimal("ltp", BigDecimal.ZERO);
+                        data.oi = item.optBigDecimal("opnInterest", BigDecimal.ZERO);
+                        data.volume = item.optBigDecimal("tradeVolume", BigDecimal.ZERO);
+                    }
+                }
+
+                log.info("Successfully fetched price/OI data for {} tokens", fetched.length());
+            }
+
+        } catch (Exception | SmartAPIException e) {
+            log.error("Failed to fetch batch market data", e);
+        }
+
+        return dataMap;
+    }
+
+    /**
+     * Create StrikeData object with token lookup
+     */
+    private StrikeData createStrikeData(BigDecimal strike, String optionType, 
+                                       Indicator indicator, Expiry expiry) {
+        StrikeData data = new StrikeData(strike, optionType);
+
+        String expiryCode = expiry.getExpirydate();
+        String strikeStr = strike.stripTrailingZeros().toPlainString();
+        String shortExpiry = toShortExpiry(expiryCode);
+        String symbol = indicator.getTradingSymbol() + shortExpiry + strikeStr + optionType;
+
+        Indexes idx = indexesRepo.findBySymbol(symbol);
+        if (idx != null) {
+            data.token = idx.getToken();
+            data.symbol = idx.getSymbol();
+        } else {
+            log.warn("Symbol not found: {}", symbol);
+        }
+
+        return data;
+    }
+
+    /**
+     * Fetch IV from Greeks API (reusing StraddleIntradayService logic)
+     */
+    private Map<String, BigDecimal> fetchIVFromGreeksAPI(
+            SmartConnect smartConnect,
+            String name,
+            String expiry) {
+
+        Map<String, BigDecimal> ivMap = new HashMap<>();
+
+        try {
+            JSONObject request = new JSONObject();
+            request.put("name", name);
+            request.put("expirydate", normalizeExpiry(expiry));
+
+            log.info("Fetching Greeks for {} expiry {}", name, expiry);
+
+            JSONObject response = smartConnect.optionGreek(request);
+
+            if (response == null || !response.has("data") || 
+                !response.optBoolean("status", false)) {
+                log.warn("No Greeks data returned for {} {}", name, expiry);
+                return ivMap;
+            }
+
+            JSONArray data = response.getJSONArray("data");
+            log.info("Received Greeks data for {} strikes", data.length());
+
+            for (int i = 0; i < data.length(); i++) {
+                JSONObject item = data.getJSONObject(i);
+
+                try {
+                    String optionType = item.optString("optionType", "");
+                    BigDecimal strike = item.optBigDecimal("strikePrice", null);
+                    BigDecimal iv = item.optBigDecimal("impliedVolatility", null);
+
+                    if (strike != null && iv != null && !optionType.isEmpty() &&
+                        iv.compareTo(BigDecimal.ZERO) > 0) {
+
+                        String key = strike.intValue() + "_" + optionType;
+                        ivMap.put(key, iv);
+                    }
+
+                } catch (Exception e) {
+                    log.warn("Failed to parse Greeks item: {}", e.getMessage());
+                }
+            }
+
+            log.info("Successfully fetched IV for {} option strikes", ivMap.size());
+
+        } catch (Exception | SmartAPIException e) {
+            log.error("Failed to fetch IV from Greeks API: {}", e.getMessage(), e);
+        }
+
+        return ivMap;
+    }
+
+    /**
+     * Normalize expiry format for Greeks API
+     */
+    private String normalizeExpiry(String shortExpiry) {
+        if (shortExpiry == null || shortExpiry.length() != 7) {
+            return shortExpiry;
+        }
+
+        String day = shortExpiry.substring(0, 2);
+        String month = shortExpiry.substring(2, 5);
+        String year2 = shortExpiry.substring(5, 7);
+
+        int year = Integer.parseInt(year2) + 2000;
+
+        return day + month + year;
+    }
+
+    // ---------------------------------------------------------------------
+    // INTELLIGENT STRIKE SELECTION ALGORITHMS
+    // ---------------------------------------------------------------------
+
+    /**
+     * Select optimal strikes based on configuration mode
+     */
+    private SpreadCalculation selectOptimalStrikes(
+            BigDecimal ltp,
+            BigDecimal atmStrike,
+            BigDecimal stepSize,
+            List<BigDecimal> allStrikes,
+            SpreadType spreadType,
+            StrikeSelectionConfig config,
+            Map<String, StrikeData> strikeDataMap) {
+
+        SpreadCalculation calc = new SpreadCalculation();
+        calc.atmStrike = atmStrike;
+        calc.stepSize = stepSize;
+
+        switch (config.getMode()) {
+            case OI_BASED:
+                return selectStrikesByOI(ltp, atmStrike, stepSize, allStrikes, 
+                                        spreadType, config, strikeDataMap);
+
+            case IV_BASED:
+                return selectStrikesByIV(ltp, atmStrike, stepSize, allStrikes, 
+                                        spreadType, config, strikeDataMap);
+
+            case COMBINED:
+                return selectStrikesCombined(ltp, atmStrike, stepSize, allStrikes, 
+                                            spreadType, config, strikeDataMap);
+
+            case DISTANCE_BASED:
+            default:
+                return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                                    config.getFallbackDistance());
+        }
+    }
+
+    /**
+     * OI-BASED: Select strikes with strong OI support/resistance
+     */
+    private SpreadCalculation selectStrikesByOI(
+            BigDecimal ltp,
+            BigDecimal atmStrike,
+            BigDecimal stepSize,
+            List<BigDecimal> allStrikes,
+            SpreadType spreadType,
+            StrikeSelectionConfig config,
+            Map<String, StrikeData> strikeDataMap) {
+
+        log.info("Using OI-BASED strike selection");
+
+        SpreadCalculation calc = new SpreadCalculation();
+        calc.atmStrike = atmStrike;
+        calc.stepSize = stepSize;
+
+        boolean isPut = (spreadType == SpreadType.BULL_PUT || spreadType == SpreadType.BEAR_PUT);
+        String optionType = isPut ? "PE" : "CE";
+
+        // Calculate average OI for normalization
+        BigDecimal avgOI = calculateAverageOI(strikeDataMap, optionType);
+        log.info("Average OI for {}: {}", optionType, avgOI);
+
+        // For credit spreads, find sell strike with high OI (support/resistance)
+        List<StrikeData> candidates = strikeDataMap.values().stream()
+            .filter(d -> d.optionType.equals(optionType))
+            .filter(d -> d.oi != null && d.oi.compareTo(config.getMinOIThreshold()) > 0)
+            .filter(d -> d.oi.compareTo(avgOI.multiply(config.getOiSupportMultiplier())) > 0)
+            .sorted((a, b) -> b.oi.compareTo(a.oi))  // Highest OI first
+            .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) {
+            log.warn("No strikes with sufficient OI found, falling back to distance-based");
+            return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                               config.getFallbackDistance());
+        }
+
+        // Select sell strike based on spread type
+        StrikeData sellStrikeData = selectSellStrikeFromCandidates(
+            candidates, atmStrike, spreadType, ltp);
+
+        if (sellStrikeData == null) {
+            log.warn("Failed to select sell strike, falling back");
+            return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                               config.getFallbackDistance());
+        }
+
+        calc.sellStrike = sellStrikeData.strike;
+        calc.sellOptionType = sellStrikeData.optionType;
+        calc.sellStrikeOI = sellStrikeData.oi;
+        calc.sellStrikeIV = sellStrikeData.iv;
+
+        // Select buy strike (1 step away for standard spreads)
+        calc.buyStrike = isPut 
+            ? calc.sellStrike.subtract(stepSize)
+            : calc.sellStrike.add(stepSize);
+        calc.buyOptionType = optionType;
+
+        // Get buy strike data
+        String buyKey = calc.buyStrike.intValue() + "_" + optionType;
+        StrikeData buyStrikeData = strikeDataMap.get(buyKey);
+        if (buyStrikeData != null) {
+            calc.buyStrikeOI = buyStrikeData.oi;
+            calc.buyStrikeIV = buyStrikeData.iv;
+        }
+
+        // Validate strikes
+        if (!isValidStrike(calc.buyStrike, allStrikes)) {
+            calc.errorMessage = "Buy strike " + calc.buyStrike + " not available";
+            return calc;
+        }
+
+        calc.selectionScore = sellStrikeData.oi;
+        log.info("Selected strikes with OI: Sell={} (OI: {}), Buy={} (OI: {})",
+                calc.sellStrike, calc.sellStrikeOI, calc.buyStrike, calc.buyStrikeOI);
+
+        return calc;
+    }
+
+    /**
+     * IV-BASED: Select strikes with optimal IV levels
+     */
+    private SpreadCalculation selectStrikesByIV(
+            BigDecimal ltp,
+            BigDecimal atmStrike,
+            BigDecimal stepSize,
+            List<BigDecimal> allStrikes,
+            SpreadType spreadType,
+            StrikeSelectionConfig config,
+            Map<String, StrikeData> strikeDataMap) {
+
+        log.info("Using IV-BASED strike selection");
+
+        SpreadCalculation calc = new SpreadCalculation();
+        calc.atmStrike = atmStrike;
+        calc.stepSize = stepSize;
+
+        boolean isPut = (spreadType == SpreadType.BULL_PUT || spreadType == SpreadType.BEAR_PUT);
+        String optionType = isPut ? "PE" : "CE";
+
+        // For credit spreads, we want to SELL high IV options
+        List<StrikeData> candidates = strikeDataMap.values().stream()
+            .filter(d -> d.optionType.equals(optionType))
+            .filter(d -> d.iv != null && d.iv.compareTo(BigDecimal.ZERO) > 0)
+            .filter(d -> d.iv.compareTo(config.getMinIVThreshold()) >= 0)
+            .filter(d -> d.iv.compareTo(config.getMaxIVThreshold()) <= 0)
+            .sorted((a, b) -> {
+                // Sort by proximity to ideal IV
+                BigDecimal aDiff = a.iv.subtract(config.getIdealIVForSelling()).abs();
+                BigDecimal bDiff = b.iv.subtract(config.getIdealIVForSelling()).abs();
+                return aDiff.compareTo(bDiff);
+            })
+            .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) {
+            log.warn("No strikes with optimal IV found, falling back to distance-based");
+            return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                               config.getFallbackDistance());
+        }
+
+        // Select sell strike based on spread type
+        StrikeData sellStrikeData = selectSellStrikeFromCandidates(
+            candidates, atmStrike, spreadType, ltp);
+
+        if (sellStrikeData == null) {
+            log.warn("Failed to select sell strike, falling back");
+            return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                               config.getFallbackDistance());
+        }
+
+        calc.sellStrike = sellStrikeData.strike;
+        calc.sellOptionType = sellStrikeData.optionType;
+        calc.sellStrikeOI = sellStrikeData.oi;
+        calc.sellStrikeIV = sellStrikeData.iv;
+
+        // Select buy strike (1 step away for standard spreads)
+        calc.buyStrike = isPut 
+            ? calc.sellStrike.subtract(stepSize)
+            : calc.sellStrike.add(stepSize);
+        calc.buyOptionType = optionType;
+
+        // Get buy strike data
+        String buyKey = calc.buyStrike.intValue() + "_" + optionType;
+        StrikeData buyStrikeData = strikeDataMap.get(buyKey);
+        if (buyStrikeData != null) {
+            calc.buyStrikeOI = buyStrikeData.oi;
+            calc.buyStrikeIV = buyStrikeData.iv;
+        }
+
+        // Validate strikes
+        if (!isValidStrike(calc.buyStrike, allStrikes)) {
+            calc.errorMessage = "Buy strike " + calc.buyStrike + " not available";
+            return calc;
+        }
+
+        calc.selectionScore = sellStrikeData.iv;
+        log.info("Selected strikes with IV: Sell={} (IV: {}), Buy={} (IV: {})",
+                calc.sellStrike, calc.sellStrikeIV, calc.buyStrike, calc.buyStrikeIV);
+
+        return calc;
+    }
+
+    /**
+     * COMBINED: Use both OI and IV with weighted scoring (RECOMMENDED)
+     */
+    private SpreadCalculation selectStrikesCombined(
+            BigDecimal ltp,
+            BigDecimal atmStrike,
+            BigDecimal stepSize,
+            List<BigDecimal> allStrikes,
+            SpreadType spreadType,
+            StrikeSelectionConfig config,
+            Map<String, StrikeData> strikeDataMap) {
+
+        log.info("Using COMBINED (OI + IV) strike selection");
+
+        SpreadCalculation calc = new SpreadCalculation();
+        calc.atmStrike = atmStrike;
+        calc.stepSize = stepSize;
+
+        boolean isPut = (spreadType == SpreadType.BULL_PUT || spreadType == SpreadType.BEAR_PUT);
+        String optionType = isPut ? "PE" : "CE";
+
+        // Calculate normalization factors
+        BigDecimal avgOI = calculateAverageOI(strikeDataMap, optionType);
+        BigDecimal avgIV = calculateAverageIV(strikeDataMap, optionType);
+
+        log.info("Normalization: Average OI={}, Average IV={}", avgOI, avgIV);
+
+        // Score all candidates
+        List<StrikeData> candidates = strikeDataMap.values().stream()
+            .filter(d -> d.optionType.equals(optionType))
+            .filter(d -> d.oi != null && d.oi.compareTo(config.getMinOIThreshold()) > 0)
+            .filter(d -> d.iv != null && d.iv.compareTo(BigDecimal.ZERO) > 0)
+            .peek(d -> {
+                // Calculate composite score
+                BigDecimal oiScore = normalizeScore(d.oi, avgOI);
+                BigDecimal ivScore = normalizeIVScore(d.iv, config.getIdealIVForSelling(), avgIV);
+
+                d.score = oiScore.multiply(config.getOiWeight())
+                         .add(ivScore.multiply(config.getIvWeight()));
+            })
+            .sorted((a, b) -> b.score.compareTo(a.score))  // Highest score first
+            .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) {
+            log.warn("No qualified strikes found, falling back to distance-based");
+            return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                               config.getFallbackDistance());
+        }
+
+        // Log top candidates
+        log.info("Top 3 candidates by composite score:");
+        candidates.stream().limit(3).forEach(d -> 
+            log.info("  Strike: {}, OI: {}, IV: {}, Score: {}", 
+                    d.strike, d.oi, d.iv, d.score));
+
+        // Select sell strike based on spread type
+        StrikeData sellStrikeData = selectSellStrikeFromCandidates(
+            candidates, atmStrike, spreadType, ltp);
+
+        if (sellStrikeData == null) {
+            log.warn("Failed to select sell strike, falling back");
+            return calculateSpreadDistanceBased(ltp, allStrikes, spreadType, 
+                                               config.getFallbackDistance());
+        }
+
+        calc.sellStrike = sellStrikeData.strike;
+        calc.sellOptionType = sellStrikeData.optionType;
+        calc.sellStrikeOI = sellStrikeData.oi;
+        calc.sellStrikeIV = sellStrikeData.iv;
+
+        // Select buy strike (1 step away for standard spreads)
+        calc.buyStrike = isPut 
+            ? calc.sellStrike.subtract(stepSize)
+            : calc.sellStrike.add(stepSize);
+        calc.buyOptionType = optionType;
+
+        // Get buy strike data
+        String buyKey = calc.buyStrike.intValue() + "_" + optionType;
+        StrikeData buyStrikeData = strikeDataMap.get(buyKey);
+        if (buyStrikeData != null) {
+            calc.buyStrikeOI = buyStrikeData.oi;
+            calc.buyStrikeIV = buyStrikeData.iv;
+        }
+
+        // Validate strikes
+        if (!isValidStrike(calc.buyStrike, allStrikes)) {
+            calc.errorMessage = "Buy strike " + calc.buyStrike + " not available";
+            return calc;
+        }
+
+        calc.selectionScore = sellStrikeData.score;
+        log.info("Selected strikes (COMBINED): Sell={} (OI: {}, IV: {}, Score: {}), Buy={} (OI: {}, IV: {})",
+                calc.sellStrike, calc.sellStrikeOI, calc.sellStrikeIV, calc.selectionScore,
+                calc.buyStrike, calc.buyStrikeOI, calc.buyStrikeIV);
+
+        return calc;
+    }
+
+    /**
+     * Select sell strike from candidates based on spread type
+     */
+    private StrikeData selectSellStrikeFromCandidates(
+            List<StrikeData> candidates,
+            BigDecimal atmStrike,
+            SpreadType spreadType,
+            BigDecimal ltp) {
+
+        for (StrikeData candidate : candidates) {
+            boolean isValid = false;
+
+            switch (spreadType) {
+                case BEAR_CALL:
+                case NAKED_CALL_HEDGE:
+                    // Sell OTM calls (strike > ATM)
+                    isValid = candidate.strike.compareTo(atmStrike) > 0;
+                    break;
+
+                case BULL_PUT:
+                case NAKED_PUT_HEDGE:
+                    // Sell OTM puts (strike < ATM)
+                    isValid = candidate.strike.compareTo(atmStrike) < 0;
+                    break;
+
+                case BULL_CALL:
+                    // Sell ATM or slightly OTM calls
+                    isValid = candidate.strike.compareTo(atmStrike) >= 0;
+                    break;
+
+                case BEAR_PUT:
+                    // Sell ATM or slightly OTM puts
+                    isValid = candidate.strike.compareTo(atmStrike) <= 0;
+                    break;
+            }
+
+            if (isValid) {
+                return candidate;
+            }
+        }
+
+        // If no valid candidate found, return the best one anyway
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    /**
+     * Calculate average OI for normalization
+     */
+    private BigDecimal calculateAverageOI(Map<String, StrikeData> dataMap, String optionType) {
+        List<BigDecimal> oiValues = dataMap.values().stream()
+            .filter(d -> d.optionType.equals(optionType))
+            .filter(d -> d.oi != null && d.oi.compareTo(BigDecimal.ZERO) > 0)
+            .map(d -> d.oi)
+            .collect(Collectors.toList());
+
+        if (oiValues.isEmpty()) {
+            return BigDecimal.ONE;
+        }
+
+        BigDecimal sum = oiValues.stream()
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return sum.divide(BigDecimal.valueOf(oiValues.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Calculate average IV for normalization
+     */
+    private BigDecimal calculateAverageIV(Map<String, StrikeData> dataMap, String optionType) {
+        List<BigDecimal> ivValues = dataMap.values().stream()
+            .filter(d -> d.optionType.equals(optionType))
+            .filter(d -> d.iv != null && d.iv.compareTo(BigDecimal.ZERO) > 0)
+            .map(d -> d.iv)
+            .collect(Collectors.toList());
+
+        if (ivValues.isEmpty()) {
+            return BigDecimal.ONE;
+        }
+
+        BigDecimal sum = ivValues.stream()
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return sum.divide(BigDecimal.valueOf(ivValues.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Normalize score (higher is better)
+     */
+    private BigDecimal normalizeScore(BigDecimal value, BigDecimal average) {
+        if (average.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return value.divide(average, 4, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Normalize IV score (closer to ideal is better)
+     */
+    private BigDecimal normalizeIVScore(BigDecimal iv, BigDecimal idealIV, BigDecimal avgIV) {
+        if (avgIV.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        // Score is higher when IV is closer to ideal
+        BigDecimal deviation = iv.subtract(idealIV).abs();
+        BigDecimal maxDeviation = avgIV;
+
+        BigDecimal proximityScore = BigDecimal.ONE.subtract(
+            deviation.divide(maxDeviation, 4, RoundingMode.HALF_UP)
+        ).max(BigDecimal.ZERO);
+
+        return proximityScore;
+    }
+
+    // ---------------------------------------------------------------------
+    // SPREAD CALCULATION (Enhanced)
     // ---------------------------------------------------------------------
     private static class SpreadCalculation {
         BigDecimal atmStrike;
@@ -333,6 +1030,13 @@ public class SpreadService {
         String buyOptionType;
         String sellOptionType;
         String errorMessage;
+        
+        // Enhanced fields
+        BigDecimal buyStrikeOI;
+        BigDecimal sellStrikeOI;
+        BigDecimal buyStrikeIV;
+        BigDecimal sellStrikeIV;
+        BigDecimal selectionScore;
 
         boolean isValid() {
             return errorMessage == null && buyStrike != null && sellStrike != null;
@@ -344,15 +1048,14 @@ public class SpreadService {
     }
 
     /**
-     * Calculate spread strikes based on FIXED DISTANCE from ATM.
-     * 
-     * NOTE: This does NOT calculate actual probability!
-     * 
-     * @param distanceLevel - Strike distance (ATM, NEAR_OTM, MID_OTM, FAR_OTM)
+     * FALLBACK: Distance-based calculation (original logic)
      */
-    private SpreadCalculation calculateSpread(BigDecimal ltp, List<BigDecimal> strikes,
-                                               SpreadType spreadType, 
-                                               StrikeDistanceLevel distanceLevel) {
+    private SpreadCalculation calculateSpreadDistanceBased(
+            BigDecimal ltp,
+            List<BigDecimal> strikes,
+            SpreadType spreadType,
+            StrikeDistanceLevel distanceLevel) {
+
         SpreadCalculation calc = new SpreadCalculation();
 
         calc.atmStrike = findNearestStrike(ltp, strikes);
@@ -363,10 +1066,7 @@ public class SpreadService {
             return calc;
         }
 
-        int steps = getStepsFromDistance(distanceLevel);
-        
-        log.debug("Using fixed distance: {} steps = {} points from ATM", 
-                 steps, calc.stepSize.multiply(BigDecimal.valueOf(steps)));
+        int steps = DISTANCE_STEPS_MAP.getOrDefault(distanceLevel, 1);
 
         BigDecimal sellStrikePut = calc.atmStrike.subtract(
             calc.stepSize.multiply(BigDecimal.valueOf(steps)));
@@ -410,8 +1110,6 @@ public class SpreadService {
                     calc.stepSize.multiply(BigDecimal.valueOf(NAKED_HEDGE_DISTANCE)));
                 calc.buyOptionType = "CE";
                 calc.sellOptionType = "CE";
-                log.info("NAKED_CALL_HEDGE: Selling {} CE, Buying {} CE hedge ({}x away)",
-                         calc.sellStrike, calc.buyStrike, NAKED_HEDGE_DISTANCE);
                 break;
 
             case NAKED_PUT_HEDGE:
@@ -420,23 +1118,12 @@ public class SpreadService {
                     calc.stepSize.multiply(BigDecimal.valueOf(NAKED_HEDGE_DISTANCE)));
                 calc.buyOptionType = "PE";
                 calc.sellOptionType = "PE";
-                log.info("NAKED_PUT_HEDGE: Selling {} PE, Buying {} PE hedge ({}x away)",
-                         calc.sellStrike, calc.buyStrike, NAKED_HEDGE_DISTANCE);
                 break;
         }
 
         if (!isValidStrike(calc.buyStrike, strikes)) {
-            if (spreadType == SpreadType.NAKED_CALL_HEDGE || 
-                spreadType == SpreadType.NAKED_PUT_HEDGE) {
-                BigDecimal furthest = findFurthestStrike(strikes, 
-                    spreadType == SpreadType.NAKED_CALL_HEDGE);
-                log.warn("Buy strike {} not available for {}. Using furthest strike: {}",
-                         calc.buyStrike, spreadType, furthest);
-                calc.buyStrike = furthest;
-            } else {
-                calc.errorMessage = "Buy strike " + calc.buyStrike + " not available";
-                return calc;
-            }
+            calc.errorMessage = "Buy strike " + calc.buyStrike + " not available";
+            return calc;
         }
 
         if (!isValidStrike(calc.sellStrike, strikes)) {
@@ -447,18 +1134,190 @@ public class SpreadService {
         return calc;
     }
 
+    // ---------------------------------------------------------------------
+    // UTILITY METHODS (Reused from original)
+    // ---------------------------------------------------------------------
+
+    private boolean validateExpiryDate(Expiry expiry) {
+        String expiryName = expiry.getExpirydate();
+        String normalized = expiryName.substring(0, 2)
+            + expiryName.substring(2, 3).toUpperCase()
+            + expiryName.substring(3, 5).toLowerCase()
+            + expiryName.substring(5);
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMMyyyy", Locale.ENGLISH);
+        LocalDate expiryDate;
+        try {
+            expiryDate = LocalDate.parse(normalized, formatter);
+        } catch (Exception e) {
+            log.error("Failed to parse expiry {}: {}", expiryName, e.getMessage());
+            return false;
+        }
+
+        LocalDate today = LocalDate.now();
+        int currentDay = today.getDayOfMonth();
+
+        boolean sameMonth = expiryDate.getYear() == today.getYear() &&
+                            expiryDate.getMonth() == today.getMonth();
+
+        if (sameMonth && currentDay >= 15) {
+            log.warn("Skipping: expiry {} is current month and today={} >= 15", 
+                    expiryName, currentDay);
+            return false;
+        }
+
+        return true;
+    }
+
+    private BigDecimal fetchLTP(SmartConnect smartConnect, Indicator indicator) {
+        try {
+            return angelOneService.getcurrentPrice(
+                smartConnect,
+                indicator.getExchange(),
+                indicator.getTradingSymbol(),
+                indicator.getToken(),
+                "ltp"
+            );
+        } catch (Exception e) {
+            log.error("Failed to fetch LTP for {}: {}", 
+                     indicator.getTradingSymbol(), e.getMessage(), e);
+            return null;
+        }
+    }
+
+    private List<BigDecimal> fetchAllStrikesForInstrument(String tradingSymbol, String expiry) {
+        List<Indexes> list = indexesRepo.findByNameAndExpiry(tradingSymbol, expiry);
+
+        if (list == null || list.isEmpty()) {
+            log.warn("No strikes found for {} expiry {}", tradingSymbol, expiry);
+            return Collections.emptyList();
+        }
+
+        return list.stream()
+            .map(Indexes::getStrike)
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .map(this::normalizeStrikeToBigDecimal)
+            .filter(v -> v.compareTo(BigDecimal.ZERO) > 0)
+            .distinct()
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    private BigDecimal normalizeStrikeToBigDecimal(String raw) {
+        try {
+            BigDecimal bd = new BigDecimal(raw.trim());
+            BigDecimal normalized = bd.divide(STRIKE_DIVISOR);
+            if (normalized.compareTo(BigDecimal.ZERO) <= 0) {
+                return BigDecimal.ZERO;
+            }
+            return normalized;
+        } catch (Exception e) {
+            log.error("Invalid strike format: {}", raw, e);
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private BigDecimal findNearestStrike(BigDecimal ltp, List<BigDecimal> strikes) {
+        return strikes.stream()
+            .min(Comparator.comparing(s -> s.subtract(ltp).abs()))
+            .orElse(strikes.isEmpty() ? BigDecimal.ZERO : strikes.get(0));
+    }
+
+    private BigDecimal findStrikeInterval(List<BigDecimal> strikes) {
+        if (strikes.size() < 2) {
+            return BigDecimal.ZERO;
+        }
+
+        Map<BigDecimal, Long> diffFrequency = new HashMap<>();
+        for (int i = 1; i < strikes.size(); i++) {
+            BigDecimal diff = strikes.get(i).subtract(strikes.get(i - 1)).abs();
+            if (diff.compareTo(BigDecimal.ZERO) > 0) {
+                diffFrequency.merge(diff, 1L, Long::sum);
+            }
+        }
+
+        return diffFrequency.entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .map(Map.Entry::getKey)
+            .orElse(BigDecimal.ZERO);
+    }
+
     private boolean isValidStrike(BigDecimal strike, List<BigDecimal> availableStrikes) {
         return availableStrikes.stream().anyMatch(s -> s.compareTo(strike) == 0);
     }
 
-    private BigDecimal findFurthestStrike(List<BigDecimal> strikes, boolean findMax) {
-        if (strikes.isEmpty()) return BigDecimal.ZERO;
-        return findMax ? strikes.get(strikes.size() - 1) : strikes.get(0);
+    private Token buildToken(Indicator indicator, Expiry expiry,
+                             BigDecimal strike, String optionType, String transactionType) {
+
+        if (strike == null) {
+            log.error("Null strike when building token for {}", indicator.getTradingSymbol());
+            return null;
+        }
+
+        String expiryCode = expiry.getExpirydate();
+        String strikeStr = strike.stripTrailingZeros().toPlainString();
+        String shortExpiry = toShortExpiry(expiryCode);
+        String symbol = indicator.getTradingSymbol() + shortExpiry + strikeStr + optionType;
+
+        Indexes idx = indexesRepo.findBySymbol(symbol);
+        if (idx == null) {
+            log.error("Symbol not found in DB: {}", symbol);
+            return null;
+        }
+
+        Token token = new Token();
+        token.setSymbol(symbol);
+        token.setToken(idx.getToken());
+        token.setExch_seg(idx.getExchange());
+        token.setTransactionType(transactionType);
+        token.setQuantity(idx.getLotsize());
+
+        return token;
     }
 
-    // ---------------------------------------------------------------------
-    // RISK CALCULATION
-    // ---------------------------------------------------------------------
+    private String toShortExpiry(String expiryCode) {
+        if (expiryCode == null) {
+            return "";
+        }
+
+        Pattern p = Pattern.compile("^(\\d{1,2})([A-Za-z]{3})(\\d{4})$");
+        Matcher m = p.matcher(expiryCode.trim());
+        if (m.matches()) {
+            String day = m.group(1);
+            if (day.length() == 1) day = "0" + day;
+            String mon = m.group(2).toUpperCase();
+            String yy = m.group(3).substring(2);
+            return day + mon + yy;
+        }
+
+        if (expiryCode.length() >= 7) {
+            return expiryCode;
+        }
+
+        return expiryCode;
+    }
+
+    private void prepareCommonFields(Token token, SmartConnect smartConnect) {
+        if (token.getExch_seg() == null || token.getExch_seg().trim().isEmpty()) {
+            token.setExch_seg("NFO");
+        }
+
+        BigDecimal currentPrice = angelOneService.getcurrentPrice(
+            smartConnect,
+            token.getExch_seg(),
+            token.getSymbol(),
+            token.getToken(),
+            "ltp"
+        );
+
+        token.setPrice(currentPrice.doubleValue());
+        token.setName(AppConstant.SPREAD_STRATEGY);
+        token.setProductType(Constants.PRODUCT_CARRYFORWARD);
+        token.setVariety(Constants.VARIETY_NORMAL);
+        token.setOrderType(Constants.ORDER_TYPE_MARKET);
+    }
+
     private BigDecimal calculateMaxRisk(Token buyLeg, Token sellLeg, SpreadCalculation calc) {
         BigDecimal strikeWidth = calc.sellStrike.subtract(calc.buyStrike).abs();
         BigDecimal premium = BigDecimal.valueOf(sellLeg.getPrice())
@@ -485,15 +1344,12 @@ public class SpreadService {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // MARGIN VALIDATION
-    // ---------------------------------------------------------------------
     public boolean validateMarginRequirement(SmartConnect smartConnect) {
         try {
             JSONObject rms = smartConnect.getRMS();
             double availableCash = Double.parseDouble(rms.getString("availablecash"));
 
-            double required = 100000.0; // 1 lakh (placeholder)
+            double required = 100.0;
             if (availableCash >= required) {
                 log.info("Sufficient margin available. AvailableCash = {}", availableCash);
                 return true;
@@ -508,7 +1364,7 @@ public class SpreadService {
         }
     }
 
-    // ---------------------------------------------------------------------
+ // ---------------------------------------------------------------------
     // ORDER PLACEMENT
     // ---------------------------------------------------------------------
     public boolean placeSpreadOrder(SmartConnect smartConnect, Token buyLeg, Token sellLeg,
@@ -575,6 +1431,21 @@ public class SpreadService {
         return true;
     }
 
+    public void resetDailyCounters() {
+        processedIndicatorsToday.clear();
+        spreadsPlacedToday = 0;
+        log.info("Daily counters reset");
+    }
+
+    public Map<String, Object> getSpreadStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("spreadsPlacedToday", spreadsPlacedToday);
+        stats.put("maxSpreadsPerDay", MAX_SPREADS_PER_DAY);
+        stats.put("uniqueIndicatorsProcessed", processedIndicatorsToday.size());
+        stats.put("remainingCapacity", MAX_SPREADS_PER_DAY - spreadsPlacedToday);
+        return stats;
+    }
+    
     private void saveOrders(Token buyLeg, Token sellLeg) {
         try {
             angelOneService.insertOrder(buyLeg, 0);
@@ -780,175 +1651,4 @@ public class SpreadService {
         log.error("ALERT: {}", message);
     }
 
-    // ---------------------------------------------------------------------
-    // STRIKE & DATA UTILITIES
-    // ---------------------------------------------------------------------
-    private BigDecimal fetchLTP(SmartConnect smartConnect, Indicator indicator) {
-        try {
-            return angelOneService.getcurrentPrice(
-                smartConnect,
-                indicator.getExchange(),
-                indicator.getTradingSymbol(),
-                indicator.getToken(),
-                "ltp"
-            );
-        } catch (Exception e) {
-            log.error("Failed to fetch LTP for {}: {}", 
-                     indicator.getTradingSymbol(), e.getMessage(), e);
-            return null;
-        }
-    }
-
-    private List<BigDecimal> fetchAllStrikesForInstrument(String tradingSymbol, String expiry) {
-        List<Indexes> list = indexesRepo.findByNameAndExpiry(tradingSymbol, expiry);
-
-        if (list == null || list.isEmpty()) {
-            log.warn("No strikes found for {} expiry {}", tradingSymbol, expiry);
-            return Collections.emptyList();
-        }
-
-        return list.stream()
-            .map(Indexes::getStrike)
-            .filter(Objects::nonNull)
-            .map(String::trim)
-            .map(this::normalizeStrikeToBigDecimal)
-            .filter(v -> v.compareTo(BigDecimal.ZERO) > 0)
-            .distinct()
-            .sorted()
-            .collect(Collectors.toList());
-    }
-
-    private BigDecimal normalizeStrikeToBigDecimal(String raw) {
-        try {
-            BigDecimal bd = new BigDecimal(raw.trim());
-            BigDecimal normalized = bd.divide(STRIKE_DIVISOR);
-            if (normalized.compareTo(BigDecimal.ZERO) <= 0) {
-                log.warn("Normalized strike <= 0 for raw='{}' -> {}", raw, normalized);
-                return BigDecimal.ZERO;
-            }
-            return normalized;
-        } catch (Exception e) {
-            log.error("Invalid strike format: {}", raw, e);
-            return BigDecimal.ZERO;
-        }
-    }
-
-    private BigDecimal findNearestStrike(BigDecimal ltp, List<BigDecimal> strikes) {
-        return strikes.stream()
-            .min(Comparator.comparing(s -> s.subtract(ltp).abs()))
-            .orElse(strikes.isEmpty() ? BigDecimal.ZERO : strikes.get(0));
-    }
-
-    private BigDecimal findStrikeInterval(List<BigDecimal> strikes) {
-        if (strikes.size() < 2) {
-            return BigDecimal.ZERO;
-        }
-
-        Map<BigDecimal, Long> diffFrequency = new HashMap<>();
-        for (int i = 1; i < strikes.size(); i++) {
-            BigDecimal diff = strikes.get(i).subtract(strikes.get(i - 1)).abs();
-            if (diff.compareTo(BigDecimal.ZERO) > 0) {
-                diffFrequency.merge(diff, 1L, Long::sum);
-            }
-        }
-
-        return diffFrequency.entrySet().stream()
-            .max(Map.Entry.comparingByValue())
-            .map(Map.Entry::getKey)
-            .orElse(BigDecimal.ZERO);
-    }
-
-    // ---------------------------------------------------------------------
-    // TOKEN BUILDING
-    // ---------------------------------------------------------------------
-    private Token buildToken(Indicator indicator, Expiry expiry,
-                             BigDecimal strike, String optionType, String transactionType) {
-
-        if (strike == null) {
-            log.error("Null strike when building token for {}", indicator.getTradingSymbol());
-            return null;
-        }
-
-        String expiryCode = expiry.getExpirydate();
-        String strikeStr = strike.stripTrailingZeros().toPlainString();
-        String shortExpiry = toShortExpiry(expiryCode);
-        String symbol = indicator.getTradingSymbol() + shortExpiry + strikeStr + optionType;
-
-        Indexes idx = indexesRepo.findBySymbol(symbol);
-        if (idx == null) {
-            log.error("Symbol not found in DB: {}", symbol);
-            return null;
-        }
-
-        Token token = new Token();
-        token.setSymbol(symbol);
-        token.setToken(idx.getToken());
-        token.setExch_seg(idx.getExchange());
-        token.setTransactionType(transactionType);
-        token.setQuantity(idx.getLotsize());
-
-        return token;
-    }
-
-    public String toShortExpiry(String expiryCode) {
-        if (expiryCode == null) {
-            log.warn("Invalid expiry code: null");
-            return "";
-        }
-
-        Pattern p = Pattern.compile("^(\\d{1,2})([A-Za-z]{3})(\\d{4})$");
-        Matcher m = p.matcher(expiryCode.trim());
-        if (m.matches()) {
-            String day = m.group(1);
-            if (day.length() == 1) day = "0" + day;
-            String mon = m.group(2).toUpperCase();
-            String yy = m.group(3).substring(2);
-            return day + mon + yy;
-        }
-
-        if (expiryCode.length() >= 7) {
-            return expiryCode;
-        }
-
-        log.warn("Unrecognized expiry format: {}", expiryCode);
-        return expiryCode;
-    }
-
-    private void prepareCommonFields(Token token, SmartConnect smartConnect) {
-        if (token.getExch_seg() == null || token.getExch_seg().trim().isEmpty()) {
-            token.setExch_seg("NFO");
-        }
-
-        BigDecimal currentPrice = angelOneService.getcurrentPrice(
-            smartConnect,
-            token.getExch_seg(),
-            token.getSymbol(),
-            token.getToken(),
-            "ltp"
-        );
-
-        token.setPrice(currentPrice.doubleValue());
-        token.setName(AppConstant.SPREAD_STRATEGY);
-        token.setProductType(Constants.PRODUCT_CARRYFORWARD);
-        token.setVariety(Constants.VARIETY_NORMAL);
-        token.setOrderType(Constants.ORDER_TYPE_MARKET);
-    }
-
-    // ---------------------------------------------------------------------
-    // UTILITY METHODS
-    // ---------------------------------------------------------------------
-    public void resetDailyCounters() {
-        processedIndicatorsToday.clear();
-        spreadsPlacedToday = 0;
-        log.info("Daily counters reset");
-    }
-
-    public Map<String, Object> getSpreadStatistics() {
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("spreadsPlacedToday", spreadsPlacedToday);
-        stats.put("maxSpreadsPerDay", MAX_SPREADS_PER_DAY);
-        stats.put("uniqueIndicatorsProcessed", processedIndicatorsToday.size());
-        stats.put("remainingCapacity", MAX_SPREADS_PER_DAY - spreadsPlacedToday);
-        return stats;
-    }
 }
