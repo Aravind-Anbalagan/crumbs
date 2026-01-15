@@ -2,6 +2,7 @@ package com.crumbs.trade.controller;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -21,6 +22,7 @@ import com.crumbs.trade.entity.FuturesConfig;
 import com.crumbs.trade.entity.FuturesFilter;
 import com.crumbs.trade.repo.FuturesFilterRepo;
 import com.crumbs.trade.service.FuturesStrategyService;
+import com.kenai.jffi.Array;
 
 @RestController
 @RequestMapping("/api/futures")
@@ -66,7 +68,7 @@ public class FuturesStrategyController {
         
         try {
             logger.info("Executing futures strategy for all active configs");
-            futuresStrategyService.executeAll();
+            futuresStrategyService.executeAll(Arrays.asList("NIFTY50","NIFTY500"));
         } catch (Exception e) {
             logger.error("Error executing futures strategy", e);
         }
@@ -79,7 +81,7 @@ public class FuturesStrategyController {
     public ResponseEntity<String> manualExecute() {
         try {
             logger.info("Manual execution triggered");
-            futuresStrategyService.executeAll();
+            futuresStrategyService.executeAll(Arrays.asList("NIFTY50","NIFTY500"));
             return ResponseEntity.ok("Execution completed for all active configs");
         } catch (Exception e) {
             logger.error("Error in manual execution", e);

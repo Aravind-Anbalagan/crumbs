@@ -56,8 +56,8 @@ public class FuturesStrategyService {
      * Executes for NIFTY50 and/or NIFTY500 depending on which configs are active
      */
     @Transactional
-    public void executeAll() {
-        List<FuturesConfig> activeConfigs = configRepo.findByActive("Y");
+    public void executeAll(List<String> indexTypeList) {
+        List<FuturesConfig> activeConfigs = configRepo.findByActiveAndIndexTypes("Y",indexTypeList);
         
         if (activeConfigs.isEmpty()) {
             logger.warn("No active FUTURES_CONFIG found");
