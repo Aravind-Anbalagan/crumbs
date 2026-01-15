@@ -62,5 +62,12 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
 	
 	List<Indexes> findByNameAndExpiry(String name, String expiry);
 	
-	Indexes findByNameAndExchange(String name,String exchange);
+	/**
+     * ✅ Find equity stock (symbol ending with -EQ)
+     * This ensures we get cash market prices, not derivative prices
+     */
+    @Query("SELECT i FROM Indexes i WHERE i.name = :name AND i.exchange = :exchange AND i.symbol LIKE '%-EQ' ORDER BY i.id ASC")
+    Indexes findByNameAndExchange(@Param("name") String name, @Param("exchange") String exchange);
+	
+	List<Indexes> findByNameInAndExchange(List<String> names,String exchange);
 }

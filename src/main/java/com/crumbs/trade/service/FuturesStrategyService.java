@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -97,10 +98,25 @@ public class FuturesStrategyService {
             return;
         }
 
-        List<Indexes> indexesList = stockNames.stream()
-                .map(name -> indexesRepo.findByNameAndExchange(name, EXCHANGE))
-                .filter(Objects::nonNull)
-                .toList();
+        logger.info("Processing {} stocks for {}", stockNames.size(), indexType);
+
+        // ✅ ADD DETAILED LOGGING TO FIND THE PROBLEMATIC STOCK
+        List<Indexes> indexesList = new ArrayList<>();
+        
+        for (String name : stockNames) {
+            try {
+                logger.debug("Fetching index data for: {}", name);
+                Indexes index = indexesRepo.findByNameAndExchange(name, EXCHANGE);
+                if (index != null) {
+                    indexesList.add(index);
+                } else {
+                    logger.warn("No index found for stock: {}", name);
+                }
+            } catch (Exception e) {
+                logger.error("Error fetching index for stock: {} - Error: {}", name, e.getMessage());
+                // Continue processing other stocks
+            }
+        }
 
         if (indexesList.isEmpty()) {
             logger.warn("No index data found for {}", indexType);
@@ -296,38 +312,92 @@ public class FuturesStrategyService {
     private Map<String, BigDecimal> fetchTodayPriceUsingPredictionService(
             List<String> tokens) {
 
-        try {
-            SmartConnect smartconnect = angelOne.signIn();
-
-            JSONObject payload =
-                    predictionService.buildMarketDataPayload(tokens, EXCHANGE);
-
-            JSONObject response =
-                    predictionService.callMarketDataWithRetry(smartconnect, payload);
-
-            Map<String, BigDecimal> priceMap = new HashMap<>();
-
-            if (response.has("fetched")) {
-                JSONArray fetched = response.getJSONArray("fetched");
-
-                for (int i = 0; i < fetched.length(); i++) {
-                    JSONObject obj = fetched.getJSONObject(i);
-                    String token = obj.get("symbolToken").toString();
-
-                    if (obj.has("ltp") && !obj.isNull("ltp")) {
-                        priceMap.put(
-                                token,
-                                new BigDecimal(obj.get("ltp").toString())
-                        );
-                    }
-                }
-            }
-            return priceMap;
-
-        } catch (Exception | SmartAPIException e) {
-            logger.error("Error fetching today's prices", e);
+        if (tokens.isEmpty()) {
             return Map.of();
         }
+
+        // ✅ Process in batches to avoid API limits
+        final int BATCH_SIZE = 50; // Angel One typically allows 50-100 tokens per request
+        Map<String, BigDecimal> priceMap = new HashMap<>();
+
+        logger.info("Fetching prices for {} tokens in batches of {}", tokens.size(), BATCH_SIZE);
+
+        for (int i = 0; i < tokens.size(); i += BATCH_SIZE) {
+            int endIndex = Math.min(i + BATCH_SIZE, tokens.size());
+            List<String> batch = tokens.subList(i, endIndex);
+            
+            logger.debug("Processing batch {}/{}: tokens {} to {}", 
+                    (i / BATCH_SIZE) + 1, 
+                    (tokens.size() + BATCH_SIZE - 1) / BATCH_SIZE,
+                    i + 1, 
+                    endIndex);
+
+            try {
+                SmartConnect smartconnect = angelOne.signIn();
+
+                JSONObject payload = predictionService.buildMarketDataPayload(batch, EXCHANGE);
+
+                JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
+
+                if (response != null && response.has("data") && !response.isNull("data")) {
+                    JSONObject data = response.getJSONObject("data");
+                    
+                    if (data.has("fetched")) {
+                        JSONArray fetched = data.getJSONArray("fetched");
+
+                        for (int j = 0; j < fetched.length(); j++) {
+                            JSONObject obj = fetched.getJSONObject(j);
+                            String token = obj.get("symbolToken").toString();
+
+                            if (obj.has("ltp") && !obj.isNull("ltp")) {
+                                priceMap.put(
+                                        token,
+                                        new BigDecimal(obj.get("ltp").toString())
+                                );
+                            }
+                        }
+                    }
+                } else if (response != null && response.has("fetched")) {
+                    // ✅ Alternative structure: response.fetched (direct)
+                    JSONArray fetched = response.getJSONArray("fetched");
+
+                    for (int j = 0; j < fetched.length(); j++) {
+                        JSONObject obj = fetched.getJSONObject(j);
+                        String token = obj.get("symbolToken").toString();
+
+                        if (obj.has("ltp") && !obj.isNull("ltp")) {
+                            priceMap.put(
+                                    token,
+                                    new BigDecimal(obj.get("ltp").toString())
+                            );
+                        }
+                    }
+                } else {
+                    logger.warn("Empty or null response for batch starting at index {}", i);
+                }
+
+                // ✅ Add small delay between batches to avoid rate limiting
+                if (endIndex < tokens.size()) {
+                    Thread.sleep(200); // 200ms delay between batches
+                }
+
+            } catch (JSONException e) {
+                logger.error("JSON error processing batch starting at index {}: {}", i, e.getMessage());
+            } catch (SmartAPIException e) {
+                logger.error("SmartAPI error for batch starting at index {}: {}", i, e.getMessage());
+            } catch (Exception e) {
+                logger.error("Error fetching prices for batch starting at index {}: {}", i, e.getMessage());
+                // ✅ Check if it's InterruptedException and break the loop
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                    logger.error("Interrupted while processing batches");
+                    break;
+                }
+            }
+        }
+
+        logger.info("Successfully fetched prices for {}/{} tokens", priceMap.size(), tokens.size());
+        return priceMap;
     }
 
     private BigDecimal fetchExpiryClosePrice(
@@ -351,8 +421,8 @@ public class FuturesStrategyService {
                 req.put("exchange", idx.getExchange());
                 req.put("symboltoken", idx.getToken());
                 req.put("interval", "ONE_DAY");
-                req.put("fromdate", fromDate + " 15:30");
-                req.put("todate", tradingDate + " 15:30");
+                req.put("fromdate", fromDate + " 09:15");
+                req.put("todate", tradingDate + " 15:15");
 
                 JSONArray candles = smartconnect.candleData(req);
 
@@ -384,11 +454,11 @@ public class FuturesStrategyService {
 
             LocalDate today = LocalDate.now();
             LocalDate thisMonthExpiry =
-                    today.with(TemporalAdjusters.lastInMonth(DayOfWeek.THURSDAY));
+                    today.with(TemporalAdjusters.lastInMonth(DayOfWeek.TUESDAY));
 
             if (today.isBefore(thisMonthExpiry)) {
                 return today.minusMonths(1)
-                        .with(TemporalAdjusters.lastInMonth(DayOfWeek.THURSDAY));
+                        .with(TemporalAdjusters.lastInMonth(DayOfWeek.TUESDAY));
             }
             return thisMonthExpiry;
         }

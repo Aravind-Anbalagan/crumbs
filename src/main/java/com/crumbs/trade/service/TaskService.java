@@ -267,7 +267,7 @@ public class TaskService {
 		// Fetch for all the indexes/scripts
 		if (indexName.equalsIgnoreCase("ALL")) {
 			//indexesList = indexesRepo.findAllStocks(Arrays.asList("NSE", "BSE"));
-			indexesList =indexesRepo.findBySymbolIn(nifty500Repo.getAllNames());
+			indexesList =indexesRepo.findByNameInAndExchange(nifty500Repo.getAllNames(),"NSE");
 		} else if (indexName.equalsIgnoreCase("NIFTY50")) {
 			indexesList = indexesRepo.findBySymbolIn(niftyRepo.getAllNames());
 		} else if (indexName != null) {

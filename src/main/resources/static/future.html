@@ -9,7 +9,7 @@
     if (!sessionStorage.getItem('isLoggedIn')) {
         window.location.href = '/';
     }
-</script>
+    </script>
     <style>
         :root {
             /* Light theme colors */
@@ -37,22 +37,22 @@
             /* Dark theme colors */
             --bg-gradient-start: #1a1a2e;
             --bg-gradient-end: #16213e;
-            --card-bg: #0f1419;
+            --card-bg: #1c1f26;
             --text-primary: #e4e6eb;
             --text-secondary: #b0b3b8;
             --text-tertiary: #8a8d91;
             --border-color: #2f3336;
             --border-light: #38444d;
-            --input-bg: #1c1f26;
-            --input-border: #2f3336;
+            --input-bg: #2a2f3a;
+            --input-border: #3a3f4a;
             --input-focus: #667eea;
-            --hover-bg: #1a1f2e;
+            --hover-bg: #252a35;
             --secondary-bg: #2a2f3a;
             --secondary-hover: #353a45;
             --shadow-color: rgba(0, 0, 0, 0.5);
             --table-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
             --table-header-text: #e4e6eb;
-            --empty-state-color: #555555;
+            --empty-state-color: #666666;
         }
 
         * {
@@ -65,8 +65,8 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             min-height: 100vh;
-            padding: 20px;
-            transition: background 0.3s ease;
+            padding: 10px;
+            transition: all 0.3s ease;
         }
 
         .container {
@@ -74,192 +74,187 @@
             margin: 0 auto;
         }
 
-        .header {
-            text-align: center;
+        /* Compact Header - All in one row */
+        .compact-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-title {
             color: white;
-            margin-bottom: 15px;
-            position: relative;
-        }
-
-        .header h1 {
-            font-size: 1.8rem;
-            margin-bottom: 5px;
+            font-size: 1.3rem;
+            font-weight: 700;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .header p {
-            font-size: 0.9rem;
-            opacity: 0.9;
+            white-space: nowrap;
         }
 
         .theme-toggle {
-            position: absolute;
-            top: 0;
-            right: 0;
             background: rgba(255, 255, 255, 0.2);
             border: none;
-            padding: 10px 15px;
+            padding: 8px 12px;
             border-radius: 50px;
             cursor: pointer;
             color: white;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             transition: all 0.3s ease;
             backdrop-filter: blur(10px);
         }
 
         .theme-toggle:hover {
             background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.1);
+            transform: scale(1.05);
         }
 
-        .config-section {
-            background: var(--card-bg);
-            border-radius: 10px;
-            padding: 15px 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 5px 15px var(--shadow-color);
-            transition: background 0.3s ease;
-        }
-
-        .config-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--border-light);
-        }
-
-        .config-header h2 {
-            color: var(--text-primary);
-            font-size: 1.2rem;
-        }
-
-        .config-header-left {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        /* Toggle Switch */
-        .toggle-container {
+        .header-center {
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        .toggle-label {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            font-weight: 600;
-        }
-
-        .toggle-switch {
-            position: relative;
-            width: 50px;
-            height: 26px;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: 0.3s;
-            border-radius: 34px;
-        }
-
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 18px;
-            width: 18px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: 0.3s;
-            border-radius: 50%;
-        }
-
-        .toggle-switch input:checked + .toggle-slider {
-            background-color: #667eea;
-        }
-
-        .toggle-switch input:checked + .toggle-slider:before {
-            transform: translateX(24px);
-        }
-
-        .toggle-slider.disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-
-        .config-form {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-        }
-
-        .form-group {
+        .index-toggle-buttons {
             display: flex;
-            flex-direction: column;
+            gap: 0;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 3px;
+            border-radius: 50px;
         }
 
-        .form-group label {
+        .index-toggle-btn {
+            padding: 6px 20px;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            font-size: 0.85rem;
             font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            border-radius: 50px;
         }
 
-        .form-group input {
-            padding: 8px 10px;
+        .index-toggle-btn.active {
+            background: white;
+            color: var(--bg-gradient-start);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .index-toggle-btn:hover:not(.active) {
+            color: white;
+        }
+
+        .index-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .index-badge-icon {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .index-badge.nifty50 .index-badge-icon {
+            background: #10b981;
+        }
+
+        .index-badge.nifty500 .index-badge-icon {
+            background: #f59e0b;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .data-section {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 12px 15px;
+            box-shadow: 0 5px 15px var(--shadow-color);
+            transition: all 0.3s ease;
+        }
+
+        .data-controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .data-controls-left {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .stats {
+            display: flex;
+            gap: 15px;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            transition: color 0.3s ease;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .search-box {
+            padding: 6px 10px;
             border: 2px solid var(--input-border);
             border-radius: 6px;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
+            font-size: 0.8rem;
             background: var(--input-bg);
             color: var(--text-primary);
+            min-width: 180px;
+            transition: all 0.3s ease;
         }
 
-        .form-group input:focus {
+        .search-box:focus {
             outline: none;
             border-color: var(--input-focus);
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
-        .form-group input:disabled {
-            background: var(--secondary-bg);
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
-        .button-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
         .btn {
-            padding: 8px 16px;
+            padding: 6px 12px;
             border: none;
             border-radius: 6px;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
+            white-space: nowrap;
         }
 
         .btn-primary {
@@ -268,8 +263,8 @@
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
 
         .btn-secondary {
@@ -281,79 +276,16 @@
             background: var(--secondary-hover);
         }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-
-        .data-section {
-            background: var(--card-bg);
-            border-radius: 10px;
-            padding: 15px 20px;
-            box-shadow: 0 5px 15px var(--shadow-color);
-            transition: background 0.3s ease;
-        }
-
-        .data-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--border-light);
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .data-header h2 {
-            color: var(--text-primary);
-            font-size: 1.2rem;
-        }
-
-        .data-controls {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .search-box {
-            padding: 8px 12px;
-            border: 2px solid var(--input-border);
-            border-radius: 6px;
-            font-size: 0.85rem;
-            background: var(--input-bg);
-            color: var(--text-primary);
-            min-width: 200px;
-        }
-
-        .search-box:focus {
-            outline: none;
-            border-color: var(--input-focus);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .btn-icon {
-            padding: 8px 16px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
         .filter-select {
-            padding: 8px 12px;
+            padding: 6px 10px;
             border: 2px solid var(--input-border);
             border-radius: 6px;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             background: var(--input-bg);
             color: var(--text-primary);
             cursor: pointer;
-            min-width: 180px;
+            min-width: 150px;
+            transition: all 0.3s ease;
         }
 
         .filter-select:focus {
@@ -362,93 +294,13 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
-        .pagination {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 2px solid var(--border-light);
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .pagination-info {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
-
-        .pagination-controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .pagination-btn {
-            padding: 8px 16px;
-            border: 2px solid var(--input-border);
-            background: var(--card-bg);
-            color: var(--text-primary);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-        }
-
-        .pagination-btn:hover:not(:disabled) {
-            background: var(--hover-bg);
-            border-color: var(--input-focus);
-        }
-
-        .pagination-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        .page-size-select {
-            padding: 8px 12px;
-            border: 2px solid var(--input-border);
-            border-radius: 6px;
-            background: var(--input-bg);
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            cursor: pointer;
-        }
-
-        .sort-icon {
-            margin-left: 5px;
-            font-size: 0.8rem;
-            opacity: 0.5;
-        }
-
-        th.sortable {
-            cursor: pointer;
-            user-select: none;
-        }
-
-        th.sortable:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .stats {
-            display: flex;
-            gap: 15px;
-            font-size: 0.85rem;
-            color: var(--text-tertiary);
-            margin-bottom: 12px;
-        }
-
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
         .table-container {
             overflow-x: auto;
             border-radius: 8px;
             border: 1px solid var(--border-color);
-            transition: opacity 0.2s ease;
+            transition: opacity 0.2s ease, border-color 0.3s ease;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
         }
 
         .table-container.updating {
@@ -459,26 +311,36 @@
             width: 100%;
             border-collapse: collapse;
             background: var(--card-bg);
+            transition: background 0.3s ease;
         }
 
         thead {
             background: var(--table-header-bg);
             color: var(--table-header-text);
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         th {
-            padding: 15px;
+            padding: 10px 12px;
             text-align: left;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             white-space: nowrap;
+            transition: background 0.3s ease;
         }
 
         td {
-            padding: 12px 15px;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--border-light);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        tbody tr {
+            transition: background 0.2s ease;
         }
 
         tbody tr:hover {
@@ -497,31 +359,18 @@
 
         .loading {
             text-align: center;
-            padding: 20px;
+            padding: 30px 20px;
             color: var(--text-tertiary);
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: var(--card-bg);
-            border-radius: 8px;
-            box-shadow: 0 2px 10px var(--shadow-color);
-            z-index: 10;
-        }
-
-        .loading-container {
-            position: relative;
-            min-height: 100px;
         }
 
         .spinner {
             border: 3px solid var(--border-color);
             border-top: 3px solid #667eea;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 35px;
+            height: 35px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
+            margin: 0 auto 12px;
         }
 
         @keyframes spin {
@@ -530,21 +379,23 @@
         }
 
         .error {
-            background: #fee;
-            color: #c33;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #c33;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 4px solid #991b1b;
+            font-size: 0.85rem;
         }
 
         .success {
-            background: #efe;
-            color: #3c3;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #3c3;
+            background: #d1fae5;
+            color: #065f46;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 4px solid #065f46;
+            font-size: 0.85rem;
         }
 
         [data-theme="dark"] .error {
@@ -559,133 +410,219 @@
 
         .empty-state {
             text-align: center;
-            padding: 60px 20px;
+            padding: 50px 20px;
             color: var(--empty-state-color);
+            transition: color 0.3s ease;
         }
 
         .empty-state svg {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 20px;
+            width: 60px;
+            height: 60px;
+            margin-bottom: 15px;
             opacity: 0.3;
         }
 
-        @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.8rem;
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 2px solid var(--border-light);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .pagination-info {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            transition: color 0.3s ease;
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .pagination-btn {
+            padding: 6px 12px;
+            border: 2px solid var(--input-border);
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: var(--hover-bg);
+            border-color: var(--input-focus);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .page-size-select {
+            padding: 6px 10px;
+            border: 2px solid var(--input-border);
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .sort-icon {
+            margin-left: 4px;
+            font-size: 0.75rem;
+            opacity: 0.5;
+        }
+
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th.sortable:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        @media (max-width: 1200px) {
+            .compact-header {
+                flex-direction: column;
+                align-items: stretch;
             }
 
-            .config-form {
-                grid-template-columns: 1fr;
+            .header-left,
+            .header-center {
+                justify-content: center;
+            }
+
+            .stats {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header-title {
+                font-size: 1.1rem;
+            }
+
+            .index-toggle-btn {
+                padding: 5px 15px;
+                font-size: 0.75rem;
             }
 
             .table-container {
-                font-size: 0.85rem;
+                font-size: 0.75rem;
+            }
+
+            .data-controls-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .data-controls-left {
+                width: 100%;
+            }
+
+            .stats {
+                width: 100%;
+                justify-content: space-between;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
-            <h1>📊 Futures Filter Dashboard</h1>
-            <p>Monitor stocks with 1% movement in futures</p>
-        </div>
-
-        <!-- Configuration Section -->
-        <div class="config-section">
-            <div class="config-header">
-                <div class="config-header-left">
-                    <h2>⚙️ Configuration</h2>
-                    <div class="toggle-container">
-                        <span class="toggle-label">Edit Mode</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="editToggle" onchange="toggleEditMode()">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                </div>
-                <div class="button-group">
-                    <button class="btn btn-secondary" onclick="loadConfig()" id="reloadBtn" disabled>🔄 Reload</button>
-                    <button class="btn btn-primary" onclick="saveConfig()" id="saveBtn" disabled>💾 Save Config</button>
-                </div>
+        <!-- Compact Header - Everything in One Row -->
+        <div class="compact-header">
+            <div class="header-left">
+                <h1 class="header-title">📊 Futures Dashboard</h1>
+                <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
             </div>
 
-            <div id="configMessage"></div>
-
-            <form id="configForm" class="config-form">
-                <div class="form-group">
-                    <label for="expiryDate">Expiry Date</label>
-                    <input type="date" id="expiryDate" name="expiryDate" required disabled>
-                </div>
-                <div class="form-group">
-                    <label for="movementPercent">Movement Percentage (%)</label>
-                    <input type="number" id="movementPercent" name="movementPercent" step="0.01" min="0" max="100" required disabled>
-                </div>
-            </form>
-        </div>
-
-        <!-- Filtered Data Section -->
-        <div class="data-section">
-            <div class="data-header">
-                <h2>📈 Filtered Futures Data</h2>
-                <div class="data-controls">
-                    <select class="filter-select" id="percentFilter" onchange="filterByPercentage()">
-                        <option value="all">All % Moves</option>
-                        <option value="&lt;-5">&lt; -5%</option>
-                        <option value="-5to-4">-5% to -4%</option>
-                        <option value="-4to-3">-4% to -3%</option>
-                        <option value="-3to-2">-3% to -2%</option>
-                        <option value="-2to-1">-2% to -1%</option>
-                        <option value="-1to0">-1% to 0%</option>
-                        <option value="0to1" selected>0% to 1%</option>
-                        <option value="1to2">1% to 2%</option>
-                        <option value="2to3">2% to 3%</option>
-                        <option value="3to4">3% to 4%</option>
-                        <option value="4to5">4% to 5%</option>
-                        <option value="&gt;5">&gt; 5%</option>
-                    </select>
-                    <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search other fields..." onkeyup="filterTable()">
-                    <button class="btn btn-primary btn-icon" onclick="exportToCSV()">
-                        📥 CSV
+            <div class="header-center">
+                <div class="index-toggle-buttons">
+                    <button class="index-toggle-btn active" id="nifty50Btn" onclick="switchIndex('NIFTY50')">
+                        NIFTY 50
                     </button>
-                    <button class="btn btn-secondary btn-icon" onclick="loadFilteredData()">
-                        🔄
+                    <button class="index-toggle-btn" id="nifty500Btn" onclick="switchIndex('NIFTY500')">
+                        NIFTY 500
                     </button>
+                </div>
+                <div class="index-badge nifty50" id="currentIndexBadge">
+                    <span class="index-badge-icon"></span>
+                    <span id="currentIndexText">Active</span>
                 </div>
             </div>
 
             <div class="stats">
                 <div class="stat-item">
-                    <span>Total Records:</span>
+                    <span>📊</span>
                     <strong id="totalCount">0</strong>
                 </div>
                 <div class="stat-item">
-                    <span>Showing:</span>
+                    <span>👁️</span>
                     <strong id="showingCount">0</strong>
                 </div>
                 <div class="stat-item">
-                    <span>Last Trade Date:</span>
+                    <span>🕐</span>
                     <strong id="lastUpdate">-</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Section -->
+        <div class="data-section">
+            <div class="data-controls-row">
+                <div class="data-controls-left">
+                    <select class="filter-select" id="percentFilter" onchange="filterByPercentage()">
+                        <option value="all">All % Moves</option>
+                        <option value="<-5">&lt; -5%</option>
+                        <option value="-5to-4">-5% to -4%</option>
+                        <option value="-4to-3">-4% to -3%</option>
+                        <option value="-3to-2">-3% to -2%</option>
+                        <option value="-2to-1">-2% to -1%</option>
+                        <option value="-1to0">-1% to 0%</option>
+                        <option selected value="0to1">0% to 1%</option>
+                        <option value="1to2">1% to 2%</option>
+                        <option value="2to3">2% to 3%</option>
+                        <option value="3to4">3% to 4%</option>
+                        <option value="4to5">4% to 5%</option>
+                        <option value=">5">&gt; 5%</option>
+                    </select>
+                    <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search..." onkeyup="filterTable()">
+                </div>
+                <div class="data-controls-left">
+                    <button class="btn btn-primary" onclick="exportToCSV()">
+                        📥 Export
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadFilteredData()">
+                        🔄 Refresh
+                    </button>
                 </div>
             </div>
 
             <div id="dataMessage"></div>
 
-            <div class="loading-container">
-                <div id="dataLoading" class="loading" style="display: none;">
-                    <div class="spinner"></div>
-                    <p>Loading...</p>
-                </div>
-
-                <div id="tableContainer"></div>
+            <div id="dataLoading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading...</p>
             </div>
+
+            <div id="tableContainer"></div>
 
             <div id="paginationContainer" style="display: none;">
                 <div class="pagination">
                     <div class="pagination-info">
-                        <span>Rows per page:</span>
+                        <span>Rows:</span>
                         <select class="page-size-select" id="pageSize" onchange="changePageSize()">
                             <option value="10" selected>10</option>
                             <option value="25">25</option>
@@ -694,11 +631,11 @@
                         </select>
                     </div>
                     <div class="pagination-controls">
-                        <button class="pagination-btn" onclick="goToFirstPage()">⏮️ First</button>
-                        <button class="pagination-btn" onclick="previousPage()">◀️ Prev</button>
-                        <span class="pagination-info" id="pageInfo">Page 1 of 1</span>
-                        <button class="pagination-btn" onclick="nextPage()">Next ▶️</button>
-                        <button class="pagination-btn" onclick="goToLastPage()">Last ⏭️</button>
+                        <button class="pagination-btn" onclick="goToFirstPage()">⏮️</button>
+                        <button class="pagination-btn" onclick="previousPage()">◀️</button>
+                        <span class="pagination-info" id="pageInfo">1/1</span>
+                        <button class="pagination-btn" onclick="nextPage()">▶️</button>
+                        <button class="pagination-btn" onclick="goToLastPage()">⏭️</button>
                     </div>
                 </div>
             </div>
@@ -712,10 +649,11 @@
         window.fullData = null;
         window.filteredData = null;
         window.currentPage = 1;
-        window.pageSize = 10;
+        window.pageSize = 10; // Default to 10 rows
         window.sortColumn = null;
         window.sortDirection = 'asc';
         window.percentColumnName = null;
+        window.currentIndex = 'NIFTY50';
 
         // Theme Management
         function initTheme() {
@@ -738,105 +676,40 @@
             themeToggle.textContent = theme === 'light' ? '🌙' : '☀️';
         }
 
-        // Edit Mode Management
-        function toggleEditMode() {
-            const editToggle = document.getElementById('editToggle');
-            const isEditMode = editToggle.checked;
+        // Index Management
+        function switchIndex(indexType) {
+            window.currentIndex = indexType;
             
-            document.getElementById('expiryDate').disabled = !isEditMode;
-            document.getElementById('movementPercent').disabled = !isEditMode;
-            document.getElementById('reloadBtn').disabled = !isEditMode;
-            document.getElementById('saveBtn').disabled = !isEditMode;
+            document.getElementById('nifty50Btn').classList.toggle('active', indexType === 'NIFTY50');
+            document.getElementById('nifty500Btn').classList.toggle('active', indexType === 'NIFTY500');
+            
+            const badge = document.getElementById('currentIndexBadge');
+            const badgeText = document.getElementById('currentIndexText');
+            badge.className = indexType === 'NIFTY50' ? 'index-badge nifty50' : 'index-badge nifty500';
+            badgeText.textContent = 'Active';
+            
+            localStorage.setItem('selectedIndex', indexType);
+            
+            loadFilteredData();
         }
 
-        // Load configuration on page load
+        function loadIndexPreference() {
+            const savedIndex = localStorage.getItem('selectedIndex') || 'NIFTY50';
+            switchIndex(savedIndex);
+        }
+
+        // Load page
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
-            loadConfig();
-            loadFilteredData();
+            loadIndexPreference();
         });
-
-        // Load configuration
-        async function loadConfig() {
-            try {
-                const response = await fetch(API_BASE_URL, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': '*/*'
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const config = await response.json();
-                
-                if (config.expiryDate) {
-                    document.getElementById('expiryDate').value = config.expiryDate;
-                }
-                if (config.movementPercent !== undefined) {
-                    document.getElementById('movementPercent').value = config.movementPercent;
-                }
-
-                if (window.configLoadedOnce) {
-                    showMessage('configMessage', 'Configuration loaded successfully', 'success');
-                    setTimeout(() => clearMessage('configMessage'), 3000);
-                }
-                window.configLoadedOnce = true;
-
-            } catch (error) {
-                console.error('Error loading config:', error);
-                showMessage('configMessage', 'Error loading configuration: ' + error.message, 'error');
-            }
-        }
-
-        // Save configuration
-        async function saveConfig() {
-            try {
-                const expiryDate = document.getElementById('expiryDate').value;
-                const movementPercent = parseFloat(document.getElementById('movementPercent').value);
-
-                if (!expiryDate || isNaN(movementPercent)) {
-                    showMessage('configMessage', 'Please fill in all required fields', 'error');
-                    return;
-                }
-
-                const config = {
-                    expiryDate: expiryDate,
-                    movementPercent: movementPercent
-                };
-
-                const response = await fetch(API_BASE_URL, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': '*/*'
-                    },
-                    body: JSON.stringify(config)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                showMessage('configMessage', 'Configuration saved successfully! Reloading filtered data...', 'success');
-                
-                setTimeout(() => {
-                    loadFilteredData();
-                    clearMessage('configMessage');
-                }, 2000);
-
-            } catch (error) {
-                console.error('Error saving config:', error);
-                showMessage('configMessage', 'Error saving configuration: ' + error.message, 'error');
-            }
-        }
 
         // Load filtered data
         async function loadFilteredData() {
             const loadingDiv = document.getElementById('dataLoading');
             const tableContainer = document.getElementById('tableContainer');
+            
+            clearMessage('dataMessage');
             
             if (tableContainer.innerHTML) {
                 const tableDiv = tableContainer.querySelector('.table-container');
@@ -848,21 +721,22 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE_URL}/filtered`, {
+                const url = `${API_BASE_URL}/filtered/${window.currentIndex}`;
+                
+                const response = await fetch(url, {
                     method: 'GET',
                     headers: {
-                        'Accept': '*/*'
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
                     }
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`Failed to load data (HTTP ${response.status})`);
                 }
 
                 const data = await response.json();
                 loadingDiv.style.display = 'none';
-
-                console.log('✅ Data loaded:', data.length, 'records');
 
                 if (!data || data.length === 0) {
                     tableContainer.innerHTML = '';
@@ -874,14 +748,10 @@
                     return;
                 }
 
-                // Store data
                 window.fullData = data;
                 window.filteredData = data;
 
-                // Auto-detect percent column
                 detectPercentColumn(data);
-
-                // Apply filters (this will respect the dropdown selection)
                 applyFilters();
 
                 document.getElementById('paginationContainer').style.display = 'block';
@@ -896,17 +766,20 @@
                 updateStats();
 
             } catch (error) {
-                console.error('Error loading filtered data:', error);
+                console.error('Error loading data:', error);
+                
                 loadingDiv.style.display = 'none';
                 const tableDiv = tableContainer.querySelector('.table-container');
                 if (tableDiv) {
                     tableDiv.classList.remove('updating');
                 }
-                showMessage('dataMessage', 'Error loading filtered data: ' + error.message, 'error');
+                
+                showMessage('dataMessage', 
+                    `⚠️ Unable to load data for ${window.currentIndex}. Please try refreshing.`, 
+                    'error');
             }
         }
 
-        // Detect percent column
         function detectPercentColumn(data) {
             if (!data || data.length === 0) {
                 window.percentColumnName = null;
@@ -918,8 +791,8 @@
             
             let percentKey = keys.find(key => 
                 key.toLowerCase() === 'percentmove' || 
-                key.toLowerCase() === 'percent move' ||
-                key.toLowerCase() === 'percentagemove'
+                key.toLowerCase() === 'percentMove' ||
+                key.toLowerCase() === 'percent_move'
             );
             
             if (!percentKey) {
@@ -932,40 +805,28 @@
             if (!percentKey) {
                 percentKey = keys.find(key => {
                     const lower = key.toLowerCase();
-                    return lower.includes('percent') || 
-                           lower.includes('change') || 
-                           lower.includes('pct') ||
-                           key.includes('%');
+                    return lower.includes('percent') || lower.includes('change');
                 });
             }
             
-            if (!percentKey) {
-                percentKey = keys.find(key => key.toLowerCase().includes('move'));
-            }
-            
             window.percentColumnName = percentKey;
-            console.log('✅ Detected percent column:', percentKey);
         }
 
-        // Get percent value
         function getPercentValue(row) {
             if (!window.percentColumnName) return null;
             return row[window.percentColumnName];
         }
 
-        // Apply filters
         function applyFilters() {
             const searchTerm = document.getElementById('searchBox').value.toLowerCase();
             const percentFilter = document.getElementById('percentFilter').value;
             
             if (!window.fullData) {
-                console.log('⚠️ No fullData available');
                 return;
             }
             
             let filtered = [...window.fullData];
 
-            // Apply percentage filter
             if (percentFilter !== 'all' && window.percentColumnName) {
                 filtered = filtered.filter(row => {
                     const percentValue = getPercentValue(row);
@@ -989,7 +850,6 @@
                 });
             }
 
-            // Apply search filter
             if (searchTerm) {
                 filtered = filtered.filter(row => {
                     return Object.values(row).some(val => 
@@ -998,8 +858,6 @@
                 });
             }
             
-            console.log('✅ Filtered:', filtered.length, 'records');
-            
             window.filteredData = filtered;
             window.currentPage = 1;
             
@@ -1007,7 +865,6 @@
             updateStats();
         }
 
-        // Filter functions
         function filterTable() {
             applyFilters();
         }
@@ -1016,7 +873,6 @@
             applyFilters();
         }
 
-        // Sort table
         function sortTable(column) {
             if (window.sortColumn === column) {
                 window.sortDirection = window.sortDirection === 'asc' ? 'desc' : 'asc';
@@ -1052,37 +908,28 @@
             renderTable();
         }
 
-        // Helper: format last traded date (DDDD-YYYY-MM-DD)
-        function formatLastTradedDate(dateStr) {
+        function formatDate(dateStr) {
             if (!dateStr) return '-';
             const d = new Date(dateStr);
             if (isNaN(d.getTime())) return dateStr;
-            const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${weekday}-${y}-${m}-${day}`;
+            return d.toLocaleDateString('en-IN', { 
+                day: '2-digit',
+                month: 'short'
+            });
         }
 
-        // Helper: format full last trade date-time for stats
-        function formatLastTradeDateTime(dateStr) {
+        function formatDateTime(dateStr) {
             if (!dateStr) return '-';
             const d = new Date(dateStr);
             if (isNaN(d.getTime())) return dateStr;
-
-            const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            const hh = String(d.getHours()).padStart(2, '0');
-            const mm = String(d.getMinutes()).padStart(2, '0');
-            const ss = String(d.getSeconds()).padStart(2, '0');
-
-            // Only date-time part: Monday-2025-12-29 11:16:04
-            return `${weekday}-${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+            return d.toLocaleString('en-IN', { 
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
         }
 
-        // Pagination functions
         function changePageSize() {
             window.pageSize = parseInt(document.getElementById('pageSize').value);
             window.currentPage = 1;
@@ -1115,17 +962,13 @@
             renderTable();
         }
 
-        // Render table
         function renderTable() {
             const tableContainer = document.getElementById('tableContainer');
             
             if (!window.filteredData || window.filteredData.length === 0) {
-                console.log('⚠️ No data to display');
                 showEmptyState();
                 return;
             }
-
-            console.log('🎨 Rendering table with', window.filteredData.length, 'records');
 
             const columnsToShow = [
                 'name',
@@ -1134,11 +977,17 @@
                 'lastTradedDate',
                 'lastTradedPrice',
                 'percentMove',
-                'direction'
+                'direction',
+                'status'
             ];
 
             const allKeys = Object.keys(window.filteredData[0]);
             const columns = columnsToShow.filter(col => allKeys.includes(col));
+
+            if (columns.length === 0) {
+                showEmptyState();
+                return;
+            }
 
             const startIndex = (window.currentPage - 1) * window.pageSize;
             const endIndex = startIndex + window.pageSize;
@@ -1168,9 +1017,6 @@
                             ${paginatedData.map(row => `
                                 <tr>
                                     ${columns.map(col => {
-                                        if (col === 'lastTradedDate') {
-                                            return `<td>${formatLastTradedDate(row[col])}</td>`;
-                                        }
                                         return `<td>${formatCellValue(col, row[col])}</td>`;
                                     }).join('')}
                                 </tr>
@@ -1181,12 +1027,9 @@
             `;
 
             tableContainer.innerHTML = tableHTML;
-            console.log('✅ Table rendered successfully');
-
             updatePaginationInfo();
         }
 
-        // Update pagination info
         function updatePaginationInfo() {
             if (!window.filteredData) return;
             
@@ -1194,11 +1037,10 @@
             const pageInfoElem = document.getElementById('pageInfo');
             
             if (pageInfoElem) {
-                pageInfoElem.textContent = `Page ${window.currentPage} of ${totalPages}`;
+                pageInfoElem.textContent = `${window.currentPage}/${totalPages}`;
             }
         }
 
-        // Update stats
         function updateStats() {
             const totalCountElem = document.getElementById('totalCount');
             const showingCountElem = document.getElementById('showingCount');
@@ -1209,9 +1051,7 @@
             }
             
             if (showingCountElem && window.filteredData) {
-                const startIndex = (window.currentPage - 1) * window.pageSize;
-                const endIndex = Math.min(startIndex + window.pageSize, window.filteredData.length);
-                showingCountElem.textContent = `${startIndex + 1}-${endIndex} of ${window.filteredData.length}`;
+                showingCountElem.textContent = window.filteredData.length;
             }
             
             if (lastUpdateElem) {
@@ -1230,30 +1070,50 @@
                 }
 
                 if (latestDate) {
-                    lastUpdateElem.textContent = formatLastTradeDateTime(latestDate.toISOString());
+                    lastUpdateElem.textContent = formatDateTime(latestDate.toISOString());
                 } else {
                     lastUpdateElem.textContent = '-';
                 }
             }
         }
 
-        // Format column names
         function formatColumnName(name) {
-            return name
+            const formatted = name
                 .replace(/([A-Z])/g, ' $1')
                 .replace(/^./, str => str.toUpperCase())
                 .trim();
+            
+            // Shorten common names
+            return formatted
+                .replace('Last Expiry', 'Exp')
+                .replace('Last Traded', 'LTP')
+                .replace('Percent Move', '% Move');
         }
 
-        // Format cell values
         function formatCellValue(column, value) {
             if (value === null || value === undefined) return '-';
 
-            if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('change')) {
+            if (column.toLowerCase().includes('date')) {
+                return formatDate(value);
+            }
+
+            if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('move')) {
                 const num = parseFloat(value);
                 if (!isNaN(num)) {
                     const className = num >= 0 ? 'positive' : 'negative';
                     return `<span class="${className}">${num >= 0 ? '+' : ''}${num.toFixed(2)}%</span>`;
+                }
+            }
+
+            if (column.toLowerCase() === 'direction') {
+                const className = value === 'UP' ? 'positive' : 'negative';
+                return `<span class="${className}">${value}</span>`;
+            }
+
+            if (column.toLowerCase().includes('price')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    return num.toFixed(2);
                 }
             }
 
@@ -1264,7 +1124,6 @@
             return value;
         }
 
-        // Export to CSV
         function exportToCSV() {
             if (!window.fullData || window.fullData.length === 0) {
                 alert('No data to export');
@@ -1293,8 +1152,9 @@
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
             
+            const filename = `${window.currentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
             link.setAttribute('href', url);
-            link.setAttribute('download', `futures_data_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute('download', filename);
             link.style.visibility = 'hidden';
             
             document.body.appendChild(link);
@@ -1302,7 +1162,6 @@
             document.body.removeChild(link);
         }
 
-        // Show empty state
         function showEmptyState() {
             const tableContainer = document.getElementById('tableContainer');
             tableContainer.innerHTML = `
@@ -1310,27 +1169,25 @@
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                     </svg>
-                    <h3>No Data Available</h3>
-                    <p>No stocks matching the filter criteria found.</p>
+                    <h3>No Data</h3>
+                    <p>No stocks found for ${window.currentIndex}</p>
                 </div>
             `;
         }
 
-        // Show message
         function showMessage(elementId, message, type) {
             const element = document.getElementById(elementId);
             element.innerHTML = `<div class="${type}">${message}</div>`;
         }
 
-        // Clear message
         function clearMessage(elementId) {
             document.getElementById(elementId).innerHTML = '';
         }
 
-        // Auto-refresh every 30 minutes
+        // Auto-refresh every 5 minutes
         setInterval(() => {
             loadFilteredData();
-        }, 1800000);
+        }, 300000);
     </script>
 </body>
 </html>
