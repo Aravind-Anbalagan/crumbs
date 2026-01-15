@@ -16,4 +16,9 @@ public interface FuturesFilterRepo extends JpaRepository<FuturesFilter, Long> {
     List<FuturesFilter> findByStatus(String status);
 
     List<FuturesFilter> findByDirection(String direction);
+    
+    void deleteByIndexType(String indexType);
+    List<FuturesFilter> findByIndexType(String indexType);
+    
+    
 }

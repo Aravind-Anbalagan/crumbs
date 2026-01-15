@@ -35,4 +35,8 @@ public class FuturesConfig {
     
     @Column(name = "notificationRequired")
     private String notificationRequired;
+    
+    @Column(name = "indexType")
+    private String indexType;
+
 }

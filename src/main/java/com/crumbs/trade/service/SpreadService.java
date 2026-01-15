@@ -228,7 +228,7 @@ public class SpreadService {
 
         SmartConnect smartConnect = angelOne.signIn();
 
-        log.info("Processing {} indicators with {} mode (Daily limit: {})",
+        log.info("Processing {} Spread Strategy with {} mode (Daily limit: {})",
                  indicatorList.size(), config.getMode(), MAX_SPREADS_PER_DAY);
 
         for (Indicator indicator : indicatorList) {

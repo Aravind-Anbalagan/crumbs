@@ -27,4 +27,6 @@ public class FuturesFilter {
 
 
     private LocalDateTime lastTradedDate;
+
+    private String indexType; // Track which index this belongs to
 }

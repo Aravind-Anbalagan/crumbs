@@ -29,6 +29,7 @@ import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.repo.FuturesConfigRepo;
 import com.crumbs.trade.repo.FuturesFilterRepo;
 import com.crumbs.trade.repo.FuturesRepo;
+import com.crumbs.trade.repo.Nifty500Repo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
@@ -41,6 +42,7 @@ public class FuturesStrategyService {
     private static final String EXCHANGE = "NSE";
 
     @Autowired private FuturesRepo futuresRepo;
+    @Autowired private Nifty500Repo nifty500Repo;
     @Autowired private FuturesConfigRepo configRepo;
     @Autowired private FuturesFilterRepo filterRepo;
     @Autowired private IndexesRepo indexesRepo;
@@ -48,23 +50,61 @@ public class FuturesStrategyService {
     @Autowired private AngelOne angelOne;
     @Autowired private TelegramService telegramService;
 
-    // ✅ TRANSACTION STARTS HERE
+    /**
+     * ✅ Execute for ALL active configs (based on active flag)
+     * Executes for NIFTY50 and/or NIFTY500 depending on which configs are active
+     */
     @Transactional
-    public List<FuturesFilter> execute() {
+    public void executeAll() {
+        List<FuturesConfig> activeConfigs = configRepo.findByActive("Y");
+        
+        if (activeConfigs.isEmpty()) {
+            logger.warn("No active FUTURES_CONFIG found");
+            return;
+        }
 
-        FuturesConfig config = configRepo.findActive()
-                .orElseThrow(() ->
-                        new IllegalStateException("No ACTIVE FUTURES_CONFIG found"));
+        logger.info("Found {} active config(s)", activeConfigs.size());
 
+        for (FuturesConfig config : activeConfigs) {
+            String indexType = config.getIndexType();
+            if (indexType == null || indexType.trim().isEmpty()) {
+                logger.warn("Config ID {} has no index_type, skipping", config.getId());
+                continue;
+            }
+
+            try {
+                logger.info("Executing strategy for {}", indexType);
+                executeForConfig(config);
+            } catch (Exception e) {
+                logger.error("Error executing for {}", indexType, e);
+            }
+        }
+    }
+
+    /**
+     * ✅ Core execution logic for a specific config
+     */
+    private void executeForConfig(FuturesConfig config) {
+
+        String indexType = config.getIndexType();
         LocalDate expiryDate = resolveExecutionDate(config);
 
-        List<Indexes> indexesList = futuresRepo.findAll().stream()
-                .map(f -> indexesRepo.findByNameAndExchange(f.getName(), EXCHANGE))
+        // Get stock names based on index type
+        List<String> stockNames = getStockNamesByIndexType(indexType);
+
+        if (stockNames.isEmpty()) {
+            logger.warn("No stocks found in repository for {}", indexType);
+            return;
+        }
+
+        List<Indexes> indexesList = stockNames.stream()
+                .map(name -> indexesRepo.findByNameAndExchange(name, EXCHANGE))
                 .filter(Objects::nonNull)
                 .toList();
 
         if (indexesList.isEmpty()) {
-            return Collections.emptyList();
+            logger.warn("No index data found for {}", indexType);
+            return;
         }
 
         List<String> tokens = indexesList.stream()
@@ -82,8 +122,7 @@ public class FuturesStrategyService {
             BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
             if (todayPrice == null) continue;
 
-            BigDecimal expiryClose =
-                    fetchExpiryClosePrice(idx, expiryDate);
+            BigDecimal expiryClose = fetchExpiryClosePrice(idx, expiryDate);
 
             if (expiryClose == null || expiryClose.compareTo(BigDecimal.ZERO) == 0) {
                 logger.error("Expiry Price is empty for {}", idx.getName());
@@ -97,6 +136,7 @@ public class FuturesStrategyService {
 
             FuturesFilter ff = new FuturesFilter();
             ff.setName(idx.getName());
+            ff.setIndexType(indexType);
             ff.setLastExpiryPrice(expiryClose);
             ff.setLastTradedPrice(todayPrice);
             ff.setPercentMove(percentMove);
@@ -116,17 +156,45 @@ public class FuturesStrategyService {
             result.add(ff);
         }
 
-        return updateFilters(config, result);
+        if (!result.isEmpty()) {
+            updateFilters(config, result);
+        } else {
+            logger.warn("No results generated for {}", indexType);
+        }
     }
 
-    // ❌ No @Transactional here (internal call)
-    private List<FuturesFilter> updateFilters(
+    /**
+     * ✅ Get stock names by index type
+     */
+    private List<String> getStockNamesByIndexType(String indexType) {
+        if ("NIFTY500".equalsIgnoreCase(indexType)) {
+            logger.info("Fetching NIFTY 500 stocks");
+            return nifty500Repo.findAll().stream()
+                    .map(n -> n.getName())
+                    .filter(Objects::nonNull)
+                    .toList();
+        } else {
+            logger.info("Fetching NIFTY 50 stocks");
+            return futuresRepo.findAll().stream()
+                    .map(f -> f.getName())
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+    }
+
+    private void updateFilters(
             FuturesConfig config,
             List<FuturesFilter> result) {
 
-        filterRepo.deleteAll();
+        String indexType = config.getIndexType();
+        
+        // Delete only filters for this index type
+        filterRepo.deleteByIndexType(indexType);
         List<FuturesFilter> saved = filterRepo.saveAll(result);
 
+        logger.info("Saved {} filters for {}", saved.size(), indexType);
+
+        // Schedule notification after transaction commits
         TransactionSynchronizationManager.registerSynchronization(
             new TransactionSynchronization() {
                 @Override
@@ -135,8 +203,6 @@ public class FuturesStrategyService {
                 }
             }
         );
-
-        return saved;
     }
 
     /* ================= NOTIFICATION ================= */
@@ -145,10 +211,16 @@ public class FuturesStrategyService {
             FuturesConfig config,
             List<FuturesFilter> result) {
 
-        if (!"Y".equalsIgnoreCase(config.getNotificationRequired())) return;
+        if (!"Y".equalsIgnoreCase(config.getNotificationRequired())) {
+            logger.debug("Notification not required for {}", config.getIndexType());
+            return;
+        }
 
         BigDecimal threshold = config.getMovementPercent();
-        if (threshold == null || threshold.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (threshold == null || threshold.compareTo(BigDecimal.ZERO) <= 0) {
+            logger.warn("Invalid threshold for {}", config.getIndexType());
+            return;
+        }
 
         List<FuturesFilter> alertRows = result.stream()
                 .filter(f -> f.getPercentMove() != null)
@@ -157,16 +229,21 @@ public class FuturesStrategyService {
                 .collect(Collectors.toList());
 
         if (!alertRows.isEmpty()) {
-            sendTelegramInBatches(alertRows, threshold);
+            logger.info("Sending notification for {} stocks in {}", 
+                    alertRows.size(), config.getIndexType());
+            sendTelegramInBatches(config, alertRows, threshold);
+        } else {
+            logger.debug("No stocks match notification criteria for {}", config.getIndexType());
         }
     }
 
     private void sendTelegramInBatches(
+            FuturesConfig config,
             List<FuturesFilter> rows,
             BigDecimal threshold) {
 
         final int TELEGRAM_LIMIT = 3800;
-        String header = buildTableHeader(threshold);
+        String header = buildTableHeader(config.getIndexType(), threshold);
         String footer = "-----------------------------------------------------\n```";
 
         StringBuilder batch = new StringBuilder(header);
@@ -197,9 +274,11 @@ public class FuturesStrategyService {
         );
     }
 
-    private String buildTableHeader(BigDecimal threshold) {
+    private String buildTableHeader(String indexType, BigDecimal threshold) {
         return new StringBuilder()
-            .append("📊 *NIFTY 50 – Near Expiry Price* (±")
+            .append("📊 *")
+            .append(indexType != null ? indexType : "NIFTY")
+            .append(" – Near Expiry Price* (±")
             .append(threshold)
             .append("%)\n\n")
             .append("```\n")
@@ -246,6 +325,7 @@ public class FuturesStrategyService {
             return priceMap;
 
         } catch (Exception | SmartAPIException e) {
+            logger.error("Error fetching today's prices", e);
             return Map.of();
         }
     }
@@ -284,7 +364,7 @@ public class FuturesStrategyService {
 
             } catch (Exception e) {
                 logger.warn("Retry {}/{} failed for {}",
-                        attempt, maxRetries, idx.getName());
+                        attempt, maxRetries, idx.getName(), e);
             }
 
             try {
@@ -304,11 +384,11 @@ public class FuturesStrategyService {
 
             LocalDate today = LocalDate.now();
             LocalDate thisMonthExpiry =
-                    today.with(TemporalAdjusters.lastInMonth(DayOfWeek.TUESDAY));
+                    today.with(TemporalAdjusters.lastInMonth(DayOfWeek.THURSDAY));
 
             if (today.isBefore(thisMonthExpiry)) {
                 return today.minusMonths(1)
-                        .with(TemporalAdjusters.lastInMonth(DayOfWeek.TUESDAY));
+                        .with(TemporalAdjusters.lastInMonth(DayOfWeek.THURSDAY));
             }
             return thisMonthExpiry;
         }
@@ -321,15 +401,16 @@ public class FuturesStrategyService {
         return config.getExecutionDate();
     }
 
-    /* ================= CONFIG UPDATE ================= */
+    /* ================= CONFIG MANAGEMENT ================= */
 
+    /**
+     * ✅ Update config by index type
+     */
     @Transactional
-    public FuturesConfig partialUpdate(FuturesConfigDto dto) {
-
-        FuturesConfig config = configRepo.getConfig();
-        if (config == null) {
-            throw new IllegalStateException("FUTURES_CONFIG not initialized");
-        }
+    public FuturesConfig partialUpdate(String indexType, FuturesConfigDto dto) {
+        FuturesConfig config = configRepo.findByIndexType(indexType)
+                .orElseThrow(() -> 
+                        new IllegalStateException("Config not found for " + indexType));
 
         if (dto.getExpiryDate() != null)
             config.setExecutionDate(dto.getExpiryDate());
@@ -346,14 +427,28 @@ public class FuturesStrategyService {
 
         return configRepo.save(config);
     }
-    
- // ✅ Fetch config
-    public FuturesConfig fetch() {
-        FuturesConfig config = configRepo.getConfig();
-        if (config == null) {
-            throw new IllegalStateException("FUTURES_CONFIG not initialized");
-        }
-        return config;
+
+    /**
+     * ✅ Fetch config by index type
+     */
+    public FuturesConfig fetch(String indexType) {
+        return configRepo.findByIndexType(indexType)
+                .orElseThrow(() -> 
+                        new IllegalStateException("Config not found for " + indexType));
+    }
+
+    /**
+     * ✅ Fetch all active configs
+     */
+    public List<FuturesConfig> fetchAllActive() {
+        return configRepo.findByActive("Y");
+    }
+
+    /**
+     * ✅ Fetch all configs
+     */
+    public List<FuturesConfig> fetchAll() {
+        return configRepo.findAll();
     }
 
 }

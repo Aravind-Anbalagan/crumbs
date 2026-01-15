@@ -87,6 +87,7 @@ public class SRService {
 	    FIFTEEN_MINUTE(100, 15, 30), // NSE=100, MCX=30
 	    THIRTY_MINUTE(150, 30, 50),  // NSE=150, MCX=50
 	    ONE_HOUR(200, 60, 80),       // NSE=200, MCX=80
+	    FOUR_HOUR(200, 60, 80),       // NSE=200, MCX=80
 	    ONE_DAY(365, 1440, 365);     // NSE=365, MCX=365 (daily is light anyway)
 
 	    private final int nseBestDays;
