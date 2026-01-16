@@ -271,7 +271,7 @@ public class TaskService {
 		} else if (indexName.equalsIgnoreCase("NIFTY50")) {
 			indexesList = indexesRepo.findBySymbolIn(niftyRepo.getAllNames());
 		} else if (indexName != null) {
-			Indexes indexes = indexesRepo.findByNameAndSymbol(indexName, symbol);
+			Indexes indexes = indexesRepo.findByNameAndSymbolAndExchange(indexName, symbol,"NSE");
 			indexesList.add(indexes);
 		}
 

@@ -21,6 +21,8 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
 
 	Indexes findByNameAndSymbol(String name, String symbol);
 
+	Indexes findByNameAndSymbolAndExchange(String name, String symbol,String exchange);
+	
 	@Modifying
 	@Query("delete from Indexes I")
 	void deleteAll();
