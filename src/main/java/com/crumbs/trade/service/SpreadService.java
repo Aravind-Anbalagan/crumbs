@@ -294,10 +294,10 @@ public class SpreadService {
                                            SpreadType spreadType, StrikeSelectionConfig config) {
 
         log.info("=== Processing Intelligent Spread for {} | Type: {} | Mode: {} | MaxLoss: {} ===",
-                 indicator.getTradingSymbol(), spreadType, config.getMode(), config.getMaxLossThreshold());
+                 indicator.getName(), spreadType, config.getMode(), config.getMaxLossThreshold());
 
         // Duplicate prevention
-        String indicatorKey = indicator.getTradingSymbol() + "_" + spreadType.name();
+        String indicatorKey = indicator.getName() + "_" + spreadType.name();
         if (processedIndicatorsToday.contains(indicatorKey)) {
             log.info("Already processed {} today - skipping duplicate", indicatorKey);
             return;
@@ -369,7 +369,7 @@ public class SpreadService {
                                   calc.sellOptionType, Constants.TRANSACTION_TYPE_SELL);
 
         if (buyLeg == null || sellLeg == null) {
-            log.error("Failed to build tokens for {}", indicator.getTradingSymbol());
+            log.error("Failed to build tokens for {}", indicator.getName());
             return;
         }
 
@@ -1302,7 +1302,7 @@ public class SpreadService {
         String expiryCode = expiry.getExpirydate();
         String strikeStr = strike.stripTrailingZeros().toPlainString();
         String shortExpiry = toShortExpiry(expiryCode);
-        String symbol = indicator.getTradingSymbol() + shortExpiry + strikeStr + optionType;
+        String symbol = indicator.getName() + shortExpiry + strikeStr + optionType;
 
         Indexes idx = indexesRepo.findBySymbol(symbol);
         if (idx == null) {
