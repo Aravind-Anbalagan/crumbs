@@ -184,6 +184,43 @@
             font-size: 1.2rem;
         }
 
+        .trend-toggle {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .trend-toggle:hover {
+            border-color: var(--accent-yellow);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(255, 215, 0, 0.3);
+        }
+
+        .trend-toggle.active {
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-yellow));
+            border-color: var(--accent-green);
+            color: var(--bg-primary);
+            box-shadow: 0 4px 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .trend-icon {
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+        }
+
+        .trend-toggle.active .trend-icon {
+            transform: rotate(360deg);
+        }
+
         .pulse-dot {
             width: 12px;
             height: 12px;
@@ -266,6 +303,10 @@
             border-left: 4px solid var(--accent-red);
         }
 
+        .summary-card.sideways {
+            border-left: 4px solid var(--accent-yellow);
+        }
+
         .card-label {
             font-size: 0.75rem;
             text-transform: uppercase;
@@ -291,6 +332,11 @@
         .card-value.bearish {
             color: var(--accent-red);
             text-shadow: 0 0 20px var(--glow-red);
+        }
+
+        .card-value.sideways {
+            color: var(--accent-yellow);
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
         }
 
         .card-subtitle {
@@ -464,6 +510,44 @@
         .chart-loading-subtext {
             color: var(--text-muted);
             font-size: 0.8rem;
+        }
+
+        /* Trend Legend */
+        .trend-legend {
+            display: flex;
+            gap: 20px;
+            padding: 12px 20px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            margin-top: 15px;
+            border: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .legend-line.uptrend {
+            background: var(--accent-green);
+        }
+
+        .legend-line.downtrend {
+            background: var(--accent-red);
+        }
+
+        .legend-line.sideways {
+            background: var(--accent-yellow);
         }
 
         /* Table Styles */
@@ -918,6 +1002,11 @@
             padding-left: 13px;
         }
 
+        .data-table tbody tr.sideways td:first-child {
+            border-left: 3px solid var(--accent-yellow);
+            padding-left: 13px;
+        }
+
         .sentiment-badge {
             display: inline-block;
             padding: 6px 14px;
@@ -938,6 +1027,12 @@
             background: rgba(255, 51, 102, 0.2);
             color: var(--accent-red);
             border: 1px solid var(--accent-red);
+        }
+
+        .sentiment-badge.sideways {
+            background: rgba(255, 215, 0, 0.2);
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
         }
 
         .price-value {
@@ -1101,6 +1196,61 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--accent-blue);
         }
+
+        /* Toast Notification */
+        .toast-notification {
+            position: fixed;
+            top: 100px;
+            right: 30px;
+            background: var(--bg-card);
+            border: 2px solid var(--accent-green);
+            border-radius: 12px;
+            padding: 16px 24px;
+            box-shadow: 0 10px 40px rgba(0, 255, 159, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 1000;
+            animation: slideInRight 0.4s ease-out;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            backdrop-filter: blur(10px);
+        }
+
+        .toast-notification.hide {
+            animation: slideOutRight 0.4s ease-out forwards;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
+        .toast-icon {
+            font-size: 1.5rem;
+        }
+
+        .toast-message {
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -1109,6 +1259,10 @@
         <div class="header">
             <div class="logo">NIFTY 50</div>
             <div class="header-controls">
+                <button class="trend-toggle active" id="trendToggle">
+                    <span class="trend-icon" id="trendIcon">📈</span>
+                    <span id="trendText">Trends ON</span>
+                </button>
                 <button class="theme-toggle" id="themeToggle">
                     <span class="theme-icon" id="themeIcon">🌙</span>
                     <span id="themeText">Dark</span>
@@ -1162,6 +1316,20 @@
                     </div>
                     <canvas id="lineChart"></canvas>
                 </div>
+                <div class="trend-legend" id="trendLegend" style="display: none;">
+                    <div class="legend-item">
+                        <div class="legend-line uptrend"></div>
+                        <span>Uptrend</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line downtrend"></div>
+                        <span>Downtrend</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line sideways"></div>
+                        <span>Sideways</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Bar Chart -->
@@ -1173,6 +1341,20 @@
                         <div class="chart-loading-subtext">Analyzing percentage moves...</div>
                     </div>
                     <canvas id="barChart"></canvas>
+                </div>
+                <div class="trend-legend" id="trendLegendBar" style="display: none;">
+                    <div class="legend-item">
+                        <div class="legend-line uptrend"></div>
+                        <span>Uptrend</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line downtrend"></div>
+                        <span>Downtrend</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line sideways"></div>
+                        <span>Sideways</span>
+                    </div>
                 </div>
             </div>
 
@@ -1186,13 +1368,14 @@
                                 <th>Current Price</th>
                                 <th>Target Price</th>
                                 <th>Move %</th>
+                                <th>Trend</th>
                                 <th>Confidence</th>
                                 <th>Sentiment</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody">
                             <tr>
-                                <td colspan="6" class="loading-state">
+                                <td colspan="7" class="loading-state">
                                     <div class="loading-spinner"></div>
                                     <p>Loading predictions...</p>
                                 </td>
@@ -1227,7 +1410,23 @@
         const CONFIG = {
             API_ENDPOINT: '/api/prediction/nifty/fetch',
             REFRESH_INTERVAL: 20000,
-            TIMEOUT: 10000
+            TIMEOUT: 10000,
+            // 🎯 TREND CONFIGURATION - Easily configurable
+            TREND: {
+                ENABLED: true,  // Set to false to completely disable trend display
+                SHOW_ON_LINE_CHART: true,  // Show trend lines on line chart
+                SHOW_ON_BAR_CHART: true,   // Show trend background on bar chart
+                SHOW_IN_TABLE: true,        // Show trend column in table
+                SHOW_IN_SUMMARY: true,      // Show current trend in summary cards
+                COLORS: {
+                    UPTREND: '#00ff9f',     // Green
+                    DOWNTREND: '#ff3366',   // Red
+                    SIDEWAYS: '#ffd700'     // Yellow/Gold
+                },
+                LINE_WIDTH: 2,
+                LINE_STYLE: 'dashed',  // 'solid', 'dashed', 'dotted'
+                OPACITY: 0.6  // 0.0 to 1.0
+            }
         };
 
         // ==========================================
@@ -1277,6 +1476,110 @@
                         ui.renderCharts();
                     }
                 }
+            }
+        };
+
+        // ==========================================
+        // TREND TOGGLE MANAGER
+        // ==========================================
+        const trendManager = {
+            init() {
+                const savedState = localStorage.getItem('nifty-trends-enabled');
+                const isEnabled = savedState === null ? true : savedState === 'true';
+                this.setTrendState(isEnabled, false);
+                
+                document.getElementById('trendToggle').addEventListener('click', () => {
+                    const currentState = CONFIG.TREND.ENABLED;
+                    this.setTrendState(!currentState, true);
+                });
+            },
+            
+            setTrendState(enabled, refresh = false) {
+                CONFIG.TREND.ENABLED = enabled;
+                localStorage.setItem('nifty-trends-enabled', enabled.toString());
+                
+                const toggleBtn = document.getElementById('trendToggle');
+                const icon = document.getElementById('trendIcon');
+                const text = document.getElementById('trendText');
+                
+                if (enabled) {
+                    toggleBtn.classList.add('active');
+                    icon.textContent = '📈';
+                    text.textContent = 'Trends ON';
+                    if (refresh) {
+                        this.showToast('📈 Trend indicators enabled', 'success');
+                    }
+                } else {
+                    toggleBtn.classList.remove('active');
+                    icon.textContent = '📊';
+                    text.textContent = 'Trends OFF';
+                    if (refresh) {
+                        this.showToast('📊 Trend indicators disabled', 'info');
+                    }
+                }
+                
+                // Update legends visibility
+                this.updateLegendVisibility(enabled);
+                
+                if (refresh) {
+                    // Destroy and recreate charts
+                    if (state.charts.line) {
+                        state.charts.line.destroy();
+                        state.charts.line = null;
+                    }
+                    if (state.charts.bar) {
+                        state.charts.bar.destroy();
+                        state.charts.bar = null;
+                    }
+                    
+                    state.chartsLoaded.line = false;
+                    state.chartsLoaded.bar = false;
+                    
+                    // Re-render everything
+                    if (state.predictions && state.predictions.length > 0) {
+                        ui.renderSummary();
+                        ui.renderTable();
+                        ui.renderCharts();
+                    }
+                }
+            },
+            
+            updateLegendVisibility(enabled) {
+                const lineLegend = document.getElementById('trendLegend');
+                const barLegend = document.getElementById('trendLegendBar');
+                
+                if (lineLegend) {
+                    lineLegend.style.display = (enabled && CONFIG.TREND.SHOW_ON_LINE_CHART) ? 'flex' : 'none';
+                }
+                if (barLegend) {
+                    barLegend.style.display = (enabled && CONFIG.TREND.SHOW_ON_BAR_CHART) ? 'flex' : 'none';
+                }
+            },
+            
+            showToast(message, type = 'info') {
+                // Remove existing toast if any
+                const existingToast = document.querySelector('.toast-notification');
+                if (existingToast) {
+                    existingToast.remove();
+                }
+                
+                // Create toast
+                const toast = document.createElement('div');
+                toast.className = 'toast-notification';
+                toast.innerHTML = `
+                    <span class="toast-icon">${type === 'success' ? '✅' : 'ℹ️'}</span>
+                    <span class="toast-message">${message}</span>
+                `;
+                
+                document.body.appendChild(toast);
+                
+                // Auto-hide after 3 seconds
+                setTimeout(() => {
+                    toast.classList.add('hide');
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 400);
+                }, 3000);
             }
         };
 
@@ -1331,6 +1634,52 @@
                 });
             },
             
+            // 🎯 NEW: Get trend direction
+            getTrendDirection: (prediction) => {
+                if (!CONFIG.TREND.ENABLED || !prediction.trend) {
+                    return null;
+                }
+                return prediction.trend; // Expected values: 'UPTREND', 'DOWNTREND', 'SIDEWAYS'
+            },
+            
+            // 🎯 NEW: Get trend color
+            getTrendColor: (trend) => {
+                if (!trend) return null;
+                
+                switch(trend.toUpperCase()) {
+                    case 'UPTREND':
+                    case 'UP':
+                        return CONFIG.TREND.COLORS.UPTREND;
+                    case 'DOWNTREND':
+                    case 'DOWN':
+                        return CONFIG.TREND.COLORS.DOWNTREND;
+                    case 'SIDEWAYS':
+                    case 'NEUTRAL':
+                        return CONFIG.TREND.COLORS.SIDEWAYS;
+                    default:
+                        return null;
+                }
+            },
+            
+            // 🎯 NEW: Get trend emoji
+            getTrendEmoji: (trend) => {
+                if (!trend) return '';
+                
+                switch(trend.toUpperCase()) {
+                    case 'UPTREND':
+                    case 'UP':
+                        return '📈';
+                    case 'DOWNTREND':
+                    case 'DOWN':
+                        return '📉';
+                    case 'SIDEWAYS':
+                    case 'NEUTRAL':
+                        return '➡️';
+                    default:
+                        return '';
+                }
+            },
+            
             getLatestPrediction: () => {
                 if (state.predictions.length === 0) return null;
                 return [...state.predictions].sort((a, b) => 
@@ -1346,7 +1695,16 @@
                 const avgMove = state.predictions.reduce((sum, p) => sum + p.percentageMove, 0) / state.predictions.length;
                 const avgConfidence = state.predictions.reduce((sum, p) => sum + p.confidenceScore, 0) / state.predictions.length;
                 
-                return { bullish, bearish, avgMove, avgConfidence, total: state.predictions.length };
+                // 🎯 NEW: Calculate trend stats
+                let trendStats = null;
+                if (CONFIG.TREND.ENABLED) {
+                    const uptrend = state.predictions.filter(p => p.trend && p.trend.toUpperCase() === 'UPTREND').length;
+                    const downtrend = state.predictions.filter(p => p.trend && p.trend.toUpperCase() === 'DOWNTREND').length;
+                    const sideways = state.predictions.filter(p => p.trend && p.trend.toUpperCase() === 'SIDEWAYS').length;
+                    trendStats = { uptrend, downtrend, sideways };
+                }
+                
+                return { bullish, bearish, avgMove, avgConfidence, total: state.predictions.length, trendStats };
             }
         };
 
@@ -1390,7 +1748,8 @@
                                 predictedPrice: data.predictedPrice,
                                 percentageMove: data.percentageMove,
                                 confidenceScore: data.confidenceScore,
-                                sentiment: data.sentiment
+                                sentiment: data.sentiment,
+                                trend: data.trend || null  // 🎯 NEW: Extract trend from API
                             });
                         }
                         
@@ -1452,6 +1811,18 @@
                 }
                 
                 state.chartsLoaded[chartType] = true;
+                
+                // 🎯 NEW: Show trend legend if enabled
+                if (CONFIG.TREND.ENABLED) {
+                    const legendId = chartType === 'line' ? 'trendLegend' : 'trendLegendBar';
+                    const showLegend = chartType === 'line' ? CONFIG.TREND.SHOW_ON_LINE_CHART : CONFIG.TREND.SHOW_ON_BAR_CHART;
+                    if (showLegend) {
+                        const legend = document.getElementById(legendId);
+                        if (legend) {
+                            legend.style.display = 'flex';
+                        }
+                    }
+                }
             },
             
             updateLiveTime() {
@@ -1477,125 +1848,79 @@
                 const sentiment = latest.sentiment.toLowerCase();
                 const sentimentClass = latest.percentageMove >= 0 ? 'bullish' : 'bearish';
                 
+                // 🎯 NEW: Get trend info
+                const trend = utils.getTrendDirection(latest);
+                const trendClass = trend ? trend.toLowerCase() : sentimentClass;
+                const trendEmoji = utils.getTrendEmoji(trend);
+                
                 const existingCards = document.querySelectorAll('.summary-card');
                 
-                if (existingCards.length === 6) {
-                    this.updateSummaryCards(latest, stats, sentimentClass);
-                } else {
-                    document.getElementById('summaryGrid').innerHTML = `
-                        <div class="summary-card ${sentimentClass}" data-card="current-price">
-                            <div class="card-label">Current Price</div>
-                            <div class="card-value ${sentimentClass}">${utils.formatCurrency(latest.currentPrice)}</div>
-                            <div class="card-subtitle">
-                                <span class="trend-icon">${latest.percentageMove >= 0 ? '📈' : '📉'}</span>
-                                <span>Last updated now</span>
-                            </div>
+                const cardsHTML = `
+                    <div class="summary-card ${sentimentClass}" data-card="current-price">
+                        <div class="card-label">Current Price</div>
+                        <div class="card-value ${sentimentClass}">${utils.formatCurrency(latest.currentPrice)}</div>
+                        <div class="card-subtitle">
+                            <span class="trend-icon">${latest.percentageMove >= 0 ? '📈' : '📉'}</span>
+                            <span>Last updated now</span>
                         </div>
-                        
-                        <div class="summary-card ${sentimentClass}" data-card="target-price">
-                            <div class="card-label">Target Price</div>
-                            <div class="card-value ${sentimentClass}">${utils.formatCurrency(latest.predictedPrice)}</div>
-                            <div class="card-subtitle">
-                                <span>Expected: ${utils.formatPercentage(latest.percentageMove)}</span>
-                            </div>
+                    </div>
+                    
+                    <div class="summary-card ${sentimentClass}" data-card="target-price">
+                        <div class="card-label">Target Price</div>
+                        <div class="card-value ${sentimentClass}">${utils.formatCurrency(latest.predictedPrice)}</div>
+                        <div class="card-subtitle">
+                            <span>Expected: ${utils.formatPercentage(latest.percentageMove)}</span>
                         </div>
-                        
-                        <div class="summary-card" data-card="market-signal">
-                            <div class="card-label">Market Signal</div>
-                            <div class="card-value ${sentimentClass}">${latest.sentiment}</div>
-                            <div class="card-subtitle">
-                                <span>${latest.confidenceScore.toFixed(1)}% confidence</span>
-                            </div>
+                    </div>
+                    
+                    <div class="summary-card" data-card="market-signal">
+                        <div class="card-label">Market Signal</div>
+                        <div class="card-value ${sentimentClass}">${latest.sentiment}</div>
+                        <div class="card-subtitle">
+                            <span>${latest.confidenceScore.toFixed(1)}% confidence</span>
                         </div>
-                        
-                        <div class="summary-card" data-card="avg-move">
-                            <div class="card-label">Average Move</div>
-                            <div class="card-value ${stats.avgMove >= 0 ? 'bullish' : 'bearish'}">${utils.formatPercentage(stats.avgMove)}</div>
-                            <div class="card-subtitle">
-                                <span>Across ${stats.total} predictions</span>
-                            </div>
+                    </div>
+                    
+                    ${CONFIG.TREND.ENABLED && CONFIG.TREND.SHOW_IN_SUMMARY && trend ? `
+                    <div class="summary-card ${trendClass}" data-card="current-trend">
+                        <div class="card-label">Current Trend</div>
+                        <div class="card-value ${trendClass}">${trend}</div>
+                        <div class="card-subtitle">
+                            <span class="trend-icon">${trendEmoji}</span>
+                            <span>Market direction</span>
                         </div>
-                        
-                        <div class="summary-card" data-card="bullish">
-                            <div class="card-label">Bullish Signals</div>
-                            <div class="card-value bullish">${stats.bullish}</div>
-                            <div class="card-subtitle">
-                                <span>${((stats.bullish / stats.total) * 100).toFixed(0)}% of predictions</span>
-                            </div>
+                    </div>
+                    ` : `
+                    <div class="summary-card" data-card="avg-move">
+                        <div class="card-label">Average Move</div>
+                        <div class="card-value ${stats.avgMove >= 0 ? 'bullish' : 'bearish'}">${utils.formatPercentage(stats.avgMove)}</div>
+                        <div class="card-subtitle">
+                            <span>Across ${stats.total} predictions</span>
                         </div>
-                        
-                        <div class="summary-card" data-card="bearish">
-                            <div class="card-label">Bearish Signals</div>
-                            <div class="card-value bearish">${stats.bearish}</div>
-                            <div class="card-subtitle">
-                                <span>${((stats.bearish / stats.total) * 100).toFixed(0)}% of predictions</span>
-                            </div>
+                    </div>
+                    `}
+                    
+                    <div class="summary-card" data-card="bullish">
+                        <div class="card-label">Bullish Signals</div>
+                        <div class="card-value bullish">${stats.bullish}</div>
+                        <div class="card-subtitle">
+                            <span>${((stats.bullish / stats.total) * 100).toFixed(0)}% of predictions</span>
                         </div>
-                    `;
+                    </div>
+                    
+                    <div class="summary-card" data-card="bearish">
+                        <div class="card-label">Bearish Signals</div>
+                        <div class="card-value bearish">${stats.bearish}</div>
+                        <div class="card-subtitle">
+                            <span>${((stats.bearish / stats.total) * 100).toFixed(0)}% of predictions</span>
+                        </div>
+                    </div>
+                `;
+                
+                if (existingCards.length === 0 || existingCards.length !== 6) {
+                    document.getElementById('summaryGrid').innerHTML = cardsHTML;
                 }
             },
-            
-            updateSummaryCards(latest, stats, sentimentClass) {
-                const cards = {
-                    'current-price': {
-                        value: utils.formatCurrency(latest.currentPrice),
-                        subtitle: `<span class="trend-icon">${latest.percentageMove >= 0 ? '📈' : '📉'}</span><span>Last updated now</span>`,
-                        sentiment: sentimentClass
-                    },
-                    'target-price': {
-                        value: utils.formatCurrency(latest.predictedPrice),
-                        subtitle: `<span>Expected: ${utils.formatPercentage(latest.percentageMove)}</span>`,
-                        sentiment: sentimentClass
-                    },
-                    'market-signal': {
-                        value: latest.sentiment,
-                        subtitle: `<span>${latest.confidenceScore.toFixed(1)}% confidence</span>`,
-                        sentiment: sentimentClass
-                    },
-                    'avg-move': {
-                        value: utils.formatPercentage(stats.avgMove),
-                        subtitle: `<span>Across ${stats.total} predictions</span>`,
-                        sentiment: stats.avgMove >= 0 ? 'bullish' : 'bearish'
-                    },
-                    'bullish': {
-                        value: stats.bullish,
-                        subtitle: `<span>${((stats.bullish / stats.total) * 100).toFixed(0)}% of predictions</span>`,
-                        sentiment: 'bullish'
-                    },
-                    'bearish': {
-                        value: stats.bearish,
-                        subtitle: `<span>${((stats.bearish / stats.total) * 100).toFixed(0)}% of predictions</span>`,
-                        sentiment: 'bearish'
-                    }
-                };
-                
-                Object.keys(cards).forEach(cardKey => {
-                    const card = document.querySelector(`[data-card="${cardKey}"]`);
-                    if (!card) return;
-                    
-                    const valueEl = card.querySelector('.card-value');
-                    const subtitleEl = card.querySelector('.card-subtitle');
-                    
-                    if (valueEl) {
-                        if (valueEl.textContent !== String(cards[cardKey].value)) {
-                            valueEl.textContent = cards[cardKey].value;
-                        }
-                        valueEl.className = `card-value ${cards[cardKey].sentiment}`;
-                    }
-                    
-                    if (subtitleEl) {
-                        subtitleEl.innerHTML = cards[cardKey].subtitle;
-                    }
-                    
-                    card.className = `summary-card ${cards[cardKey].sentiment === 'bullish' || cards[cardKey].sentiment === 'bearish' ? cards[cardKey].sentiment : ''}`;
-                    if (cardKey === 'current-price' || cardKey === 'target-price' || cardKey === 'market-signal') {
-                        if (sentimentClass) {
-                            card.classList.add(sentimentClass);
-                        }
-                    }
-                });
-            },
-            
             
             renderSignalsView() {
                 const timeline = document.getElementById('signalsTimeline');
@@ -1728,7 +2053,7 @@
                 if (state.predictions.length === 0) {
                     tbody.innerHTML = `
                         <tr>
-                            <td colspan="6" class="loading-state">
+                            <td colspan="${CONFIG.TREND.ENABLED && CONFIG.TREND.SHOW_IN_TABLE ? '7' : '6'}" class="loading-state">
                                 <p>No predictions available</p>
                             </td>
                         </tr>
@@ -1745,13 +2070,6 @@
                 
                 if (hasLoadingState || existingRows.length !== predictionsToShow.length) {
                     tbody.innerHTML = predictionsToShow.map(pred => this.createTableRow(pred)).join('');
-                } else {
-                    predictionsToShow.forEach((pred, index) => {
-                        const row = existingRows[index];
-                        if (row) {
-                            this.updateTableRow(row, pred);
-                        }
-                    });
                 }
             },
             
@@ -1759,12 +2077,23 @@
                 const sentimentClass = pred.sentiment.toLowerCase();
                 const moveClass = pred.percentageMove >= 0 ? 'positive' : 'negative';
                 
+                // 🎯 NEW: Get trend info
+                const trend = utils.getTrendDirection(pred);
+                const trendClass = trend ? trend.toLowerCase() : sentimentClass;
+                const trendEmoji = utils.getTrendEmoji(trend);
+                const trendText = trend || 'N/A';
+                
+                const trendColumn = CONFIG.TREND.ENABLED && CONFIG.TREND.SHOW_IN_TABLE ? `
+                    <td><span class="sentiment-badge ${trendClass}">${trendEmoji} ${trendText}</span></td>
+                ` : '';
+                
                 return `
-                    <tr class="${sentimentClass}" data-timestamp="${pred.timestamp}">
+                    <tr class="${trendClass}" data-timestamp="${pred.timestamp}">
                         <td>${utils.formatTimestamp(pred.timestamp)}</td>
                         <td><span class="price-value">${utils.formatCurrency(pred.currentPrice)}</span></td>
                         <td><span class="price-value">${utils.formatCurrency(pred.predictedPrice)}</span></td>
                         <td><span class="move-value ${moveClass}">${utils.formatPercentage(pred.percentageMove)}</span></td>
+                        ${trendColumn}
                         <td>
                             <div class="confidence-bar">
                                 <div class="confidence-progress">
@@ -1778,50 +2107,6 @@
                 `;
             },
             
-            updateTableRow(row, pred) {
-                const sentimentClass = pred.sentiment.toLowerCase();
-                const moveClass = pred.percentageMove >= 0 ? 'positive' : 'negative';
-                
-                const currentTimestamp = row.getAttribute('data-timestamp');
-                if (currentTimestamp === pred.timestamp) {
-                    const cells = row.querySelectorAll('td');
-                    
-                    const currentPriceEl = cells[1]?.querySelector('.price-value');
-                    if (currentPriceEl && currentPriceEl.textContent !== utils.formatCurrency(pred.currentPrice)) {
-                        currentPriceEl.textContent = utils.formatCurrency(pred.currentPrice);
-                    }
-                    
-                    const targetPriceEl = cells[2]?.querySelector('.price-value');
-                    if (targetPriceEl && targetPriceEl.textContent !== utils.formatCurrency(pred.predictedPrice)) {
-                        targetPriceEl.textContent = utils.formatCurrency(pred.predictedPrice);
-                    }
-                    
-                    const moveEl = cells[3]?.querySelector('.move-value');
-                    if (moveEl) {
-                        moveEl.textContent = utils.formatPercentage(pred.percentageMove);
-                        moveEl.className = `move-value ${moveClass}`;
-                    }
-                    
-                    const confidenceFill = cells[4]?.querySelector('.confidence-fill');
-                    const confidenceText = cells[4]?.querySelector('.confidence-text');
-                    if (confidenceFill) {
-                        confidenceFill.style.width = `${pred.confidenceScore}%`;
-                    }
-                    if (confidenceText) {
-                        confidenceText.textContent = `${pred.confidenceScore.toFixed(1)}%`;
-                    }
-                    
-                    const sentimentBadge = cells[5]?.querySelector('.sentiment-badge');
-                    if (sentimentBadge) {
-                        sentimentBadge.textContent = pred.sentiment;
-                        sentimentBadge.className = `sentiment-badge ${sentimentClass}`;
-                    }
-                    
-                    row.className = sentimentClass;
-                    row.setAttribute('data-timestamp', pred.timestamp);
-                }
-            },
-            
             renderCharts() {
                 if (state.predictions.length === 0) {
                     console.log('⚠️ No data available for charts');
@@ -1832,6 +2117,7 @@
                 this.renderBarChart();
             },
             
+            // 🎯 UPDATED: Line chart with trend lines
             renderLineChart() {
                 const ctx = document.getElementById('lineChart');
                 if (!ctx) return;
@@ -1884,6 +2170,44 @@
                             };
                         }
                     });
+                }
+                
+                // 🎯 NEW: Add trend line annotations
+                if (CONFIG.TREND.ENABLED && CONFIG.TREND.SHOW_ON_LINE_CHART) {
+                    let trendStartIdx = 0;
+                    let currentTrend = sortedPredictions[0]?.trend;
+                    
+                    for (let i = 1; i <= sortedPredictions.length; i++) {
+                        const pred = sortedPredictions[i];
+                        const trendChanged = !pred || pred.trend !== currentTrend;
+                        
+                        if (trendChanged && currentTrend) {
+                            const trendColor = utils.getTrendColor(currentTrend);
+                            if (trendColor) {
+                                annotations[`trend-${trendStartIdx}-${i-1}`] = {
+                                    type: 'line',
+                                    xMin: trendStartIdx,
+                                    xMax: i - 1,
+                                    yMin: Math.min(...currentPrices.slice(trendStartIdx, i)),
+                                    yMax: Math.max(...currentPrices.slice(trendStartIdx, i)),
+                                    borderColor: trendColor,
+                                    borderWidth: CONFIG.TREND.LINE_WIDTH,
+                                    borderDash: CONFIG.TREND.LINE_STYLE === 'dashed' ? [5, 5] : 
+                                                CONFIG.TREND.LINE_STYLE === 'dotted' ? [2, 2] : [],
+                                    label: {
+                                        display: true,
+                                        content: utils.getTrendEmoji(currentTrend),
+                                        position: 'start'
+                                    }
+                                };
+                            }
+                            
+                            if (pred) {
+                                trendStartIdx = i;
+                                currentTrend = pred.trend;
+                            }
+                        }
+                    }
                 }
                 
                 if (state.charts.line) {
@@ -1992,6 +2316,16 @@
                                 callbacks: {
                                     label: function(context) {
                                         return ` ${context.dataset.label}: ₹${context.parsed.y.toLocaleString('en-IN')}`;
+                                    },
+                                    // 🎯 NEW: Show trend in tooltip
+                                    afterLabel: function(context) {
+                                        if (!CONFIG.TREND.ENABLED) return '';
+                                        const pred = sortedPredictions[context.dataIndex];
+                                        const trend = pred?.trend;
+                                        if (trend) {
+                                            return `Trend: ${utils.getTrendEmoji(trend)} ${trend}`;
+                                        }
+                                        return '';
                                     }
                                 }
                             }
@@ -2039,6 +2373,7 @@
                 setTimeout(() => this.hideChartLoader('line'), 300);
             },
             
+            // 🎯 UPDATED: Bar chart with trend colors
             renderBarChart() {
                 const ctx = document.getElementById('barChart');
                 if (!ctx) return;
@@ -2057,13 +2392,31 @@
                 
                 const labels = sortedPredictions.map(p => utils.formatTimestamp(p.timestamp));
                 const moves = sortedPredictions.map(p => p.percentageMove);
-                const colors = moves.map(m => m >= 0 ? 'rgba(0, 255, 159, 0.8)' : 'rgba(255, 51, 102, 0.8)');
+                
+                // 🎯 NEW: Color bars by trend if enabled, otherwise by move direction
+                const colors = CONFIG.TREND.ENABLED && CONFIG.TREND.SHOW_ON_BAR_CHART
+                    ? sortedPredictions.map(p => {
+                        const trend = utils.getTrendDirection(p);
+                        const trendColor = utils.getTrendColor(trend);
+                        if (trendColor) {
+                            return trendColor.replace('1)', `${CONFIG.TREND.OPACITY})`); // Apply opacity
+                        }
+                        return p.percentageMove >= 0 ? 'rgba(0, 255, 159, 0.8)' : 'rgba(255, 51, 102, 0.8)';
+                    })
+                    : moves.map(m => m >= 0 ? 'rgba(0, 255, 159, 0.8)' : 'rgba(255, 51, 102, 0.8)');
+                
+                const borderColors = CONFIG.TREND.ENABLED && CONFIG.TREND.SHOW_ON_BAR_CHART
+                    ? sortedPredictions.map(p => {
+                        const trend = utils.getTrendDirection(p);
+                        return utils.getTrendColor(trend) || (p.percentageMove >= 0 ? '#00ff9f' : '#ff3366');
+                    })
+                    : moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366');
                 
                 if (state.charts.bar) {
                     state.charts.bar.data.labels = labels;
                     state.charts.bar.data.datasets[0].data = moves;
                     state.charts.bar.data.datasets[0].backgroundColor = colors;
-                    state.charts.bar.data.datasets[0].borderColor = moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366');
+                    state.charts.bar.data.datasets[0].borderColor = borderColors;
                     
                     state.charts.bar.options.plugins.legend.labels.color = textColor;
                     state.charts.bar.options.plugins.tooltip.backgroundColor = theme === 'light' ? '#ffffff' : '#1a2142';
@@ -2086,7 +2439,7 @@
                             label: 'Percentage Move',
                             data: moves,
                             backgroundColor: colors,
-                            borderColor: moves.map(m => m >= 0 ? '#00ff9f' : '#ff3366'),
+                            borderColor: borderColors,
                             borderWidth: 2,
                             borderRadius: 8
                         }]
@@ -2134,6 +2487,16 @@
                                     label: function(context) {
                                         const sign = context.parsed.y >= 0 ? '+' : '';
                                         return ` Move: ${sign}${context.parsed.y.toFixed(2)}%`;
+                                    },
+                                    // 🎯 NEW: Show trend in tooltip
+                                    afterLabel: function(context) {
+                                        if (!CONFIG.TREND.ENABLED) return '';
+                                        const pred = sortedPredictions[context.dataIndex];
+                                        const trend = pred?.trend;
+                                        if (trend) {
+                                            return `Trend: ${utils.getTrendEmoji(trend)} ${trend}`;
+                                        }
+                                        return '';
                                     }
                                 }
                             }
@@ -2217,8 +2580,10 @@
         const app = {
             async init() {
                 console.log('🚀 Initializing Nifty 50 Dashboard...');
+                console.log('🎯 Trend Display:', CONFIG.TREND.ENABLED ? 'ENABLED' : 'DISABLED');
                 
                 themeManager.init();
+                trendManager.init();  // Initialize trend toggle
                 this.setupEventListeners();
                 
                 setInterval(() => ui.updateLiveTime(), 1000);

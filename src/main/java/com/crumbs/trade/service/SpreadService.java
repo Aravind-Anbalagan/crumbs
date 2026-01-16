@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
  *   3. IV_BASED - Select strikes with optimal IV levels
  *   4. COMBINED - Use both OI and IV for best strike selection
  * 
- * Version: 3.0 (Intelligent Strike Selection)
+ * Version: 3.1 (Added Configurable Max Loss Validation)
  */
 @Service
 @RequiredArgsConstructor
@@ -73,9 +73,11 @@ public class SpreadService {
     private static final int ORDER_STATUS_POLL_DELAY_MS = 500;
     private static final BigDecimal MIN_MARGIN_BUFFER = new BigDecimal("1.2");
     private static final int MAX_SPREADS_PER_DAY = 10;
+    private static final BigDecimal DEFAULT_MAX_LOSS_THRESHOLD = new BigDecimal("10000"); // NEW: Max loss threshold
 
     private final Set<String> processedIndicatorsToday = Collections.synchronizedSet(new HashSet<>());
     private int spreadsPlacedToday = 0;
+    private int stocksSkippedDueToMaxLoss = 0; // NEW: Track skipped stocks
 
     // ---------------------------------------------------------------------
     // Enums
@@ -118,23 +120,26 @@ public class SpreadService {
         private StrikeSelectionMode mode = StrikeSelectionMode.COMBINED;
         
         // OI Configuration
-        private BigDecimal minOIThreshold = BigDecimal.valueOf(1000);      // Minimum OI to consider
-        private BigDecimal oiSupportMultiplier = BigDecimal.valueOf(1.5);   // OI must be 1.5x average
+        private BigDecimal minOIThreshold = BigDecimal.valueOf(1000);
+        private BigDecimal oiSupportMultiplier = BigDecimal.valueOf(1.5);
         
         // IV Configuration
-        private BigDecimal maxIVThreshold = BigDecimal.valueOf(50);        // Max IV for selling
-        private BigDecimal minIVThreshold = BigDecimal.valueOf(15);        // Min IV for buying
-        private BigDecimal idealIVForSelling = BigDecimal.valueOf(30);     // Target IV for credit spreads
+        private BigDecimal maxIVThreshold = BigDecimal.valueOf(50);
+        private BigDecimal minIVThreshold = BigDecimal.valueOf(15);
+        private BigDecimal idealIVForSelling = BigDecimal.valueOf(30);
         
         // Combined Configuration
-        private BigDecimal oiWeight = BigDecimal.valueOf(0.6);             // 60% weight to OI
-        private BigDecimal ivWeight = BigDecimal.valueOf(0.4);             // 40% weight to IV
+        private BigDecimal oiWeight = BigDecimal.valueOf(0.6);
+        private BigDecimal ivWeight = BigDecimal.valueOf(0.4);
         
         // Search Range
-        private int strikeSearchRange = 5;  // How many strikes to scan from ATM
+        private int strikeSearchRange = 5;
         
         // Fallback Configuration
         private StrikeDistanceLevel fallbackDistance = StrikeDistanceLevel.NEAR_OTM;
+        
+        // NEW: Max Loss Configuration
+        private BigDecimal maxLossThreshold = DEFAULT_MAX_LOSS_THRESHOLD;
         
         // Getters and Setters
         public StrikeSelectionMode getMode() { return mode; }
@@ -173,6 +178,12 @@ public class SpreadService {
         public StrikeDistanceLevel getFallbackDistance() { return fallbackDistance; }
         public void setFallbackDistance(StrikeDistanceLevel fallbackDistance) { 
             this.fallbackDistance = fallbackDistance; 
+        }
+        
+        // NEW: Max Loss Threshold Getter/Setter
+        public BigDecimal getMaxLossThreshold() { return maxLossThreshold; }
+        public void setMaxLossThreshold(BigDecimal maxLossThreshold) { 
+            this.maxLossThreshold = maxLossThreshold; 
         }
     }
 
@@ -228,8 +239,8 @@ public class SpreadService {
 
         SmartConnect smartConnect = angelOne.signIn();
 
-        log.info("Processing {} Spread Strategy with {} mode (Daily limit: {})",
-                 indicatorList.size(), config.getMode(), MAX_SPREADS_PER_DAY);
+        log.info("Processing {} Spread Strategy with {} mode (Daily limit: {}, Max Loss: {})",
+                 indicatorList.size(), config.getMode(), MAX_SPREADS_PER_DAY, config.getMaxLossThreshold());
 
         for (Indicator indicator : indicatorList) {
             if (spreadsPlacedToday >= MAX_SPREADS_PER_DAY) {
@@ -243,6 +254,9 @@ public class SpreadService {
                 log.error("Failed processing {}: {}", indicator.getTradingSymbol(), e.getMessage(), e);
             }
         }
+        
+        log.info("Processing complete. Spreads placed: {}, Skipped due to max loss: {}", 
+                spreadsPlacedToday, stocksSkippedDueToMaxLoss);
     }
 
     /**
@@ -279,8 +293,8 @@ public class SpreadService {
     public void processIndicatorIntelligent(SmartConnect smartConnect, Indicator indicator,
                                            SpreadType spreadType, StrikeSelectionConfig config) {
 
-        log.info("=== Processing Intelligent Spread for {} | Type: {} | Mode: {} ===",
-                 indicator.getTradingSymbol(), spreadType, config.getMode());
+        log.info("=== Processing Intelligent Spread for {} | Type: {} | Mode: {} | MaxLoss: {} ===",
+                 indicator.getTradingSymbol(), spreadType, config.getMode(), config.getMaxLossThreshold());
 
         // Duplicate prevention
         String indicatorKey = indicator.getTradingSymbol() + "_" + spreadType.name();
@@ -367,6 +381,12 @@ public class SpreadService {
         BigDecimal maxRisk = calculateMaxRisk(buyLeg, sellLeg, calc);
         BigDecimal maxProfit = calculateMaxProfit(buyLeg, sellLeg, calc);
 
+        // NEW: VALIDATE MAX LOSS
+        if (!validateMaxLoss(maxRisk, config.getMaxLossThreshold(), indicator.getTradingSymbol())) {
+            log.warn("Skipping {} due to max loss validation failure", indicator.getTradingSymbol());
+            return;
+        }
+
         BigDecimal rr = BigDecimal.ZERO;
         if (maxRisk.compareTo(BigDecimal.ZERO) != 0) {
             rr = maxProfit.divide(maxRisk, 2, RoundingMode.HALF_UP);
@@ -392,6 +412,30 @@ public class SpreadService {
             log.info("Spread placed successfully! Total today: {}/{}", 
                     spreadsPlacedToday, MAX_SPREADS_PER_DAY);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // NEW: MAX LOSS VALIDATION
+    // ---------------------------------------------------------------------
+    
+    /**
+     * Validate that max loss is within acceptable threshold
+     * @param maxRisk Calculated maximum risk for the spread
+     * @param threshold Maximum allowed loss (configurable)
+     * @param symbol Trading symbol for logging
+     * @return true if risk is acceptable, false otherwise
+     */
+    private boolean validateMaxLoss(BigDecimal maxRisk, BigDecimal threshold, String symbol) {
+        if (maxRisk.compareTo(threshold) > 0) {
+            log.warn("❌ SKIPPING {}: Max Loss {} exceeds threshold {} - Moving to next stock",
+                    symbol, maxRisk, threshold);
+            stocksSkippedDueToMaxLoss++;
+            return false;
+        }
+        
+        log.info("✓ Max Loss Validation PASSED for {}: {} <= {}", 
+                symbol, maxRisk, threshold);
+        return true;
     }
 
     // ---------------------------------------------------------------------
@@ -515,7 +559,7 @@ public class SpreadService {
         String expiryCode = expiry.getExpirydate();
         String strikeStr = strike.stripTrailingZeros().toPlainString();
         String shortExpiry = toShortExpiry(expiryCode);
-        String symbol = indicator.getTradingSymbol() + shortExpiry + strikeStr + optionType;
+        String symbol = indicator.getName() + shortExpiry + strikeStr + optionType;
 
         Indexes idx = indexesRepo.findBySymbol(symbol);
         if (idx != null) {
@@ -1364,7 +1408,7 @@ public class SpreadService {
         }
     }
 
- // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
     // ORDER PLACEMENT
     // ---------------------------------------------------------------------
     public boolean placeSpreadOrder(SmartConnect smartConnect, Token buyLeg, Token sellLeg,
@@ -1434,6 +1478,7 @@ public class SpreadService {
     public void resetDailyCounters() {
         processedIndicatorsToday.clear();
         spreadsPlacedToday = 0;
+        stocksSkippedDueToMaxLoss = 0; // NEW: Reset skip counter
         log.info("Daily counters reset");
     }
 
@@ -1443,6 +1488,7 @@ public class SpreadService {
         stats.put("maxSpreadsPerDay", MAX_SPREADS_PER_DAY);
         stats.put("uniqueIndicatorsProcessed", processedIndicatorsToday.size());
         stats.put("remainingCapacity", MAX_SPREADS_PER_DAY - spreadsPlacedToday);
+        stats.put("stocksSkippedDueToMaxLoss", stocksSkippedDueToMaxLoss); // NEW: Add skip count
         return stats;
     }
     
