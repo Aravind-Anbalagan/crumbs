@@ -59,30 +59,175 @@ public class FuturesStrategyService {
      */
     @Transactional
     public void executeAll() {
-        List<FuturesConfig> activeConfigs = configRepo.findByActive("Y");
-        
-        if (activeConfigs.isEmpty()) {
-            logger.warn("No active FUTURES_CONFIG found");
+
+        FuturesConfig masterConfig = configRepo
+                .findByIndexType("NIFTY_500")
+                .filter(c -> "Y".equalsIgnoreCase(c.getActive()))
+                .orElse(null);
+
+        if (masterConfig == null) {
+            logger.warn("NIFTY_500 config not active. Skipping execution.");
             return;
         }
 
-        logger.info("Found {} active config(s)", activeConfigs.size());
+        logger.info("Running master execution using NIFTY_500");
+        executeMaster(masterConfig);
+    }
 
-        for (FuturesConfig config : activeConfigs) {
-            String indexType = config.getIndexType();
-            if (indexType == null || indexType.trim().isEmpty()) {
-                logger.warn("Config ID {} has no index_type, skipping", config.getId());
-                continue;
-            }
+    private void executeMaster(FuturesConfig masterConfig) {
 
-            try {
-                logger.info("Executing strategy for {}", indexType);
-                executeForConfig(config);
-            } catch (Exception e) {
-                logger.error("Error executing for {}", indexType, e);
+        LocalDate expiryDate = resolveExecutionDate(masterConfig);
+
+        // 1️⃣ Fetch all NIFTY_500 stocks ONCE
+        List<Futures> futuresList = futuresRepo.findByIsNifty500True();
+
+        if (futuresList.isEmpty()) {
+            logger.warn("No NIFTY_500 stocks found");
+            return;
+        }
+
+        // 2️⃣ Load all active configs into map
+        Map<String, FuturesConfig> configMap =
+                configRepo.findByActive("Y")
+                          .stream()
+                          .collect(Collectors.toMap(
+                                  FuturesConfig::getIndexType,
+                                  c -> c
+                          ));
+
+        // 3️⃣ Fetch Index master data ONCE
+        List<Indexes> indexesList = indexesRepo.findByNameInAndExchange(
+                futuresList.stream().map(Futures::getName).toList(),
+                EXCHANGE
+        );
+
+        Map<String, Indexes> indexByName =
+                indexesList.stream()
+                           .collect(Collectors.toMap(
+                               Indexes::getName,
+                               i -> i,
+                               (existing, duplicate) -> {
+                                   logger.warn(
+                                       "Duplicate index entry found for {}. Skipping token {} (keeping {})",
+                                       existing.getName(),
+                                       duplicate.getToken(),
+                                       existing.getToken()
+                                   );
+                                   return existing; // ✅ keep first, skip duplicate
+                               }
+                           ));
+
+
+        // 4️⃣ Fetch prices ONCE
+        List<String> tokens = indexesList.stream()
+                .map(Indexes::getToken)
+                .filter(Objects::nonNull)
+                .toList();
+
+        Map<String, BigDecimal> todayPriceMap =
+                fetchTodayPriceUsingPredictionService(tokens);
+
+        // 5️⃣ Bucket results per INDEX_TYPE
+        Map<String, List<FuturesFilter>> bucket = new HashMap<>();
+
+        for (Futures f : futuresList) {
+
+            Indexes idx = indexByName.get(f.getName());
+            if (idx == null) continue;
+
+            BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
+            if (todayPrice == null) continue;
+
+            BigDecimal expiryClose =
+                    fetchExpiryClosePrice(idx, expiryDate);
+
+            if (expiryClose == null || expiryClose.signum() == 0) continue;
+
+            BigDecimal percentMove = todayPrice
+                    .subtract(expiryClose)
+                    .divide(expiryClose, 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
+
+            // 6️⃣ Execute per index_type
+            for (String indexType : resolveIndexTypes(f)) {
+
+                FuturesConfig cfg = configMap.get(indexType);
+                if (cfg == null) continue;
+
+                FuturesFilter ff = buildFilter(
+                        f.getName(),
+                        indexType,
+                        todayPrice,
+                        expiryClose,
+                        percentMove,
+                        expiryDate,
+                        cfg
+                );
+
+                bucket
+                  .computeIfAbsent(indexType, k -> new ArrayList<>())
+                  .add(ff);
             }
         }
+
+        // 7️⃣ Persist & notify PER INDEX
+        bucket.forEach((indexType, rows) -> {
+            FuturesConfig cfg = configMap.get(indexType);
+            updateFilters(cfg, rows);
+        });
     }
+    private FuturesFilter buildFilter(
+            String name,
+            String indexType,
+            BigDecimal todayPrice,
+            BigDecimal expiryClose,
+            BigDecimal percentMove,
+            LocalDate expiryDate,
+            FuturesConfig config) {
+
+        FuturesFilter ff = new FuturesFilter();
+        ff.setName(name);
+        ff.setIndexType(indexType);
+        ff.setLastExpiryPrice(expiryClose);
+        ff.setLastTradedPrice(todayPrice);
+        ff.setPercentMove(percentMove);
+        ff.setDirection(percentMove.signum() > 0 ? "UP" : "DOWN");
+
+        if (percentMove.compareTo(config.getProfitPercent()) >= 0)
+            ff.setStatus("PROFIT");
+        else if (percentMove.compareTo(config.getLossPercent().negate()) <= 0)
+            ff.setStatus("LOSS");
+        else
+            ff.setStatus("NEUTRAL");
+
+        ff.setLastExpiryDate(expiryDate);
+        ff.setLastTradedDate(LocalDateTime.now());
+
+        return ff;
+    }
+
+    private List<String> resolveIndexTypes(Futures f) {
+
+        List<String> list = new ArrayList<>();
+
+        if (Boolean.TRUE.equals(f.getIsNifty50()))
+            list.add("NIFTY_50");
+
+        if (Boolean.TRUE.equals(f.getIsNiftyNext50()))
+            list.add("NIFTY_NEXT_50");
+
+        if (Boolean.TRUE.equals(f.getIsNifty100()))
+            list.add("NIFTY_100");
+
+        if (Boolean.TRUE.equals(f.getIsNifty200()))
+            list.add("NIFTY_200");
+
+        if (Boolean.TRUE.equals(f.getIsNifty500()))
+            list.add("NIFTY_500");
+
+        return list;
+    }
+
 
     /**
      * ✅ Core execution logic for a specific config
