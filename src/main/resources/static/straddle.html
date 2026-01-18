@@ -60,6 +60,24 @@
         .checkout-item:hover{ background:rgba(255,255,255,0.02); }
         .checkout-item input[type="checkbox"] { cursor: pointer; }
 
+        .checkout-ok-btn {
+            width: 100%;
+            padding: 8px 12px;
+            margin-top: 8px;
+            border-radius: 6px;
+            background: rgba(59,130,246,0.15);
+            border: 1px solid rgba(59,130,246,0.3);
+            color: #60a5fa;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .checkout-ok-btn:hover {
+            background: rgba(59,130,246,0.25);
+            border-color: rgba(59,130,246,0.4);
+        }
+
         .toggle-container{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; background:rgba(148,163,184,0.03); border:1px solid rgba(148,163,184,0.03); transition: all 0.2s; }
         .toggle-container:hover { background:rgba(148,163,184,0.05); }
         .toggle-label{ font-size:13px; font-weight:600; color:#94a3b8; user-select: none; }
@@ -231,6 +249,7 @@
                     <div class="checkout-item"><input type="checkbox" id="ce-vwap-check"> <span class="swatch" style="background:#a78bfa"></span> CE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-vwap-check"> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-vwap-check"> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
+                    <button class="checkout-ok-btn" id="checkout-ok-btn">OK</button>
                 </div>
             </div>
 
@@ -323,6 +342,9 @@
         combinedVwap: false
     };
 
+    // Temporary state for pending selections
+    let pendingLineVisibility = {...lineVisibility};
+
     function saveLineVisibility() {
         try {
             localStorage.setItem(STORAGE_KEY_LINES, JSON.stringify(lineVisibility));
@@ -411,7 +433,7 @@
     }
 
     function updateAllCheckbox() {
-        const vals = Object.values(lineVisibility);
+        const vals = Object.values(pendingLineVisibility);
         const allOn = vals.every(Boolean);
         const allOff = vals.every(v => !v);
         const allBox = document.getElementById('all-lines-check');
@@ -421,8 +443,8 @@
     }
 
     function setAllLinesChecked(checked) {
-        Object.keys(lineVisibility).forEach(k => {
-            lineVisibility[k] = checked;
+        Object.keys(pendingLineVisibility).forEach(k => {
+            pendingLineVisibility[k] = checked;
         });
 
         document.getElementById('spot-check').checked = checked;
@@ -442,24 +464,30 @@
         document.getElementById('pe-vwap-check').checked = checked;
         document.getElementById('combined-vwap-check').checked = checked;
 
-        lines.spot.setData(checked ? currentSeries.spotSeries : []);
-        lines.ce.setData(checked ? currentSeries.ceSeries : []);
-        lines.pe.setData(checked ? currentSeries.peSeries : []);
-        lines.combinedPremium.setData(checked ? currentSeries.combinedPremiumSeries : []);
-        lines.avgPrice.setData(checked ? currentSeries.avgPriceSeries : []);
-        lines.ceIv.setData(checked ? currentSeries.ceIvSeries : []);
-        lines.peIv.setData(checked ? currentSeries.peIvSeries : []);
-        lines.combinedIv.setData(checked ? currentSeries.combinedIvSeries : []);
-        lines.ceExtrinsic.setData(checked ? currentSeries.ceExtrinsicSeries : []);
-        lines.peExtrinsic.setData(checked ? currentSeries.peExtrinsicSeries : []);
-        lines.ceVwap.setData(checked ? currentSeries.ceVwapSeries : []);
-        lines.peVwap.setData(checked ? currentSeries.peVwapSeries : []);
-        lines.combinedVwap.setData(checked ? currentSeries.combinedVwapSeries : []);
+        updateAllCheckbox();
+    }
+
+    function applyLineVisibilityChanges() {
+        // Copy pending state to actual state
+        lineVisibility = {...pendingLineVisibility};
+
+        lines.spot.setData(lineVisibility.spot ? currentSeries.spotSeries : []);
+        lines.ce.setData(lineVisibility.ce ? currentSeries.ceSeries : []);
+        lines.pe.setData(lineVisibility.pe ? currentSeries.peSeries : []);
+        lines.combinedPremium.setData(lineVisibility.combinedPremium ? currentSeries.combinedPremiumSeries : []);
+        lines.avgPrice.setData(lineVisibility.avgPrice ? currentSeries.avgPriceSeries : []);
+        lines.ceIv.setData(lineVisibility.ceIv ? currentSeries.ceIvSeries : []);
+        lines.peIv.setData(lineVisibility.peIv ? currentSeries.peIvSeries : []);
+        lines.combinedIv.setData(lineVisibility.combinedIv ? currentSeries.combinedIvSeries : []);
+        lines.ceExtrinsic.setData(lineVisibility.ceExtrinsic ? currentSeries.ceExtrinsicSeries : []);
+        lines.peExtrinsic.setData(lineVisibility.peExtrinsic ? currentSeries.peExtrinsicSeries : []);
+        lines.ceVwap.setData(lineVisibility.ceVwap ? currentSeries.ceVwapSeries : []);
+        lines.peVwap.setData(lineVisibility.peVwap ? currentSeries.peVwapSeries : []);
+        lines.combinedVwap.setData(lineVisibility.combinedVwap ? currentSeries.combinedVwapSeries : []);
         drawOpenPriceLines();
 
         updateLegendLatest();
         saveLineVisibility();
-        updateAllCheckbox();
     }
 
     function toUnixSeconds(isoString) {
@@ -1120,12 +1148,30 @@
     function initCheckoutDropdown() {
         const btn = document.getElementById('checkout-btn');
         const menu = document.getElementById('checkout-menu');
+        const okBtn = document.getElementById('checkout-ok-btn');
 
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isVisible = menu.classList.contains('show');
             closeAllDropdowns();
-            if (!isVisible) menu.classList.add('show');
+            if (!isVisible) {
+                // Reset pending state to current state when opening
+                pendingLineVisibility = {...lineVisibility};
+                syncCheckboxesFromPendingVisibility();
+                menu.classList.add('show');
+            }
+        });
+
+        // Prevent menu from closing when clicking inside it
+        menu.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // OK button applies the changes
+        okBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyLineVisibilityChanges();
+            menu.classList.remove('show');
         });
 
         document.getElementById('all-lines-check').addEventListener('change', (e) => {
@@ -1153,17 +1199,7 @@
 
         Object.entries(checkboxHandlers).forEach(([id, key]) => {
             document.getElementById(id).addEventListener('change', (e) => {
-                lineVisibility[key] = e.target.checked;
-
-                if (['ceOpen', 'peOpen', 'combinedOpen'].includes(key)) {
-                    drawOpenPriceLines();
-                } else {
-                    const seriesKey = key + 'Series';
-                    lines[key].setData(lineVisibility[key] ? currentSeries[seriesKey] : []);
-                }
-
-                updateLegendLatest();
-                saveLineVisibility();
+                pendingLineVisibility[key] = e.target.checked;
                 updateAllCheckbox();
             });
         });
@@ -1199,6 +1235,32 @@
         });
 
         document.addEventListener('click', closeAllDropdowns);
+    }
+
+    function syncCheckboxesFromPendingVisibility() {
+        const map = {
+            spot: 'spot-check',
+            ce: 'ce-check',
+            pe: 'pe-check',
+            combinedPremium: 'combined-premium-check',
+            avgPrice: 'avg-check',
+            ceIv: 'ce-iv-check',
+            peIv: 'pe-iv-check',
+            combinedIv: 'combined-iv-check',
+            ceExtrinsic: 'ce-extrinsic-check',
+            peExtrinsic: 'pe-extrinsic-check',
+            ceOpen: 'ce-open-check',
+            peOpen: 'pe-open-check',
+            combinedOpen: 'combined-open-check',
+            ceVwap: 'ce-vwap-check',
+            peVwap: 'pe-vwap-check',
+            combinedVwap: 'combined-vwap-check'
+        };
+        Object.entries(map).forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (el) el.checked = !!pendingLineVisibility[key];
+        });
+        updateAllCheckbox();
     }
 
     function closeAllDropdowns() {
@@ -1435,6 +1497,9 @@
         if (isFullscreen) {
             card.classList.add('chart-fullscreen');
         }
+
+        // Initialize pending state
+        pendingLineVisibility = {...lineVisibility};
 
         document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
         document.getElementById('toggle-container').addEventListener('click', toggleCrossover);

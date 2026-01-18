@@ -13,12 +13,38 @@ import lombok.Data;
 @Data  // ✅ Lombok: generates getters, setters, toString, equals, hashCode
 public class Futures {
 
+	   
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false, unique = true)
     private Long id;
-
-    @Column(name = "name", nullable = false)
-    private String name;
+    
+    @Column(name = "name", nullable = false, length = 200)
+    private String name;  // Full company name
+    
+    @Column(name = "sector", nullable = false, length = 100)
+    private String sector;
+    
+    @Column(name = "industry", nullable = false, length = 150)
+    private String industry;
+    
+    // Index Membership Flags
+    @Column(name = "is_nifty_50", nullable = false)
+    private Boolean isNifty50 = false;
+    
+    @Column(name = "is_nifty_next_50", nullable = false)
+    private Boolean isNiftyNext50 = false;
+    
+    @Column(name = "is_nifty_100", nullable = false)
+    private Boolean isNifty100 = false;
+    
+    @Column(name = "is_nifty_200", nullable = false)
+    private Boolean isNifty200 = false;
+    
+    @Column(name = "is_nifty_500", nullable = false)
+    private Boolean isNifty500 = false;
+    
+    @Column(name = "last_updated")
+    private java.time.LocalDateTime lastUpdated;
      
 }

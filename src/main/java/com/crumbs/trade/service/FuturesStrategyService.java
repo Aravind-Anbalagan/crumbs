@@ -24,6 +24,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.FuturesConfigDto;
+import com.crumbs.trade.entity.Futures;
 import com.crumbs.trade.entity.FuturesConfig;
 import com.crumbs.trade.entity.FuturesFilter;
 import com.crumbs.trade.entity.Indexes;
@@ -33,6 +34,7 @@ import com.crumbs.trade.repo.FuturesRepo;
 import com.crumbs.trade.repo.Nifty500Repo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
+import com.crumbs.trade.utility.NiftyIndexType;
 
 @Service
 public class FuturesStrategyService {
@@ -56,8 +58,8 @@ public class FuturesStrategyService {
      * Executes for NIFTY50 and/or NIFTY500 depending on which configs are active
      */
     @Transactional
-    public void executeAll(List<String> indexTypeList) {
-        List<FuturesConfig> activeConfigs = configRepo.findByActiveAndIndexTypes("Y",indexTypeList);
+    public void executeAll() {
+        List<FuturesConfig> activeConfigs = configRepo.findByActive("Y");
         
         if (activeConfigs.isEmpty()) {
             logger.warn("No active FUTURES_CONFIG found");
@@ -182,21 +184,29 @@ public class FuturesStrategyService {
     /**
      * ✅ Get stock names by index type
      */
-    private List<String> getStockNamesByIndexType(String indexType) {
-        if ("NIFTY500".equalsIgnoreCase(indexType)) {
-            logger.info("Fetching NIFTY 500 stocks");
-            return nifty500Repo.findAll().stream()
-                    .map(n -> n.getName())
-                    .filter(Objects::nonNull)
-                    .toList();
-        } else {
-            logger.info("Fetching NIFTY 50 stocks");
-            return futuresRepo.findAll().stream()
-                    .map(f -> f.getName())
-                    .filter(Objects::nonNull)
-                    .toList();
-        }
+    private List<String> getStockNamesByIndexType(String indexTypeStr) {
+
+        NiftyIndexType indexType = NiftyIndexType.valueOf(indexTypeStr);
+
+        List<Futures> futures = switch (indexType) {
+
+            case NIFTY_50 -> futuresRepo.findByIsNifty50True();
+
+            case NIFTY_NEXT_50 -> futuresRepo.findByIsNiftyNext50True();
+
+            case NIFTY_100 -> futuresRepo.findByIsNifty100True();
+
+            case NIFTY_200 -> futuresRepo.findByIsNifty200True();
+
+            case NIFTY_500 -> futuresRepo.findByIsNifty500True();
+        };
+
+        return futures.stream()
+                .map(Futures::getName)
+                .filter(Objects::nonNull)
+                .toList();
     }
+
 
     private void updateFilters(
             FuturesConfig config,

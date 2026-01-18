@@ -1,1193 +1,1199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Futures Filter Dashboard</title>
-    <script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Futures Filter Dashboard</title>
+  <script>
     // Authentication check - must be at the top
     if (!sessionStorage.getItem('isLoggedIn')) {
-        window.location.href = '/';
+      window.location.href = '/login';
     }
-    </script>
-    <style>
-        :root {
-            /* Light theme colors */
-            --bg-gradient-start: #667eea;
-            --bg-gradient-end: #764ba2;
-            --card-bg: #ffffff;
-            --text-primary: #333333;
-            --text-secondary: #555555;
-            --text-tertiary: #666666;
-            --border-color: #e0e0e0;
-            --border-light: #f0f0f0;
-            --input-bg: #ffffff;
-            --input-border: #e0e0e0;
-            --input-focus: #667eea;
-            --hover-bg: #f8f9ff;
-            --secondary-bg: #f0f0f0;
-            --secondary-hover: #e0e0e0;
-            --shadow-color: rgba(0, 0, 0, 0.2);
-            --table-header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --table-header-text: #ffffff;
-            --empty-state-color: #999999;
-        }
-
-        [data-theme="dark"] {
-            /* Dark theme colors */
-            --bg-gradient-start: #1a1a2e;
-            --bg-gradient-end: #16213e;
-            --card-bg: #1c1f26;
-            --text-primary: #e4e6eb;
-            --text-secondary: #b0b3b8;
-            --text-tertiary: #8a8d91;
-            --border-color: #2f3336;
-            --border-light: #38444d;
-            --input-bg: #2a2f3a;
-            --input-border: #3a3f4a;
-            --input-focus: #667eea;
-            --hover-bg: #252a35;
-            --secondary-bg: #2a2f3a;
-            --secondary-hover: #353a45;
-            --shadow-color: rgba(0, 0, 0, 0.5);
-            --table-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-            --table-header-text: #e4e6eb;
-            --empty-state-color: #666666;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-            min-height: 100vh;
-            padding: 10px;
-            transition: all 0.3s ease;
-        }
-
-        .container {
-            max-width: 98%;
-            margin: 0 auto;
-        }
-
-        /* Compact Header - All in one row */
-        .compact-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-            padding: 12px 20px;
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
-            border-radius: 10px;
-            margin-bottom: 10px;
-            flex-wrap: wrap;
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .header-title {
-            color: white;
-            font-size: 1.3rem;
-            font-weight: 700;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-            white-space: nowrap;
-        }
-
-        .theme-toggle {
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            padding: 8px 12px;
-            border-radius: 50px;
-            cursor: pointer;
-            color: white;
-            font-size: 1.1rem;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .theme-toggle:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
-        }
-
-        .header-center {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .index-toggle-buttons {
-            display: flex;
-            gap: 0;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 3px;
-            border-radius: 50px;
-        }
-
-        .index-toggle-btn {
-            padding: 6px 20px;
-            border: none;
-            background: transparent;
-            color: rgba(255, 255, 255, 0.7);
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            border-radius: 50px;
-        }
-
-        .index-toggle-btn.active {
-            background: white;
-            color: var(--bg-gradient-start);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-        }
-
-        .index-toggle-btn:hover:not(.active) {
-            color: white;
-        }
-
-        .index-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 15px;
-            color: white;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .index-badge-icon {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        .index-badge.nifty50 .index-badge-icon {
-            background: #10b981;
-        }
-
-        .index-badge.nifty500 .index-badge-icon {
-            background: #f59e0b;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .data-section {
-            background: var(--card-bg);
-            border-radius: 10px;
-            padding: 12px 15px;
-            box-shadow: 0 5px 15px var(--shadow-color);
-            transition: all 0.3s ease;
-        }
-
-        .data-controls-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .data-controls-left {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .stats {
-            display: flex;
-            gap: 15px;
-            font-size: 0.75rem;
-            color: var(--text-tertiary);
-            transition: color 0.3s ease;
-        }
-
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            white-space: nowrap;
-        }
-
-        .search-box {
-            padding: 6px 10px;
-            border: 2px solid var(--input-border);
-            border-radius: 6px;
-            font-size: 0.8rem;
-            background: var(--input-bg);
-            color: var(--text-primary);
-            min-width: 180px;
-            transition: all 0.3s ease;
-        }
-
-        .search-box:focus {
-            outline: none;
-            border-color: var(--input-focus);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: var(--secondary-bg);
-            color: var(--text-primary);
-        }
-
-        .btn-secondary:hover {
-            background: var(--secondary-hover);
-        }
-
-        .filter-select {
-            padding: 6px 10px;
-            border: 2px solid var(--input-border);
-            border-radius: 6px;
-            font-size: 0.8rem;
-            background: var(--input-bg);
-            color: var(--text-primary);
-            cursor: pointer;
-            min-width: 150px;
-            transition: all 0.3s ease;
-        }
-
-        .filter-select:focus {
-            outline: none;
-            border-color: var(--input-focus);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .table-container {
-            overflow-x: auto;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            transition: opacity 0.2s ease, border-color 0.3s ease;
-            max-height: calc(100vh - 200px);
-            overflow-y: auto;
-        }
-
-        .table-container.updating {
-            opacity: 0.6;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: var(--card-bg);
-            transition: background 0.3s ease;
-        }
-
-        thead {
-            background: var(--table-header-bg);
-            color: var(--table-header-text);
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        th {
-            padding: 10px 12px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.85rem;
-            white-space: nowrap;
-            transition: background 0.3s ease;
-        }
-
-        td {
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--border-light);
-            font-size: 0.85rem;
-            color: var(--text-primary);
-            transition: all 0.3s ease;
-        }
-
-        tbody tr {
-            transition: background 0.2s ease;
-        }
-
-        tbody tr:hover {
-            background: var(--hover-bg);
-        }
-
-        .positive {
-            color: #10b981;
-            font-weight: 600;
-        }
-
-        .negative {
-            color: #ef4444;
-            font-weight: 600;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 30px 20px;
-            color: var(--text-tertiary);
-        }
-
-        .spinner {
-            border: 3px solid var(--border-color);
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 35px;
-            height: 35px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 12px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error {
-            background: #fee2e2;
-            color: #991b1b;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            border-left: 4px solid #991b1b;
-            font-size: 0.85rem;
-        }
-
-        .success {
-            background: #d1fae5;
-            color: #065f46;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            border-left: 4px solid #065f46;
-            font-size: 0.85rem;
-        }
-
-        [data-theme="dark"] .error {
-            background: #3d1a1a;
-            color: #ff6b6b;
-        }
-
-        [data-theme="dark"] .success {
-            background: #1a3d1a;
-            color: #51cf66;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 50px 20px;
-            color: var(--empty-state-color);
-            transition: color 0.3s ease;
-        }
-
-        .empty-state svg {
-            width: 60px;
-            height: 60px;
-            margin-bottom: 15px;
-            opacity: 0.3;
-        }
-
-        .pagination {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 2px solid var(--border-light);
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .pagination-info {
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            transition: color 0.3s ease;
-        }
-
-        .pagination-controls {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .pagination-btn {
-            padding: 6px 12px;
-            border: 2px solid var(--input-border);
-            background: var(--card-bg);
-            color: var(--text-primary);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s ease;
-        }
-
-        .pagination-btn:hover:not(:disabled) {
-            background: var(--hover-bg);
-            border-color: var(--input-focus);
-        }
-
-        .pagination-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        .page-size-select {
-            padding: 6px 10px;
-            border: 2px solid var(--input-border);
-            border-radius: 6px;
-            background: var(--input-bg);
-            color: var(--text-primary);
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .sort-icon {
-            margin-left: 4px;
-            font-size: 0.75rem;
-            opacity: 0.5;
-        }
-
-        th.sortable {
-            cursor: pointer;
-            user-select: none;
-        }
-
-        th.sortable:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        @media (max-width: 1200px) {
-            .compact-header {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .header-left,
-            .header-center {
-                justify-content: center;
-            }
-
-            .stats {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .header-title {
-                font-size: 1.1rem;
-            }
-
-            .index-toggle-btn {
-                padding: 5px 15px;
-                font-size: 0.75rem;
-            }
-
-            .table-container {
-                font-size: 0.75rem;
-            }
-
-            .data-controls-row {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .data-controls-left {
-                width: 100%;
-            }
-
-            .stats {
-                width: 100%;
-                justify-content: space-between;
-            }
-        }
-    </style>
+  </script>
+  <style>
+    :root {
+      /* Light theme colors */
+      --bg-gradient-start: #667eea;
+      --bg-gradient-end: #764ba2;
+      --card-bg: #ffffff;
+      --text-primary: #333333;
+      --text-secondary: #555555;
+      --text-tertiary: #666666;
+      --border-color: #e0e0e0;
+      --border-light: #f0f0f0;
+      --input-bg: #ffffff;
+      --input-border: #e0e0e0;
+      --input-focus: #667eea;
+      --hover-bg: #f8f9ff;
+      --secondary-bg: #f0f0f0;
+      --secondary-hover: #e0e0e0;
+      --shadow-color: rgba(0, 0, 0, 0.2);
+      --table-header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --table-header-text: #ffffff;
+      --empty-state-color: #999999;
+    }
+
+    [data-theme="dark"] {
+      /* Dark theme colors */
+      --bg-gradient-start: #1a1a2e;
+      --bg-gradient-end: #16213e;
+      --card-bg: #1c1f26;
+      --text-primary: #e4e6eb;
+      --text-secondary: #b0b3b8;
+      --text-tertiary: #8a8d91;
+      --border-color: #2f3336;
+      --border-light: #38444d;
+      --input-bg: #2a2f3a;
+      --input-border: #3a3f4a;
+      --input-focus: #667eea;
+      --hover-bg: #252a35;
+      --secondary-bg: #2a2f3a;
+      --secondary-hover: #353a45;
+      --shadow-color: rgba(0, 0, 0, 0.5);
+      --table-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      --table-header-text: #e4e6eb;
+      --empty-state-color: #666666;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+      min-height: 100vh;
+      padding: 10px;
+      transition: all 0.3s ease;
+    }
+
+    .container {
+      max-width: 98%;
+      margin: 0 auto;
+    }
+
+    /* Compact Header - All in one row */
+    .compact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;  /* NEW: Center the toggles */
+  gap: 10px;
+  flex: 1;  /* NEW: Take available space */
+  min-width: 0;  /* NEW: Allow shrinking */
+}
+
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .header-title {
+      color: white;
+      font-size: 1.3rem;
+      font-weight: 700;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+      white-space: nowrap;
+    }
+
+    .theme-toggle {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      padding: 8px 12px;
+      border-radius: 50px;
+      cursor: pointer;
+      color: white;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
+    }
+
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .index-toggle-buttons {
+      display: flex;
+      gap: 0;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 3px;
+      border-radius: 50px;
+    }
+
+    .index-toggle-btn {
+      padding: 6px 20px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      border-radius: 50px;
+    }
+
+    .index-toggle-btn.active {
+      background: white;
+      color: var(--bg-gradient-start);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .index-toggle-btn:hover:not(.active) {
+      color: white;
+    }
+
+    .index-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 15px;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .index-badge-icon {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .index-badge.nifty50 .index-badge-icon { background: #10b981; }
+    .index-badge.niftyNext50 .index-badge-icon { background: #3b82f6; }
+    .index-badge.nifty100 .index-badge-icon { background: #8b5cf6; }
+    .index-badge.nifty200 .index-badge-icon { background: #ec4899; }
+    .index-badge.nifty500 .index-badge-icon { background: #f59e0b; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .data-section {
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 12px 15px;
+      box-shadow: 0 5px 15px var(--shadow-color);
+      transition: all 0.3s ease;
+    }
+
+    .data-controls-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .data-controls-left {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .stats {
+  display: flex;
+  gap: 12px;
+  font-size: 0.85rem;  /* Increased from 0.75rem */
+  color: var(--text-tertiary);
+  transition: color 0.3s ease;
+  flex-wrap: wrap;  /* Better wrapping */
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;  /* Increased from 4px */
+  white-space: nowrap;
+  padding: 4px 8px;  /* Added padding */
+  background: rgba(255, 255, 255, 0.1);  /* Subtle background */
+  border-radius: 6px;
+  backdrop-filter: blur(5px);
+}
+
+.stat-item span:first-child {
+  font-size: 1rem;  /* Larger icons */
+}
+
+/* Dark theme adjustment */
+[data-theme="dark"] .stat-item {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+    .search-box {
+      padding: 6px 10px;
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      min-width: 180px;
+      transition: all 0.3s ease;
+    }
+
+    .search-box:focus {
+      outline: none;
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--secondary-hover);
+    }
+
+    .filter-select {
+      padding: 6px 10px;
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      cursor: pointer;
+      min-width: 150px;
+      transition: all 0.3s ease;
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .table-container {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      transition: opacity 0.2s ease, border-color 0.3s ease;
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+
+    .table-container.updating {
+      opacity: 0.6;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-bg);
+      transition: background 0.3s ease;
+    }
+
+    thead {
+      background: var(--table-header-bg);
+      color: var(--table-header-text);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    th {
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      transition: background 0.3s ease;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      transition: all 0.3s ease;
+    }
+
+    tbody tr {
+      transition: background 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background: var(--hover-bg);
+    }
+
+    .positive {
+      color: #10b981;
+      font-weight: 600;
+    }
+
+    .negative {
+      color: #ef4444;
+      font-weight: 600;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text-tertiary);
+    }
+
+    .spinner {
+      border: 3px solid var(--border-color);
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 35px;
+      height: 35px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #991b1b;
+      font-size: 0.85rem;
+    }
+
+    .success {
+      background: #d1fae5;
+      color: #065f46;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #065f46;
+      font-size: 0.85rem;
+    }
+
+    [data-theme="dark"] .error {
+      background: #3d1a1a;
+      color: #ff6b6b;
+    }
+
+    [data-theme="dark"] .success {
+      background: #1a3d1a;
+      color: #51cf66;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 50px 20px;
+      color: var(--empty-state-color);
+      transition: color 0.3s ease;
+    }
+
+    .empty-state svg {
+      width: 60px;
+      height: 60px;
+      margin-bottom: 15px;
+      opacity: 0.3;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 2px solid var(--border-light);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pagination-info {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      transition: color 0.3s ease;
+    }
+
+    .pagination-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pagination-btn {
+      padding: 6px 12px;
+      border: 2px solid var(--input-border);
+      background: var(--card-bg);
+      color: var(--text-primary);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.3s ease;
+    }
+
+    .pagination-btn:hover:not(:disabled) {
+      background: var(--hover-bg);
+      border-color: var(--input-focus);
+    }
+
+    .pagination-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .page-size-select {
+      padding: 6px 10px;
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .sort-icon {
+      margin-left: 4px;
+      font-size: 0.75rem;
+      opacity: 0.5;
+    }
+
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th.sortable:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+      .compact-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+  
+  .header-left, 
+  .header-center {
+    justify-content: center;  /* Keep centered */
+    width: 100%;
+  }
+  
+  .header-center {
+    order: 2;  /* Toggles appear between title and stats on mobile */
+  }
+      .stats {
+     order: 3;
+    justify-content: center;
+  }
+  .stat-item {
+    padding: 3px 6px;
+  }
+    }
+
+    @media (max-width: 768px) {
+      .header-title {
+        font-size: 1.1rem;
+      }
+      .header-center {
+    flex-direction: column;
+    gap: 8px;
+  }
+      .index-toggle-buttons {
+        flex-wrap: wrap;
+        gap: 2px;
+        padding: 4px;
+      }
+      .index-toggle-btn {
+        padding: 4px 12px;
+        font-size: 0.75rem;
+      }
+      .table-container {
+        font-size: 0.75rem;
+      }
+      .data-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .data-controls-left {
+        width: 100%;
+      }
+      .stats {
+    font-size: 0.8rem;
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .stat-item {
+    padding: 3px 6px;
+    gap: 4px;
+    font-size: 0.75rem;
+  }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Compact Header - Everything in One Row -->
-        <div class="compact-header">
-            <div class="header-left">
-                <h1 class="header-title">📊 Futures Dashboard</h1>
-                <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
-            </div>
-
-            <div class="header-center">
-                <div class="index-toggle-buttons">
-                    <button class="index-toggle-btn active" id="nifty50Btn" onclick="switchIndex('NIFTY50')">
-                        NIFTY 50
-                    </button>
-                    <button class="index-toggle-btn" id="nifty500Btn" onclick="switchIndex('NIFTY500')">
-                        NIFTY 500
-                    </button>
-                </div>
-                <div class="index-badge nifty50" id="currentIndexBadge">
-                    <span class="index-badge-icon"></span>
-                    <span id="currentIndexText">Active</span>
-                </div>
-            </div>
-
-            <div class="stats">
-                <div class="stat-item">
-                    <span>📊</span>
-                    <strong id="totalCount">0</strong>
-                </div>
-                <div class="stat-item">
-                    <span>👁️</span>
-                    <strong id="showingCount">0</strong>
-                </div>
-                <div class="stat-item">
-                    <span>🕐</span>
-                    <strong id="lastUpdate">-</strong>
-                </div>
-            </div>
+  <div class="container">
+    <!-- Compact Header - Everything in One Row -->
+    <div class="compact-header">
+      <div class="header-left">
+        <h1 class="header-title">Futures Dashboard</h1>
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
+      </div>
+      <div class="header-center">
+        <div class="index-toggle-buttons">
+          <button class="index-toggle-btn active" id="nifty50Btn" onclick="switchIndex('NIFTY_50')">NIFTY 50</button>
+          <button class="index-toggle-btn" id="niftyNext50Btn" onclick="switchIndex('NIFTY_NEXT_50')">NEXT 50</button>
+          <button class="index-toggle-btn" id="nifty100Btn" onclick="switchIndex('NIFTY_100')">NIFTY 100</button>
+          <button class="index-toggle-btn" id="nifty200Btn" onclick="switchIndex('NIFTY_200')">NIFTY 200</button>
+          <button class="index-toggle-btn" id="nifty500Btn" onclick="switchIndex('NIFTY_500')">NIFTY 500</button>
         </div>
-
-        <!-- Data Section -->
-        <div class="data-section">
-            <div class="data-controls-row">
-                <div class="data-controls-left">
-                    <select class="filter-select" id="percentFilter" onchange="filterByPercentage()">
-                        <option value="all">All % Moves</option>
-                        <option value="<-5">&lt; -5%</option>
-                        <option value="-5to-4">-5% to -4%</option>
-                        <option value="-4to-3">-4% to -3%</option>
-                        <option value="-3to-2">-3% to -2%</option>
-                        <option value="-2to-1">-2% to -1%</option>
-                        <option value="-1to0">-1% to 0%</option>
-                        <option selected value="0to1">0% to 1%</option>
-                        <option value="1to2">1% to 2%</option>
-                        <option value="2to3">2% to 3%</option>
-                        <option value="3to4">3% to 4%</option>
-                        <option value="4to5">4% to 5%</option>
-                        <option value=">5">&gt; 5%</option>
-                    </select>
-                    <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search..." onkeyup="filterTable()">
-                </div>
-                <div class="data-controls-left">
-                    <button class="btn btn-primary" onclick="exportToCSV()">
-                        📥 Export
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadFilteredData()">
-                        🔄 Refresh
-                    </button>
-                </div>
-            </div>
-
-            <div id="dataMessage"></div>
-
-            <div id="dataLoading" class="loading" style="display: none;">
-                <div class="spinner"></div>
-                <p>Loading...</p>
-            </div>
-
-            <div id="tableContainer"></div>
-
-            <div id="paginationContainer" style="display: none;">
-                <div class="pagination">
-                    <div class="pagination-info">
-                        <span>Rows:</span>
-                        <select class="page-size-select" id="pageSize" onchange="changePageSize()">
-                            <option value="10" selected>10</option>
-                            <option value="25">25</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
-                    <div class="pagination-controls">
-                        <button class="pagination-btn" onclick="goToFirstPage()">⏮️</button>
-                        <button class="pagination-btn" onclick="previousPage()">◀️</button>
-                        <span class="pagination-info" id="pageInfo">1/1</span>
-                        <button class="pagination-btn" onclick="nextPage()">▶️</button>
-                        <button class="pagination-btn" onclick="goToLastPage()">⏭️</button>
-                    </div>
-                </div>
-            </div>
+        <div class="index-badge nifty50" id="currentIndexBadge">
+          <span class="index-badge-icon"></span>
+          <span id="currentIndexText">Active</span>
         </div>
+      </div>
+      <div class="stats">
+        <div class="stat-item">
+          <span>📊</span>
+          <span>Total:</span>
+          <strong id="totalCount">0</strong>
+        </div>
+        <div class="stat-item">
+          <span>👁️</span>
+          <span>Showing:</span>
+          <strong id="showingCount">0</strong>
+        </div>
+        <div class="stat-item">
+          <span>🕒</span>
+          <span>Last Update:</span>
+          <strong id="lastUpdate">-</strong>
+        </div>
+      </div>
     </div>
 
-    <script>
-        const API_BASE_URL = '/api/futures';
+    <!-- Data Section -->
+    <div class="data-section">
+      <div class="data-controls-row">
+        <div class="data-controls-left">
+          <select class="filter-select" id="percentFilter" onchange="filterByPercentage()">
+            <option value="all">All Moves</option>
+            <option value="-5">&lt; -5%</option>
+            <option value="-5to-4">-5 to -4%</option>
+            <option value="-4to-3">-4 to -3%</option>
+            <option value="-3to-2">-3 to -2%</option>
+            <option value="-2to-1">-2 to -1%</option>
+            <option value="-1to0">-1 to 0%</option>
+            <option selected value="0to1">0 to 1%</option>
+            <option value="1to2">1 to 2%</option>
+            <option value="2to3">2 to 3%</option>
+            <option value="3to4">3 to 4%</option>
+            <option value="4to5">4 to 5%</option>
+            <option value="5">&gt; 5%</option>
+          </select>
+          <input type="text" class="search-box" id="searchBox" placeholder="Search..." onkeyup="filterTable()">
+        </div>
+        <div class="data-controls-right">
+          <button class="btn btn-primary" onclick="exportToCSV()">
+            <span>📥</span>Export CSV
+          </button>
+          <button class="btn btn-secondary" onclick="loadFilteredData()">
+            <span>🔄</span>Refresh
+          </button>
+        </div>
+      </div>
 
-        // Global state
-        window.fullData = null;
-        window.filteredData = null;
-        window.currentPage = 1;
-        window.pageSize = 10; // Default to 10 rows
-        window.sortColumn = null;
-        window.sortDirection = 'asc';
-        window.percentColumnName = null;
-        window.currentIndex = 'NIFTY50';
+      <div id="dataMessage"></div>
+      <div id="dataLoading" class="loading" style="display: none">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+      </div>
+      <div id="tableContainer"></div>
+      <div id="paginationContainer" style="display: none">
+        <div class="pagination">
+          <div class="pagination-info">
+            <span>Rows per page:</span>
+            <select class="page-size-select" id="pageSize" onchange="changePageSize()">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div class="pagination-controls">
+            <button class="pagination-btn" onclick="goToFirstPage()">&laquo;</button>
+            <button class="pagination-btn" onclick="previousPage()">&lt;</button>
+            <span class="pagination-info" id="pageInfo">1/1</span>
+            <button class="pagination-btn" onclick="nextPage()">&gt;</button>
+            <button class="pagination-btn" onclick="goToLastPage()">&raquo;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        // Theme Management
-        function initTheme() {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-            updateThemeIcon(savedTheme);
-        }
+  <script>
+    const API_BASE_URL = '/api/futures';
 
-        function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-            
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-        }
+    // Global state
+    window.fullData = null;
+    window.filteredData = null;
+    window.currentPage = 1;
+    window.pageSize = 10; // Default to 10 rows
+    window.sortColumn = null;
+    window.sortDirection = 'asc';
+    window.percentColumnName = null;
+    window.currentIndex = 'NIFTY_50';
 
-        function updateThemeIcon(theme) {
-            const themeToggle = document.getElementById('themeToggle');
-            themeToggle.textContent = theme === 'light' ? '🌙' : '☀️';
-        }
+    // Theme Management
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+    }
 
-        // Index Management
-        function switchIndex(indexType) {
-            window.currentIndex = indexType;
-            
-            document.getElementById('nifty50Btn').classList.toggle('active', indexType === 'NIFTY50');
-            document.getElementById('nifty500Btn').classList.toggle('active', indexType === 'NIFTY500');
-            
-            const badge = document.getElementById('currentIndexBadge');
-            const badgeText = document.getElementById('currentIndexText');
-            badge.className = indexType === 'NIFTY50' ? 'index-badge nifty50' : 'index-badge nifty500';
-            badgeText.textContent = 'Active';
-            
-            localStorage.setItem('selectedIndex', indexType);
-            
-            loadFilteredData();
-        }
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
 
-        function loadIndexPreference() {
-            const savedIndex = localStorage.getItem('selectedIndex') || 'NIFTY50';
-            switchIndex(savedIndex);
-        }
+    function updateThemeIcon(theme) {
+      const themeToggle = document.getElementById('themeToggle');
+      themeToggle.textContent = theme === 'light' ? '🌙' : '☀️';
+    }
 
-        // Load page
-        window.addEventListener('DOMContentLoaded', () => {
-            initTheme();
-            loadIndexPreference();
+    // Index Management - Updated for all 5 indices
+    function switchIndex(indexType) {
+      window.currentIndex = indexType;
+      
+      // Update button active states
+      document.querySelectorAll('.index-toggle-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(getButtonId(indexType)).classList.add('active');
+      
+      // Update badge
+      const badge = document.getElementById('currentIndexBadge');
+      const badgeText = document.getElementById('currentIndexText');
+      badge.className = `index-badge ${getBadgeClass(indexType)}`;
+      badgeText.textContent = getIndexDisplayName(indexType);
+      
+      localStorage.setItem('selectedIndex', indexType);
+      loadFilteredData();
+    }
+
+    function getButtonId(indexType) {
+      const idMap = {
+        'NIFTY_50': 'nifty50Btn',
+        'NIFTY_NEXT_50': 'niftyNext50Btn',
+        'NIFTY_100': 'nifty100Btn',
+        'NIFTY_200': 'nifty200Btn',
+        'NIFTY_500': 'nifty500Btn'
+      };
+      return idMap[indexType] || 'nifty50Btn';
+    }
+
+    function getBadgeClass(indexType) {
+      const classMap = {
+        'NIFTY_50': 'nifty50',
+        'NIFTY_NEXT_50': 'niftyNext50',
+        'NIFTY_100': 'nifty100',
+        'NIFTY_200': 'nifty200',
+        'NIFTY_500': 'nifty500'
+      };
+      return classMap[indexType] || 'nifty50';
+    }
+
+    function getIndexDisplayName(indexType) {
+      const nameMap = {
+        'NIFTY_50': 'NIFTY 50 Active',
+        'NIFTY_NEXT_50': 'NEXT 50 Active',
+        'NIFTY_100': 'NIFTY 100 Active',
+        'NIFTY_200': 'NIFTY 200 Active',
+        'NIFTY_500': 'NIFTY 500 Active'
+      };
+      return nameMap[indexType] || 'NIFTY 50 Active';
+    }
+
+    function loadIndexPreference() {
+      const savedIndex = localStorage.getItem('selectedIndex') || 'NIFTY_50';
+      switchIndex(savedIndex);
+    }
+
+    // Load page
+    window.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      loadIndexPreference();
+      loadFilteredData();
+    });
+
+    // Load filtered data
+    async function loadFilteredData() {
+      const loadingDiv = document.getElementById('dataLoading');
+      const tableContainer = document.getElementById('tableContainer');
+      clearMessage('dataMessage');
+
+      if (tableContainer.innerHTML) {
+        const tableDiv = tableContainer.querySelector('.table-container');
+        if (tableDiv) tableDiv.classList.add('updating');
+      } else {
+        loadingDiv.style.display = 'block';
+      }
+
+      try {
+        const url = `${API_BASE_URL}/filtered/${window.currentIndex}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
         });
 
-        // Load filtered data
-        async function loadFilteredData() {
-            const loadingDiv = document.getElementById('dataLoading');
-            const tableContainer = document.getElementById('tableContainer');
-            
-            clearMessage('dataMessage');
-            
-            if (tableContainer.innerHTML) {
-                const tableDiv = tableContainer.querySelector('.table-container');
-                if (tableDiv) {
-                    tableDiv.classList.add('updating');
+        if (!response.ok) {
+          throw new Error(`Failed to load data: HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        loadingDiv.style.display = 'none';
+
+        if (!data || data.length === 0) {
+          tableContainer.innerHTML = showEmptyState();
+          document.getElementById('paginationContainer').style.display = 'none';
+          window.fullData = [];
+          window.filteredData = [];
+          updateStats();
+          return;
+        }
+
+        window.fullData = data;
+        window.filteredData = data;
+        detectPercentColumn(data);
+        applyFilters();
+        document.getElementById('paginationContainer').style.display = 'block';
+
+        setTimeout(() => {
+          const tableDiv = tableContainer.querySelector('.table-container');
+          if (tableDiv) tableDiv.classList.remove('updating');
+        }, 100);
+
+        updateStats();
+      } catch (error) {
+        console.error('Error loading data:', error);
+        loadingDiv.style.display = 'none';
+        const tableDiv = tableContainer.querySelector('.table-container');
+        if (tableDiv) tableDiv.classList.remove('updating');
+        showMessage('dataMessage', `Unable to load data for ${window.currentIndex}. Please try refreshing.`, 'error');
+      }
+    }
+
+    function detectPercentColumn(data) {
+      if (!data || data.length === 0) {
+        window.percentColumnName = null;
+        return;
+      }
+
+      const firstRow = data[0];
+      const keys = Object.keys(firstRow);
+      let percentKey = keys.find(key => 
+        key.toLowerCase().includes('percentmove') ||
+        key.toLowerCase().includes('percentMove') ||
+        key.toLowerCase().includes('percentmove')
+      );
+
+      if (!percentKey) {
+        percentKey = keys.find(key => {
+          const lower = key.toLowerCase();
+          return lower.includes('percent') || lower.includes('move');
+        });
+      }
+
+      if (!percentKey) {
+        percentKey = keys.find(key => {
+          const lower = key.toLowerCase();
+          return lower.includes('percent') || lower.includes('change');
+        });
+      }
+
+      window.percentColumnName = percentKey;
+    }
+
+    function getPercentValue(row) {
+      if (!window.percentColumnName) return null;
+      return row[window.percentColumnName];
+    }
+
+    function applyFilters() {
+      const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+      const percentFilter = document.getElementById('percentFilter').value;
+
+      if (!window.fullData) return;
+
+      let filtered = [...window.fullData];
+
+      if (percentFilter !== 'all' && window.percentColumnName) {
+        filtered = filtered.filter(row => {
+          const percentValue = getPercentValue(row);
+          if (percentValue !== undefined && percentValue !== null) {
+            const pct = parseFloat(percentValue);
+            if (!isNaN(pct)) {
+              if (percentFilter.startsWith('<')) {
+                const threshold = parseFloat(percentFilter.substring(1));
+                return pct < threshold;
+              } else if (percentFilter.startsWith('>')) {
+                const threshold = parseFloat(percentFilter.substring(1));
+                return pct > threshold;
+              } else if (percentFilter.includes('to')) {
+                const [start, end] = percentFilter.split('to').map(v => parseFloat(v));
+                return pct >= start && pct <= end;
+              }
+            }
+          }
+          return false;
+        });
+      }
+
+      if (searchTerm) {
+        filtered = filtered.filter(row => 
+          Object.values(row).some(val => 
+            String(val).toLowerCase().includes(searchTerm)
+          )
+        );
+      }
+
+      window.filteredData = filtered;
+      window.currentPage = 1;
+      renderTable();
+      updateStats();
+    }
+
+    function filterTable() {
+      applyFilters();
+    }
+
+    function filterByPercentage() {
+      applyFilters();
+    }
+
+    function sortTable(column) {
+      if (window.sortColumn === column) {
+        window.sortDirection = window.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        window.sortColumn = column;
+        window.sortDirection = 'asc';
+      }
+
+      window.filteredData.sort((a, b) => {
+        let valA = a[column];
+        let valB = b[column];
+
+        if (valA === null) return 1;
+        if (valB === null) return -1;
+
+        const numA = parseFloat(valA);
+        const numB = parseFloat(valB);
+
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return window.sortDirection === 'asc' ? numA - numB : numB - numA;
+        }
+
+        const strA = String(valA).toLowerCase();
+        const strB = String(valB).toLowerCase();
+
+        return window.sortDirection === 'asc' ?
+          strA.localeCompare(strB) :
+          strB.localeCompare(strA);
+      });
+
+      renderTable();
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    }
+
+    function formatDateTime(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function changePageSize() {
+      window.pageSize = parseInt(document.getElementById('pageSize').value);
+      window.currentPage = 1;
+      renderTable();
+    }
+
+    function goToFirstPage() {
+      window.currentPage = 1;
+      renderTable();
+    }
+
+    function previousPage() {
+      if (window.currentPage > 1) {
+        window.currentPage--;
+        renderTable();
+      }
+    }
+
+    function nextPage() {
+      const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+      if (window.currentPage < totalPages) {
+        window.currentPage++;
+        renderTable();
+      }
+    }
+
+    function goToLastPage() {
+      const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+      window.currentPage = totalPages;
+      renderTable();
+    }
+
+    function renderTable() {
+      const tableContainer = document.getElementById('tableContainer');
+
+      if (!window.filteredData || window.filteredData.length === 0) {
+        tableContainer.innerHTML = showEmptyState();
+        return;
+      }
+
+      const columnsToShow = ['name', 'lastExpiryDate', 'lastExpiryPrice', 'lastTradedDate', 'lastTradedPrice', 'percentMove', 'direction', 'status'];
+      const allKeys = Object.keys(window.filteredData[0]);
+      const columns = columnsToShow.filter(col => allKeys.includes(col));
+
+      if (columns.length === 0) {
+        tableContainer.innerHTML = showEmptyState();
+        return;
+      }
+
+      const startIndex = (window.currentPage - 1) * window.pageSize;
+      const endIndex = startIndex + window.pageSize;
+      const paginatedData = window.filteredData.slice(startIndex, endIndex);
+
+      const getSortIcon = (col) => {
+        if (window.sortColumn === col) {
+          return window.sortDirection === 'asc' ? '▲' : '▼';
+        }
+        return '';
+      };
+
+      let tableHTML = `
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                ${columns.map(col => `
+                  <th class="sortable" onclick="sortTable('${col}')">
+                    ${formatColumnName(col)}
+                    <span class="sort-icon">${getSortIcon(col)}</span>
+                  </th>
+                `).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${paginatedData.map(row => `
+                <tr>
+                  ${columns.map(col => `<td>${formatCellValue(col, row[col])}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      tableContainer.innerHTML = tableHTML;
+      updatePaginationInfo();
+    }
+
+    function updatePaginationInfo() {
+      if (!window.filteredData) return;
+
+      const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+      const pageInfoElem = document.getElementById('pageInfo');
+      if (pageInfoElem) {
+        pageInfoElem.textContent = `${window.currentPage}/${totalPages}`;
+      }
+    }
+
+    function updateStats() {
+      const totalCountElem = document.getElementById('totalCount');
+      const showingCountElem = document.getElementById('showingCount');
+      const lastUpdateElem = document.getElementById('lastUpdate');
+
+      if (totalCountElem) totalCountElem.textContent = window.fullData ? window.fullData.length : 0;
+      if (showingCountElem) showingCountElem.textContent = window.filteredData ? window.filteredData.length : 0;
+      if (lastUpdateElem) {
+        let latestDate = null;
+        if (window.fullData && window.fullData.length > 0) {
+          window.fullData.forEach(row => {
+            if (row.lastTradedDate) {
+              const d = new Date(row.lastTradedDate);
+              if (!isNaN(d.getTime())) {
+                if (!latestDate || d > latestDate) {
+                  latestDate = d;
                 }
-            } else {
-                loadingDiv.style.display = 'block';
+              }
             }
-
-            try {
-                const url = `${API_BASE_URL}/filtered/${window.currentIndex}`;
-                
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to load data (HTTP ${response.status})`);
-                }
-
-                const data = await response.json();
-                loadingDiv.style.display = 'none';
-
-                if (!data || data.length === 0) {
-                    tableContainer.innerHTML = '';
-                    showEmptyState();
-                    document.getElementById('paginationContainer').style.display = 'none';
-                    window.fullData = [];
-                    window.filteredData = [];
-                    updateStats();
-                    return;
-                }
-
-                window.fullData = data;
-                window.filteredData = data;
-
-                detectPercentColumn(data);
-                applyFilters();
-
-                document.getElementById('paginationContainer').style.display = 'block';
-
-                setTimeout(() => {
-                    const tableDiv = tableContainer.querySelector('.table-container');
-                    if (tableDiv) {
-                        tableDiv.classList.remove('updating');
-                    }
-                }, 100);
-
-                updateStats();
-
-            } catch (error) {
-                console.error('Error loading data:', error);
-                
-                loadingDiv.style.display = 'none';
-                const tableDiv = tableContainer.querySelector('.table-container');
-                if (tableDiv) {
-                    tableDiv.classList.remove('updating');
-                }
-                
-                showMessage('dataMessage', 
-                    `⚠️ Unable to load data for ${window.currentIndex}. Please try refreshing.`, 
-                    'error');
-            }
+          });
         }
+        lastUpdateElem.textContent = latestDate ? formatDateTime(latestDate.toISOString()) : '-';
+      }
+    }
 
-        function detectPercentColumn(data) {
-            if (!data || data.length === 0) {
-                window.percentColumnName = null;
-                return;
-            }
-            
-            const firstRow = data[0];
-            const keys = Object.keys(firstRow);
-            
-            let percentKey = keys.find(key => 
-                key.toLowerCase() === 'percentmove' || 
-                key.toLowerCase() === 'percentMove' ||
-                key.toLowerCase() === 'percent_move'
-            );
-            
-            if (!percentKey) {
-                percentKey = keys.find(key => {
-                    const lower = key.toLowerCase();
-                    return lower.includes('percent') && lower.includes('move');
-                });
-            }
-            
-            if (!percentKey) {
-                percentKey = keys.find(key => {
-                    const lower = key.toLowerCase();
-                    return lower.includes('percent') || lower.includes('change');
-                });
-            }
-            
-            window.percentColumnName = percentKey;
+    function formatColumnName(name) {
+      let formatted = name
+        .replace(/[A-Z]/g, ' $&')
+        .replace(/^\w/, str => str.toUpperCase())
+        .trim();
+      // Shorten common names
+      return formatted
+        .replace('Last Expiry', 'Exp')
+        .replace('Last Traded', 'LTP')
+        .replace('Percent Move', '% Move');
+    }
+
+    function formatCellValue(column, value) {
+      if (value === null || value === undefined) return '-';
+
+      if (column.toLowerCase().includes('date')) {
+        return formatDate(value);
+      }
+
+      if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('move')) {
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          const className = num >= 0 ? 'positive' : 'negative';
+          return `<span class="${className}">${num.toFixed(2)}%</span>`;
         }
+      }
 
-        function getPercentValue(row) {
-            if (!window.percentColumnName) return null;
-            return row[window.percentColumnName];
-        }
+      if (column.toLowerCase().includes('direction')) {
+        const className = value === 'UP' ? 'positive' : 'negative';
+        return `<span class="${className}">${value}</span>`;
+      }
 
-        function applyFilters() {
-            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
-            const percentFilter = document.getElementById('percentFilter').value;
-            
-            if (!window.fullData) {
-                return;
-            }
-            
-            let filtered = [...window.fullData];
+      if (column.toLowerCase().includes('price')) {
+        const num = parseFloat(value);
+        if (!isNaN(num)) return num.toFixed(2);
+      }
 
-            if (percentFilter !== 'all' && window.percentColumnName) {
-                filtered = filtered.filter(row => {
-                    const percentValue = getPercentValue(row);
-                    
-                    if (percentValue !== undefined && percentValue !== null) {
-                        const pct = parseFloat(percentValue);
-                        if (!isNaN(pct)) {
-                            if (percentFilter.startsWith('<')) {
-                                const threshold = parseFloat(percentFilter.substring(1));
-                                return pct < threshold;
-                            } else if (percentFilter.startsWith('>')) {
-                                const threshold = parseFloat(percentFilter.substring(1));
-                                return pct > threshold;
-                            } else if (percentFilter.includes('to')) {
-                                const [start, end] = percentFilter.split('to').map(v => parseFloat(v));
-                                return pct >= start && pct < end;
-                            }
-                        }
-                    }
-                    return false;
-                });
-            }
+      if (typeof value === 'number') return value.toFixed(2);
+      return value;
+    }
 
-            if (searchTerm) {
-                filtered = filtered.filter(row => {
-                    return Object.values(row).some(val => 
-                        String(val).toLowerCase().includes(searchTerm)
-                    );
-                });
-            }
-            
-            window.filteredData = filtered;
-            window.currentPage = 1;
-            
-            renderTable();
-            updateStats();
-        }
+    function exportToCSV() {
+      if (!window.fullData || window.fullData.length === 0) {
+        alert('No data to export');
+        return;
+      }
 
-        function filterTable() {
-            applyFilters();
-        }
+      const data = window.filteredData.length > 0 ? window.filteredData : window.fullData;
+      const columns = Object.keys(data[0]);
+      let csv = columns.join(',') + '\n';
 
-        function filterByPercentage() {
-            applyFilters();
-        }
+      data.forEach(row => {
+        const values = columns.map(col => {
+          const val = row[col];
+          if (val === null || val === undefined) return '';
+          const str = String(val);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        });
+        csv += values.join(',') + '\n';
+      });
 
-        function sortTable(column) {
-            if (window.sortColumn === column) {
-                window.sortDirection = window.sortDirection === 'asc' ? 'desc' : 'asc';
-            } else {
-                window.sortColumn = column;
-                window.sortDirection = 'asc';
-            }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const filename = `${window.currentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
 
-            window.filteredData.sort((a, b) => {
-                let valA = a[column];
-                let valB = b[column];
+    function showEmptyState() {
+      return `
+        <div class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+          </svg>
+          <h3>No Data</h3>
+          <p>No stocks found for <strong>${window.currentIndex}</strong></p>
+        </div>
+      `;
+    }
 
-                if (valA == null) return 1;
-                if (valB == null) return -1;
+    function showMessage(elementId, message, type = 'error') {
+      const element = document.getElementById(elementId);
+      element.innerHTML = `<div class="${type}">${message}</div>`;
+    }
 
-                const numA = parseFloat(valA);
-                const numB = parseFloat(valB);
+    function clearMessage(elementId) {
+      document.getElementById(elementId).innerHTML = '';
+    }
 
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return window.sortDirection === 'asc' ? numA - numB : numB - numA;
-                }
-
-                const strA = String(valA).toLowerCase();
-                const strB = String(valB).toLowerCase();
-                
-                if (window.sortDirection === 'asc') {
-                    return strA.localeCompare(strB);
-                } else {
-                    return strB.localeCompare(strA);
-                }
-            });
-
-            renderTable();
-        }
-
-        function formatDate(dateStr) {
-            if (!dateStr) return '-';
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return dateStr;
-            return d.toLocaleDateString('en-IN', { 
-                day: '2-digit',
-                month: 'short'
-            });
-        }
-
-        function formatDateTime(dateStr) {
-            if (!dateStr) return '-';
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return dateStr;
-            return d.toLocaleString('en-IN', { 
-                day: '2-digit',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-
-        function changePageSize() {
-            window.pageSize = parseInt(document.getElementById('pageSize').value);
-            window.currentPage = 1;
-            renderTable();
-        }
-
-        function goToFirstPage() {
-            window.currentPage = 1;
-            renderTable();
-        }
-
-        function previousPage() {
-            if (window.currentPage > 1) {
-                window.currentPage--;
-                renderTable();
-            }
-        }
-
-        function nextPage() {
-            const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
-            if (window.currentPage < totalPages) {
-                window.currentPage++;
-                renderTable();
-            }
-        }
-
-        function goToLastPage() {
-            const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
-            window.currentPage = totalPages;
-            renderTable();
-        }
-
-        function renderTable() {
-            const tableContainer = document.getElementById('tableContainer');
-            
-            if (!window.filteredData || window.filteredData.length === 0) {
-                showEmptyState();
-                return;
-            }
-
-            const columnsToShow = [
-                'name',
-                'lastExpiryDate', 
-                'lastExpiryPrice',
-                'lastTradedDate',
-                'lastTradedPrice',
-                'percentMove',
-                'direction',
-                'status'
-            ];
-
-            const allKeys = Object.keys(window.filteredData[0]);
-            const columns = columnsToShow.filter(col => allKeys.includes(col));
-
-            if (columns.length === 0) {
-                showEmptyState();
-                return;
-            }
-
-            const startIndex = (window.currentPage - 1) * window.pageSize;
-            const endIndex = startIndex + window.pageSize;
-            const paginatedData = window.filteredData.slice(startIndex, endIndex);
-
-            const getSortIcon = (col) => {
-                if (window.sortColumn === col) {
-                    return window.sortDirection === 'asc' ? '▲' : '▼';
-                }
-                return '↕';
-            };
-
-            let tableHTML = `
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                ${columns.map(col => `
-                                    <th class="sortable" onclick="sortTable('${col}')">
-                                        ${formatColumnName(col)}
-                                        <span class="sort-icon">${getSortIcon(col)}</span>
-                                    </th>
-                                `).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${paginatedData.map(row => `
-                                <tr>
-                                    ${columns.map(col => {
-                                        return `<td>${formatCellValue(col, row[col])}</td>`;
-                                    }).join('')}
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-
-            tableContainer.innerHTML = tableHTML;
-            updatePaginationInfo();
-        }
-
-        function updatePaginationInfo() {
-            if (!window.filteredData) return;
-            
-            const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
-            const pageInfoElem = document.getElementById('pageInfo');
-            
-            if (pageInfoElem) {
-                pageInfoElem.textContent = `${window.currentPage}/${totalPages}`;
-            }
-        }
-
-        function updateStats() {
-            const totalCountElem = document.getElementById('totalCount');
-            const showingCountElem = document.getElementById('showingCount');
-            const lastUpdateElem = document.getElementById('lastUpdate');
-            
-            if (totalCountElem && window.fullData) {
-                totalCountElem.textContent = window.fullData.length;
-            }
-            
-            if (showingCountElem && window.filteredData) {
-                showingCountElem.textContent = window.filteredData.length;
-            }
-            
-            if (lastUpdateElem) {
-                let latestDate = null;
-                if (window.fullData && window.fullData.length > 0) {
-                    window.fullData.forEach(row => {
-                        if (row.lastTradedDate) {
-                            const d = new Date(row.lastTradedDate);
-                            if (!isNaN(d.getTime())) {
-                                if (!latestDate || d > latestDate) {
-                                    latestDate = d;
-                                }
-                            }
-                        }
-                    });
-                }
-
-                if (latestDate) {
-                    lastUpdateElem.textContent = formatDateTime(latestDate.toISOString());
-                } else {
-                    lastUpdateElem.textContent = '-';
-                }
-            }
-        }
-
-        function formatColumnName(name) {
-            const formatted = name
-                .replace(/([A-Z])/g, ' $1')
-                .replace(/^./, str => str.toUpperCase())
-                .trim();
-            
-            // Shorten common names
-            return formatted
-                .replace('Last Expiry', 'Exp')
-                .replace('Last Traded', 'LTP')
-                .replace('Percent Move', '% Move');
-        }
-
-        function formatCellValue(column, value) {
-            if (value === null || value === undefined) return '-';
-
-            if (column.toLowerCase().includes('date')) {
-                return formatDate(value);
-            }
-
-            if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('move')) {
-                const num = parseFloat(value);
-                if (!isNaN(num)) {
-                    const className = num >= 0 ? 'positive' : 'negative';
-                    return `<span class="${className}">${num >= 0 ? '+' : ''}${num.toFixed(2)}%</span>`;
-                }
-            }
-
-            if (column.toLowerCase() === 'direction') {
-                const className = value === 'UP' ? 'positive' : 'negative';
-                return `<span class="${className}">${value}</span>`;
-            }
-
-            if (column.toLowerCase().includes('price')) {
-                const num = parseFloat(value);
-                if (!isNaN(num)) {
-                    return num.toFixed(2);
-                }
-            }
-
-            if (typeof value === 'number') {
-                return value.toFixed(2);
-            }
-
-            return value;
-        }
-
-        function exportToCSV() {
-            if (!window.fullData || window.fullData.length === 0) {
-                alert('No data to export');
-                return;
-            }
-
-            const data = window.filteredData || window.fullData;
-            const columns = Object.keys(data[0]);
-            
-            let csv = columns.join(',') + '\n';
-            
-            data.forEach(row => {
-                const values = columns.map(col => {
-                    const val = row[col];
-                    if (val === null || val === undefined) return '';
-                    const str = String(val);
-                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                        return '"' + str.replace(/"/g, '""') + '"';
-                    }
-                    return str;
-                });
-                csv += values.join(',') + '\n';
-            });
-
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            
-            const filename = `${window.currentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
-            link.setAttribute('href', url);
-            link.setAttribute('download', filename);
-            link.style.visibility = 'hidden';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function showEmptyState() {
-            const tableContainer = document.getElementById('tableContainer');
-            tableContainer.innerHTML = `
-                <div class="empty-state">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                    </svg>
-                    <h3>No Data</h3>
-                    <p>No stocks found for ${window.currentIndex}</p>
-                </div>
-            `;
-        }
-
-        function showMessage(elementId, message, type) {
-            const element = document.getElementById(elementId);
-            element.innerHTML = `<div class="${type}">${message}</div>`;
-        }
-
-        function clearMessage(elementId) {
-            document.getElementById(elementId).innerHTML = '';
-        }
-
-        // Auto-refresh every 5 minutes
-        setInterval(() => {
-            loadFilteredData();
-        }, 300000);
-    </script>
+    // Auto-refresh every 5 minutes
+    setInterval(loadFilteredData, 300000);
+  </script>
 </body>
 </html>

@@ -68,7 +68,7 @@ public class FuturesStrategyController {
         
         try {
             logger.info("Executing futures strategy for all active configs");
-            futuresStrategyService.executeAll(Arrays.asList("NIFTY50","NIFTY500"));
+            futuresStrategyService.executeAll();
         } catch (Exception e) {
             logger.error("Error executing futures strategy", e);
         }
@@ -81,7 +81,7 @@ public class FuturesStrategyController {
     public ResponseEntity<String> manualExecute() {
         try {
             logger.info("Manual execution triggered");
-            futuresStrategyService.executeAll(Arrays.asList("NIFTY50","NIFTY500"));
+            futuresStrategyService.executeAll();
             return ResponseEntity.ok("Execution completed for all active configs");
         } catch (Exception e) {
             logger.error("Error in manual execution", e);
