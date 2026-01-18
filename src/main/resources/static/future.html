@@ -76,27 +76,26 @@
 
     /* Compact Header - All in one row */
     .compact-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  border-radius: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
 
-.header-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;  /* NEW: Center the toggles */
-  gap: 10px;
-  flex: 1;  /* NEW: Take available space */
-  min-width: 0;  /* NEW: Allow shrinking */
-}
-
+    .header-center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
 
     .header-left {
       display: flex;
@@ -127,12 +126,6 @@
     .theme-toggle:hover {
       background: rgba(255, 255, 255, 0.3);
       transform: scale(1.05);
-    }
-
-    .header-center {
-      display: flex;
-      align-items: center;
-      gap: 10px;
     }
 
     .index-toggle-buttons {
@@ -220,33 +213,32 @@
     }
 
     .stats {
-  display: flex;
-  gap: 12px;
-  font-size: 0.85rem;  /* Increased from 0.75rem */
-  color: var(--text-tertiary);
-  transition: color 0.3s ease;
-  flex-wrap: wrap;  /* Better wrapping */
-}
+      display: flex;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--text-tertiary);
+      transition: color 0.3s ease;
+      flex-wrap: wrap;
+    }
 
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;  /* Increased from 4px */
-  white-space: nowrap;
-  padding: 4px 8px;  /* Added padding */
-  background: rgba(255, 255, 255, 0.1);  /* Subtle background */
-  border-radius: 6px;
-  backdrop-filter: blur(5px);
-}
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      padding: 4px 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      backdrop-filter: blur(5px);
+    }
 
-.stat-item span:first-child {
-  font-size: 1rem;  /* Larger icons */
-}
+    .stat-item span:first-child {
+      font-size: 1rem;
+    }
 
-/* Dark theme adjustment */
-[data-theme="dark"] .stat-item {
-  background: rgba(0, 0, 0, 0.3);
-}
+    [data-theme="dark"] .stat-item {
+      background: rgba(0, 0, 0, 0.3);
+    }
 
     .search-box {
       padding: 6px 10px;
@@ -517,27 +509,27 @@
     /* Responsive */
     @media (max-width: 1200px) {
       .compact-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 15px;
-  }
-  
-  .header-left, 
-  .header-center {
-    justify-content: center;  /* Keep centered */
-    width: 100%;
-  }
-  
-  .header-center {
-    order: 2;  /* Toggles appear between title and stats on mobile */
-  }
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+      }
+      
+      .header-left, 
+      .header-center {
+        justify-content: center;
+        width: 100%;
+      }
+      
+      .header-center {
+        order: 2;
+      }
       .stats {
-     order: 3;
-    justify-content: center;
-  }
-  .stat-item {
-    padding: 3px 6px;
-  }
+        order: 3;
+        justify-content: center;
+      }
+      .stat-item {
+        padding: 3px 6px;
+      }
     }
 
     @media (max-width: 768px) {
@@ -545,9 +537,9 @@
         font-size: 1.1rem;
       }
       .header-center {
-    flex-direction: column;
-    gap: 8px;
-  }
+        flex-direction: column;
+        gap: 8px;
+      }
       .index-toggle-buttons {
         flex-wrap: wrap;
         gap: 2px;
@@ -568,25 +560,25 @@
         width: 100%;
       }
       .stats {
-    font-size: 0.8rem;
-    width: 100%;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .stat-item {
-    padding: 3px 6px;
-    gap: 4px;
-    font-size: 0.75rem;
-  }
+        font-size: 0.8rem;
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .stat-item {
+        padding: 3px 6px;
+        gap: 4px;
+        font-size: 0.75rem;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Compact Header - Everything in One Row -->
+    <!-- Compact Header -->
     <div class="compact-header">
       <div class="header-left">
-        <h1 class="header-title">Futures Dashboard</h1>
+        <h1 class="header-title">Futures Filter Dashboard</h1>
         <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
       </div>
       <div class="header-center">
@@ -688,11 +680,41 @@
     window.fullData = null;
     window.filteredData = null;
     window.currentPage = 1;
-    window.pageSize = 10; // Default to 10 rows
+    window.pageSize = 10;
     window.sortColumn = null;
     window.sortDirection = 'asc';
     window.percentColumnName = null;
     window.currentIndex = 'NIFTY_50';
+
+    // Date format functions - DD-MMM-YYYY for expiry, full timestamp for LTP
+    function formatExpiryDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      
+      return `${day}-${month}-${year}`;
+    }
+
+    function formatCurrentLTPDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      
+      return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+    }
 
     // Theme Management
     function initTheme() {
@@ -714,15 +736,13 @@
       themeToggle.textContent = theme === 'light' ? '🌙' : '☀️';
     }
 
-    // Index Management - Updated for all 5 indices
+    // Index Management
     function switchIndex(indexType) {
       window.currentIndex = indexType;
       
-      // Update button active states
       document.querySelectorAll('.index-toggle-btn').forEach(btn => btn.classList.remove('active'));
       document.getElementById(getButtonId(indexType)).classList.add('active');
       
-      // Update badge
       const badge = document.getElementById('currentIndexBadge');
       const badgeText = document.getElementById('currentIndexText');
       badge.className = `index-badge ${getBadgeClass(indexType)}`;
@@ -770,14 +790,14 @@
       switchIndex(savedIndex);
     }
 
-    // Load page
+    // Page initialization
     window.addEventListener('DOMContentLoaded', () => {
       initTheme();
       loadIndexPreference();
       loadFilteredData();
     });
 
-    // Load filtered data
+    // Load data from API
     async function loadFilteredData() {
       const loadingDiv = document.getElementById('dataLoading');
       const tableContainer = document.getElementById('tableContainer');
@@ -958,20 +978,6 @@
       renderTable();
     }
 
-    function formatDate(dateStr) {
-      if (!dateStr) return '-';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-    }
-
-    function formatDateTime(dateStr) {
-      if (!dateStr) return '-';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    }
-
     function changePageSize() {
       window.pageSize = parseInt(document.getElementById('pageSize').value);
       window.currentPage = 1;
@@ -1012,7 +1018,17 @@
         return;
       }
 
-      const columnsToShow = ['name', 'lastExpiryDate', 'lastExpiryPrice', 'lastTradedDate', 'lastTradedPrice', 'percentMove', 'direction', 'status'];
+      const columnsToShow = [
+        'name', 
+        'lastExpiryDate', 
+        'lastExpiryPrice', 
+        'lastTradedDate', 
+        'lastTradedPrice', 
+        'percentMove', 
+        'direction', 
+        'status'
+      ];
+      
       const allKeys = Object.keys(window.filteredData[0]);
       const columns = columnsToShow.filter(col => allKeys.includes(col));
 
@@ -1077,43 +1093,55 @@
 
       if (totalCountElem) totalCountElem.textContent = window.fullData ? window.fullData.length : 0;
       if (showingCountElem) showingCountElem.textContent = window.filteredData ? window.filteredData.length : 0;
+      
       if (lastUpdateElem) {
         let latestDate = null;
         if (window.fullData && window.fullData.length > 0) {
           window.fullData.forEach(row => {
             if (row.lastTradedDate) {
               const d = new Date(row.lastTradedDate);
-              if (!isNaN(d.getTime())) {
-                if (!latestDate || d > latestDate) {
-                  latestDate = d;
-                }
+              if (!isNaN(d.getTime()) && (!latestDate || d > latestDate)) {
+                latestDate = d;
               }
             }
           });
         }
-        lastUpdateElem.textContent = latestDate ? formatDateTime(latestDate.toISOString()) : '-';
+        lastUpdateElem.textContent = latestDate ? formatCurrentLTPDate(latestDate.toISOString()) : '-';
       }
     }
 
     function formatColumnName(name) {
-      let formatted = name
+      const nameMap = {
+        'name': 'Stock Name',
+        'lastExpiryDate': 'Last Expiry Date',
+        'lastExpiryPrice': 'Last Expiry Price',
+        'lastTradedDate': 'Current Date',
+        'lastTradedPrice': 'CurrentPrice',
+        'percentMove': '% Move',
+        'direction': 'Direction',
+        'status': 'Status'
+      };
+      
+      return nameMap[name] || name
         .replace(/[A-Z]/g, ' $&')
         .replace(/^\w/, str => str.toUpperCase())
         .trim();
-      // Shorten common names
-      return formatted
-        .replace('Last Expiry', 'Exp')
-        .replace('Last Traded', 'LTP')
-        .replace('Percent Move', '% Move');
     }
 
     function formatCellValue(column, value) {
       if (value === null || value === undefined) return '-';
 
-      if (column.toLowerCase().includes('date')) {
-        return formatDate(value);
+      // Last Expiry Date - DD-MMM-YYYY format only
+      if (column === 'lastExpiryDate') {
+        return formatExpiryDate(value);
       }
 
+      // Current LTP Date - Full timestamp format DD-MMM-YYYY HH:MM:SS
+      if (column === 'lastTradedDate') {
+        return formatCurrentLTPDate(value);
+      }
+
+      // Percentage columns
       if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('move')) {
         const num = parseFloat(value);
         if (!isNaN(num)) {
@@ -1122,18 +1150,22 @@
         }
       }
 
+      // Direction column
       if (column.toLowerCase().includes('direction')) {
         const className = value === 'UP' ? 'positive' : 'negative';
         return `<span class="${className}">${value}</span>`;
       }
 
+      // Price columns - 2 decimal places
       if (column.toLowerCase().includes('price')) {
         const num = parseFloat(value);
         if (!isNaN(num)) return num.toFixed(2);
       }
 
+      // Numbers - 2 decimal places
       if (typeof value === 'number') return value.toFixed(2);
-      return value;
+      
+      return String(value);
     }
 
     function exportToCSV() {
@@ -1162,7 +1194,7 @@
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-      const filename = `${window.currentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
+      const filename = `Futures_${window.currentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
       link.setAttribute('href', url);
       link.setAttribute('download', filename);
       link.style.visibility = 'hidden';
@@ -1178,7 +1210,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
           </svg>
           <h3>No Data</h3>
-          <p>No stocks found for <strong>${window.currentIndex}</strong></p>
+          <p>No futures found for <strong>${window.currentIndex}</strong></p>
         </div>
       `;
     }

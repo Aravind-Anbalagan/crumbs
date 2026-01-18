@@ -26,18 +26,21 @@ public class HeikinPsarScheduler {
     // ------------------- NIFTY -------------------
 
     @Schedules({
-        // 09:20 – 09:59
-        @Scheduled(cron = "5 20-59 9 * * MON-FRI", zone = "Asia/Kolkata"),
 
-        // 10:00 – 14:59
-        @Scheduled(cron = "5 * 10-14 * * MON-FRI", zone = "Asia/Kolkata"),
+        // 09:20 – 09:59 → every 5 minutes
+        @Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = "Asia/Kolkata"),
 
-        // 15:00 – 15:15
-        @Scheduled(cron = "5 0-15 15 * * MON-FRI", zone = "Asia/Kolkata")
+        // 10:00 – 14:59 → every 5 minutes
+        @Scheduled(cron = "5 */5 10-14 * * MON-FRI", zone = "Asia/Kolkata"),
+
+        // 15:00 – 15:15 → every 5 minutes
+        @Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = "Asia/Kolkata")
+
     })
     public void runNifty() {
         runSafely("NIFTY-EXEC", () -> executionService.commonExecutionNifty());
     }
+
 
 
     // ------------------- SILVERM -------------------
