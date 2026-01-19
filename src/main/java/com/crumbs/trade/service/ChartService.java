@@ -108,7 +108,7 @@ public class ChartService {
     private static final String MCX_SYMBOL = "CRUDEOIL";
 
     // NIFTY (default)
-    private static final BigDecimal NIFTY_TARGET = new BigDecimal("30.00");
+    private static final BigDecimal NIFTY_TARGET = new BigDecimal("20.00");
     private static final BigDecimal NIFTY_SL = new BigDecimal("10.00");
 
     // SILVERM

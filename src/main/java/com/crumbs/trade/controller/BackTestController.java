@@ -20,6 +20,7 @@ import com.crumbs.trade.repo.ResultVixRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.ChartService;
+import com.crumbs.trade.service.FlatTradeService;
 import com.crumbs.trade.service.TaskService;
 
 @CrossOrigin(origins = "*")
@@ -43,9 +44,15 @@ public class BackTestController {
 	
 	@Autowired
 	StrategyRepo strategyRepo;
+	
+	@Autowired
+    private FlatTradeService flatTradeService;
 
 	@GetMapping(value = "/HeikinPsar")
 	public String monitorNifty() throws SmartAPIException, Exception {
+		
+		//String key = flatTradeService.getTokenForFlatTrade();
+		//System.out.println(key);
 		String fromDate = "2025-10-23 12:50";
 		String toDate = "2025-10-24 15:25";
 		vixRepo.deleteAll();

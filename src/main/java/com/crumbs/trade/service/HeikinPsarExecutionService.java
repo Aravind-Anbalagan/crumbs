@@ -74,7 +74,7 @@ public class HeikinPsarExecutionService {
 
         if (isActive("HEIKIN-PSAR")) {
             chartService.readChartData(
-                    "ONE_MINUTE", "NFO", false, "NIFTY",
+                    "FIVE_MINUTE", "NFO", false, "NIFTY",
                     from, to,
                     strategyRepo.findByName("NIFTY").getTradingsymbol()
             );

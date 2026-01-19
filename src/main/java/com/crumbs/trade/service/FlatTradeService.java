@@ -60,7 +60,7 @@ public class FlatTradeService {
     private static final String API_KEY = "GHUDWU53H32MTHPA536Q32WR";
 
     private static final String USER_ID = "MALIT158";
-    private static final String PASSWORD = "Athiran@2020";
+    private static final String PASSWORD = "Titanic#1988";
     private static final String TOTP_SECRET = "6JY737J3P2ZG25665L37CI3Q3D44RQ5I"; // copied from flattrade site
     private static final String APP_KEY = "24d7ba25364447109e9880c6ae7e0d14";
     private static final String API_SECRET = "2025.7cd53caa0af5444cb084056fd6f5cb91925b3f1f3dd7ff21"; // copied from flattrade site

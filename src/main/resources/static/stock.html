@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stock Indicators Table with Dynamic Numeric Range Filters</title>
+  <title>Stock Indicators Table</title>
 <script>
     (function () {
         // If this is the top window and not authenticated, go to login
@@ -88,6 +88,7 @@
     color: var(--text-primary);
     line-height: 1.5;
     transition: all 0.3s ease;
+    font-size: 14px;
   }
   
   .toolbar {
@@ -105,32 +106,27 @@
     box-shadow: var(--shadow-md);
   }
   
- .toolbar-row {
-  display: flex;
-  flex-wrap: nowrap;       /* Important: do not wrap row */
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-  overflow-x: hidden;      /* Row itself should not scroll */
-}
+  .toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+  }
   
- .controls {
-  display: flex;
-  flex-wrap: nowrap;       /* Prevent wrapping */
-  align-items: center;
-  gap: 16px;
-  overflow-x: auto;        /* Horizontal scroll if too long */
-  overflow-y: hidden;      /* Hide vertical overflow */
-  -webkit-overflow-scrolling: touch; /* Smooth scroll on mobile */
-}
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+  }
   
   .control-group {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1 1 200px;
-    min-width: 160px;
-    max-width: 280px;
+    min-width: fit-content;
   }
   
   .control-group label {
@@ -148,9 +144,7 @@
     padding: 4px;
     border-radius: 12px;
     border: 1px solid var(--border-primary);
-    flex-wrap: wrap;
-    flex: 1;
-    min-width: 0;
+    flex-wrap: nowrap;
   }
   
   .radio-group label {
@@ -163,7 +157,6 @@
     transition: all 0.2s ease;
     font-weight: 500;
     font-size: 12px;
-    flex: 1;
     justify-content: center;
     white-space: nowrap;
   }
@@ -175,11 +168,6 @@
   
   .radio-group label:hover {
     background: var(--bg-primary);
-  }
-  
-  .column-dropdown {
-    position: relative;
-    display: inline-block;
   }
   
   .btn {
@@ -196,7 +184,6 @@
     align-items: center;
     gap: 6px;
     white-space: nowrap;
-    flex: 1;
   }
   
   .btn:hover {
@@ -216,55 +203,6 @@
     border-color: var(--primary-hover);
   }
   
-  .column-dropdown-content {
-    display: none;
-    position: absolute;
-    background: var(--bg-primary);
-    min-width: 200px;
-    max-height: 300px;
-    overflow-y: auto;
-    border: 1px solid var(--border-primary);
-    border-radius: 12px;
-    z-index: 10;
-    padding: 16px;
-    box-shadow: var(--shadow-lg);
-    top: 100%;
-    left: 0;
-    margin-top: 8px;
-  }
-  
-  .column-dropdown.show .column-dropdown-content {
-    display: block;
-    animation: dropdownFadeIn 0.2s ease;
-  }
-  
-  @keyframes dropdownFadeIn {
-    from { opacity: 0; transform: translateY(-8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  
-  .column-dropdown-content label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 0;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-    font-size: 14px;
-  }
-  
-  .column-dropdown-content label:hover {
-    background: var(--bg-tertiary);
-    padding-left: 8px;
-  }
-  
-  .column-dropdown-content input[type="checkbox"] {
-    accent-color: var(--primary-color);
-    width: 16px;
-    height: 16px;
-  }
-  
   input[type="text"],
   select {
     padding: 8px 10px;
@@ -276,8 +214,6 @@
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
-    max-width: 100%;
-    flex: 1;
   }
   
   input[type="text"]:focus,
@@ -295,33 +231,6 @@
     align-items: center;
     justify-content: flex-end;
     flex: 0 0 auto;
-  }
-  
-  .zoom-controls {
-    display: flex;
-    gap: 4px;
-    background: var(--bg-tertiary);
-    padding: 4px;
-    border-radius: 12px;
-    border: 1px solid var(--border-primary);
-  }
-  
-  .zoom-btn {
-    padding: 6px 10px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 13px;
-    color: var(--text-secondary);
-    transition: all 0.2s ease;
-    min-width: 36px;
-  }
-  
-  .zoom-btn:hover {
-    background: var(--bg-primary);
-    color: var(--text-primary);
   }
   
   .theme-toggle {
@@ -369,7 +278,7 @@
     border-bottom: 1px solid var(--border-primary);
     padding: 8px 12px;
     text-align: left;
-    font-size: var(--table-font-size);
+    font-size: 14px;
     word-break: break-word;
     white-space: normal;
     transition: all 0.2s ease;
@@ -479,32 +388,6 @@
     background: var(--bg-col-combine) !important;
     color: var(--text-primary);
     font-weight: 600;
-  }
-  
-  .chart-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--primary-color) !important;
-    text-decoration: none;
-    font-weight: 600;
-    padding: 6px 12px;
-    border-radius: 8px;
-    background: rgba(37, 99, 235, 0.1);
-    transition: all 0.2s ease;
-    font-size: 13px;
-  }
-  
-  .chart-link:hover {
-    background: var(--primary-color);
-    color: white !important;
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
-  }
-  
-  .chart-link::after {
-    content: "📊";
-    font-size: 12px;
   }
   
   #pagination {
@@ -686,7 +569,6 @@
       line-height: 1.3;
     }
 
-    .chart-link,
     .btn {
       font-size: 14px;
       width: 100%;
@@ -694,9 +576,9 @@
       justify-content: flex-start;
     }
     #resultBtn {
-  flex: 0 0 auto !important;
-  white-space: nowrap;
-}
+      flex: 0 0 auto !important;
+      white-space: nowrap;
+    }
     
     #pagination {
       gap: 4px;
@@ -712,26 +594,22 @@
   }
   
   /* Scrollbar Styling */
-  .table-container::-webkit-scrollbar,
-  .column-dropdown-content::-webkit-scrollbar {
+  .table-container::-webkit-scrollbar {
     height: 8px;
     width: 8px;
   }
   
-  .table-container::-webkit-scrollbar-track,
-  .column-dropdown-content::-webkit-scrollbar-track {
+  .table-container::-webkit-scrollbar-track {
     background: var(--bg-tertiary);
     border-radius: 4px;
   }
   
-  .table-container::-webkit-scrollbar-thumb,
-  .column-dropdown-content::-webkit-scrollbar-thumb {
+  .table-container::-webkit-scrollbar-thumb {
     background: var(--border-secondary);
     border-radius: 4px;
   }
   
-  .table-container::-webkit-scrollbar-thumb:hover,
-  .column-dropdown-content::-webkit-scrollbar-thumb:hover {
+  .table-container::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
   }
 </style>
@@ -741,7 +619,7 @@
   <div class="toolbar">
     <div class="toolbar-row">
       <div class="controls">
-      <button id="resultBtn" class="btn btn-primary">📊 Results</button>
+        <button id="resultBtn" class="btn btn-primary">📊 Results</button>
         <div class="control-group">
           <label>Filter:</label>
           <div class="radio-group">
@@ -782,14 +660,6 @@
         </div>
         
         <div class="control-group">
-          <div class="column-dropdown" id="columnDropdown">
-            <button class="btn" onclick="toggleColumnDropdown()">☰ Columns</button>
-            <div class="column-dropdown-content" id="columnTogglePanel"></div>
-          </div>
-          
-        </div>
-        
-        <div class="control-group">
           <label for="search">Search:</label>
           <input
             type="text"
@@ -802,11 +672,6 @@
       </div>
       
       <div class="toolbar-actions">
-        <div class="zoom-controls">
-          <button class="zoom-btn" onclick="zoomIn()" title="Increase font size">A+</button>
-          <button class="zoom-btn" onclick="zoomOut()" title="Decrease font size">A-</button>
-          <button class="zoom-btn" onclick="resetZoom()" title="Reset font size">A</button>
-        </div>
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
       </div>
     </div>
@@ -836,58 +701,11 @@
       filteredData = [],
       visibleKeys = [];
     let sortState = { column: null, order: null };
-    let currentPage = 1,
-      currentFontSize = 14;
+    let currentPage = 1;
     const rowsPerPage = 10;
-    let columnVisibility = {};
 
     // Persisted intraday type (HOURLY/DAILY)
     let intradayType = localStorage.getItem("intradayType") || "HOURLY";
-
-    // Columns considered numeric for range filtering (keys normalized uppercase)
-    const numericColsForRange = new Set([
-      "PRICE",
-      "DAILY_SR",
-      "DAILYSR",
-      "SR",
-      "FIBO",
-      "MA",
-      "RSI",
-      "AI",
-      "COMBINE",
-      "20MA",
-      "50MA",
-      "200MA",
-    ]);
-    
-    const dynamicRanges = {};
-    
-    function updateFontSize() {
-      document.documentElement.style.setProperty(
-        "--table-font-size",
-        `${currentFontSize}px`
-      );
-      localStorage.setItem("tableFontSize", currentFontSize);
-    }
-    
-    function zoomIn() {
-      if (currentFontSize < 24) {
-        currentFontSize++;
-        updateFontSize();
-      }
-    }
-    
-    function zoomOut() {
-      if (currentFontSize > 8) {
-        currentFontSize--;
-        updateFontSize();
-      }
-    }
-    
-    function resetZoom() {
-      currentFontSize = 14;
-      updateFontSize();
-    }
     
     function updateSecondaryFilter() {
       const tf = document.getElementById("timeframe").value;
@@ -974,19 +792,6 @@
         visibleKeys = Object.entries(data[0].headers)
           .filter(([_, val]) => val[1])
           .map(([key]) => key);
-
-        visibleKeys.forEach((key) => {
-          if (/reason/i.test(key)) {
-            columnVisibility[key] = false;
-          } else {
-            if (!(key in columnVisibility)) columnVisibility[key] = true;
-          }
-        });
-          
-        if (!visibleKeys.includes("chart")) {
-          visibleKeys.push("chart");
-          columnVisibility["chart"] = false;
-        }
         
         tableData = data.map((row) => {
           const base = Object.fromEntries(
@@ -999,7 +804,6 @@
         
         filteredData = [...tableData];
         currentPage = 1;
-        generateColumnToggles();
         renderTable();
       } catch (err) {
         showError(err.message || "Could not load data.");
@@ -1008,28 +812,6 @@
       } finally {
         loader.style.display = "none";
       }
-    }
-    
-    function generateColumnToggles() {
-      const panel = document.getElementById("columnTogglePanel");
-      panel.innerHTML = "";
-      
-      visibleKeys.forEach((key) => {
-        if (!(key in columnVisibility)) columnVisibility[key] = true;
-        
-        const label = document.createElement("label");
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = columnVisibility[key];
-        checkbox.onchange = () => {
-          columnVisibility[key] = checkbox.checked;
-          renderTable();
-        };
-        
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(formatHeader(key)));
-        panel.appendChild(label);
-      });
     }
     
     function getColumnClass(key) {
@@ -1042,7 +824,6 @@
       if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
       if (lowerKey.includes("ai")) return "ai";
       if (lowerKey.includes("combine")) return "combine";
-      if (lowerKey === "chart") return "";
       return "";
     }
     
@@ -1074,19 +855,8 @@
       return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
     }
     
-    function toggleColumnDropdown() {
-      document.getElementById("columnDropdown").classList.toggle("show");
-    }
-    
     document.getElementById("resultBtn").addEventListener("click", () => {
-  window.location.href = "result.html";
-});
-
-    document.addEventListener('click', function(event) {
-      const dropdown = document.getElementById("columnDropdown");
-      if (!dropdown.contains(event.target)) {
-        dropdown.classList.remove("show");
-      }
+      window.location.href = "result.html";
     });
     
     function toggleTheme() {
@@ -1103,8 +873,6 @@
       head.innerHTML = body.innerHTML = "";
       
       visibleKeys.forEach((key) => {
-        if (!columnVisibility[key]) return;
-        
         const th = document.createElement("th");
         const headerText = document.createElement("div");
         headerText.textContent = formatHeader(key);
@@ -1125,7 +893,7 @@
       if (!filteredData.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = visibleKeys.filter((k) => columnVisibility[k]).length || 1;
+        td.colSpan = visibleKeys.length || 1;
         td.textContent = "No records found.";
         td.style.textAlign = "center";
         td.style.padding = "40px";
@@ -1143,30 +911,13 @@
         const tr = document.createElement("tr");
         
         visibleKeys.forEach((key) => {
-          if (!columnVisibility[key]) return;
-          
           const td = document.createElement("td");
           td.setAttribute("data-label", formatHeader(key));
           
           const className = getColumnClass(key);
           if (className) td.classList.add(className);
           
-          if (key === "chart") {
-            const stockName = row["NAME"] || "";
-            const exchange = row["exchange"] || "";
-            const symbol = row["symbol"] || "";
-            
-            const link = document.createElement("a");
-            link.href = `/chart.html?timeFrame=ONE_DAY&name=${encodeURIComponent(
-              stockName
-            )}&exchange=${encodeURIComponent(exchange)}&symbol=${encodeURIComponent(symbol)}`;
-            link.className = "chart-link";
-            link.textContent = "View Chart";
-            
-            td.appendChild(link);
-          } else {
-            td.textContent = row[key];
-          }
+          td.textContent = row[key];
           
           tr.appendChild(td);
         });
@@ -1241,58 +992,51 @@
     }
     
     function sortTableByColumn(col) {
-  const isAsc = sortState.column === col && sortState.order === "asc";
-  sortState = { column: col, order: isAsc ? "desc" : "asc" };
-  
-  filteredData.sort((a, b) => {
-    let valA = a[col] != null ? a[col].toString().trim() : "";
-    let valB = b[col] != null ? b[col].toString().trim() : "";
-    
-    // Handle datetime sorting for "UPDATED AT" and similar columns
-    if (col.toUpperCase().includes("UPDATED") || col.toUpperCase().includes("TIME")) {
-      const timeA = parseDateTime(valA);
-      const timeB = parseDateTime(valB);
-      return isAsc ? timeA - timeB : timeB - timeA;
+      const isAsc = sortState.column === col && sortState.order === "asc";
+      sortState = { column: col, order: isAsc ? "desc" : "asc" };
+      
+      filteredData.sort((a, b) => {
+        let valA = a[col] != null ? a[col].toString().trim() : "";
+        let valB = b[col] != null ? b[col].toString().trim() : "";
+        
+        // Handle datetime sorting for "UPDATED AT" and similar columns
+        if (col.toUpperCase().includes("UPDATED") || col.toUpperCase().includes("TIME")) {
+          const timeA = parseDateTime(valA);
+          const timeB = parseDateTime(valB);
+          return isAsc ? timeA - timeB : timeB - timeA;
+        }
+        
+        // Handle numeric sorting
+        const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
+        const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
+        
+        return !isNaN(numA) && !isNaN(numB)
+          ? isAsc ? numA - numB : numB - numA
+          : isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      });
+      
+      currentPage = 1;
+      renderTable();
     }
-    
-    // Handle numeric sorting
-    const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
-    const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
-    
-    return !isNaN(numA) && !isNaN(numB)
-      ? isAsc ? numA - numB : numB - numA
-      : isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-  });
-  
-  currentPage = 1;
-  renderTable();
-}
 
-// Add this helper function before sortTableByColumn
-function parseDateTime(dateStr) {
-  if (!dateStr || dateStr === "") return Infinity;
-  
-  // Handle DD-MM-YYYY HH:MM:SS format (like 04-12-2025 17:24:44)
-  const dateTimeMatch = dateStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
-  if (dateTimeMatch) {
-    const [, day, month, year, hour, minute, second] = dateTimeMatch;
-    const date = new Date(year, month - 1, day, hour, minute, second);
-    return isNaN(date) ? Infinity : date.getTime();
-  }
-  
-  // Fallback to standard Date parsing
-  const date = new Date(dateStr);
-  return isNaN(date) ? Infinity : date.getTime();
-}
-
-    
-    document.addEventListener("DOMContentLoaded", () => {
-      const storedFont = parseInt(localStorage.getItem("tableFontSize"));
-      if (storedFont) {
-        currentFontSize = storedFont;
-        updateFontSize();
+    // Helper function for parsing date/time
+    function parseDateTime(dateStr) {
+      if (!dateStr || dateStr === "") return Infinity;
+      
+      // Handle DD-MM-YYYY HH:MM:SS format (like 04-12-2025 17:24:44)
+      const dateTimeMatch = dateStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+      if (dateTimeMatch) {
+        const [, day, month, year, hour, minute, second] = dateTimeMatch;
+        const date = new Date(year, month - 1, day, hour, minute, second);
+        return isNaN(date) ? Infinity : date.getTime();
       }
       
+      // Fallback to standard Date parsing
+      const date = new Date(dateStr);
+      return isNaN(date) ? Infinity : date.getTime();
+    }
+    
+    document.addEventListener("DOMContentLoaded", () => {
       const theme = localStorage.getItem("theme");
       if (theme === "dark") document.body.classList.add("dark-mode");
       
@@ -1316,19 +1060,6 @@ function parseDateTime(dateStr) {
       
       updateSecondaryFilter();
       loadTable();
-    });
-    
-    document.addEventListener("click", function (event) {
-      const target = event.target;
-      if (target.classList.contains("chart-link")) {
-        event.preventDefault();
-        const url = target.href;
-        if (window.parent && window.parent !== window) {
-          window.parent.document.getElementById("contentFrame").src = url;
-        } else {
-          window.location.href = url;
-        }
-      }
     });
   </script>
 </body>
