@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.controller.StrangleController;
 import com.crumbs.trade.dto.APIResponse;
+import com.crumbs.trade.dto.BrokerAuthConfig;
 import com.crumbs.trade.dto.FlatTradeLtpResponse;
 import com.crumbs.trade.dto.FlatTradeQuoteResponse;
 import com.crumbs.trade.dto.JData;
@@ -60,7 +61,7 @@ public class FlatTradeService {
     private static final String API_KEY = "GHUDWU53H32MTHPA536Q32WR";
 
     private static final String USER_ID = "MALIT158";
-    private static final String PASSWORD = "Titanic#1988";
+    private static final String PASSWORD = "Titanic@123";
     private static final String TOTP_SECRET = "6JY737J3P2ZG25665L37CI3Q3D44RQ5I"; // copied from flattrade site
     private static final String APP_KEY = "24d7ba25364447109e9880c6ae7e0d14";
     private static final String API_SECRET = "2025.7cd53caa0af5444cb084056fd6f5cb91925b3f1f3dd7ff21"; // copied from flattrade site
@@ -70,7 +71,8 @@ public class FlatTradeService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     @Autowired
 	WebClient webClient;
-    
+    @Autowired
+    private BrokerConfigService brokerConfigService;
 	public void PlaceOrderInFlatTrade(Token token) throws SmartAPIException, Exception {
 
 		String key = getTokenForFlatTrade();	
@@ -122,78 +124,70 @@ public class FlatTradeService {
 		
 	}
 	
-    public String getTokenForFlatTrade() throws Exception
-    {
-    	  String hashedPassword = generateSHA256(PASSWORD);
-          String totp = generateTOTP(TOTP_SECRET);
-          String generatedToken = null;
-          String sid = fetchSessionId();
-          if (sid == null || sid.isEmpty()) {
-              throw new RuntimeException("❌ Failed to get session ID.");
-          }
+	public String getTokenForFlatTrade() throws Exception {
 
-          System.out.println("✅ SID: " + sid);
+	    BrokerAuthConfig cfg = brokerConfigService.getFlatTradeConfig();
 
-          String setSessionUrl = "https://auth.flattrade.in/?app_key=" + APP_KEY + "&sid=" + sid;
-          sendGet(setSessionUrl);
+	    String hashedPassword = generateSHA256(cfg.getPassword());
+	    String totp = generateTOTP(cfg.getTotpSecret());
 
-          JSONObject authPayload = new JSONObject();
-          authPayload.put("UserName", USER_ID);
-          authPayload.put("Password", hashedPassword);
-          authPayload.put("PAN_DOB", totp);
-          authPayload.put("App", "");
-          authPayload.put("ClientID", "");
-          authPayload.put("Key", "");
-          authPayload.put("APIKey", APP_KEY);
-          authPayload.put("Sid", sid);
-          authPayload.put("Override", "");
-          authPayload.put("Source", "AUTHPAGE");
+	    String sid = fetchSessionId();
+	    if (sid == null || sid.isEmpty()) {
+	        throw new RuntimeException("Failed to get session ID");
+	    }
 
-          String response = sendPost("https://authapi.flattrade.in/ftauth", authPayload.toString());
-          JSONObject jsonResponse = new JSONObject(response);
+	    String setSessionUrl =
+	            "https://auth.flattrade.in/?app_key=" + cfg.getApiKey() + "&sid=" + sid;
+	    sendGet(setSessionUrl);
 
-          String redirectURL = jsonResponse.optString("RedirectURL", "");
-          String request_code = null;
+	    JSONObject authPayload = new JSONObject();
+	    authPayload.put("UserName", cfg.getUserId());
+	    authPayload.put("Password", hashedPassword);
+	    authPayload.put("PAN_DOB", totp);
+	    authPayload.put("APIKey", cfg.getApiKey());
+	    authPayload.put("Sid", sid);
+	    authPayload.put("Source", "AUTHPAGE");
 
-          if (!redirectURL.isEmpty()) {
-              System.out.println("🔁 Redirecting to: " + redirectURL);
-              String[] parts = redirectURL.split("code=");
-              if (parts.length > 1) {
-                  request_code = parts[1].split("&")[0];
-                  request_code = URLDecoder.decode(request_code, StandardCharsets.UTF_8);
-                  System.out.println("🔑 Request Code: " + request_code);
-              }
-          } else {
-              System.out.println("❌ No redirect URL received.");
-          }
+	    String response = sendPost(
+	            "https://authapi.flattrade.in/ftauth",
+	            authPayload.toString()
+	    );
 
-          // Step 4: Exchange request_code for access token
-          if (request_code != null) {
-              String apiSecretHash = generateSHA256(APP_KEY + request_code + API_SECRET);
+	    JSONObject json = new JSONObject(response);
+	    String redirectURL = json.optString("RedirectURL");
 
-              JSONObject tokenPayload = new JSONObject();
-              tokenPayload.put("api_key", APP_KEY);
-              tokenPayload.put("request_code", request_code);
-              tokenPayload.put("api_secret", apiSecretHash);
+	    if (redirectURL == null || !redirectURL.contains("code=")) {
+	        throw new RuntimeException("Redirect URL not received");
+	    }
 
-              String tokenResponse = sendPost("https://authapi.flattrade.in/trade/apitoken", tokenPayload.toString());
-              JSONObject tokenJson = new JSONObject(tokenResponse);
+	    String requestCode = URLDecoder.decode(
+	            redirectURL.split("code=")[1].split("&")[0],
+	            StandardCharsets.UTF_8
+	    );
 
-              String token = tokenJson.optString("token", null);
-              String client = tokenJson.optString("client", null);
-              String status = tokenJson.optString("stat", "Fail");
-              String emsg = tokenJson.optString("emsg", "");
+	    String apiSecretHash =
+	            generateSHA256(cfg.getApiKey() + requestCode + cfg.getApiSecret());
 
-              if ("Ok".equalsIgnoreCase(status)) {
-                  System.out.println("✅ Token: " + token);
-                  generatedToken = token;
-                  FlatTradeService flatTradeService = new FlatTradeService();
-              } else {
-                  System.out.println("❌ Token generation failed: " + emsg);
-              }
-          }
-		return generatedToken;
-    }
+	    JSONObject tokenPayload = new JSONObject();
+	    tokenPayload.put("api_key", cfg.getApiKey());
+	    tokenPayload.put("request_code", requestCode);
+	    tokenPayload.put("api_secret", apiSecretHash);
+
+	    String tokenResponse = sendPost(
+	            "https://authapi.flattrade.in/trade/apitoken",
+	            tokenPayload.toString()
+	    );
+
+	    JSONObject tokenJson = new JSONObject(tokenResponse);
+
+	    if (!"Ok".equalsIgnoreCase(tokenJson.optString("stat"))) {
+	        throw new RuntimeException("Token generation failed: " +
+	                tokenJson.optString("emsg"));
+	    }
+
+	    return tokenJson.getString("token");
+	}
+
     
     public APIResponse callFlatTrade(JData jData,String jKey,String url) throws JsonProcessingException, UnsupportedEncodingException {
        
