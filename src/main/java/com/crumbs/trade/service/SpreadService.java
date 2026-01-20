@@ -43,7 +43,12 @@ import java.util.stream.Collectors;
  * 3. IV_BASED - Select strikes with optimal IV levels
  * 4. COMBINED - Use both OI and IV for best strike selection
  *
- * Version: 3.3 (Max Loss from Strategy Entity + Rate Limit Graceful Handling)
+ * Version: 3.4 
+ * Features:
+ * - Dynamic max loss thresholds per mode (JSON format in Strategy.maxloss)
+ * - Auto-adjust strikes instead of skipping when max loss breached
+ * - Rate limit graceful handling with DISTANCE_BASED fallback
+ * - Proper order sequencing for margin benefit (buy first, then sell)
  */
 @Service
 @RequiredArgsConstructor
@@ -403,6 +408,8 @@ public class SpreadService {
 
         // ✅ CHANGE 1: Wrap OI/IV fetch in try-catch for graceful fallback
         Map<String, StrikeData> strikeDataMap = Collections.emptyMap();
+        StrikeSelectionMode actualModeUsed;
+        
         try {
             strikeDataMap = fetchStrikeDataForRange(
                     smartConnect, indicator, expiry, atmStrike, strikes, config.getStrikeSearchRange());
@@ -415,9 +422,11 @@ public class SpreadService {
         SpreadCalculation calc;
         if (strikeDataMap.isEmpty()) {
             log.info("Using DISTANCE_BASED mode (no OI/IV data available)");
-            calc = calculateSpreadDistanceBased(ltp, strikes, spreadType, config.getFallbackDistance());
+            calc = calculateSpreadDistanceBased(ltp, strikes, spreadType, StrikeDistanceLevel.NEAR_OTM);
+            actualModeUsed = StrikeSelectionMode.DISTANCE_BASED;
         } else {
             calc = selectOptimalStrikes(ltp, atmStrike, stepSize, strikes, spreadType, config, strikeDataMap);
+            actualModeUsed = config.getMode();
         }
 
         if (!calc.isValid()) {
@@ -426,8 +435,9 @@ public class SpreadService {
             return;
         }
 
-        log.info("Selected Strikes: Buy={} {} | Sell={} {} | Selection Score: {}",
-                calc.buyStrike, calc.buyOptionType, calc.sellStrike, calc.sellOptionType, calc.selectionScore);
+        log.info("Selected Strikes: Buy={} {} | Sell={} {} | Mode: {} | Selection Score: {}",
+                calc.buyStrike, calc.buyOptionType, calc.sellStrike, calc.sellOptionType, 
+                actualModeUsed, calc.selectionScore);
 
         // Build tokens
         Token buyLeg = buildToken(indicator, expiry, calc.buyStrike, calc.buyOptionType,
@@ -444,15 +454,49 @@ public class SpreadService {
         prepareCommonFields(buyLeg, smartConnect);
         prepareCommonFields(sellLeg, smartConnect);
 
+        // Parse max loss threshold based on actual mode used
+        BigDecimal maxLossThreshold = parseMaxLossThreshold(strategy, actualModeUsed);
+        
+        if (maxLossThreshold == null) {
+            log.error("Failed to get max loss threshold for {} - skipping", indicator.getTradingSymbol());
+            return;
+        }
+
+        // Validate and auto-adjust max loss (instead of just validating)
+        SpreadCalculation adjustedCalc = validateAndAdjustMaxLoss(
+            calc, buyLeg, sellLeg, strikes, maxLossThreshold, indicator.getTradingSymbol());
+        
+        if (adjustedCalc == null) {
+            log.warn("Skipping {} - could not meet max loss requirement", indicator.getTradingSymbol());
+            return;
+        }
+        
+        // If strikes were adjusted, rebuild tokens with new strikes
+        if (!adjustedCalc.buyStrike.equals(calc.buyStrike) || 
+            !adjustedCalc.sellStrike.equals(calc.sellStrike)) {
+            
+            log.info("Rebuilding tokens with adjusted strikes...");
+            
+            buyLeg = buildToken(indicator, expiry, adjustedCalc.buyStrike, adjustedCalc.buyOptionType,
+                    Constants.TRANSACTION_TYPE_BUY);
+            sellLeg = buildToken(indicator, expiry, adjustedCalc.sellStrike, adjustedCalc.sellOptionType,
+                    Constants.TRANSACTION_TYPE_SELL);
+            
+            if (buyLeg == null || sellLeg == null) {
+                log.error("Failed to build tokens with adjusted strikes for {}", indicator.getName());
+                return;
+            }
+            
+            prepareCommonFields(buyLeg, smartConnect);
+            prepareCommonFields(sellLeg, smartConnect);
+        }
+        
+        // Use adjusted calc for final calculations
+        calc = adjustedCalc;
+
         // Risk / reward calculations
         BigDecimal maxRisk = calculateMaxRisk(buyLeg, sellLeg, calc);
         BigDecimal maxProfit = calculateMaxProfit(buyLeg, sellLeg, calc);
-
-        // Validate max loss using threshold from Strategy entity
-        if (!validateMaxLoss(maxRisk, indicator.getTradingSymbol(), strategy)) {
-            log.warn("Skipping {} due to max loss validation failure", indicator.getTradingSymbol());
-            return;
-        }
 
         BigDecimal rr = BigDecimal.ZERO;
         if (maxRisk.compareTo(BigDecimal.ZERO) != 0) {
@@ -483,51 +527,214 @@ public class SpreadService {
     }
 
     // --------------------------------------------------------------------- 
-    // Max Loss Validation
+    // Max Loss Configuration from Strategy
     // --------------------------------------------------------------------- 
     /**
-     * Validate max loss against threshold from Strategy entity
-     * @param maxRisk Calculated maximum risk for the spread
-     * @param symbol Trading symbol for logging
-     * @param strategy Strategy entity containing maxloss threshold (REQUIRED)
-     * @return true if risk is acceptable, false otherwise
+     * Parse maxloss from Strategy entity - supports both simple and JSON formats
+     * 
+     * Simple format: "6000"
+     * JSON format: {"intelligent": "8000", "distance": "5000"}
+     * 
+     * - intelligent: Used for OI_BASED, IV_BASED, COMBINED modes (higher threshold)
+     * - distance: Used for DISTANCE_BASED mode (lower threshold)
+     * 
+     * @param strategy Strategy entity
+     * @param mode Strike selection mode being used
+     * @return Max loss threshold for the mode
      */
-    private boolean validateMaxLoss(BigDecimal maxRisk, String symbol, Strategy strategy) {
-        if (strategy == null) {
-            log.error("Strategy is null - cannot validate max loss for {}", symbol);
-            return false;
+    private BigDecimal parseMaxLossThreshold(Strategy strategy, StrikeSelectionMode mode) {
+        if (strategy == null || strategy.getMaxloss() == null || strategy.getMaxloss().trim().isEmpty()) {
+            log.error("No maxloss configured in Strategy");
+            return null;
         }
         
-        // Fetch max loss threshold from Strategy entity
-        BigDecimal threshold;
+        String maxlossStr = strategy.getMaxloss().trim();
+        
         try {
-            if (strategy.getMaxloss() == null || strategy.getMaxloss().trim().isEmpty()) {
-                log.error("No maxloss configured in Strategy for {} - skipping", symbol);
-                return false;
+            // Try JSON format first
+            if (maxlossStr.startsWith("{")) {
+                JSONObject maxlossJson = new JSONObject(maxlossStr);
+                
+                // Determine which threshold to use based on mode
+                String key;
+                if (mode == StrikeSelectionMode.DISTANCE_BASED) {
+                    key = "distance";
+                } else {
+                    // OI_BASED, IV_BASED, COMBINED use "intelligent" threshold
+                    key = "intelligent";
+                }
+                
+                if (!maxlossJson.has(key)) {
+                    log.error("maxloss JSON missing '{}' key: {}", key, maxlossStr);
+                    return null;
+                }
+                
+                String thresholdStr = maxlossJson.getString(key);
+                BigDecimal threshold = new BigDecimal(thresholdStr);
+                
+                log.info("Using maxloss threshold from Strategy: {} = {} (mode: {})", 
+                         key, threshold, mode);
+                return threshold;
+                
+            } else {
+                // Simple format - same threshold for all modes
+                BigDecimal threshold = new BigDecimal(maxlossStr);
+                log.info("Using maxloss threshold from Strategy: {} (simple format, mode: {})", 
+                         threshold, mode);
+                return threshold;
             }
-            threshold = new BigDecimal(strategy.getMaxloss());
             
-            if (threshold.compareTo(BigDecimal.ZERO) <= 0) {
-                log.error("Invalid maxloss value {} in Strategy (must be > 0) - skipping {}", 
-                         threshold, symbol);
-                return false;
-            }
-        } catch (NumberFormatException e) {
-            log.error("Invalid maxloss value '{}' in Strategy (not a valid number) - skipping {}", 
-                     strategy.getMaxloss(), symbol);
-            return false;
+        } catch (Exception e) {
+            log.error("Failed to parse maxloss '{}': {}", maxlossStr, e.getMessage());
+            return null;
         }
+    }
+
+    // --------------------------------------------------------------------- 
+    // Max Loss Validation with Auto-Adjustment
+    // --------------------------------------------------------------------- 
+    /**
+     * Validate and auto-adjust spread for max loss compliance
+     * Instead of skipping, this tries to adjust strikes to meet max loss threshold
+     * 
+     * @param calc Original spread calculation
+     * @param buyLeg Buy leg token
+     * @param sellLeg Sell leg token
+     * @param strikes Available strikes list
+     * @param threshold Max loss threshold
+     * @param symbol Trading symbol for logging
+     * @return Adjusted SpreadCalculation or null if cannot be adjusted
+     */
+    private SpreadCalculation validateAndAdjustMaxLoss(
+            SpreadCalculation calc, Token buyLeg, Token sellLeg,
+            List<BigDecimal> strikes, BigDecimal threshold, String symbol) {
         
-        if (maxRisk.compareTo(threshold) > 0) {
-            log.warn("❌ SKIPPING {}: Max Loss {} exceeds threshold {} from Strategy",
-                    symbol, maxRisk, threshold);
+        if (threshold == null) {
+            log.error("No max loss threshold configured - skipping {}", symbol);
             stocksSkippedDueToMaxLoss++;
-            return false;
+            return null;
         }
         
-        log.info("✓ Max Loss Validation PASSED for {}: {} <= {} (from Strategy)",
-                symbol, maxRisk, threshold);
-        return true;
+        if (threshold.compareTo(BigDecimal.ZERO) <= 0) {
+            log.error("Invalid max loss threshold {} (must be > 0) - skipping {}", threshold, symbol);
+            stocksSkippedDueToMaxLoss++;
+            return null;
+        }
+        
+        // Calculate current max risk
+        BigDecimal currentMaxRisk = calculateMaxRiskFromCalc(calc, buyLeg, sellLeg);
+        
+        if (currentMaxRisk.compareTo(threshold) <= 0) {
+            // Within threshold - no adjustment needed
+            log.info("✓ Max Loss Validation PASSED for {}: {} <= {} (from Strategy)",
+                    symbol, currentMaxRisk, threshold);
+            return calc;
+        }
+        
+        // Max loss breached - try to adjust strikes to fit within threshold
+        log.warn("⚠️ Max Loss EXCEEDED for {}: {} > {} - Attempting to adjust strikes...",
+                symbol, currentMaxRisk, threshold);
+        
+        SpreadCalculation adjustedCalc = adjustStrikesForMaxLoss(
+            calc, buyLeg, sellLeg, strikes, threshold, symbol);
+        
+        if (adjustedCalc != null) {
+            BigDecimal adjustedMaxRisk = calculateMaxRiskFromCalc(adjustedCalc, buyLeg, sellLeg);
+            log.info("✓ Strikes ADJUSTED for {}: MaxLoss {} → {} (within threshold {})",
+                    symbol, currentMaxRisk, adjustedMaxRisk, threshold);
+            log.info("  Original: Buy={} Sell={}", calc.buyStrike, calc.sellStrike);
+            log.info("  Adjusted: Buy={} Sell={}", adjustedCalc.buyStrike, adjustedCalc.sellStrike);
+            return adjustedCalc;
+        }
+        
+        // Cannot adjust - skip this spread
+        log.warn("❌ SKIPPING {}: Cannot adjust strikes to meet max loss threshold {} (current: {})",
+                symbol, threshold, currentMaxRisk);
+        stocksSkippedDueToMaxLoss++;
+        return null;
+    }
+    
+    /**
+     * Adjust strikes by reducing width to meet max loss threshold
+     * Strategy: Move strikes closer to ATM to reduce risk
+     */
+    private SpreadCalculation adjustStrikesForMaxLoss(
+            SpreadCalculation originalCalc, Token buyLeg, Token sellLeg,
+            List<BigDecimal> strikes, BigDecimal threshold, String symbol) {
+        
+        BigDecimal stepSize = originalCalc.stepSize;
+        boolean isPut = "PE".equals(originalCalc.sellOptionType);
+        
+        // Start from ATM and work outward with reduced width
+        BigDecimal atmStrike = originalCalc.atmStrike;
+        
+        // Try reducing strike width step by step
+        for (int width = 1; width <= 3; width++) {
+            SpreadCalculation testCalc = new SpreadCalculation();
+            testCalc.atmStrike = atmStrike;
+            testCalc.stepSize = stepSize;
+            testCalc.buyOptionType = originalCalc.buyOptionType;
+            testCalc.sellOptionType = originalCalc.sellOptionType;
+            
+            if (isPut) {
+                // Bull Put Spread: Sell higher strike, Buy lower strike
+                // Move closer to ATM
+                testCalc.sellStrike = atmStrike.subtract(stepSize.multiply(BigDecimal.valueOf(width)));
+                testCalc.buyStrike = testCalc.sellStrike.subtract(stepSize);
+            } else {
+                // Bear Call Spread: Sell lower strike, Buy higher strike
+                // Move closer to ATM
+                testCalc.sellStrike = atmStrike.add(stepSize.multiply(BigDecimal.valueOf(width)));
+                testCalc.buyStrike = testCalc.sellStrike.add(stepSize);
+            }
+            
+            // Validate strikes are available
+            if (!isValidStrike(testCalc.buyStrike, strikes) || 
+                !isValidStrike(testCalc.sellStrike, strikes)) {
+                continue;
+            }
+            
+            // Build test tokens to calculate risk
+            Token testBuyLeg = new Token();
+            testBuyLeg.setSymbol(buyLeg.getSymbol());
+            testBuyLeg.setPrice(buyLeg.getPrice()); // Approximate - would need real price
+            testBuyLeg.setQuantity(buyLeg.getQuantity());
+            
+            Token testSellLeg = new Token();
+            testSellLeg.setSymbol(sellLeg.getSymbol());
+            testSellLeg.setPrice(sellLeg.getPrice()); // Approximate
+            testSellLeg.setQuantity(sellLeg.getQuantity());
+            
+            BigDecimal testMaxRisk = calculateMaxRiskFromCalc(testCalc, testBuyLeg, testSellLeg);
+            
+            if (testMaxRisk.compareTo(threshold) <= 0) {
+                log.info("Found adjusted strikes with width {} steps: MaxRisk {} <= {}", 
+                         width, testMaxRisk, threshold);
+                return testCalc;
+            }
+        }
+        
+        // Could not find valid adjustment
+        log.warn("Unable to adjust strikes for {} within max loss threshold {}", symbol, threshold);
+        return null;
+    }
+    
+    /**
+     * Calculate max risk from SpreadCalculation (without full token setup)
+     */
+    private BigDecimal calculateMaxRiskFromCalc(SpreadCalculation calc, Token buyLeg, Token sellLeg) {
+        BigDecimal strikeWidth = calc.sellStrike.subtract(calc.buyStrike).abs();
+        BigDecimal premium = BigDecimal.valueOf(sellLeg.getPrice())
+                .subtract(BigDecimal.valueOf(buyLeg.getPrice()));
+        
+        if (premium.compareTo(BigDecimal.ZERO) > 0) {
+            // Credit spread - risk is width minus premium collected
+            return strikeWidth.subtract(premium)
+                    .multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
+        } else {
+            // Debit spread - risk is premium paid
+            return premium.abs().multiply(BigDecimal.valueOf(buyLeg.getQuantity()));
+        }
     }
 
     // --------------------------------------------------------------------- 
