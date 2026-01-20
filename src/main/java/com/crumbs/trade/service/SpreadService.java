@@ -84,7 +84,7 @@ public class SpreadService {
     private static final int ORDER_STATUS_POLL_DELAY_MS = 500;
     private static final BigDecimal MIN_MARGIN_BUFFER = new BigDecimal("1.2");
     private static final int MAX_SPREADS_PER_DAY = 10;
-    private static final BigDecimal DEFAULT_MAX_LOSS_THRESHOLD = new BigDecimal("6000");
+    private static final BigDecimal DEFAULT_MAX_LOSS_THRESHOLD = new BigDecimal("15000");
 
     private final Set<String> processedIndicatorsToday = Collections.synchronizedSet(new HashSet<>());
     private int spreadsPlacedToday = 0;
