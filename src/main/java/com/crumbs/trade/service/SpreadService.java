@@ -330,6 +330,21 @@ public class SpreadService {
     /**
      * Main processing method with intelligent strike selection
      * ✅ CHANGE 1: Added graceful error handling for rate limits
+     * 
+     * IMPORTANT: Order execution sequence for margin benefit:
+     * 1. Buy leg executes FIRST
+     * 2. Wait for buy confirmation
+     * 3. Sell leg executes SECOND
+     * 
+     * Why this sequence matters:
+     * - In a spread, buying the far strike first establishes the hedge position
+     * - When the sell leg is placed, broker recognizes this as a spread
+     * - Margin requirement is reduced (only net risk, not full margin for both legs)
+     * - Example: Bull Put Spread
+     *   - Buy 23000 PE (hedge)
+     *   - Sell 23100 PE (premium collection)
+     *   - Margin = (100 point width - net premium) × lot size
+     *   - NOT: Full margin for naked 23100 PE sell
      */
     @Transactional
     public void processIndicatorIntelligent(SmartConnect smartConnect, Indicator indicator,
@@ -1421,6 +1436,10 @@ public class SpreadService {
     // --------------------------------------------------------------------- 
     // ORDER PLACEMENT
     // --------------------------------------------------------------------- 
+    /**
+     * Place spread order with proper sequencing for margin benefit
+     * CRITICAL: Buy leg MUST execute first to get margin benefit for spread
+     */
     public boolean placeSpreadOrder(SmartConnect smartConnect, Token buyLeg, Token sellLeg,
                                     Indicator indicator, SpreadType spreadType, Strategy strategy) {
         
@@ -1439,46 +1458,69 @@ public class SpreadService {
             return false;
         }
 
-        log.info("Placing LIVE spread: BUY {} @ {} | SELL {} @ {}",
-                buyLeg.getSymbol(), buyLeg.getQuantity(), sellLeg.getSymbol(), sellLeg.getQuantity());
+        log.info("====================================================================");
+        log.info("Placing SPREAD order for {}: Buy {} first, then Sell {}", 
+                 indicator.getTradingSymbol(), buyLeg.getSymbol(), sellLeg.getSymbol());
+        log.info("====================================================================");
 
+        // STEP 1: Place BUY leg first (CRITICAL for margin benefit)
+        log.info("STEP 1/3: Placing BUY leg - {} @ {} qty {}", 
+                 buyLeg.getSymbol(), buyLeg.getPrice(), buyLeg.getQuantity());
+        
         OrderResult buyResult = placeSingleOrder(smartConnect, buyLeg);
 
         if (!buyResult.isSuccess()) {
-            log.error("Buy leg failed for {} - aborting spread. Error: {}",
-                    buyLeg.getSymbol(), buyResult.getErrorMessage());
+            log.error("❌ STEP 1 FAILED: Buy leg order failed - aborting spread. Error: {}",
+                    buyResult.getErrorMessage());
             return false;
         }
 
-        log.info("Buy leg successful: {} - OrderID: {}", buyLeg.getSymbol(), buyResult.getOrderId());
+        log.info("✓ STEP 1 SUCCESS: Buy leg order placed - OrderID: {}", buyResult.getOrderId());
 
+        // STEP 2: Wait for BUY order completion
+        log.info("STEP 2/3: Waiting for BUY leg order {} to complete...", buyResult.getOrderId());
+        
         if (!waitForOrderCompletion(smartConnect, buyResult.getOrderId())) {
-            log.error("Buy leg order {} did not complete in time - aborting spread", buyResult.getOrderId());
+            log.error("❌ STEP 2 FAILED: Buy leg order {} did not complete in time - aborting spread", 
+                     buyResult.getOrderId());
             attemptCancelOrder(smartConnect, buyResult.getOrderId());
             return false;
         }
 
+        log.info("✓ STEP 2 SUCCESS: Buy leg order {} completed", buyResult.getOrderId());
+
+        // STEP 3: Place SELL leg (now we get margin benefit from buy leg)
+        log.info("STEP 3/3: Placing SELL leg - {} @ {} qty {} (margin benefit applied)", 
+                 sellLeg.getSymbol(), sellLeg.getPrice(), sellLeg.getQuantity());
+        
         OrderResult sellResult = placeSingleOrder(smartConnect, sellLeg);
 
         if (!sellResult.isSuccess()) {
-            log.error("CRITICAL: Sell leg failed for {}. Buy leg OrderID: {}. Error: {}",
+            log.error("❌ CRITICAL: STEP 3 FAILED - Sell leg failed for {}. Buy leg OrderID: {}. Error: {}",
                     sellLeg.getSymbol(), buyResult.getOrderId(), sellResult.getErrorMessage());
 
-            log.warn("Attempting to rollback buy leg: {}", buyLeg.getSymbol());
+            log.warn("⚠️ ATTEMPTING ROLLBACK: Reversing buy leg {}", buyLeg.getSymbol());
 
             boolean rollbackSuccess = rollbackBuyLeg(smartConnect, buyLeg, buyResult.getOrderId());
 
             if (!rollbackSuccess) {
-                log.error("MANUAL INTERVENTION REQUIRED: Unable to rollback buy leg {}. OrderID: {}",
+                log.error("❌❌ MANUAL INTERVENTION REQUIRED: Unable to rollback buy leg {}. OrderID: {}",
                         buyLeg.getSymbol(), buyResult.getOrderId());
                 sendAlert("CRITICAL: Failed rollback for " + buyLeg.getSymbol() +
                         " OrderID: " + buyResult.getOrderId());
+            } else {
+                log.info("✓ Rollback successful - buy leg reversed");
             }
             return false;
         }
 
-        log.info("✓ Spread placement SUCCESSFUL! Buy: {} | Sell: {}",
-                buyResult.getOrderId(), sellResult.getOrderId());
+        log.info("✓ STEP 3 SUCCESS: Sell leg order placed - OrderID: {}", sellResult.getOrderId());
+        log.info("====================================================================");
+        log.info("✓✓✓ SPREAD PLACEMENT SUCCESSFUL ✓✓✓");
+        log.info("Buy Leg:  {} - OrderID: {}", buyLeg.getSymbol(), buyResult.getOrderId());
+        log.info("Sell Leg: {} - OrderID: {}", sellLeg.getSymbol(), sellResult.getOrderId());
+        log.info("Margin benefit applied due to spread structure");
+        log.info("====================================================================");
 
         saveSpreadPosition(indicator, spreadType, buyResult, sellResult, buyLeg, sellLeg);
 
