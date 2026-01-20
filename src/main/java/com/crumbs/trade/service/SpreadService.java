@@ -43,7 +43,7 @@ import java.util.stream.Collectors;
  * 3. IV_BASED - Select strikes with optimal IV levels
  * 4. COMBINED - Use both OI and IV for best strike selection
  *
- * Version: 3.2 (Added Rate Limit Graceful Handling)
+ * Version: 3.3 (Max Loss from Strategy Entity + Rate Limit Graceful Handling)
  */
 @Service
 @RequiredArgsConstructor
@@ -84,7 +84,6 @@ public class SpreadService {
     private static final int ORDER_STATUS_POLL_DELAY_MS = 500;
     private static final BigDecimal MIN_MARGIN_BUFFER = new BigDecimal("1.2");
     private static final int MAX_SPREADS_PER_DAY = 10;
-    private static final BigDecimal DEFAULT_MAX_LOSS_THRESHOLD = new BigDecimal("15000");
 
     private final Set<String> processedIndicatorsToday = Collections.synchronizedSet(new HashSet<>());
     private int spreadsPlacedToday = 0;
@@ -148,9 +147,6 @@ public class SpreadService {
 
         // Fallback Configuration
         private StrikeDistanceLevel fallbackDistance = StrikeDistanceLevel.NEAR_OTM;
-
-        // Max Loss Configuration
-        private BigDecimal maxLossThreshold = DEFAULT_MAX_LOSS_THRESHOLD;
 
         // Getters and Setters
         public StrikeSelectionMode getMode() {
@@ -232,14 +228,6 @@ public class SpreadService {
         public void setFallbackDistance(StrikeDistanceLevel fallbackDistance) {
             this.fallbackDistance = fallbackDistance;
         }
-
-        public BigDecimal getMaxLossThreshold() {
-            return maxLossThreshold;
-        }
-
-        public void setMaxLossThreshold(BigDecimal maxLossThreshold) {
-            this.maxLossThreshold = maxLossThreshold;
-        }
     }
 
     // --------------------------------------------------------------------- 
@@ -293,8 +281,8 @@ public class SpreadService {
 
         SmartConnect smartConnect = angelOne.signIn();
 
-        log.info("Processing {} Spread Strategy with {} mode (Daily limit: {}, Max Loss: {})",
-                indicatorList.size(), config.getMode(), MAX_SPREADS_PER_DAY, config.getMaxLossThreshold());
+        log.info("Processing {} Spread Strategy with {} mode (Daily limit: {})",
+                indicatorList.size(), config.getMode(), MAX_SPREADS_PER_DAY);
 
         for (Indicator indicator : indicatorList) {
             if (spreadsPlacedToday >= MAX_SPREADS_PER_DAY) {
@@ -346,13 +334,20 @@ public class SpreadService {
     @Transactional
     public void processIndicatorIntelligent(SmartConnect smartConnect, Indicator indicator,
                                            SpreadType spreadType, StrikeSelectionConfig config) {
-        log.info("=== Processing Intelligent Spread for {} | Type: {} | Mode: {} | MaxLoss: {} ===",
-                indicator.getName(), spreadType, config.getMode(), config.getMaxLossThreshold());
+        log.info("=== Processing Intelligent Spread for {} | Type: {} | Mode: {} ===",
+                indicator.getName(), spreadType, config.getMode());
 
         // Duplicate prevention
         String indicatorKey = indicator.getName() + "_" + spreadType.name();
         if (processedIndicatorsToday.contains(indicatorKey)) {
             log.info("Already processed {} today - skipping duplicate", indicatorKey);
+            return;
+        }
+
+        // Fetch Strategy early to get maxloss threshold
+        Strategy strategy = strategyRepo.findByName(AppConstant.SPREAD_STRATEGY);
+        if (strategy == null) {
+            log.error("Strategy '{}' not found - cannot proceed", AppConstant.SPREAD_STRATEGY);
             return;
         }
 
@@ -438,8 +433,8 @@ public class SpreadService {
         BigDecimal maxRisk = calculateMaxRisk(buyLeg, sellLeg, calc);
         BigDecimal maxProfit = calculateMaxProfit(buyLeg, sellLeg, calc);
 
-        // Validate max loss
-        if (!validateMaxLoss(maxRisk, config.getMaxLossThreshold(), indicator.getTradingSymbol())) {
+        // Validate max loss using threshold from Strategy entity
+        if (!validateMaxLoss(maxRisk, indicator.getTradingSymbol(), strategy)) {
             log.warn("Skipping {} due to max loss validation failure", indicator.getTradingSymbol());
             return;
         }
@@ -462,8 +457,8 @@ public class SpreadService {
             return;
         }
 
-        // Place spread
-        boolean success = placeSpreadOrder(smartConnect, buyLeg, sellLeg, indicator, spreadType);
+        // Place spread (strategy already fetched above)
+        boolean success = placeSpreadOrder(smartConnect, buyLeg, sellLeg, indicator, spreadType, strategy);
 
         if (success) {
             processedIndicatorsToday.add(indicatorKey);
@@ -475,14 +470,48 @@ public class SpreadService {
     // --------------------------------------------------------------------- 
     // Max Loss Validation
     // --------------------------------------------------------------------- 
-    private boolean validateMaxLoss(BigDecimal maxRisk, BigDecimal threshold, String symbol) {
+    /**
+     * Validate max loss against threshold from Strategy entity
+     * @param maxRisk Calculated maximum risk for the spread
+     * @param symbol Trading symbol for logging
+     * @param strategy Strategy entity containing maxloss threshold (REQUIRED)
+     * @return true if risk is acceptable, false otherwise
+     */
+    private boolean validateMaxLoss(BigDecimal maxRisk, String symbol, Strategy strategy) {
+        if (strategy == null) {
+            log.error("Strategy is null - cannot validate max loss for {}", symbol);
+            return false;
+        }
+        
+        // Fetch max loss threshold from Strategy entity
+        BigDecimal threshold;
+        try {
+            if (strategy.getMaxloss() == null || strategy.getMaxloss().trim().isEmpty()) {
+                log.error("No maxloss configured in Strategy for {} - skipping", symbol);
+                return false;
+            }
+            threshold = new BigDecimal(strategy.getMaxloss());
+            
+            if (threshold.compareTo(BigDecimal.ZERO) <= 0) {
+                log.error("Invalid maxloss value {} in Strategy (must be > 0) - skipping {}", 
+                         threshold, symbol);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            log.error("Invalid maxloss value '{}' in Strategy (not a valid number) - skipping {}", 
+                     strategy.getMaxloss(), symbol);
+            return false;
+        }
+        
         if (maxRisk.compareTo(threshold) > 0) {
-            log.warn("❌ SKIPPING {}: Max Loss {} exceeds threshold {} - Moving to next stock",
+            log.warn("❌ SKIPPING {}: Max Loss {} exceeds threshold {} from Strategy",
                     symbol, maxRisk, threshold);
             stocksSkippedDueToMaxLoss++;
             return false;
         }
-        log.info("✓ Max Loss Validation PASSED for {}: {} <= {}", symbol, maxRisk, threshold);
+        
+        log.info("✓ Max Loss Validation PASSED for {}: {} <= {} (from Strategy)",
+                symbol, maxRisk, threshold);
         return true;
     }
 
@@ -1393,11 +1422,10 @@ public class SpreadService {
     // ORDER PLACEMENT
     // --------------------------------------------------------------------- 
     public boolean placeSpreadOrder(SmartConnect smartConnect, Token buyLeg, Token sellLeg,
-                                    Indicator indicator, SpreadType spreadType) {
-        Strategy strategy = strategyRepo.findByName(AppConstant.SPREAD_STRATEGY);
-
+                                    Indicator indicator, SpreadType spreadType, Strategy strategy) {
+        
         if (strategy == null) {
-            log.warn("Strategy '{}' not found -> skipping order placement", AppConstant.SPREAD_STRATEGY);
+            log.error("Strategy is null - cannot place order");
             return false;
         }
 
