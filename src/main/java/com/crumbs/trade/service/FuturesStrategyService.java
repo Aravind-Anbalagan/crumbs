@@ -54,8 +54,42 @@ public class FuturesStrategyService {
     @Autowired private TelegramService telegramService;
 
     /**
+     * ✅ NEW: Container for expiry day OHLC data
+     * Replaces single BigDecimal close price
+     */
+    private static class ExpiryOHLC {
+        BigDecimal open;
+        BigDecimal high;
+        BigDecimal low;
+        BigDecimal close;
+        
+        public ExpiryOHLC(BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close) {
+            this.open = open;
+            this.high = high;
+            this.low = low;
+            this.close = close;
+        }
+        
+        /**
+         * Calculate range percentage: ((High - Low) / Low) * 100
+         */
+        public BigDecimal calculateRangePercent() {
+            if (low == null || low.compareTo(BigDecimal.ZERO) == 0) {
+                return BigDecimal.ZERO;
+            }
+            if (high == null) {
+                return BigDecimal.ZERO;
+            }
+            
+            return high.subtract(low)
+                      .divide(low, 4, RoundingMode.HALF_UP)
+                      .multiply(BigDecimal.valueOf(100));
+        }
+    }
+
+    /**
      * ✅ Execute for ALL active configs (based on active flag)
-     * Executes for NIFTY50 and/or NIFTY500 depending on which configs are active
+     * NOW USES HIGH/LOW/RANGE tracking
      */
     @Transactional
     public void executeAll() {
@@ -70,7 +104,7 @@ public class FuturesStrategyService {
             return;
         }
 
-        logger.info("Running master execution using NIFTY_500");
+        logger.info("Running master execution using NIFTY_500 with HIGH/LOW/RANGE tracking");
         executeMaster(masterConfig);
     }
 
@@ -118,7 +152,7 @@ public class FuturesStrategyService {
                            ));
 
 
-        // 4️⃣ Fetch prices ONCE
+        // 4️⃣ Fetch current prices ONCE
         List<String> tokens = indexesList.stream()
                 .map(Indexes::getToken)
                 .filter(Objects::nonNull)
@@ -138,15 +172,22 @@ public class FuturesStrategyService {
             BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
             if (todayPrice == null) continue;
 
-            BigDecimal expiryClose =
-                    fetchExpiryClosePrice(idx, expiryDate);
+            // ✅ NEW: Fetch OHLC data (not just close)
+            ExpiryOHLC ohlc = fetchExpiryOHLC(idx, expiryDate);
 
-            if (expiryClose == null || expiryClose.signum() == 0) continue;
+            if (ohlc == null || ohlc.close == null || ohlc.close.signum() == 0) {
+                logger.debug("Skipping {} - no valid OHLC data", f.getName());
+                continue;
+            }
 
+            // Calculate percent move (same as before, based on close)
             BigDecimal percentMove = todayPrice
-                    .subtract(expiryClose)
-                    .divide(expiryClose, 4, RoundingMode.HALF_UP)
+                    .subtract(ohlc.close)
+                    .divide(ohlc.close, 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
+
+            // ✅ NEW: Calculate range percentage
+            BigDecimal rangePercent = ohlc.calculateRangePercent();
 
             // 6️⃣ Execute per index_type
             for (String indexType : resolveIndexTypes(f)) {
@@ -158,8 +199,9 @@ public class FuturesStrategyService {
                         f.getName(),
                         indexType,
                         todayPrice,
-                        expiryClose,
+                        ohlc,  // ✅ Pass full OHLC data
                         percentMove,
+                        rangePercent,  // ✅ NEW
                         expiryDate,
                         cfg
                 );
@@ -176,23 +218,35 @@ public class FuturesStrategyService {
             updateFilters(cfg, rows);
         });
     }
+    
+    /**
+     * ✅ UPDATED: Build filter with HIGH/LOW/RANGE data
+     */
     private FuturesFilter buildFilter(
             String name,
             String indexType,
             BigDecimal todayPrice,
-            BigDecimal expiryClose,
+            ExpiryOHLC ohlc,  // ✅ Changed from BigDecimal expiryClose
             BigDecimal percentMove,
+            BigDecimal rangePercent,  // ✅ NEW parameter
             LocalDate expiryDate,
             FuturesConfig config) {
 
         FuturesFilter ff = new FuturesFilter();
         ff.setName(name);
         ff.setIndexType(indexType);
-        ff.setLastExpiryPrice(expiryClose);
+        
+        // ✅ Set all OHLC data
+        ff.setLastExpiryPrice(ohlc.close);  // Keep existing field (close)
+        ff.setLastExpiryHigh(ohlc.high);    // ✅ NEW
+        ff.setLastExpiryLow(ohlc.low);      // ✅ NEW
+        
         ff.setLastTradedPrice(todayPrice);
         ff.setPercentMove(percentMove);
+        ff.setRangePercent(rangePercent);   // ✅ NEW
         ff.setDirection(percentMove.signum() > 0 ? "UP" : "DOWN");
 
+        // Status logic remains same (based on percent_move)
         if (percentMove.compareTo(config.getProfitPercent()) >= 0)
             ff.setStatus("PROFIT");
         else if (percentMove.compareTo(config.getLossPercent().negate()) <= 0)
@@ -230,7 +284,8 @@ public class FuturesStrategyService {
 
 
     /**
-     * ✅ Core execution logic for a specific config
+     * ✅ UPDATED: Core execution logic for a specific config
+     * NOW FETCHES HIGH/LOW along with close
      */
     private void executeForConfig(FuturesConfig config) {
 
@@ -245,7 +300,8 @@ public class FuturesStrategyService {
             return;
         }
 
-        logger.info("Processing {} stocks for {}", stockNames.size(), indexType);
+        logger.info("Processing {} stocks for {} with HIGH/LOW/RANGE tracking", 
+                stockNames.size(), indexType);
 
         // ✅ ADD DETAILED LOGGING TO FIND THE PROBLEMATIC STOCK
         List<Indexes> indexesList = new ArrayList<>();
@@ -285,26 +341,38 @@ public class FuturesStrategyService {
             BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
             if (todayPrice == null) continue;
 
-            BigDecimal expiryClose = fetchExpiryClosePrice(idx, expiryDate);
+            // ✅ NEW: Fetch OHLC instead of just close
+            ExpiryOHLC ohlc = fetchExpiryOHLC(idx, expiryDate);
 
-            if (expiryClose == null || expiryClose.compareTo(BigDecimal.ZERO) == 0) {
-                logger.error("Expiry Price is empty for {}", idx.getName());
+            if (ohlc == null || ohlc.close == null || ohlc.close.compareTo(BigDecimal.ZERO) == 0) {
+                logger.error("Expiry OHLC is empty for {}", idx.getName());
                 continue;
             }
 
+            // Calculate percent move (based on close, as before)
             BigDecimal percentMove = todayPrice
-                    .subtract(expiryClose)
-                    .divide(expiryClose, 4, RoundingMode.HALF_UP)
+                    .subtract(ohlc.close)
+                    .divide(ohlc.close, 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
+
+            // ✅ NEW: Calculate range percentage
+            BigDecimal rangePercent = ohlc.calculateRangePercent();
 
             FuturesFilter ff = new FuturesFilter();
             ff.setName(idx.getName());
             ff.setIndexType(indexType);
-            ff.setLastExpiryPrice(expiryClose);
+            
+            // ✅ Set all OHLC data
+            ff.setLastExpiryPrice(ohlc.close);  // Existing field
+            ff.setLastExpiryHigh(ohlc.high);    // ✅ NEW
+            ff.setLastExpiryLow(ohlc.low);      // ✅ NEW
+            
             ff.setLastTradedPrice(todayPrice);
             ff.setPercentMove(percentMove);
+            ff.setRangePercent(rangePercent);   // ✅ NEW
             ff.setDirection(percentMove.signum() > 0 ? "UP" : "DOWN");
 
+            // Status logic remains unchanged (based on percent_move from close)
             if (percentMove.compareTo(config.getProfitPercent()) >= 0) {
                 ff.setStatus("PROFIT");
             } else if (percentMove.compareTo(
@@ -317,6 +385,10 @@ public class FuturesStrategyService {
             ff.setLastExpiryDate(expiryDate);
             ff.setLastTradedDate(LocalDateTime.now());
             result.add(ff);
+            
+            // ✅ NEW: Enhanced logging
+            logger.debug("Processed {}: Close={}, High={}, Low={}, Range={}%", 
+                    idx.getName(), ohlc.close, ohlc.high, ohlc.low, rangePercent);
         }
 
         if (!result.isEmpty()) {
@@ -363,7 +435,7 @@ public class FuturesStrategyService {
         filterRepo.deleteByIndexType(indexType);
         List<FuturesFilter> saved = filterRepo.saveAll(result);
 
-        logger.info("Saved {} filters for {}", saved.size(), indexType);
+        logger.info("Saved {} filters for {} (with HIGH/LOW/RANGE data)", saved.size(), indexType);
 
         // Schedule notification after transaction commits
         TransactionSynchronizationManager.registerSynchronization(
@@ -555,7 +627,11 @@ public class FuturesStrategyService {
         return priceMap;
     }
 
-    private BigDecimal fetchExpiryClosePrice(
+    /**
+     * ✅ NEW METHOD: Fetch OHLC data (Open, High, Low, Close) from expiry date
+     * Replaces the old fetchExpiryClosePrice method
+     */
+    private ExpiryOHLC fetchExpiryOHLC(
             Indexes idx, LocalDate expiryDate) {
 
         int maxRetries = 3;
@@ -582,14 +658,24 @@ public class FuturesStrategyService {
                 JSONArray candles = smartconnect.candleData(req);
 
                 if (candles != null && !candles.isEmpty()) {
-                    JSONArray lastCandle =
-                            candles.getJSONArray(candles.length() - 1);
-                    return lastCandle.getBigDecimal(4);
+                    JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+                    
+                    // ✅ Extract all OHLC data from candle
+                    // Candle format: [timestamp, open, high, low, close, volume]
+                    BigDecimal open = lastCandle.getBigDecimal(1);
+                    BigDecimal high = lastCandle.getBigDecimal(2);
+                    BigDecimal low = lastCandle.getBigDecimal(3);
+                    BigDecimal close = lastCandle.getBigDecimal(4);
+                    
+                    logger.debug("Fetched OHLC for {}: O={}, H={}, L={}, C={}", 
+                            idx.getName(), open, high, low, close);
+                    
+                    return new ExpiryOHLC(open, high, low, close);
                 }
 
             } catch (Exception e) {
-                logger.warn("Retry {}/{} failed for {}",
-                        attempt, maxRetries, idx.getName(), e);
+                logger.warn("Retry {}/{} failed for {} OHLC fetch: {}",
+                        attempt, maxRetries, idx.getName(), e.getMessage());
             }
 
             try {
@@ -600,6 +686,8 @@ public class FuturesStrategyService {
             }
         }
 
+        logger.error("Failed to fetch OHLC data for {} after {} retries", 
+                idx.getName(), maxRetries);
         return null;
     }
 

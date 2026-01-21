@@ -368,6 +368,8 @@ public class SpreadService {
         Strategy strategy = strategyRepo.findByName(AppConstant.SPREAD_STRATEGY);
         if (strategy == null) {
             log.error("Strategy '{}' not found - cannot proceed", AppConstant.SPREAD_STRATEGY);
+            saveSkippedSpread(indicator, spreadType, null, 
+                "Strategy 'SPREAD_STRATEGY' not found in database", null, null);
             return;
         }
 
@@ -375,6 +377,8 @@ public class SpreadService {
         BigDecimal ltp = fetchLTP(smartConnect, indicator);
         if (ltp == null) {
             log.warn("Cannot proceed without LTP for {}", indicator.getTradingSymbol());
+            saveSkippedSpread(indicator, spreadType, null, 
+                "Failed to fetch LTP (Last Traded Price)", null, null);
             return;
         }
 
@@ -382,12 +386,16 @@ public class SpreadService {
         Optional<Expiry> optionalExpiry = expiryRepo.findById(DEFAULT_EXPIRY_ID);
         if (optionalExpiry.isEmpty()) {
             log.error("Expiry not found (ID: {}). Check database configuration.", DEFAULT_EXPIRY_ID);
+            saveSkippedSpread(indicator, spreadType, null, 
+                "Expiry not found (ID: " + DEFAULT_EXPIRY_ID + ")", null, null);
             return;
         }
         Expiry expiry = optionalExpiry.get();
 
         // Validate expiry date
         if (!validateExpiryDate(expiry)) {
+            saveSkippedSpread(indicator, spreadType, null, 
+                "Expiry date validation failed (current month after 15th)", null, null);
             return;
         }
 
@@ -397,6 +405,8 @@ public class SpreadService {
         if (strikes.isEmpty()) {
             log.error("No strikes found for {} expiry {}",
                     indicator.getTradingSymbol(), expiry.getExpirydate());
+            saveSkippedSpread(indicator, spreadType, null, 
+                "No strikes found for expiry " + expiry.getExpirydate(), null, null);
             return;
         }
 
@@ -432,6 +442,8 @@ public class SpreadService {
         if (!calc.isValid()) {
             log.error("Invalid spread calculation for {}: {}",
                     indicator.getTradingSymbol(), calc.getErrorMessage());
+            saveSkippedSpread(indicator, spreadType, calc, 
+                "Invalid spread calculation: " + calc.getErrorMessage(), null, null);
             return;
         }
 
@@ -447,6 +459,8 @@ public class SpreadService {
 
         if (buyLeg == null || sellLeg == null) {
             log.error("Failed to build tokens for {}", indicator.getName());
+            saveSkippedSpread(indicator, spreadType, calc, 
+                "Failed to build tokens (symbol not found in database)", null, null);
             return;
         }
 
@@ -459,6 +473,8 @@ public class SpreadService {
         
         if (maxLossThreshold == null) {
             log.error("Failed to get max loss threshold for {} - skipping", indicator.getTradingSymbol());
+            saveSkippedSpread(indicator, spreadType, calc, 
+                "Failed to parse max loss threshold from Strategy", null, null);
             return;
         }
 
@@ -468,6 +484,10 @@ public class SpreadService {
         
         if (adjustedCalc == null) {
             log.warn("Skipping {} - could not meet max loss requirement", indicator.getTradingSymbol());
+            BigDecimal calculatedRisk = calculateMaxRiskFromCalc(calc, buyLeg, sellLeg);
+            saveSkippedSpread(indicator, spreadType, calc, 
+                "Max loss threshold breached - could not adjust strikes to fit", 
+                calculatedRisk, maxLossThreshold);
             return;
         }
         
@@ -513,6 +533,20 @@ public class SpreadService {
         // Validate margin
         if (!validateMarginRequirement(smartConnect)) {
             log.error("Insufficient margin for {} spread - aborting", indicator.getTradingSymbol());
+            saveSkippedSpread(indicator, spreadType, calc, 
+                "Insufficient margin available in account", maxRisk, maxLossThreshold);
+            return;
+        }
+
+        // Validate market depth (liquidity check before market order)
+        log.info("Validating market depth for liquidity...");
+        if (!validateMarketDepth(smartConnect, buyLeg, sellLeg)) {
+            log.error("❌ SKIPPING {}: Insufficient liquidity or wide spread - unsafe for market order",
+                     indicator.getTradingSymbol());
+            saveSkippedSpread(indicator, spreadType, calc, 
+                "Insufficient liquidity or wide bid-ask spread - unsafe for market order", 
+                maxRisk, maxLossThreshold);
+            stocksSkippedDueToMaxLoss++; // Track as skipped
             return;
         }
 
@@ -1641,6 +1675,177 @@ public class SpreadService {
     }
 
     // --------------------------------------------------------------------- 
+    // Market Depth Validation for Liquidity
+    // --------------------------------------------------------------------- 
+    /**
+     * Validate market depth to ensure sufficient liquidity before placing market orders
+     * Checks bid-ask spread to avoid wide price gaps in illiquid options
+     * 
+     * @param smartConnect SmartConnect instance
+     * @param buyLeg Buy leg token
+     * @param sellLeg Sell leg token
+     * @return true if liquidity is acceptable, false if spread too wide
+     */
+    private boolean validateMarketDepth(SmartConnect smartConnect, Token buyLeg, Token sellLeg) {
+        try {
+            // Prepare tokens for batch fetch
+            List<String> tokens = Arrays.asList(buyLeg.getToken(), sellLeg.getToken());
+            
+            JSONObject payload = new JSONObject();
+            payload.put("mode", "FULL");
+            JSONObject map = new JSONObject();
+            map.put("NFO", tokens);
+            payload.put("exchangeTokens", map);
+            
+            JSONObject response = predictionService.callMarketDataWithRetry(smartConnect, payload);
+            
+            if (response == null || !response.has("fetched")) {
+                log.warn("⚠️ Could not fetch market depth - proceeding cautiously");
+                return true; // Don't block if data unavailable
+            }
+            
+            JSONArray fetched = response.getJSONArray("fetched");
+            
+            for (int i = 0; i < fetched.length(); i++) {
+                JSONObject item = fetched.getJSONObject(i);
+                String symbolToken = item.optString("symbolToken", "");
+                String tradingSymbol = item.optString("tradingSymbol", "");
+                
+                // Check if this is one of our tokens
+                boolean isBuyLeg = symbolToken.equals(buyLeg.getToken());
+                boolean isSellLeg = symbolToken.equals(sellLeg.getToken());
+                
+                if (!isBuyLeg && !isSellLeg) {
+                    continue;
+                }
+                
+                // Get depth data
+                if (!item.has("depth")) {
+                    log.warn("⚠️ No depth data for {} - proceeding cautiously", tradingSymbol);
+                    continue;
+                }
+                
+                JSONObject depth = item.getJSONObject("depth");
+                JSONArray buyDepth = depth.optJSONArray("buy");
+                JSONArray sellDepth = depth.optJSONArray("sell");
+                
+                if (buyDepth == null || sellDepth == null || 
+                    buyDepth.length() == 0 || sellDepth.length() == 0) {
+                    log.error("❌ INSUFFICIENT LIQUIDITY for {}: Empty order book", tradingSymbol);
+                    return false;
+                }
+                
+                // Get best bid and ask
+                JSONObject bestBid = buyDepth.getJSONObject(0);
+                JSONObject bestAsk = sellDepth.getJSONObject(0);
+                
+                double bidPrice = bestBid.optDouble("price", 0);
+                double askPrice = bestAsk.optDouble("price", 0);
+                int bidQty = bestBid.optInt("quantity", 0);
+                int askQty = bestAsk.optInt("quantity", 0);
+                
+                if (bidPrice <= 0 || askPrice <= 0) {
+                    log.error("❌ INSUFFICIENT LIQUIDITY for {}: No valid bid/ask (bid={}, ask={})",
+                            tradingSymbol, bidPrice, askPrice);
+                    return false;
+                }
+                
+                // Calculate bid-ask spread percentage
+                double midPrice = (bidPrice + askPrice) / 2.0;
+                double spreadAmount = askPrice - bidPrice;
+                double spreadPercent = (spreadAmount / midPrice) * 100.0;
+                
+                // Get LTP for reference
+                double ltp = item.optDouble("ltp", 0);
+                
+                // Thresholds
+                final double MAX_SPREAD_PERCENT = 5.0;  // 5% max spread
+                final int MIN_BID_QTY = 25;             // Minimum bid quantity
+                final int MIN_ASK_QTY = 25;             // Minimum ask quantity
+                
+                // Validate spread
+                if (spreadPercent > MAX_SPREAD_PERCENT) {
+                    log.error("❌ WIDE SPREAD for {}: {}% (bid={}, ask={}, mid={}) - NO LIQUIDITY",
+                            tradingSymbol, String.format("%.2f", spreadPercent), 
+                            bidPrice, askPrice, midPrice);
+                    log.error("   Market order could execute at unfavorable price - SKIPPING");
+                    return false;
+                }
+                
+                // Validate quantities
+                if (bidQty < MIN_BID_QTY || askQty < MIN_ASK_QTY) {
+                    log.warn("⚠️ LOW LIQUIDITY for {}: BidQty={}, AskQty={} (min required: {})",
+                            tradingSymbol, bidQty, askQty, MIN_BID_QTY);
+                    log.warn("   Market order may have slippage - proceeding with caution");
+                    // Don't block, just warn
+                }
+                
+                // Log depth summary
+                log.info("✓ Market Depth OK for {}: Spread={}% (bid={}, ask={}, ltp={}), BidQty={}, AskQty={}",
+                        tradingSymbol, String.format("%.2f", spreadPercent), 
+                        bidPrice, askPrice, ltp, bidQty, askQty);
+                
+                // Log full depth for transparency
+                logFullDepth(tradingSymbol, buyDepth, sellDepth);
+            }
+            
+            return true; // All depth checks passed
+            
+        } catch (Exception e) {
+            log.error("Error validating market depth: {} - Proceeding cautiously", e.getMessage());
+            return true; // Don't block on error, but log it
+        } catch (SmartAPIException e) {
+        	 log.error("Error validating market depth: {} - Proceeding cautiously", e.getMessage());
+             return true; // Don't block on error, but log it
+		}
+    }
+    
+    /**
+     * Log full 5-level market depth for transparency
+     */
+    private void logFullDepth(String symbol, JSONArray buyDepth, JSONArray sellDepth) {
+        StringBuilder depthLog = new StringBuilder();
+        depthLog.append("\n");
+        depthLog.append("┌─────────────────────────────────────────────────────────────┐\n");
+        depthLog.append(String.format("│ Market Depth: %-44s │\n", symbol));
+        depthLog.append("├─────────────────────────────────────────────────────────────┤\n");
+        depthLog.append("│     BID SIDE          │          ASK SIDE                   │\n");
+        depthLog.append("│  Qty    Price  Orders │  Qty    Price  Orders               │\n");
+        depthLog.append("├─────────────────────────────────────────────────────────────┤\n");
+        
+        int maxLevels = Math.max(buyDepth.length(), sellDepth.length());
+        for (int i = 0; i < Math.min(maxLevels, 5); i++) {
+            String bidStr = "  -      -       -   ";
+            String askStr = "  -      -       -   ";
+            
+            if (i < buyDepth.length()) {
+                JSONObject bid = buyDepth.getJSONObject(i);
+                int qty = bid.optInt("quantity", 0);
+                double price = bid.optDouble("price", 0);
+                int orders = bid.optInt("orders", 0);
+                if (price > 0) {
+                    bidStr = String.format("%5d  %7.2f  %3d", qty, price, orders);
+                }
+            }
+            
+            if (i < sellDepth.length()) {
+                JSONObject ask = sellDepth.getJSONObject(i);
+                int qty = ask.optInt("quantity", 0);
+                double price = ask.optDouble("price", 0);
+                int orders = ask.optInt("orders", 0);
+                if (price > 0) {
+                    askStr = String.format("%5d  %7.2f  %3d", qty, price, orders);
+                }
+            }
+            
+            depthLog.append(String.format("│ %s │ %s │\n", bidStr, askStr));
+        }
+        
+        depthLog.append("└─────────────────────────────────────────────────────────────┘");
+        log.info(depthLog.toString());
+    }
+
+    // --------------------------------------------------------------------- 
     // ORDER PLACEMENT
     // --------------------------------------------------------------------- 
     /**
@@ -1949,11 +2154,55 @@ public class SpreadService {
                                     Token buyLeg, Token sellLeg) {
         try {
             // TODO: Implement SpreadPosition entity and repository
-            log.info("Spread position tracked: {} {} - Buy:{} Sell:{}",
+            // Status: SUCCESS - both legs executed
+            log.info("✓ Spread position tracked: {} {} - Buy:{} Sell:{} - STATUS: SUCCESS",
                     indicator.getTradingSymbol(), spreadType,
-                    buyResult.getOrderId(), sellResult.getOrderId());
+                    buyResult != null ? buyResult.getOrderId() : "N/A", 
+                    sellResult != null ? sellResult.getOrderId() : "N/A");
         } catch (Exception e) {
             log.error("Failed to save spread position: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Save spread that was skipped/failed with reason
+     * This ensures ALL spread attempts are tracked, not just successful ones
+     */
+    private void saveSkippedSpread(Indicator indicator, SpreadType spreadType,
+                                   SpreadCalculation calc, String skipReason,
+                                   BigDecimal calculatedMaxRisk, BigDecimal threshold) {
+        try {
+            // TODO: Implement SpreadPosition entity and repository
+            // Status: SKIPPED with reason
+            log.info("❌ Spread attempt tracked: {} {} - Buy:{} {} Sell:{} {} - STATUS: SKIPPED - REASON: {}",
+                    indicator.getTradingSymbol(), spreadType,
+                    calc != null ? calc.buyStrike : "N/A", 
+                    calc != null ? calc.buyOptionType : "N/A",
+                    calc != null ? calc.sellStrike : "N/A",
+                    calc != null ? calc.sellOptionType : "N/A",
+                    skipReason);
+            
+            // Additional details for analysis
+            if (calculatedMaxRisk != null && threshold != null) {
+                log.info("   MaxRisk: {} | Threshold: {} | Breach: {}", 
+                        calculatedMaxRisk, threshold, calculatedMaxRisk.subtract(threshold));
+            }
+            
+            // TODO: Insert into database with fields:
+            // - tradingSymbol
+            // - spreadType
+            // - buyStrike, buyOptionType
+            // - sellStrike, sellOptionType
+            // - status = "SKIPPED"
+            // - skipReason
+            // - calculatedMaxRisk
+            // - threshold
+            // - attemptTime = LocalDateTime.now()
+            // - buyOrderId = null
+            // - sellOrderId = null
+            
+        } catch (Exception e) {
+            log.error("Failed to save skipped spread: {}", e.getMessage(), e);
         }
     }
 
