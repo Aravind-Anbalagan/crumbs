@@ -329,17 +329,33 @@ public class FuturesStrategyService {
     }
 
     private boolean isNearExpiryStructure(FuturesFilter f, BigDecimal ltp) {
+        if (ltp == null) return false;
+        
         BigDecimal proximity = new BigDecimal("0.005");
+        
         if ("UP".equals(f.getDirection())) {
+            if (f.getLastExpiryHigh() == null) {
+                logger.debug("Skipping {} - lastExpiryHigh is null", f.getName());
+                return false;
+            }
             return percentDiff(ltp, f.getLastExpiryHigh()).compareTo(proximity) <= 0;
         }
+        
         if ("DOWN".equals(f.getDirection())) {
+            if (f.getLastExpiryLow() == null) {
+                logger.debug("Skipping {} - lastExpiryLow is null", f.getName());
+                return false;
+            }
             return percentDiff(ltp, f.getLastExpiryLow()).compareTo(proximity) <= 0;
         }
+        
         return false;
     }
 
     private BigDecimal percentDiff(BigDecimal price, BigDecimal level) {
+        if (price == null || level == null || level.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
         return price.subtract(level).abs().divide(level, 6, RoundingMode.HALF_UP);
     }
 
