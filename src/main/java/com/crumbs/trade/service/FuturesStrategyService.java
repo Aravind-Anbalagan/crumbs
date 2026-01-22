@@ -19,8 +19,6 @@ import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
@@ -46,8 +44,6 @@ public class FuturesStrategyService {
     private static final Logger logger = LogManager.getLogger(FuturesStrategyService.class);
 
     private static final String EXCHANGE = "NSE";
-    private static final LocalTime NSE_OPEN = LocalTime.of(9, 15);
-    private static final LocalTime NSE_CLOSE = LocalTime.of(15, 30);
     
     @Autowired private FuturesRepo futuresRepo;
     @Autowired private Nifty500Repo nifty500Repo;
@@ -60,16 +56,10 @@ public class FuturesStrategyService {
     @Autowired private FuturesBreakEventRepo futuresBreakEventRepo;
     
     private static class ExpiryOHLC {
-        BigDecimal open;
-        BigDecimal high;
-        BigDecimal low;
-        BigDecimal close;
+        BigDecimal open, high, low, close;
         
         public ExpiryOHLC(BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close) {
-            this.open = open;
-            this.high = high;
-            this.low = low;
-            this.close = close;
+            this.open = open; this.high = high; this.low = low; this.close = close;
         }
         
         public BigDecimal calculateRangePercent() {
@@ -94,6 +84,7 @@ public class FuturesStrategyService {
         executeMaster(masterConfig);
     }
 
+    @Transactional
     private void executeMaster(FuturesConfig masterConfig) {
         LocalDate expiryDate = resolveExecutionDate(masterConfig);
         List<Futures> futuresList = futuresRepo.findByIsNifty500True();
@@ -121,8 +112,9 @@ public class FuturesStrategyService {
                 .filter(Objects::nonNull).toList();
 
         Map<String, BigDecimal> todayPriceMap = fetchTodayPriceUsingPredictionService(tokens);
-        Map<String, List<FuturesFilter>> bucket = new HashMap<>();
 
+        // Build filters
+        Map<String, List<FuturesFilter>> bucket = new HashMap<>();
         for (Futures f : futuresList) {
             Indexes idx = indexByName.get(f.getName());
             if (idx == null) continue;
@@ -150,17 +142,15 @@ public class FuturesStrategyService {
             }
         }
 
+        // Save filters
         bucket.forEach((indexType, rows) -> {
             FuturesConfig cfg = configMap.get(indexType);
             updateFilters(cfg, rows);
         });
-        
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                runBreakoutScan(todayPriceMap, indexByName);
-            }
-        });
+
+        // ✅ NOW RUN BREAKOUT SCAN IN SAME TRANSACTION
+        logger.info("Running breakout scan after filter update");
+        runBreakoutScan(todayPriceMap, indexByName);
     }
     
     private FuturesFilter buildFilter(String name, String indexType, BigDecimal todayPrice,
@@ -200,23 +190,223 @@ public class FuturesStrategyService {
         return list;
     }
 
-    private List<String> getStockNamesByIndexType(String indexTypeStr) {
-        NiftyIndexType indexType = NiftyIndexType.valueOf(indexTypeStr);
-        List<Futures> futures = switch (indexType) {
-            case NIFTY_50 -> futuresRepo.findByIsNifty50True();
-            case NIFTY_NEXT_50 -> futuresRepo.findByIsNiftyNext50True();
-            case NIFTY_100 -> futuresRepo.findByIsNifty100True();
-            case NIFTY_200 -> futuresRepo.findByIsNifty200True();
-            case NIFTY_500 -> futuresRepo.findByIsNifty500True();
-        };
-        return futures.stream().map(Futures::getName).filter(Objects::nonNull).toList();
-    }
-
     private void updateFilters(FuturesConfig config, List<FuturesFilter> result) {
         String indexType = config.getIndexType();
         filterRepo.deleteByIndexType(indexType);
         List<FuturesFilter> saved = filterRepo.saveAll(result);
         logger.info("Saved {} filters for {} (with HIGH/LOW/RANGE data)", saved.size(), indexType);
+    }
+
+    // ✅ FIXED: Runs synchronously, deduplicates, sends notifications only for saved events
+    public void runBreakoutScan(Map<String, BigDecimal> ltpMap, Map<String, Indexes> indexByName) {
+        List<FuturesFilter> filters = filterRepo.findAll();
+        if (filters.isEmpty()) {
+            logger.info("No filters found for breakout scan");
+            return;
+        }
+
+        SmartConnect smartConnect = angelOne.signIn();
+        if (smartConnect == null) {
+            logger.error("Failed to sign in for breakout scan");
+            return;
+        }
+
+        List<FuturesBreakEvent> detectedEvents = new ArrayList<>();
+
+        for (FuturesFilter f : filters) {
+            Indexes idx = indexByName.get(f.getName());
+            if (idx == null) continue;
+
+            BigDecimal ltp = ltpMap.get(idx.getToken());
+            if (ltp == null) continue;
+            if (!isNearExpiryStructure(f, ltp)) continue;
+
+            try {
+                JSONArray candles = fetchOneHourCandle(smartConnect, idx);
+                if (candles == null || candles.isEmpty()) continue;
+
+                JSONArray last = candles.getJSONArray(candles.length() - 1);
+                BigDecimal hourClose = last.getBigDecimal(4);
+                LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+
+                if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
+                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd);
+                    if (event != null) detectedEvents.add(event);
+                }
+
+                if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
+                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd);
+                    if (event != null) detectedEvents.add(event);
+                }
+            } catch (Exception e) {
+                logger.error("Breakout scan failed for {}: {}", f.getName(), e.getMessage());
+            }
+        }
+
+        // ✅ Deduplicate, save, and send notifications ONLY for saved events
+        if (!detectedEvents.isEmpty()) {
+            List<FuturesBreakEvent> savedEvents = saveAllBreakEventsWithDedup(detectedEvents);
+            if (!savedEvents.isEmpty()) {
+                sendBreakoutNotifications(savedEvents);
+            }
+        }
+    }
+
+    // ✅ NEW: Deduplicate in-memory, check DB, save and return ONLY saved events
+    @Transactional
+    public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
+        LocalDate today = LocalDate.now();
+        
+        // Step 1: Deduplicate in-memory by name + breakType + date (ignore indexType)
+        Map<String, FuturesBreakEvent> uniqueMap = new LinkedHashMap<>();
+        
+        for (FuturesBreakEvent event : events) {
+            String key = event.getName() + "_" + event.getBreakType() + "_" + today;
+            
+            if (!uniqueMap.containsKey(key)) {
+                uniqueMap.put(key, event);
+                logger.debug("Added to unique map: {} {} {}", event.getName(), event.getBreakType(), today);
+            } else {
+                logger.debug("Duplicate in batch skipped: {} {} {} (indexType={})", 
+                    event.getName(), event.getBreakType(), today, event.getIndexType());
+            }
+        }
+        
+        // Step 2: Filter out events that already exist in DB (check without indexType)
+        List<FuturesBreakEvent> eventsToSave = new ArrayList<>();
+        
+        for (FuturesBreakEvent event : uniqueMap.values()) {
+            boolean existsInDb = futuresBreakEventRepo.existsByNameAndBreakTypeAndBreakDate(
+                    event.getName(), event.getBreakType(), today);
+            
+            if (!existsInDb) {
+                eventsToSave.add(event);
+                logger.info("Will save: {} {} {}", event.getName(), event.getBreakType(), today);
+            } else {
+                logger.info("Already exists in DB, skipped: {} {} {}", 
+                    event.getName(), event.getBreakType(), today);
+            }
+        }
+        
+        // Step 3: Save only new unique events and return them
+        if (!eventsToSave.isEmpty()) {
+            List<FuturesBreakEvent> saved = futuresBreakEventRepo.saveAllAndFlush(eventsToSave);
+            logger.info("✅ Saved {} unique break events for {}", saved.size(), today);
+            return saved;
+        } else {
+            logger.info("No new events to save for {}", today);
+            return new ArrayList<>();
+        }
+    }
+
+    // ✅ Non-saving version for detection phase
+    private FuturesBreakEvent createBreakEventNoSave(FuturesFilter f, BigDecimal hourClose, 
+            String breakType, LocalDateTime hourEnd) {
+        LocalDate today = hourEnd.toLocalDate();
+        
+        FuturesBreakEvent event = new FuturesBreakEvent();
+        event.setName(f.getName());
+        event.setIndexType(f.getIndexType());
+        event.setBreakType(breakType);
+        
+        if ("BREAKOUT".equals(breakType)) {
+            event.setReferenceLevel(f.getLastExpiryHigh());
+            event.setStopLoss(f.getLastExpiryLow());
+        } else {
+            event.setReferenceLevel(f.getLastExpiryLow());
+            event.setStopLoss(f.getLastExpiryHigh());
+        }
+        
+        event.setBreakPrice(hourClose);
+        event.setBreakDate(today);
+        event.setBreakTime(hourEnd);
+        event.setPercentMove(f.getPercentMove());
+        event.setRangePercent(f.getRangePercent());
+        
+        logger.info("✅ Detected {} for {} | Entry={} | SL={}", 
+                breakType, f.getName(), hourClose, event.getStopLoss());
+        return event;
+    }
+
+    private boolean isNearExpiryStructure(FuturesFilter f, BigDecimal ltp) {
+        BigDecimal proximity = new BigDecimal("0.005");
+        if ("UP".equals(f.getDirection())) {
+            return percentDiff(ltp, f.getLastExpiryHigh()).compareTo(proximity) <= 0;
+        }
+        if ("DOWN".equals(f.getDirection())) {
+            return percentDiff(ltp, f.getLastExpiryLow()).compareTo(proximity) <= 0;
+        }
+        return false;
+    }
+
+    private BigDecimal percentDiff(BigDecimal price, BigDecimal level) {
+        return price.subtract(level).abs().divide(level, 6, RoundingMode.HALF_UP);
+    }
+
+    private JSONArray fetchOneHourCandle(SmartConnect smartConnect, Indexes idx) throws Exception {
+        LocalDateTime[] window = resolveNseOneHourWindow();
+        JSONObject req = new JSONObject();
+        req.put("exchange", idx.getExchange());
+        req.put("symboltoken", idx.getToken());
+        req.put("interval", "ONE_HOUR");
+        req.put("fromdate", window[0].toString().replace("T", " "));
+        req.put("todate", window[1].toString().replace("T", " "));
+        return smartConnect.candleData(req);
+    }
+
+    private void sendBreakoutNotifications(List<FuturesBreakEvent> events) {
+        if (events.isEmpty()) return;
+        
+        // Group events by index type
+        Map<String, List<FuturesBreakEvent>> eventsByIndex = events.stream()
+                .collect(Collectors.groupingBy(FuturesBreakEvent::getIndexType));
+        
+        // Send notifications for each index type
+        eventsByIndex.forEach((indexType, indexEvents) -> {
+            List<FuturesBreakEvent> breakouts = indexEvents.stream()
+                    .filter(e -> "BREAKOUT".equals(e.getBreakType()))
+                    .toList();
+            List<FuturesBreakEvent> breakdowns = indexEvents.stream()
+                    .filter(e -> "BREAKDOWN".equals(e.getBreakType()))
+                    .toList();
+            
+            if (!breakouts.isEmpty()) {
+                sendTelegramBatch("🚀 *BREAKOUT ALERTS - " + indexType + "*", breakouts);
+                logger.info("Sent {} breakout alerts for {}", breakouts.size(), indexType);
+            }
+            
+            if (!breakdowns.isEmpty()) {
+                sendTelegramBatch("📉 *BREAKDOWN ALERTS - " + indexType + "*", breakdowns);
+                logger.info("Sent {} breakdown alerts for {}", breakdowns.size(), indexType);
+            }
+        });
+    }
+
+    private void sendTelegramBatch(String headerText, List<FuturesBreakEvent> events) {
+        String header = headerText + "\n\n```\n" +
+                String.format("%-12s | %8s | %8s | %7s%n", "NAME", "ENTRY", "SL", "RANGE%") +
+                "-----------------------------------------------\n";
+        String footer = "```\n";
+        StringBuilder batch = new StringBuilder(header);
+        final int TELEGRAM_LIMIT = 3800;
+        
+        for (FuturesBreakEvent e : events) {
+            String row = String.format("%-12s | %8.2f | %8.2f | %6.2f%%%n",
+                    e.getName(), e.getBreakPrice(), e.getStopLoss(), e.getRangePercent());
+            if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
+                batch.append(footer);
+                try { telegramService.sendBroadcast(batch.toString()); } 
+                catch (Exception ex) { logger.error("Failed telegram: {}", ex.getMessage()); }
+                batch = new StringBuilder(header);
+            }
+            batch.append(row);
+        }
+        
+        if (batch.length() > header.length()) {
+            batch.append(footer);
+            try { telegramService.sendBroadcast(batch.toString()); } 
+            catch (Exception ex) { logger.error("Failed telegram: {}", ex.getMessage()); }
+        }
     }
 
     private Map<String, BigDecimal> fetchTodayPriceUsingPredictionService(List<String> tokens) {
@@ -230,9 +420,6 @@ public class FuturesStrategyService {
             int endIndex = Math.min(i + BATCH_SIZE, tokens.size());
             List<String> batch = tokens.subList(i, endIndex);
             
-            logger.debug("Processing batch {}/{}: tokens {} to {}", 
-                    (i / BATCH_SIZE) + 1, (tokens.size() + BATCH_SIZE - 1) / BATCH_SIZE, i + 1, endIndex);
-
             try {
                 SmartConnect smartconnect = angelOne.signIn();
                 JSONObject payload = predictionService.buildMarketDataPayload(batch, EXCHANGE);
@@ -259,25 +446,16 @@ public class FuturesStrategyService {
                             priceMap.put(token, new BigDecimal(obj.get("ltp").toString()));
                         }
                     }
-                } else {
-                    logger.warn("Empty or null response for batch starting at index {}", i);
                 }
 
                 if (endIndex < tokens.size()) {
                     Thread.sleep(200);
                 }
-            } catch (JSONException e) {
-                logger.error("JSON error processing batch starting at index {}: {}", i, e.getMessage());
-            } catch (SmartAPIException e) {
-                logger.error("SmartAPI error for batch starting at index {}: {}", i, e.getMessage());
             } catch (Exception e) {
                 logger.error("Error fetching prices for batch starting at index {}: {}", i, e.getMessage());
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                    logger.error("Interrupted while processing batches");
-                    break;
-                }
-            }
+            } catch (SmartAPIException e) {
+            	 logger.error("Error fetching prices for batch starting at index {}: {}", i, e.getMessage());
+			}
         }
 
         logger.info("Successfully fetched prices for {}/{} tokens", priceMap.size(), tokens.size());
@@ -374,177 +552,6 @@ public class FuturesStrategyService {
         return configRepo.findAll();
     }
 
-    private void runBreakoutScan(Map<String, BigDecimal> ltpMap, Map<String, Indexes> indexByName) {
-        List<FuturesFilter> filters = filterRepo.findAll();
-        if (filters.isEmpty()) return;
-
-        SmartConnect smartConnect = angelOne.signIn();
-        if (smartConnect == null) {
-            logger.error("Failed to sign in for breakout scan");
-            return;
-        }
-
-        List<FuturesBreakEvent> detectedEvents = new ArrayList<>();
-
-        for (FuturesFilter f : filters) {
-            Indexes idx = indexByName.get(f.getName());
-            if (idx == null) continue;
-
-            BigDecimal ltp = ltpMap.get(idx.getToken());
-            if (ltp == null) continue;
-            if (!isNearExpiryStructure(f, ltp)) continue;
-
-            try {
-                JSONArray candles = fetchOneHourCandle(smartConnect, idx);
-                if (candles == null || candles.isEmpty()) continue;
-
-                JSONArray last = candles.getJSONArray(candles.length() - 1);
-                BigDecimal hourClose = last.getBigDecimal(4);
-                LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
-
-                if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
-                    FuturesBreakEvent event = createBreakEvent(f, hourClose, "BREAKOUT", hourEnd);
-                    if (event != null) detectedEvents.add(event);
-                }
-
-                if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
-                    FuturesBreakEvent event = createBreakEvent(f, hourClose, "BREAKDOWN", hourEnd);
-                    if (event != null) detectedEvents.add(event);
-                }
-            } catch (Exception e) {
-                logger.error("Breakout scan failed for {}: {}", f.getName(), e.getMessage());
-            }
-        }
-
-        sendBreakoutNotifications(detectedEvents);
-    }
-    
-    private boolean isNearExpiryStructure(FuturesFilter f, BigDecimal ltp) {
-        BigDecimal proximity = new BigDecimal("0.005");
-        if ("UP".equals(f.getDirection())) {
-            return percentDiff(ltp, f.getLastExpiryHigh()).compareTo(proximity) <= 0;
-        }
-        if ("DOWN".equals(f.getDirection())) {
-            return percentDiff(ltp, f.getLastExpiryLow()).compareTo(proximity) <= 0;
-        }
-        return false;
-    }
-
-    private BigDecimal percentDiff(BigDecimal price, BigDecimal level) {
-        return price.subtract(level).abs().divide(level, 6, RoundingMode.HALF_UP);
-    }
-
-    private JSONArray fetchOneHourCandle(SmartConnect smartConnect, Indexes idx) throws Exception {
-        LocalDateTime[] window = resolveNseOneHourWindow();
-        JSONObject req = new JSONObject();
-        req.put("exchange", idx.getExchange());
-        req.put("symboltoken", idx.getToken());
-        req.put("interval", "ONE_HOUR");
-        req.put("fromdate", window[0].toString().replace("T", " "));
-        req.put("todate", window[1].toString().replace("T", " "));
-        return smartConnect.candleData(req);
-    }
-    
-    private FuturesBreakEvent createBreakEvent(FuturesFilter f, BigDecimal hourClose, 
-            String breakType, LocalDateTime hourEnd) {
-        LocalDate today = hourEnd.toLocalDate();
-        
-        if (futuresBreakEventRepo.existsByNameAndIndexTypeAndBreakTypeAndBreakDate(
-                f.getName(), f.getIndexType(), breakType, today)) {
-            return null;
-        }
-
-        FuturesBreakEvent event = new FuturesBreakEvent();
-        event.setName(f.getName());
-        event.setIndexType(f.getIndexType());
-        event.setBreakType(breakType);
-        
-        if ("BREAKOUT".equals(breakType)) {
-            event.setReferenceLevel(f.getLastExpiryHigh());
-            event.setStopLoss(f.getLastExpiryLow());
-        } else {
-            event.setReferenceLevel(f.getLastExpiryLow());
-            event.setStopLoss(f.getLastExpiryHigh());
-        }
-        
-        event.setBreakPrice(hourClose);
-        event.setBreakDate(today);
-        event.setBreakTime(hourEnd);
-        event.setPercentMove(f.getPercentMove());
-        event.setRangePercent(f.getRangePercent());
-        
-        try {
-            FuturesBreakEvent saved = futuresBreakEventRepo.save(event);
-            logger.info("{} saved for {} | Entry={} | SL={}", breakType, f.getName(), hourClose, event.getStopLoss());
-            return saved;
-        } catch (Exception e) {
-            logger.warn("Duplicate {} prevented for {} on {}", breakType, f.getName(), today);
-            return null;
-        }
-    }
-
-    private void sendBreakoutNotifications(List<FuturesBreakEvent> events) {
-        if (events.isEmpty()) return;
-        
-        final int TELEGRAM_LIMIT = 3800;
-        List<FuturesBreakEvent> breakouts = events.stream().filter(e -> "BREAKOUT".equals(e.getBreakType())).toList();
-        List<FuturesBreakEvent> breakdowns = events.stream().filter(e -> "BREAKDOWN".equals(e.getBreakType())).toList();
-        
-        if (!breakouts.isEmpty()) {
-            String header = "🚀 *BREAKOUT ALERTS*\n\n```\n" +
-                    String.format("%-12s | %8s | %8s | %7s%n", "NAME", "ENTRY", "SL", "RANGE%") +
-                    "-----------------------------------------------\n";
-            String footer = "```\n";
-            StringBuilder batch = new StringBuilder(header);
-            
-            for (FuturesBreakEvent e : breakouts) {
-                String row = String.format("%-12s | %8.2f | %8.2f | %6.2f%%%n",
-                        e.getName(), e.getBreakPrice(), e.getStopLoss(), e.getRangePercent());
-                if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
-                    batch.append(footer);
-                    try { telegramService.sendBroadcast(batch.toString()); } 
-                    catch (Exception ex) { logger.error("Failed to send breakout telegram: {}", ex.getMessage()); }
-                    batch = new StringBuilder(header);
-                }
-                batch.append(row);
-            }
-            
-            if (batch.length() > header.length()) {
-                batch.append(footer);
-                try { telegramService.sendBroadcast(batch.toString()); } 
-                catch (Exception ex) { logger.error("Failed to send breakout telegram: {}", ex.getMessage()); }
-            }
-            logger.info("Sent {} breakout alerts", breakouts.size());
-        }
-        
-        if (!breakdowns.isEmpty()) {
-            String header = "📉 *BREAKDOWN ALERTS*\n\n```\n" +
-                    String.format("%-12s | %8s | %8s | %7s%n", "NAME", "ENTRY", "SL", "RANGE%") +
-                    "-----------------------------------------------\n";
-            String footer = "```\n";
-            StringBuilder batch = new StringBuilder(header);
-            
-            for (FuturesBreakEvent e : breakdowns) {
-                String row = String.format("%-12s | %8.2f | %8.2f | %6.2f%%%n",
-                        e.getName(), e.getBreakPrice(), e.getStopLoss(), e.getRangePercent());
-                if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
-                    batch.append(footer);
-                    try { telegramService.sendBroadcast(batch.toString()); } 
-                    catch (Exception ex) { logger.error("Failed to send breakdown telegram: {}", ex.getMessage()); }
-                    batch = new StringBuilder(header);
-                }
-                batch.append(row);
-            }
-            
-            if (batch.length() > header.length()) {
-                batch.append(footer);
-                try { telegramService.sendBroadcast(batch.toString()); } 
-                catch (Exception ex) { logger.error("Failed to send breakdown telegram: {}", ex.getMessage()); }
-            }
-            logger.info("Sent {} breakdown alerts", breakdowns.size());
-        }
-    }
-
     private LocalDateTime[] resolveNseOneHourWindow() {
         ZoneId IST = ZoneId.of("Asia/Kolkata");
         LocalDate today = LocalDate.now(IST);
@@ -561,5 +568,13 @@ public class FuturesStrategyService {
 
         logger.info("1H Window: from={}, to={}", from, to);
         return new LocalDateTime[]{from, to};
+    }
+    
+    public List<FuturesBreakEvent> getAllBreakEvents() {
+        return futuresBreakEventRepo.findAll();
+    }
+
+    public List<FuturesBreakEvent> getBreakEventsByDate(LocalDate date) {
+        return futuresBreakEventRepo.findByBreakDate(date);
     }
 }
