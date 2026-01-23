@@ -2,6 +2,7 @@ package com.crumbs.trade.repo;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -51,4 +52,9 @@ public interface FuturesBreakEventRepo
     List<FuturesBreakEvent> findByIndexType(String indexType);
     
     List<FuturesBreakEvent> findByBreakDateAndIndexType(LocalDate breakDate, String indexType);
+    
+ // ✅ Find active signal for a stock
+    Optional<FuturesBreakEvent> findByNameAndBreakTypeAndBreakDateAndStatus(
+            String name, String breakType, LocalDate breakDate, String status);
+    
 }

@@ -211,6 +211,11 @@ public class FuturesStrategyService {
             return;
         }
 
+        // ✅ Get all futures for primary index type lookup
+        List<Futures> futuresList = futuresRepo.findAll();
+        Map<String, Futures> futuresMap = futuresList.stream()
+                .collect(Collectors.toMap(Futures::getName, f -> f));
+
         List<FuturesBreakEvent> detectedEvents = new ArrayList<>();
 
         for (FuturesFilter f : filters) {
@@ -229,35 +234,45 @@ public class FuturesStrategyService {
                 BigDecimal hourClose = last.getBigDecimal(4);
                 LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
 
+                // ✅ Get the primary index type from FUTURES table
+                Futures futures = futuresMap.get(f.getName());
+                String primaryIndexType = determinePrimaryIndexType(futures);
+
                 if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
-                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd);
-                    if (event != null) detectedEvents.add(event);
+                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd, primaryIndexType);
+                    if (event != null) {
+                        event.setCurrentPrice(ltp); // Set current LTP for tracking
+                        detectedEvents.add(event);
+                    }
                 }
 
                 if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
-                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd);
-                    if (event != null) detectedEvents.add(event);
+                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd, primaryIndexType);
+                    if (event != null) {
+                        event.setCurrentPrice(ltp); // Set current LTP for tracking
+                        detectedEvents.add(event);
+                    }
                 }
             } catch (Exception e) {
                 logger.error("Breakout scan failed for {}: {}", f.getName(), e.getMessage());
             }
         }
 
-        // ✅ Deduplicate, save, and send notifications ONLY for saved events
+        // ✅ Deduplicate, save, and send notifications ONLY for saved events with notification enabled
         if (!detectedEvents.isEmpty()) {
             List<FuturesBreakEvent> savedEvents = saveAllBreakEventsWithDedup(detectedEvents);
             if (!savedEvents.isEmpty()) {
-                sendBreakoutNotifications(savedEvents);
+                sendBreakoutNotificationsWithConfig(savedEvents);
             }
         }
     }
 
-    // ✅ NEW: Deduplicate in-memory, check DB, save and return ONLY saved events
+    // ✅ NEW: Track and update existing break events, calculate % from break price
     @Transactional
     public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
         LocalDate today = LocalDate.now();
         
-        // Step 1: Deduplicate in-memory by name + breakType + date (ignore indexType)
+        // Step 1: Deduplicate in-memory by name + breakType + date
         Map<String, FuturesBreakEvent> uniqueMap = new LinkedHashMap<>();
         
         for (FuturesBreakEvent event : events) {
@@ -265,48 +280,123 @@ public class FuturesStrategyService {
             
             if (!uniqueMap.containsKey(key)) {
                 uniqueMap.put(key, event);
-                logger.debug("Added to unique map: {} {} {}", event.getName(), event.getBreakType(), today);
-            } else {
-                logger.debug("Duplicate in batch skipped: {} {} {} (indexType={})", 
+                logger.debug("Added to unique map: {} {} {} (indexType={})", 
                     event.getName(), event.getBreakType(), today, event.getIndexType());
             }
         }
         
-        // Step 2: Filter out events that already exist in DB (check without indexType)
-        List<FuturesBreakEvent> eventsToSave = new ArrayList<>();
+        // Step 2: Check existing records and update or create new
+        List<FuturesBreakEvent> savedEvents = new ArrayList<>();
         
-        for (FuturesBreakEvent event : uniqueMap.values()) {
-            boolean existsInDb = futuresBreakEventRepo.existsByNameAndBreakTypeAndBreakDate(
-                    event.getName(), event.getBreakType(), today);
+        for (FuturesBreakEvent newEvent : uniqueMap.values()) {
+            // Check if active signal already exists
+            Optional<FuturesBreakEvent> existingActive = futuresBreakEventRepo
+                    .findByNameAndBreakTypeAndBreakDateAndStatus(
+                            newEvent.getName(), newEvent.getBreakType(), today, "ACTIVE");
             
-            if (!existsInDb) {
-                eventsToSave.add(event);
-                logger.info("Will save: {} {} {}", event.getName(), event.getBreakType(), today);
+            if (existingActive.isPresent()) {
+                // Update existing active record
+                FuturesBreakEvent existing = existingActive.get();
+                updateBreakEvent(existing, newEvent);
+                FuturesBreakEvent updated = futuresBreakEventRepo.save(existing);
+                savedEvents.add(updated);
+                logger.info("✅ Updated active signal: {} {} {} (PnL: {}%)", 
+                        updated.getName(), updated.getBreakType(), today, updated.getPercentMove());
             } else {
-                logger.info("Already exists in DB, skipped: {} {} {}", 
-                    event.getName(), event.getBreakType(), today);
+                // Check if inactive signal exists (don't allow new signal same day if SL hit)
+                boolean inactiveExists = futuresBreakEventRepo.existsByNameAndBreakTypeAndBreakDate(
+                        newEvent.getName(), newEvent.getBreakType(), today);
+                
+                if (!inactiveExists) {
+                    // Create new signal
+                    newEvent.setStatus("ACTIVE");
+                    newEvent.setCurrentPrice(newEvent.getBreakPrice()); // Initial current price
+                    FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
+                    savedEvents.add(saved);
+                    logger.info("✅ New signal created: {} {} {} at {}", 
+                            saved.getName(), saved.getBreakType(), today, saved.getBreakPrice());
+                } else {
+                    logger.info("Inactive signal exists for {} {} {}, skipping new entry", 
+                            newEvent.getName(), newEvent.getBreakType(), today);
+                }
             }
         }
         
-        // Step 3: Save only new unique events and return them
-        if (!eventsToSave.isEmpty()) {
-            List<FuturesBreakEvent> saved = futuresBreakEventRepo.saveAllAndFlush(eventsToSave);
-            logger.info("✅ Saved {} unique break events for {}", saved.size(), today);
-            return saved;
-        } else {
-            logger.info("No new events to save for {}", today);
-            return new ArrayList<>();
+        logger.info("✅ Processed {} break events for {}", savedEvents.size(), today);
+        return savedEvents;
+    }
+
+    // ✅ NEW: Update existing break event with current price and check SL
+    private void updateBreakEvent(FuturesBreakEvent existing, FuturesBreakEvent newData) {
+        // Update current price
+        existing.setCurrentPrice(newData.getCurrentPrice());
+        
+        // ✅ Update percentMove from filter (already calculated from expiry close to current)
+        existing.setPercentMove(newData.getPercentMove());
+        
+        // Check if stop loss is hit
+        boolean slHit = checkStopLoss(existing);
+        
+        if (slHit) {
+            existing.setStatus("INACTIVE");
+            existing.setExitReason("SL_HIT");
+            existing.setExitPrice(existing.getCurrentPrice());
+            existing.setExitDate(LocalDateTime.now());
+            logger.warn("❌ Stop Loss Hit: {} {} | Entry={} | Exit={} | %Move={}%", 
+                    existing.getName(), existing.getBreakType(), 
+                    existing.getBreakPrice(), existing.getExitPrice(), existing.getPercentMove());
         }
     }
 
-    // ✅ Non-saving version for detection phase
+    // ✅ NEW: Calculate % move from entry (break price) to current price
+    private BigDecimal calculatePercentMove(BigDecimal entryPrice, BigDecimal currentPrice) {
+        if (entryPrice == null || entryPrice.compareTo(BigDecimal.ZERO) == 0 || currentPrice == null) {
+            return BigDecimal.ZERO;
+        }
+        return currentPrice.subtract(entryPrice)
+                .divide(entryPrice, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100));
+    }
+
+    // ✅ NEW: Check if stop loss is hit
+    private boolean checkStopLoss(FuturesBreakEvent event) {
+        if (event.getCurrentPrice() == null || event.getStopLoss() == null) {
+            return false;
+        }
+        
+        if ("BREAKOUT".equals(event.getBreakType())) {
+            // For breakout (long), SL is below entry
+            return event.getCurrentPrice().compareTo(event.getStopLoss()) <= 0;
+        } else if ("BREAKDOWN".equals(event.getBreakType())) {
+            // For breakdown (short), SL is above entry
+            return event.getCurrentPrice().compareTo(event.getStopLoss()) >= 0;
+        }
+        
+        return false;
+    }
+
+    // ✅ NEW: Determine primary index type based on FUTURES table hierarchy
+    private String determinePrimaryIndexType(Futures futures) {
+        if (futures == null) return "NIFTY_500"; // Default fallback
+        
+        // Priority: NIFTY_50 > NIFTY_NEXT_50 > NIFTY_100 > NIFTY_200 > NIFTY_500
+        if (Boolean.TRUE.equals(futures.getIsNifty50())) return "NIFTY_50";
+        if (Boolean.TRUE.equals(futures.getIsNiftyNext50())) return "NIFTY_NEXT_50";
+        if (Boolean.TRUE.equals(futures.getIsNifty100())) return "NIFTY_100";
+        if (Boolean.TRUE.equals(futures.getIsNifty200())) return "NIFTY_200";
+        if (Boolean.TRUE.equals(futures.getIsNifty500())) return "NIFTY_500";
+        
+        return "NIFTY_500"; // Default fallback
+    }
+
+    // ✅ Updated: Now accepts primaryIndexType parameter from FUTURES table
     private FuturesBreakEvent createBreakEventNoSave(FuturesFilter f, BigDecimal hourClose, 
-            String breakType, LocalDateTime hourEnd) {
+            String breakType, LocalDateTime hourEnd, String primaryIndexType) {
         LocalDate today = hourEnd.toLocalDate();
         
         FuturesBreakEvent event = new FuturesBreakEvent();
         event.setName(f.getName());
-        event.setIndexType(f.getIndexType());
+        event.setIndexType(primaryIndexType); // ✅ Use primary index from FUTURES table
         event.setBreakType(breakType);
         
         if ("BREAKOUT".equals(breakType)) {
@@ -317,14 +407,18 @@ public class FuturesStrategyService {
             event.setStopLoss(f.getLastExpiryHigh());
         }
         
-        event.setBreakPrice(hourClose);
+        event.setBreakPrice(hourClose); // Entry price
+        event.setCurrentPrice(hourClose); // Initial current price = entry price
         event.setBreakDate(today);
         event.setBreakTime(hourEnd);
-        event.setPercentMove(f.getPercentMove());
-        event.setRangePercent(f.getRangePercent());
+        event.setRangePercent(f.getRangePercent()); // Original expiry day range
         
-        logger.info("✅ Detected {} for {} | Entry={} | SL={}", 
-                breakType, f.getName(), hourClose, event.getStopLoss());
+        // ✅ Use percentMove from filter (calculated from expiry close to current LTP)
+        event.setPercentMove(f.getPercentMove());
+        event.setStatus("ACTIVE");
+        
+        logger.info("✅ Detected {} for {} (indexType={}) | Entry={} | SL={} | %Move={}%", 
+                breakType, f.getName(), primaryIndexType, hourClose, event.getStopLoss(), event.getPercentMove());
         return event;
     }
 
@@ -370,6 +464,46 @@ public class FuturesStrategyService {
         return smartConnect.candleData(req);
     }
 
+    private void sendBreakoutNotificationsWithConfig(List<FuturesBreakEvent> events) {
+        if (events.isEmpty()) return;
+        
+        // Get all active configs with notification settings
+        Map<String, FuturesConfig> configMap = configRepo.findByActive("Y").stream()
+                .collect(Collectors.toMap(FuturesConfig::getIndexType, c -> c));
+        
+        // Group events by index type
+        Map<String, List<FuturesBreakEvent>> eventsByIndex = events.stream()
+                .collect(Collectors.groupingBy(FuturesBreakEvent::getIndexType));
+        
+        // Send notifications for each index type if notification is required
+        eventsByIndex.forEach((indexType, indexEvents) -> {
+            FuturesConfig config = configMap.get(indexType);
+            
+            // Check if notification is required for this index type
+            if (config == null || !"Y".equalsIgnoreCase(config.getNotificationRequired())) {
+                logger.info("Notifications disabled for {}. Skipping {} events.", indexType, indexEvents.size());
+                return;
+            }
+            
+            List<FuturesBreakEvent> breakouts = indexEvents.stream()
+                    .filter(e -> "BREAKOUT".equals(e.getBreakType()))
+                    .toList();
+            List<FuturesBreakEvent> breakdowns = indexEvents.stream()
+                    .filter(e -> "BREAKDOWN".equals(e.getBreakType()))
+                    .toList();
+            
+            if (!breakouts.isEmpty()) {
+                sendTelegramBatch("🚀 *BREAKOUT ALERTS - " + indexType + "*", breakouts);
+                logger.info("Sent {} breakout alerts for {}", breakouts.size(), indexType);
+            }
+            
+            if (!breakdowns.isEmpty()) {
+                sendTelegramBatch("📉 *BREAKDOWN ALERTS - " + indexType + "*", breakdowns);
+                logger.info("Sent {} breakdown alerts for {}", breakdowns.size(), indexType);
+            }
+        });
+    }
+
     private void sendBreakoutNotifications(List<FuturesBreakEvent> events) {
         if (events.isEmpty()) return;
         
@@ -400,15 +534,16 @@ public class FuturesStrategyService {
 
     private void sendTelegramBatch(String headerText, List<FuturesBreakEvent> events) {
         String header = headerText + "\n\n```\n" +
-                String.format("%-12s | %8s | %8s | %7s%n", "NAME", "ENTRY", "SL", "RANGE%") +
-                "-----------------------------------------------\n";
+                String.format("%-8s | %-12s | %8s | %8s%n", "SIGNAL", "STOCK", "ENTRY", "SL") +
+                "---------------------------------------------------\n";
         String footer = "```\n";
         StringBuilder batch = new StringBuilder(header);
         final int TELEGRAM_LIMIT = 3800;
         
         for (FuturesBreakEvent e : events) {
-            String row = String.format("%-12s | %8.2f | %8.2f | %6.2f%%%n",
-                    e.getName(), e.getBreakPrice(), e.getStopLoss(), e.getRangePercent());
+            String signal = "BREAKOUT".equals(e.getBreakType()) ? "BUY" : "SELL";
+            String row = String.format("%-8s | %-12s | %8.2f | %8.2f%n",
+                    signal, e.getName(), e.getBreakPrice(), e.getStopLoss());
             if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
                 batch.append(footer);
                 try { telegramService.sendBroadcast(batch.toString()); } 

@@ -3,6 +3,7 @@ package com.crumbs.trade.entity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -20,28 +21,26 @@ public class FuturesBreakEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    // Stock identification
     @Column(nullable = false)
     private String name;
     
     @Column(name = "index_type", nullable = false)
     private String indexType;
     
-    // Breakout/Breakdown type
     @Column(name = "break_type", nullable = false)
-    private String breakType;  // 'BREAKOUT' or 'BREAKDOWN'
+    private String breakType;
     
-    // Reference level (expiry high or low)
     @Column(name = "reference_level")
     private BigDecimal referenceLevel;
     
-    // Stop loss (opposite level)
     @Column(name = "stop_loss")
     private BigDecimal stopLoss;
     
-    // Break details
     @Column(name = "break_price")
-    private BigDecimal breakPrice;  // 1H candle close that triggered
+    private BigDecimal breakPrice;
+    
+    @Column(name = "current_price")
+    private BigDecimal currentPrice;
     
     @Column(name = "break_date", nullable = false)
     private LocalDate breakDate;
@@ -49,19 +48,41 @@ public class FuturesBreakEvent {
     @Column(name = "break_time")
     private LocalDateTime breakTime;
     
-    // Metrics from futures_filter
     @Column(name = "percent_move")
     private BigDecimal percentMove;
     
     @Column(name = "range_percent")
     private BigDecimal rangePercent;
     
-    // Timestamps
+    @Column(name = "status", length = 20)
+    private String status;
+    
+    @Column(name = "exit_reason", length = 50)
+    private String exitReason;
+    
+    @Column(name = "exit_price")
+    private BigDecimal exitPrice;
+    
+    @Column(name = "exit_date")
+    private LocalDateTime exitDate;
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
     
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+        if (status == null) {
+            status = "ACTIVE";
+        }
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

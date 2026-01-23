@@ -855,14 +855,14 @@
         </div>
         <div class="stats">
           <div class="stat-item">
-            <span>📈</span>
-            <span>Breakouts:</span>
-            <strong id="breakoutCount">0</strong>
+            <span>✓</span>
+            <span>Active:</span>
+            <strong id="activeCount">0</strong>
           </div>
           <div class="stat-item">
-            <span>📉</span>
-            <span>Breakdowns:</span>
-            <strong id="breakdownCount">0</strong>
+            <span>✗</span>
+            <span>Inactive:</span>
+            <strong id="inactiveCount">0</strong>
           </div>
           <div class="stat-item">
             <span>👁️</span>
@@ -875,6 +875,11 @@
       <div class="data-section">
         <div class="data-controls-row">
           <div class="data-controls-left">
+            <select class="filter-select" id="statusFilter" onchange="filterBreakoutData()">
+              <option value="all">All Status</option>
+              <option value="ACTIVE" selected>Active Only</option>
+              <option value="INACTIVE">Inactive Only</option>
+            </select>
             <select class="filter-select" id="breakTypeFilter" onchange="filterBreakoutData()">
               <option value="all">All Types</option>
               <option value="BREAKOUT">Breakouts Only</option>
@@ -1368,6 +1373,7 @@
           <table>
             <thead>
               <tr>
+                <th>#</th>
                 ${columns.map(col => {
                   const tooltip = getColumnTooltip(col);
                   return `
@@ -1388,8 +1394,9 @@
               </tr>
             </thead>
             <tbody>
-              ${paginatedData.map(row => `
+              ${paginatedData.map((row, index) => `
                 <tr>
+                  <td>${startIndex + index + 1}</td>
                   ${columns.map(col => `<td>${formatCellValue(col, row[col])}</td>`).join('')}
                 </tr>
               `).join('')}
@@ -1603,7 +1610,9 @@
         }
 
         window.breakoutFullData = data;
-        window.breakoutFilteredData = data.filter(item => item.indexType === window.breakoutCurrentIndex);
+        window.breakoutFilteredData = data.filter(item => 
+          item.indexType === window.breakoutCurrentIndex && item.status === 'ACTIVE'
+        );
         window.breakoutCurrentPage = 1;
         renderBreakoutTable();
         document.getElementById('boPaginationContainer').style.display = 'block';
@@ -1628,8 +1637,13 @@
 
       const searchTerm = document.getElementById('boSearchBox').value.toLowerCase();
       const breakTypeFilter = document.getElementById('breakTypeFilter').value;
+      const statusFilter = document.getElementById('statusFilter').value;
 
       let filtered = window.breakoutFullData.filter(item => item.indexType === window.breakoutCurrentIndex);
+
+      if (statusFilter !== 'all') {
+        filtered = filtered.filter(item => item.status === statusFilter);
+      }
 
       if (breakTypeFilter !== 'all') {
         filtered = filtered.filter(item => item.breakType === breakTypeFilter);
@@ -1733,13 +1747,14 @@
         return '';
       };
 
-      const columns = ['name', 'breakType', 'referenceLevel', 'breakPrice', 'stopLoss', 'breakDate', 'breakTime', 'percentMove', 'rangePercent'];
+      const columns = ['name', 'breakType', 'status', 'referenceLevel', 'breakPrice', 'stopLoss', 'breakDate', 'percentMove', 'rangePercent'];
 
       let tableHTML = `
         <div class="table-container">
           <table>
             <thead>
               <tr>
+                <th>#</th>
                 ${columns.map(col => {
                   const tooltip = getBreakoutColumnTooltip(col);
                   return `
@@ -1760,8 +1775,9 @@
               </tr>
             </thead>
             <tbody>
-              ${paginatedData.map(row => `
+              ${paginatedData.map((row, index) => `
                 <tr>
+                  <td>${startIndex + index + 1}</td>
                   ${columns.map(col => `<td>${formatBreakoutCellValue(col, row[col])}</td>`).join('')}
                 </tr>
               `).join('')}
@@ -1786,17 +1802,17 @@
     }
 
     function updateBreakoutStats() {
-      const breakoutCountElem = document.getElementById('breakoutCount');
-      const breakdownCountElem = document.getElementById('breakdownCount');
+      const activeCountElem = document.getElementById('activeCount');
+      const inactiveCountElem = document.getElementById('inactiveCount');
       const showingCountElem = document.getElementById('boShowingCount');
 
       if (window.breakoutFullData) {
         const indexData = window.breakoutFullData.filter(item => item.indexType === window.breakoutCurrentIndex);
-        const breakoutCount = indexData.filter(item => item.breakType === 'BREAKOUT').length;
-        const breakdownCount = indexData.filter(item => item.breakType === 'BREAKDOWN').length;
+        const activeCount = indexData.filter(item => item.status === 'ACTIVE').length;
+        const inactiveCount = indexData.filter(item => item.status === 'INACTIVE').length;
 
-        if (breakoutCountElem) breakoutCountElem.textContent = breakoutCount;
-        if (breakdownCountElem) breakdownCountElem.textContent = breakdownCount;
+        if (activeCountElem) activeCountElem.textContent = activeCount;
+        if (inactiveCountElem) inactiveCountElem.textContent = inactiveCount;
       }
 
       if (showingCountElem) showingCountElem.textContent = window.breakoutFilteredData ? window.breakoutFilteredData.length : 0;
@@ -1806,11 +1822,11 @@
       const nameMap = {
         'name': 'Stock Name',
         'breakType': 'Type',
+        'status': 'Status',
         'referenceLevel': 'Reference Level',
-        'stopLoss': 'Stop Loss',
         'breakPrice': 'Break Price',
-        'breakDate': 'Break Date',
-        'breakTime': 'Break Time',
+        'stopLoss': 'Stop Loss',
+        'breakDate': 'Break Date/Time',
         'percentMove': '% Move',
         'rangePercent': 'Range %'
       };
@@ -1825,11 +1841,11 @@
       const tooltips = {
         'name': 'Stock symbol/name',
         'breakType': 'Type of break: BREAKOUT (price moved above expiry high) or BREAKDOWN (price moved below expiry low)',
+        'status': 'Signal status: ACTIVE (being tracked) or INACTIVE (closed/SL hit)',
         'referenceLevel': 'Entry trigger level - expiry high for breakout, expiry low for breakdown',
+        'breakPrice': 'Entry price - the hourly candle close that triggered the breakout/breakdown',
         'stopLoss': 'Stop loss level - expiry low for breakout, expiry high for breakdown',
-        'breakPrice': 'Actual price at which the breakout/breakdown occurred (hourly candle close)',
-        'breakDate': 'Date when breakout/breakdown was detected',
-        'breakTime': 'Time when breakout/breakdown occurred (hourly candle close time)',
+        'breakDate': 'Date and time when breakout/breakdown occurred',
         'percentMove': 'Percentage change in price from last expiry close to current trading price',
         'rangePercent': 'Intraday price range percentage on expiry day - indicates how volatile the stock was'
       };
@@ -1845,23 +1861,37 @@
           : `<span class="breakdown-badge">BREAKDOWN</span>`;
       }
 
-      if (column === 'breakDate') {
-        return formatExpiryDate(value);
-      }
-
-      if (column === 'breakTime') {
-        return formatCurrentLTPDate(value);
-      }
-
-      if (column === 'percentMove' || column === 'rangePercent') {
-        const num = parseFloat(value);
-        if (!isNaN(num)) {
-          const className = num >= 0 ? 'positive' : 'negative';
-          return `<span class="${className}">${num.toFixed(2)}%</span>`;
+      if (column === 'status') {
+        if (value === 'ACTIVE') {
+          return `<span class="positive" style="font-weight: 700;">✓ ACTIVE</span>`;
+        } else {
+          return `<span class="negative" style="font-weight: 700;">✗ INACTIVE</span>`;
         }
       }
 
-      if (column.toLowerCase().includes('price') || column.toLowerCase().includes('level') || column.toLowerCase().includes('loss')) {
+      if (column === 'breakDate') {
+        // For breakDate, we'll show the combined date and time from breakTime if available
+        // The API should return breakTime in the response
+        return formatCurrentLTPDate(value);
+      }
+
+      if (column === 'percentMove') {
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          const className = num >= 0 ? 'positive' : 'negative';
+          const sign = num >= 0 ? '+' : '';
+          return `<span class="${className}" style="font-weight: 700;">${sign}${num.toFixed(2)}%</span>`;
+        }
+      }
+
+      if (column === 'rangePercent') {
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          return `${num.toFixed(2)}%`;
+        }
+      }
+
+      if (column === 'breakPrice' || column.toLowerCase().includes('price') || column.toLowerCase().includes('level') || column.toLowerCase().includes('loss')) {
         const num = parseFloat(value);
         if (!isNaN(num)) return num.toFixed(2);
       }
