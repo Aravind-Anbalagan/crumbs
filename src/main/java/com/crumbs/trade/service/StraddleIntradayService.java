@@ -47,6 +47,7 @@ import com.crumbs.trade.repo.CandleRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.StraddleIntradayRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.ConditionalLogger;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
 import jakarta.transaction.Transactional;
@@ -54,8 +55,10 @@ import jakarta.transaction.Transactional;
 @Service
 public class StraddleIntradayService {
 
-	private static final Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
-
+	  // NEW CODE:
+    private static final Logger baseLogger = LoggerFactory.getLogger(StraddleIntradayService.class);
+    private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
+    
 	@Autowired
 	private PredictionService predictionService;
 	@Autowired
@@ -99,6 +102,7 @@ public class StraddleIntradayService {
 
 	// name → date when strikes were built
 	private final Map<String, LocalDate> strikeInitDate = new HashMap<>();
+	private final Map<String, Map<String, BigDecimal>> prevCloseMap = new HashMap<>();
 
 	
 	
@@ -122,6 +126,11 @@ public class StraddleIntradayService {
 				logger.error("Strategy not found: {}", name);
 				return;
 			}
+			// =====================================================
+            // 🔥 NEW: Set logging flag based on strategy
+            // =====================================================
+            logger.setLoggingEnabled(strategy);
+            
 			BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
 
 			// VALIDATION: Check if spot price is valid
@@ -159,7 +168,19 @@ public class StraddleIntradayService {
 			logger.info("Found {} strikes with valid tokens out of {}", 
 				validTokenCount, strikeList.size());
 
-		
+			// Check if THIS STRATEGY has cached prev close data
+			Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(name);
+
+			// Fetch previous day close ONLY if this strategy hasn't been fetched yet today
+			if (strategyCloseCache == null || strategyCloseCache.isEmpty()) {
+			    
+			    logger.info("Fetching previous day close for strategy: {} (one-time fetch)", name);
+			    fetchPreviousDayCloseForAllStrikes(strikeList, smartconnect, strategy);
+			} else {
+			    // Populate DTOs from cache for this strategy
+			    logger.debug("Using cached previous day close data for strategy: {}", name);
+			    populatePrevCloseFromCache(strikeList, name);
+			}
 	        
 			strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect,strategy.getExchange());
 			
@@ -514,6 +535,9 @@ public class StraddleIntradayService {
 			entity.setCePrevLow(dto.getCePrevLow());
 			entity.setPePrevHigh(dto.getPePrevHigh());
 			entity.setPePrevLow(dto.getPePrevLow());
+			entity.setCePrevClose(dto.getCePrevClose());
+			entity.setPePrevClose(dto.getPePrevClose());
+			entity.setCombinedPrevClose(dto.getCombinedPrevClose());
 			
 			 // ✅ CALCULATE COMBINED IV
 	        BigDecimal combinedIV = calculateCombinedIV(dto.getCeIv(), dto.getPeIv());
@@ -875,7 +899,7 @@ public class StraddleIntradayService {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
 				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			));
+			,null,null,null));
 			pt.setCe(r.getCePrice());
 			pt.setCeOpen(r.getCeOpenPrice());
 			pt.setCeExtrinsic(r.getCeExtrinsic());
@@ -888,7 +912,7 @@ public class StraddleIntradayService {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
 				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			));
+			,null,null,null));
 			pt.setPe(r.getPePrice());
 			pt.setPeOpen(r.getPeOpenPrice());
 			pt.setPeExtrinsic(r.getPeExtrinsic());
@@ -901,10 +925,35 @@ public class StraddleIntradayService {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
 				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			));
+			,null,null,null));
 			pt.setSpot(r.getSpot());
 		}
+		// Populate prev close from database
+		for (StraddleIntraday r : ceRows) {
+		    String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+		    CombinedChartPoint pt = map.get(key);
+		    if (pt != null) {
+		        pt.setCePrevClose(r.getCePrevClose());
+		    }
+		}
 
+		for (StraddleIntraday r : peRows) {
+		    String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
+		    CombinedChartPoint pt = map.get(key);
+		    if (pt != null) {
+		        pt.setPePrevClose(r.getPePrevClose());
+		    }
+		}
+
+		// Calculate combined prev close in derived values section (after existing calculations)
+		for (CombinedChartPoint pt : map.values()) {
+		    // ... existing calculations ...
+		    
+		    // 🆕 ADD THIS:
+		    if (pt.getCePrevClose() != null && pt.getPePrevClose() != null) {
+		        pt.setCombinedPrevClose(pt.getCePrevClose().add(pt.getPePrevClose()));
+		    }
+		}
 		// Derived values
 		for (CombinedChartPoint pt : map.values()) {
 			if (pt.getCe() != null && pt.getPe() != null) {
@@ -961,10 +1010,192 @@ public class StraddleIntradayService {
 		if (prevDayDataDate == null || !prevDayDataDate.equals(today)) {
 			prevHighMap.clear();
 			prevLowMap.clear();
+			prevCloseMap.clear(); // 🆕 ADDED THIS LINE
 			prevDayDataDate = today;
 			logger.info("Previous day high/low cache reset for new trading day: {}", today);
 		}
 	}
+
+	// =====================================================
+	// NEW METHOD: fetchPreviousDayCloseForAllStrikes
+	// Fetches previous day close prices (similar to prevHigh/prevLow)
+	// =====================================================
+
+	private void fetchPreviousDayCloseForAllStrikes(
+	    List<StraddlePremiumDto> strikeList,
+	    SmartConnect smartConnect,
+	    Strategy strategy
+	) {
+	    
+	    logger.info("=== FETCHING PREVIOUS DAY CLOSE (ONE-TIME FOR {}) ===", strategy.getName());
+	    
+	    // Initialize nested map for this strategy if not exists
+	    prevCloseMap.putIfAbsent(strategy.getName(), new HashMap<>());
+	    
+	    Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(strategy.getName());
+	    
+	    // ✅ Get date range for previous working day's data
+	    LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	    
+	    // Step 1: Current trading date
+	    LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(today)
+	        ? today
+	        : NSEWorkingDays.getLastWorkingDay(today);
+	    
+	    // Step 2: Previous working day (the target day whose close we want)
+	    LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(tradingDate);
+	    
+	    // Step 3: Format date range (same as prevHigh/prevLow)
+	    String fromDate = previousWorkingDay + " 15:30";
+	    String toDate = tradingDate + " 15:30";
+	    
+	    logger.info("Fetching prev close for date range: {} to {}", fromDate, toDate);
+	    
+	    int successCount = 0;
+	    int failureCount = 0;
+	    
+	    for (StraddlePremiumDto dto : strikeList) {
+	        
+	        // Fetch CE previous close
+	        if (dto.getCeToken() != null) {
+	            try {
+	                JSONObject req = new JSONObject();
+	                req.put("exchange", strategy.getExchange());
+	                req.put("symboltoken", dto.getCeToken().getToken());
+	                req.put("interval", "ONE_DAY");
+	                req.put("fromdate", fromDate);
+	                req.put("todate", toDate);
+	                
+	                // Add delay to avoid rate limiting
+	                Thread.sleep(500);
+	                
+	                JSONArray candles = smartConnect.candleData(req);
+	                
+	                if (candles != null && candles.length() > 0) {
+	                    JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+	                    
+	                    // Index 4 = Close price in candle data
+	                    BigDecimal close = lastCandle.getBigDecimal(4);
+	                    
+	                    // Store in strategy-specific cache
+	                    strategyCloseCache.put(dto.getCeToken().getToken(), close);
+	                    
+	                    // Set in DTO
+	                    dto.setCePrevClose(close);
+	                    
+	                    successCount++;
+	                    
+	                    logger.debug("CE Strike {}: PrevClose={}", 
+	                        dto.getStrikePrice(), close);
+	                } else {
+	                    logger.warn("No candle data for CE token: {} (strike: {})", 
+	                        dto.getCeToken().getToken(), dto.getStrikePrice());
+	                    failureCount++;
+	                }
+	                
+	            } catch (Exception e) {
+	                logger.error("Failed to fetch CE prev close for strike {}: {}", 
+	                    dto.getStrikePrice(), e.getMessage());
+	                failureCount++;
+	            }
+	        }
+	        
+	        // Fetch PE previous close
+	        if (dto.getPeToken() != null) {
+	            try {
+	                JSONObject req = new JSONObject();
+	                req.put("exchange", strategy.getExchange());
+	                req.put("symboltoken", dto.getPeToken().getToken());
+	                req.put("interval", "ONE_DAY");
+	                req.put("fromdate", fromDate);
+	                req.put("todate", toDate);
+	                
+	                // Add delay to avoid rate limiting
+	                Thread.sleep(500);
+	                
+	                JSONArray candles = smartConnect.candleData(req);
+	                
+	                if (candles != null && candles.length() > 0) {
+	                    JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+	                    
+	                    // Index 4 = Close price in candle data
+	                    BigDecimal close = lastCandle.getBigDecimal(4);
+	                    
+	                    // Store in strategy-specific cache
+	                    strategyCloseCache.put(dto.getPeToken().getToken(), close);
+	                    
+	                    // Set in DTO
+	                    dto.setPePrevClose(close);
+	                    
+	                    successCount++;
+	                    
+	                    logger.debug("PE Strike {}: PrevClose={}", 
+	                        dto.getStrikePrice(), close);
+	                } else {
+	                    logger.warn("No candle data for PE token: {} (strike: {})", 
+	                        dto.getPeToken().getToken(), dto.getStrikePrice());
+	                    failureCount++;
+	                }
+	                
+	            } catch (Exception e) {
+	                logger.error("Failed to fetch PE prev close for strike {}: {}", 
+	                    dto.getStrikePrice(), e.getMessage());
+	                failureCount++;
+	            }
+	        }
+	        
+	        // 🆕 Calculate combined prev close if both available
+	        if (dto.getCePrevClose() != null && dto.getPePrevClose() != null) {
+	            BigDecimal combinedClose = dto.getCePrevClose().add(dto.getPePrevClose());
+	            dto.setCombinedPrevClose(combinedClose);
+	            
+	            logger.debug("Strike {}: CombinedPrevClose={}", 
+	                dto.getStrikePrice(), combinedClose);
+	        }
+	    }
+	    
+	    logger.info("Previous day close fetch complete for {}: Success={}, Failure={}", 
+	        strategy.getName(), successCount, failureCount);
+	}
+
+
+	// =====================================================
+	// NEW METHOD: populatePrevCloseFromCache
+	// Populates DTO from cached previous close data
+	// =====================================================
+
+	private void populatePrevCloseFromCache(List<StraddlePremiumDto> strikeList, String strategyName) {
+	    
+	    Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(strategyName);
+	    
+	    if (strategyCloseCache == null) {
+	        logger.warn("Prev close cache not found for strategy: {}", strategyName);
+	        return;
+	    }
+	    
+	    for (StraddlePremiumDto dto : strikeList) {
+	        
+	        // Populate CE from cache
+	        if (dto.getCeToken() != null) {
+	            String ceToken = dto.getCeToken().getToken();
+	            BigDecimal ceClose = strategyCloseCache.get(ceToken);
+	            dto.setCePrevClose(ceClose);
+	        }
+	        
+	        // Populate PE from cache
+	        if (dto.getPeToken() != null) {
+	            String peToken = dto.getPeToken().getToken();
+	            BigDecimal peClose = strategyCloseCache.get(peToken);
+	            dto.setPePrevClose(peClose);
+	        }
+	        
+	        // Calculate combined prev close if both available
+	        if (dto.getCePrevClose() != null && dto.getPePrevClose() != null) {
+	            dto.setCombinedPrevClose(dto.getCePrevClose().add(dto.getPePrevClose()));
+	        }
+	    }
+	}
+
 
 	// =====================================================
 	// FETCH PREVIOUS DAY HIGH/LOW FOR ALL STRIKES (ONCE PER DAY PER STRATEGY)

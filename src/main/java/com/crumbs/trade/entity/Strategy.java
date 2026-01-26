@@ -65,4 +65,7 @@ public class Strategy {
 
     @Column(name = "alert", nullable = false, length = 1)
     private String alert = "N";
+    
+    @Column(name = "enable_logging")
+    private String enableLogging = "N"; // Default to "N" (no logging)
 }

@@ -249,6 +249,10 @@
                     <div class="checkout-item"><input type="checkbox" id="ce-vwap-check"> <span class="swatch" style="background:#a78bfa"></span> CE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-vwap-check"> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-vwap-check"> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
+                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
+                    <div class="checkout-item"><input type="checkbox" id="ce-prev-close-check"> <span class="swatch" style="background:#10b981"></span> CE Prev Close</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-prev-close-check"> <span class="swatch" style="background:#f59e0b"></span> PE Prev Close</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-prev-close-check"> <span class="swatch" style="background:#8b5cf6"></span> Combined Prev Close</div>
                     <button class="checkout-ok-btn" id="checkout-ok-btn">OK</button>
                 </div>
             </div>
@@ -285,6 +289,10 @@
             <div class="item" data-line="ceVwap"><span class="swatch" style="background:#a78bfa"></span><span class="label">CE VWAP:</span><strong id="val-ce-vwap">-</strong></div>
             <div class="item" data-line="peVwap"><span class="swatch" style="background:#fb923c"></span><span class="label">PE VWAP:</span><strong id="val-pe-vwap">-</strong></div>
             <div class="item" data-line="combinedVwap"><span class="swatch" style="background:#06b6d4"></span><span class="label">Comb VWAP:</span><strong id="val-combined-vwap">-</strong></div>
+            <div class="item" data-line="cePrevClose"><span class="swatch" style="background:#10b981"></span><span class="label">CE PrevClose:</span><strong id="val-ce-prev-close">-</strong></div>
+            <div class="item" data-line="pePrevClose"><span class="swatch" style="background:#f59e0b"></span><span class="label">PE PrevClose:</span><strong id="val-pe-prev-close">-</strong></div>
+            <div class="item" data-line="combinedPrevClose"><span class="swatch" style="background:#8b5cf6"></span><span class="label">Comb PrevClose:</span><strong id="val-combined-prev-close">-</strong></div>
+        </div>
         </div>
     </div>
 
@@ -309,6 +317,7 @@
         ceExtrinsicSeries: [], peExtrinsicSeries: [],
         ceVwapSeries: [], peVwapSeries: [], combinedVwapSeries: [],
         ceIvSeries: [], peIvSeries: [], combinedIvSeries: [],
+        cePrevCloseSeries: [], pePrevCloseSeries: [], combinedPrevCloseSeries: [],
         ceOpen: null, peOpen: null, combinedOpen: null
     };
 
@@ -339,7 +348,10 @@
         combinedOpen: true,
         ceVwap: false,
         peVwap: false,
-        combinedVwap: false
+        combinedVwap: false,
+        cePrevClose: false,
+        pePrevClose: false,
+        combinedPrevClose: false
     };
 
     // Temporary state for pending selections
@@ -423,7 +435,10 @@
             combinedOpen: 'combined-open-check',
             ceVwap: 'ce-vwap-check',
             peVwap: 'pe-vwap-check',
-            combinedVwap: 'combined-vwap-check'
+            combinedVwap: 'combined-vwap-check',
+            cePrevClose: 'ce-prev-close-check',
+            pePrevClose: 'pe-prev-close-check',
+            combinedPrevClose: 'combined-prev-close-check'
         };
         Object.entries(map).forEach(([key, id]) => {
             const el = document.getElementById(id);
@@ -463,6 +478,9 @@
         document.getElementById('ce-vwap-check').checked = checked;
         document.getElementById('pe-vwap-check').checked = checked;
         document.getElementById('combined-vwap-check').checked = checked;
+        document.getElementById('ce-prev-close-check').checked = checked;
+        document.getElementById('pe-prev-close-check').checked = checked;
+        document.getElementById('combined-prev-close-check').checked = checked;
 
         updateAllCheckbox();
     }
@@ -484,6 +502,9 @@
         lines.ceVwap.setData(lineVisibility.ceVwap ? currentSeries.ceVwapSeries : []);
         lines.peVwap.setData(lineVisibility.peVwap ? currentSeries.peVwapSeries : []);
         lines.combinedVwap.setData(lineVisibility.combinedVwap ? currentSeries.combinedVwapSeries : []);
+        lines.cePrevClose.setData(lineVisibility.cePrevClose ? currentSeries.cePrevCloseSeries : []);
+        lines.pePrevClose.setData(lineVisibility.pePrevClose ? currentSeries.pePrevCloseSeries : []);
+        lines.combinedPrevClose.setData(lineVisibility.combinedPrevClose ? currentSeries.combinedPrevCloseSeries : []);
         drawOpenPriceLines();
 
         updateLegendLatest();
@@ -546,7 +567,10 @@
             peExtrinsic: [],
             ceVwap: [],
             peVwap: [],
-            combinedVwap: []
+            combinedVwap: [],
+            cePrevClose: [],
+            pePrevClose: [],
+            combinedPrevClose: []
         };
 
         for (const row of apiArray) {
@@ -567,7 +591,10 @@
                 peExtrinsic: row.peExtrinsic != null ? Number(row.peExtrinsic) : null,
                 ceVwap: row.ceVwap != null ? Number(row.ceVwap) : null,
                 peVwap: row.peVwap != null ? Number(row.peVwap) : null,
-                combinedVwap: row.combinedVwap != null ? Number(row.combinedVwap) : null
+                combinedVwap: row.combinedVwap != null ? Number(row.combinedVwap) : null,
+                cePrevClose: row.cePrevClose != null ? Number(row.cePrevClose) : null,
+                pePrevClose: row.pePrevClose != null ? Number(row.pePrevClose) : null,
+                combinedPrevClose: row.combinedPrevClose != null ? Number(row.combinedPrevClose) : null
             };
 
             if (!Number.isFinite(vals.spot)) continue;
@@ -597,6 +624,12 @@
                 series.peVwap.push({ time: t, value: vals.peVwap });
             if (vals.combinedVwap != null && Number.isFinite(vals.combinedVwap))
                 series.combinedVwap.push({ time: t, value: vals.combinedVwap });
+            if (vals.cePrevClose != null && Number.isFinite(vals.cePrevClose))
+                series.cePrevClose.push({ time: t, value: vals.cePrevClose });
+            if (vals.pePrevClose != null && Number.isFinite(vals.pePrevClose))
+                series.pePrevClose.push({ time: t, value: vals.pePrevClose });
+            if (vals.combinedPrevClose != null && Number.isFinite(vals.combinedPrevClose))
+                series.combinedPrevClose.push({ time: t, value: vals.combinedPrevClose });
         }
 
         if (apiArray.length > 0) {
@@ -620,7 +653,10 @@
             peExtrinsicSeries: series.peExtrinsic,
             ceVwapSeries: series.ceVwap,
             peVwapSeries: series.peVwap,
-            combinedVwapSeries: series.combinedVwap
+            combinedVwapSeries: series.combinedVwap,
+            cePrevCloseSeries: series.cePrevClose,
+            pePrevCloseSeries: series.pePrevClose,
+            combinedPrevCloseSeries: series.combinedPrevClose
         });
 
         return series;
@@ -769,6 +805,30 @@
             lineWidth: 2.5,
             color: '#06b6d4',
             priceScaleId: 'right'
+        }),
+        cePrevClose: chart.addLineSeries({
+            priceLineVisible: true,
+            lastValueVisible: true,
+            lineWidth: 3,
+            color: '#10b981',
+            lineStyle: 1,
+            priceScaleId: 'right'
+        }),
+        pePrevClose: chart.addLineSeries({
+            priceLineVisible: true,
+            lastValueVisible: true,
+            lineWidth: 3,
+            color: '#f59e0b',
+            lineStyle: 1,
+            priceScaleId: 'right'
+        }),
+        combinedPrevClose: chart.addLineSeries({
+            priceLineVisible: true,
+            lastValueVisible: true,
+            lineWidth: 3,
+            color: '#8b5cf6',
+            lineStyle: 2,
+            priceScaleId: 'right'
         })
     };
 
@@ -820,7 +880,7 @@
 
     function updateLegendLatest() {
         const values = {};
-        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceIv', 'peIv', 'combinedIv', 'ceExtrinsic', 'peExtrinsic', 'ceVwap', 'peVwap', 'combinedVwap'].forEach(key => {
+        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceIv', 'peIv', 'combinedIv', 'ceExtrinsic', 'peExtrinsic', 'ceVwap', 'peVwap', 'combinedVwap', 'cePrevClose', 'pePrevClose', 'combinedPrevClose'].forEach(key => {
             const data = currentSeries[key + 'Series'];
             values[key] = data && data.length > 0 ? data[data.length - 1].value : null;
         });
@@ -838,7 +898,9 @@
         document.getElementById('val-ce-vwap').textContent = values.ceVwap !== null ? values.ceVwap.toFixed(2) : '-';
         document.getElementById('val-pe-vwap').textContent = values.peVwap !== null ? values.peVwap.toFixed(2) : '-';
         document.getElementById('val-combined-vwap').textContent = values.combinedVwap !== null ? values.combinedVwap.toFixed(2) : '-';
-
+        document.getElementById('val-ce-prev-close').textContent = values.cePrevClose !== null ? values.cePrevClose.toFixed(2) : '-';
+        document.getElementById('val-pe-prev-close').textContent = values.pePrevClose !== null ? values.pePrevClose.toFixed(2) : '-';
+        document.getElementById('val-combined-prev-close').textContent = values.combinedPrevClose !== null ? values.combinedPrevClose.toFixed(2) : '-';
         document.getElementById('val-ce-open').textContent = Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen.toFixed(2) : '-';
         document.getElementById('val-pe-open').textContent = Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen.toFixed(2) : '-';
         document.getElementById('val-combined-open').textContent = Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen.toFixed(2) : '-';
@@ -869,6 +931,9 @@
             ceVwap: getValue(getData(lines.ceVwap)),
             peVwap: getValue(getData(lines.peVwap)),
             combinedVwap: getValue(getData(lines.combinedVwap)),
+            cePrevClose: getValue(getData(lines.cePrevClose)),
+            pePrevClose: getValue(getData(lines.pePrevClose)),
+            combinedPrevClose: getValue(getData(lines.combinedPrevClose)),
             ceOpen: getValue(getData(lines.ceOpen)) ?? currentSeries.ceOpen,
             peOpen: getValue(getData(lines.peOpen)) ?? currentSeries.peOpen,
             combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen
@@ -889,6 +954,9 @@
         document.getElementById('val-ce-vwap').textContent = fmt(values.ceVwap);
         document.getElementById('val-pe-vwap').textContent = fmt(values.peVwap);
         document.getElementById('val-combined-vwap').textContent = fmt(values.combinedVwap);
+        document.getElementById('val-ce-prev-close').textContent = fmt(values.cePrevClose);
+        document.getElementById('val-pe-prev-close').textContent = fmt(values.pePrevClose);
+        document.getElementById('val-combined-prev-close').textContent = fmt(values.combinedPrevClose);
         document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
         document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
         document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
@@ -1101,7 +1169,9 @@
         lines.ceVwap.setData(lineVisibility.ceVwap ? currentSeries.ceVwapSeries : []);
         lines.peVwap.setData(lineVisibility.peVwap ? currentSeries.peVwapSeries : []);
         lines.combinedVwap.setData(lineVisibility.combinedVwap ? currentSeries.combinedVwapSeries : []);
-
+        lines.cePrevClose.setData(lineVisibility.cePrevClose ? currentSeries.cePrevCloseSeries : []);
+        lines.pePrevClose.setData(lineVisibility.pePrevClose ? currentSeries.pePrevCloseSeries : []);
+        lines.combinedPrevClose.setData(lineVisibility.combinedPrevClose ? currentSeries.combinedPrevCloseSeries : []);
         drawOpenPriceLines();
 
         allCrossings = [];
@@ -1194,7 +1264,10 @@
             'combined-open-check': 'combinedOpen',
             'ce-vwap-check': 'ceVwap',
             'pe-vwap-check': 'peVwap',
-            'combined-vwap-check': 'combinedVwap'
+            'combined-vwap-check': 'combinedVwap',
+            'ce-prev-close-check': 'cePrevClose',
+            'pe-prev-close-check': 'pePrevClose',
+            'combined-prev-close-check': 'combinedPrevClose'
         };
 
         Object.entries(checkboxHandlers).forEach(([id, key]) => {
@@ -1254,7 +1327,10 @@
             combinedOpen: 'combined-open-check',
             ceVwap: 'ce-vwap-check',
             peVwap: 'pe-vwap-check',
-            combinedVwap: 'combined-vwap-check'
+            combinedVwap: 'combined-vwap-check',
+            cePrevClose: 'ce-prev-close-check',
+            pePrevClose: 'pe-prev-close-check',
+            combinedPrevClose: 'combined-prev-close-check'
         };
         Object.entries(map).forEach(([key, id]) => {
             const el = document.getElementById(id);
@@ -1341,7 +1417,10 @@
                     peExtrinsic: row.peExtrinsic != null ? Number(row.peExtrinsic) : null,
                     ceVwap: row.ceVwap != null ? Number(row.ceVwap) : null,
                     peVwap: row.peVwap != null ? Number(row.peVwap) : null,
-                    combinedVwap: row.combinedVwap != null ? Number(row.combinedVwap) : null
+                    combinedVwap: row.combinedVwap != null ? Number(row.combinedVwap) : null,
+                    cePrevClose: row.cePrevClose != null ? Number(row.cePrevClose) : null,
+                    pePrevClose: row.pePrevClose != null ? Number(row.pePrevClose) : null,
+                    combinedPrevClose: row.combinedPrevClose != null ? Number(row.combinedPrevClose) : null
                 };
 
                 if (!Number.isFinite(vals.spot)) continue;
@@ -1398,6 +1477,18 @@
                 if (lineVisibility.combinedVwap && vals.combinedVwap != null && Number.isFinite(vals.combinedVwap)) {
                     lines.combinedVwap.update({ time: t, value: vals.combinedVwap });
                     currentSeries.combinedVwapSeries.push({ time: t, value: vals.combinedVwap });
+                }
+                if (lineVisibility.cePrevClose && vals.cePrevClose != null && Number.isFinite(vals.cePrevClose)) {
+                    lines.cePrevClose.update({ time: t, value: vals.cePrevClose });
+                    currentSeries.cePrevCloseSeries.push({ time: t, value: vals.cePrevClose });
+                }
+                if (lineVisibility.pePrevClose && vals.pePrevClose != null && Number.isFinite(vals.pePrevClose)) {
+                    lines.pePrevClose.update({ time: t, value: vals.pePrevClose });
+                    currentSeries.pePrevCloseSeries.push({ time: t, value: vals.pePrevClose });
+                }
+                if (lineVisibility.combinedPrevClose && vals.combinedPrevClose != null && Number.isFinite(vals.combinedPrevClose)) {
+                    lines.combinedPrevClose.update({ time: t, value: vals.combinedPrevClose });
+                    currentSeries.combinedPrevCloseSeries.push({ time: t, value: vals.combinedPrevClose });
                 }
             }
 

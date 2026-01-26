@@ -120,4 +120,14 @@ public class StraddleIntraday {
     
     @Column(name = "pe_prev_low", precision = 10, scale = 2)
     private BigDecimal pePrevLow;
+    
+ // Add these fields to the entity class
+    @Column(name = "ce_prev_close", precision = 10, scale = 2)
+    private BigDecimal cePrevClose;
+
+    @Column(name = "pe_prev_close", precision = 10, scale = 2)
+    private BigDecimal pePrevClose;
+
+    @Column(name = "combined_prev_close", precision = 10, scale = 2)
+    private BigDecimal combinedPrevClose;
 }

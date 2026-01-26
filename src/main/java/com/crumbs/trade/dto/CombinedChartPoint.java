@@ -36,4 +36,9 @@ public class CombinedChartPoint {
     private BigDecimal ceIV;
     private BigDecimal peIV;
     private BigDecimal combinedIV;
+    
+ // 🆕 ADD THESE NEW PARAMETERS
+    BigDecimal cePrevClose;
+    BigDecimal pePrevClose;
+    BigDecimal combinedPrevClose;
 }
