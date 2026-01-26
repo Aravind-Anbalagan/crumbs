@@ -258,16 +258,19 @@ public class FuturesStrategyService {
             }
         }
 
-        // ✅ Deduplicate, save, and send notifications ONLY for saved events with notification enabled
+        // ✅ Deduplicate, save, and send notifications ONLY for NEW signals
         if (!detectedEvents.isEmpty()) {
-            List<FuturesBreakEvent> savedEvents = saveAllBreakEventsWithDedup(detectedEvents);
-            if (!savedEvents.isEmpty()) {
-                sendBreakoutNotificationsWithConfig(savedEvents);
+            List<FuturesBreakEvent> newSignals = saveAllBreakEventsWithDedup(detectedEvents);
+            if (!newSignals.isEmpty()) {
+                logger.info("Sending notifications for {} NEW signals", newSignals.size());
+                sendBreakoutNotificationsWithConfig(newSignals);
+            } else {
+                logger.info("No new signals to notify (all were updates to existing signals)");
             }
         }
     }
 
-    // ✅ NEW: Track and update existing break events, calculate % from break price
+    // ✅ UPDATED: Returns ONLY newly created events (not updated ones) for notification purposes
     @Transactional
     public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
         LocalDate today = LocalDate.now();
@@ -286,7 +289,7 @@ public class FuturesStrategyService {
         }
         
         // Step 2: Check existing records and update or create new
-        List<FuturesBreakEvent> savedEvents = new ArrayList<>();
+        List<FuturesBreakEvent> newlyCreatedEvents = new ArrayList<>(); // ✅ Only newly created ones
         
         for (FuturesBreakEvent newEvent : uniqueMap.values()) {
             // Check if active signal already exists
@@ -295,12 +298,11 @@ public class FuturesStrategyService {
                             newEvent.getName(), newEvent.getBreakType(), today, "ACTIVE");
             
             if (existingActive.isPresent()) {
-                // Update existing active record
+                // Update existing active record (DON'T add to notification list)
                 FuturesBreakEvent existing = existingActive.get();
                 updateBreakEvent(existing, newEvent);
                 FuturesBreakEvent updated = futuresBreakEventRepo.save(existing);
-                savedEvents.add(updated);
-                logger.info("✅ Updated active signal: {} {} {} (PnL: {}%)", 
+                logger.info("🔄 Updated active signal: {} {} {} (PnL: {}%) - NO NOTIFICATION", 
                         updated.getName(), updated.getBreakType(), today, updated.getPercentMove());
             } else {
                 // Check if inactive signal exists (don't allow new signal same day if SL hit)
@@ -308,22 +310,23 @@ public class FuturesStrategyService {
                         newEvent.getName(), newEvent.getBreakType(), today);
                 
                 if (!inactiveExists) {
-                    // Create new signal
+                    // Create new signal (ADD to notification list)
                     newEvent.setStatus("ACTIVE");
                     newEvent.setCurrentPrice(newEvent.getBreakPrice()); // Initial current price
                     FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
-                    savedEvents.add(saved);
-                    logger.info("✅ New signal created: {} {} {} at {}", 
+                    newlyCreatedEvents.add(saved); // ✅ Only add NEW signals for notification
+                    logger.info("🆕 NEW signal created: {} {} {} at {} - WILL SEND NOTIFICATION", 
                             saved.getName(), saved.getBreakType(), today, saved.getBreakPrice());
                 } else {
-                    logger.info("Inactive signal exists for {} {} {}, skipping new entry", 
+                    logger.info("⚠️ Inactive signal exists for {} {} {}, skipping new entry", 
                             newEvent.getName(), newEvent.getBreakType(), today);
                 }
             }
         }
         
-        logger.info("✅ Processed {} break events for {}", savedEvents.size(), today);
-        return savedEvents;
+        logger.info("✅ Created {} NEW signals for notification (updated existing signals separately)", 
+                newlyCreatedEvents.size());
+        return newlyCreatedEvents; // ✅ Return only newly created events
     }
 
     // ✅ NEW: Update existing break event with current price and check SL
