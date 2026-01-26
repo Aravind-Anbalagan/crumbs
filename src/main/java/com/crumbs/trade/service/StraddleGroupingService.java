@@ -19,11 +19,13 @@ import com.crumbs.trade.dto.NameExpiryStrikeGroupedDto;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StraddleIntradayRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.ConditionalLogger;
 
 @Service
 public class StraddleGroupingService {
     
-    private static final Logger logger = LoggerFactory.getLogger(StraddleGroupingService.class);
+	private static final Logger baseLogger = LoggerFactory.getLogger(StraddleGroupingService.class);
+    private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
     
     @Autowired StraddleIntradayRepo straddleIntradayRepo;
     @Autowired StrategyRepo strategyRepo;
