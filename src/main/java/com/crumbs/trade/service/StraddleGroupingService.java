@@ -49,7 +49,7 @@ public class StraddleGroupingService {
             String expiry = (String) row[1];
             BigDecimal strike = (BigDecimal) row[2];
             
-            logger.debug("Processing: name={}, expiry={}, strike={}", name, expiry, strike);
+            logger.info("Processing: name={}, expiry={}, strike={}", name, expiry, strike);
             
             grouped
                 .computeIfAbsent(name, n -> new LinkedHashMap<>())
@@ -162,7 +162,7 @@ public class StraddleGroupingService {
                 break;
         }
         
-        logger.debug("Looking up strategy: {} for instrument: {}", strategyName, instrumentName);
+        logger.info("Looking up strategy: {} for instrument: {}", strategyName, instrumentName);
         
         Strategy strategy = strategyRepo.findByName(strategyName);
         
