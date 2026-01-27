@@ -628,7 +628,7 @@ public class FuturesStrategyService {
                     signal, e.getName(), e.getBreakPrice(), e.getStopLoss());
             if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
                 batch.append(footer);
-                try { telegramService.sendMessage(batch.toString()); } 
+                try { telegramService.sendBroadcast(batch.toString()); } 
                 catch (Exception ex) { logger.error("Failed telegram: {}", ex.getMessage()); }
                 batch = new StringBuilder(header);
             }
@@ -637,7 +637,7 @@ public class FuturesStrategyService {
         
         if (batch.length() > header.length()) {
             batch.append(footer);
-            try { telegramService.sendMessage(batch.toString()); } 
+            try { telegramService.sendBroadcast(batch.toString()); } 
             catch (Exception ex) { logger.error("Failed telegram: {}", ex.getMessage()); }
         }
     }
