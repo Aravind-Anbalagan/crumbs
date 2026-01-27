@@ -199,9 +199,13 @@ public class FuturesStrategyService {
 
     // ✅ FIXED: Runs synchronously, deduplicates, sends notifications only for saved events
     public void runBreakoutScan(Map<String, BigDecimal> ltpMap, Map<String, Indexes> indexByName) {
+        logger.info("========== BREAKOUT SCAN STARTED ==========");
+        
         List<FuturesFilter> filters = filterRepo.findAll();
+        logger.info("Found {} filters to scan", filters.size());
+        
         if (filters.isEmpty()) {
-            logger.info("No filters found for breakout scan");
+            logger.warn("No filters found for breakout scan");
             return;
         }
 
@@ -217,63 +221,105 @@ public class FuturesStrategyService {
                 .collect(Collectors.toMap(Futures::getName, f -> f));
 
         List<FuturesBreakEvent> detectedEvents = new ArrayList<>();
+        int scannedCount = 0;
+        int nearStructureCount = 0;
+        int breakoutCount = 0;
+        int breakdownCount = 0;
 
         for (FuturesFilter f : filters) {
+            scannedCount++;
+            
             Indexes idx = indexByName.get(f.getName());
-            if (idx == null) continue;
+            if (idx == null) {
+                logger.debug("Skipping {} - no index mapping found", f.getName());
+                continue;
+            }
 
             BigDecimal ltp = ltpMap.get(idx.getToken());
-            if (ltp == null) continue;
-            if (!isNearExpiryStructure(f, ltp)) continue;
+            if (ltp == null) {
+                logger.debug("Skipping {} - no LTP found", f.getName());
+                continue;
+            }
+            
+            boolean isNear = isNearExpiryStructure(f, ltp);
+            if (!isNear) {
+                logger.debug("Skipping {} - not near structure (LTP={}, Dir={}, High={}, Low={})", 
+                        f.getName(), ltp, f.getDirection(), f.getLastExpiryHigh(), f.getLastExpiryLow());
+                continue;
+            }
+            
+            nearStructureCount++;
+            logger.info("🎯 {} is NEAR structure: LTP={}, Dir={}, High={}, Low={}", 
+                    f.getName(), ltp, f.getDirection(), f.getLastExpiryHigh(), f.getLastExpiryLow());
 
             try {
                 JSONArray candles = fetchOneHourCandle(smartConnect, idx);
-                if (candles == null || candles.isEmpty()) continue;
+                if (candles == null || candles.isEmpty()) {
+                    logger.warn("No candles returned for {}", f.getName());
+                    continue;
+                }
 
                 JSONArray last = candles.getJSONArray(candles.length() - 1);
                 BigDecimal hourClose = last.getBigDecimal(4);
                 LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+
+                logger.info("Candle check for {}: hourClose={}, high={}, low={}, dir={}", 
+                        f.getName(), hourClose, f.getLastExpiryHigh(), f.getLastExpiryLow(), f.getDirection());
 
                 // ✅ Get the primary index type from FUTURES table
                 Futures futures = futuresMap.get(f.getName());
                 String primaryIndexType = determinePrimaryIndexType(futures);
 
                 if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
+                    logger.info("🚀 BREAKOUT detected for {}: {} > {}", f.getName(), hourClose, f.getLastExpiryHigh());
                     FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd, primaryIndexType);
                     if (event != null) {
                         event.setCurrentPrice(ltp); // Set current LTP for tracking
                         detectedEvents.add(event);
+                        breakoutCount++;
                     }
                 }
 
                 if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
+                    logger.info("📉 BREAKDOWN detected for {}: {} < {}", f.getName(), hourClose, f.getLastExpiryLow());
                     FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd, primaryIndexType);
                     if (event != null) {
                         event.setCurrentPrice(ltp); // Set current LTP for tracking
                         detectedEvents.add(event);
+                        breakdownCount++;
                     }
                 }
             } catch (Exception e) {
-                logger.error("Breakout scan failed for {}: {}", f.getName(), e.getMessage());
+                logger.error("Breakout scan failed for {}: {}", f.getName(), e.getMessage(), e);
             }
         }
 
+        logger.info("📊 Scan Summary: Scanned={}, Near Structure={}, Breakouts={}, Breakdowns={}", 
+                scannedCount, nearStructureCount, breakoutCount, breakdownCount);
+
         // ✅ Deduplicate, save, and send notifications ONLY for NEW signals
         if (!detectedEvents.isEmpty()) {
+            logger.info("Processing {} detected events for save/dedup", detectedEvents.size());
             List<FuturesBreakEvent> newSignals = saveAllBreakEventsWithDedup(detectedEvents);
             if (!newSignals.isEmpty()) {
-                logger.info("Sending notifications for {} NEW signals", newSignals.size());
+                logger.info("✅ Sending notifications for {} NEW signals", newSignals.size());
                 sendBreakoutNotificationsWithConfig(newSignals);
             } else {
-                logger.info("No new signals to notify (all were updates to existing signals)");
+                logger.info("ℹ️ No new signals to notify (all were updates to existing signals)");
             }
+        } else {
+            logger.info("ℹ️ No breakout/breakdown events detected in this scan");
         }
+        
+        logger.info("========== BREAKOUT SCAN COMPLETED ==========");
     }
 
     // ✅ UPDATED: Returns ONLY newly created events (not updated ones) for notification purposes
     @Transactional
     public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
         LocalDate today = LocalDate.now();
+        logger.info("======== SAVE & DEDUP STARTED ========");
+        logger.info("Processing {} raw detected events for date: {}", events.size(), today);
         
         // Step 1: Deduplicate in-memory by name + breakType + date
         Map<String, FuturesBreakEvent> uniqueMap = new LinkedHashMap<>();
@@ -283,15 +329,24 @@ public class FuturesStrategyService {
             
             if (!uniqueMap.containsKey(key)) {
                 uniqueMap.put(key, event);
-                logger.debug("Added to unique map: {} {} {} (indexType={})", 
+                logger.debug("✓ Added to unique map: {} {} {} (indexType={})", 
                     event.getName(), event.getBreakType(), today, event.getIndexType());
+            } else {
+                logger.debug("✗ Duplicate in memory (skipped): {} {} {}", 
+                    event.getName(), event.getBreakType(), today);
             }
         }
         
+        logger.info("After in-memory dedup: {} unique events", uniqueMap.size());
+        
         // Step 2: Check existing records and update or create new
         List<FuturesBreakEvent> newlyCreatedEvents = new ArrayList<>(); // ✅ Only newly created ones
+        int updatedCount = 0;
+        int skippedInactiveCount = 0;
         
         for (FuturesBreakEvent newEvent : uniqueMap.values()) {
+            logger.info("--- Checking: {} {} {} ---", newEvent.getName(), newEvent.getBreakType(), today);
+            
             // Check if active signal already exists
             Optional<FuturesBreakEvent> existingActive = futuresBreakEventRepo
                     .findByNameAndBreakTypeAndBreakDateAndStatus(
@@ -300,32 +355,40 @@ public class FuturesStrategyService {
             if (existingActive.isPresent()) {
                 // Update existing active record (DON'T add to notification list)
                 FuturesBreakEvent existing = existingActive.get();
+                logger.info("Found existing ACTIVE signal (ID={})", existing.getId());
                 updateBreakEvent(existing, newEvent);
                 FuturesBreakEvent updated = futuresBreakEventRepo.save(existing);
+                updatedCount++;
                 logger.info("🔄 Updated active signal: {} {} {} (PnL: {}%) - NO NOTIFICATION", 
                         updated.getName(), updated.getBreakType(), today, updated.getPercentMove());
             } else {
+                logger.info("No active signal found. Checking for inactive...");
+                
                 // Check if inactive signal exists (don't allow new signal same day if SL hit)
                 boolean inactiveExists = futuresBreakEventRepo.existsByNameAndBreakTypeAndBreakDate(
                         newEvent.getName(), newEvent.getBreakType(), today);
                 
                 if (!inactiveExists) {
+                    logger.info("No inactive signal found. Creating NEW signal...");
+                    
                     // Create new signal (ADD to notification list)
                     newEvent.setStatus("ACTIVE");
                     newEvent.setCurrentPrice(newEvent.getBreakPrice()); // Initial current price
                     FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
                     newlyCreatedEvents.add(saved); // ✅ Only add NEW signals for notification
-                    logger.info("🆕 NEW signal created: {} {} {} at {} - WILL SEND NOTIFICATION", 
-                            saved.getName(), saved.getBreakType(), today, saved.getBreakPrice());
+                    logger.info("🆕 NEW signal created (ID={}): {} {} {} at {} - WILL SEND NOTIFICATION", 
+                            saved.getId(), saved.getName(), saved.getBreakType(), today, saved.getBreakPrice());
                 } else {
+                    skippedInactiveCount++;
                     logger.info("⚠️ Inactive signal exists for {} {} {}, skipping new entry", 
                             newEvent.getName(), newEvent.getBreakType(), today);
                 }
             }
         }
         
-        logger.info("✅ Created {} NEW signals for notification (updated existing signals separately)", 
-                newlyCreatedEvents.size());
+        logger.info("======== SAVE & DEDUP COMPLETED ========");
+        logger.info("Summary: New={}, Updated={}, Skipped (inactive)={}", 
+                newlyCreatedEvents.size(), updatedCount, skippedInactiveCount);
         return newlyCreatedEvents; // ✅ Return only newly created events
     }
 
@@ -426,26 +489,42 @@ public class FuturesStrategyService {
     }
 
     private boolean isNearExpiryStructure(FuturesFilter f, BigDecimal ltp) {
-        if (ltp == null) return false;
+        if (ltp == null) {
+            logger.trace("{} - LTP is null", f.getName());
+            return false;
+        }
         
-        BigDecimal proximity = new BigDecimal("0.005");
+        BigDecimal proximity = new BigDecimal("0.005"); // 0.5% proximity
         
         if ("UP".equals(f.getDirection())) {
             if (f.getLastExpiryHigh() == null) {
-                logger.debug("Skipping {} - lastExpiryHigh is null", f.getName());
+                logger.debug("{} - lastExpiryHigh is null (Direction=UP)", f.getName());
                 return false;
             }
-            return percentDiff(ltp, f.getLastExpiryHigh()).compareTo(proximity) <= 0;
+            BigDecimal diff = percentDiff(ltp, f.getLastExpiryHigh());
+            boolean isNear = diff.compareTo(proximity) <= 0;
+            if (!isNear) {
+                logger.trace("{} - Not near high: LTP={}, High={}, Diff={}% (need <=0.5%)", 
+                        f.getName(), ltp, f.getLastExpiryHigh(), diff.multiply(BigDecimal.valueOf(100)));
+            }
+            return isNear;
         }
         
         if ("DOWN".equals(f.getDirection())) {
             if (f.getLastExpiryLow() == null) {
-                logger.debug("Skipping {} - lastExpiryLow is null", f.getName());
+                logger.debug("{} - lastExpiryLow is null (Direction=DOWN)", f.getName());
                 return false;
             }
-            return percentDiff(ltp, f.getLastExpiryLow()).compareTo(proximity) <= 0;
+            BigDecimal diff = percentDiff(ltp, f.getLastExpiryLow());
+            boolean isNear = diff.compareTo(proximity) <= 0;
+            if (!isNear) {
+                logger.trace("{} - Not near low: LTP={}, Low={}, Diff={}% (need <=0.5%)", 
+                        f.getName(), ltp, f.getLastExpiryLow(), diff.multiply(BigDecimal.valueOf(100)));
+            }
+            return isNear;
         }
         
+        logger.trace("{} - Direction is neither UP nor DOWN: {}", f.getName(), f.getDirection());
         return false;
     }
 
@@ -549,7 +628,7 @@ public class FuturesStrategyService {
                     signal, e.getName(), e.getBreakPrice(), e.getStopLoss());
             if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
                 batch.append(footer);
-                try { telegramService.sendBroadcast(batch.toString()); } 
+                try { telegramService.sendMessage(batch.toString()); } 
                 catch (Exception ex) { logger.error("Failed telegram: {}", ex.getMessage()); }
                 batch = new StringBuilder(header);
             }
@@ -558,7 +637,7 @@ public class FuturesStrategyService {
         
         if (batch.length() > header.length()) {
             batch.append(footer);
-            try { telegramService.sendBroadcast(batch.toString()); } 
+            try { telegramService.sendMessage(batch.toString()); } 
             catch (Exception ex) { logger.error("Failed telegram: {}", ex.getMessage()); }
         }
     }
