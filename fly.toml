@@ -13,6 +13,8 @@ primary_region = "bom"
 [[services]]
   internal_port = 8080
   protocol = "tcp"
+  min_machines_running = 1
+  max_machines_running = 1   # 🔴 THIS IS THE KEY LINE
 
   [[services.ports]]
     port = 80
