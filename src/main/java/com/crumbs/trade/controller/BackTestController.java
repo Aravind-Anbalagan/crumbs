@@ -51,8 +51,8 @@ public class BackTestController {
 	@GetMapping(value = "/HeikinPsar")
 	public String monitorNifty() throws SmartAPIException, Exception {
 		
-		//String key = flatTradeService.getTokenForFlatTrade();
-		//System.out.println(key);
+		String key = flatTradeService.getTokenForFlatTrade();
+		logger.debug("Key: {}",key);
 		String fromDate = "2025-10-23 12:50";
 		String toDate = "2025-10-24 15:25";
 		vixRepo.deleteAll();
