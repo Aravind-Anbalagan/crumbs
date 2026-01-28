@@ -22,6 +22,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.logging.log4j.LogManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -58,7 +59,8 @@ public class StraddleIntradayService {
 	  // NEW CODE:
     private static final Logger baseLogger = LoggerFactory.getLogger(StraddleIntradayService.class);
     private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
-    
+	//Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
+	
 	@Autowired
 	private PredictionService predictionService;
 	@Autowired
@@ -129,7 +131,7 @@ public class StraddleIntradayService {
 			// =====================================================
             // 🔥 NEW: Set logging flag based on strategy
             // =====================================================
-            logger.setLoggingEnabled(strategy);
+            //logger.setLoggingEnabled(strategy);
             
 			BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
 
@@ -139,7 +141,7 @@ public class StraddleIntradayService {
 				return;
 			}
 			
-			logger.info("Spot price for {}: {}", name, spotPrice);
+			logger.debug("Spot price for {}: {}", name, spotPrice);
 
 			BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
 			

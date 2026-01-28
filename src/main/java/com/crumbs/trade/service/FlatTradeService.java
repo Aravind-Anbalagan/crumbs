@@ -14,6 +14,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -29,6 +30,7 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +52,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Service
 public class FlatTradeService {
@@ -339,45 +342,72 @@ public class FlatTradeService {
         return null;
     }
     
-    public BigDecimal getLtpFromFlatTrade(String exch, String token) {
-
-        try {
+    public Mono<BigDecimal> getLtpFromFlatTradeReactive(String exch, String token) {
+        return Mono.fromCallable(() -> {
             String jKey = getTokenForFlatTrade();
-            if (jKey == null) {
-                logger.error("Flattrade jKey is null");
-                return null;
+            if (jKey == null || jKey.isEmpty()) {
+                throw new IllegalStateException("FlatTrade token is null or empty");
             }
-
+            return jKey;
+        })
+        .flatMap(jKey -> {
             Map<String, String> jData = new HashMap<>();
             jData.put("uid", USER_ID);
-            jData.put("exch", exch);     // NSE / NFO
-            jData.put("token", token);   // e.g. "22"
-
-            String jDataJson = objectMapper.writeValueAsString(jData);
-            String body = "jData=" + jDataJson + "&jKey=" + jKey;
-
-            FlatTradeQuoteResponse response = webClient.post()
-                    .uri(BASE_URL + "/GetQuotes")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .bodyValue(body)
-                    .retrieve()
-                    .bodyToMono(FlatTradeQuoteResponse.class)
-                    .block();
-
-            if (response != null && "Ok".equalsIgnoreCase(response.getStat())) {
-                return new BigDecimal(response.getLp()); // ✅ THIS IS LTP
+            jData.put("exch", exch);
+            jData.put("token", token);
+            
+            try {
+                String jDataJson = objectMapper.writeValueAsString(jData);
+                String body = "jData=" + jDataJson + "&jKey=" + jKey;
+                
+                return webClient.post()
+                        .uri(BASE_URL + "/GetQuotes")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .bodyValue(body)
+                        .retrieve()
+                        .bodyToMono(FlatTradeQuoteResponse.class)
+                        .flatMap(response -> {
+                            if ("Ok".equalsIgnoreCase(response.getStat())) {
+                                return Mono.just(new BigDecimal(response.getLp()));
+                            }
+                            logger.error("GetQuotes failed: {}", response.getEmsg());
+                            return Mono.error(new RuntimeException("API error: " + response.getEmsg()));
+                        });
+            } catch (JsonProcessingException e) {
+                return Mono.error(new RuntimeException("Failed to serialize request", e));
             }
-
-            logger.error("GetQuotes failed: {}",
-                    response != null ? response.getEmsg() : "null");
-
-        } catch (Exception e) {
-            logger.error("Exception while fetching LTP", e);
-        }
-
-        return null;
+        })
+        .retryWhen(Retry.backoff(5, Duration.ofSeconds(1))
+                .maxBackoff(Duration.ofSeconds(10))
+                .filter(throwable -> 
+                    throwable instanceof WebClientResponseException.TooManyRequests
+                    || throwable instanceof WebClientResponseException
+                    || throwable instanceof IllegalStateException
+                    || throwable instanceof RuntimeException
+                )
+                .doBeforeRetry(retrySignal -> 
+                    logger.warn("Retrying getLtpFromFlatTrade... attempt {} - Reason: {}", 
+                               retrySignal.totalRetries() + 1, 
+                               retrySignal.failure().getMessage())
+                )
+        )
+        .doOnError(e -> logger.error("Exception while fetching LTP for exch={}, token={}", 
+                                    exch, token, e))
+        .onErrorResume(e -> {
+            logger.error("All retries exhausted, returning empty for exch={}, token={}", exch, token);
+            return Mono.empty(); // ✅ Returns empty Mono, not null
+        });
     }
 
-
+    public BigDecimal getLtpFromFlatTrade(String exch, String token) {
+        BigDecimal result = getLtpFromFlatTradeReactive(exch, token)
+                .block(); // Returns null if Mono is empty
+        
+        if (result == null) {
+            logger.error("getLtpFromFlatTrade returned null for exch={}, token={}", exch, token);
+        }
+        
+        return result;
+    }
 
 }
