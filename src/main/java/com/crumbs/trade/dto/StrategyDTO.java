@@ -19,4 +19,5 @@ public class StrategyDTO {
     private String live;
     private String papertrade;
     private String dayCandle;
+    private int lotSize;
 }

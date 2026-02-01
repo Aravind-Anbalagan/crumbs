@@ -125,6 +125,8 @@ public class OrderService {
 			token.setSymbol(strategyModified.getTradingsymbol());
 			token.setToken(strategyModified.getToken());
 			token.setExch_seg(strategyModified.getExchange());
+			// FIXED LOT for NIFTY
+	        token.setQuantity(strategyModified.getLotSize());
 		} catch (AddressException | MessagingException | IOException e) {
 			// TODO Auto-generated catch block
 			logger.error("Error Found during Token Creation");
@@ -186,6 +188,7 @@ public class OrderService {
 		if (indexes != null) {
 			strategy.setToken(indexes.getToken());
 			strategy.setExchange(indexes.getExchange());
+			strategy.setLotSize(indexes.getLotsize());
 			// symbol added
 		} else {
 			logger.error("Unable to find the Index Value for symbol {}", tradingSymbol);
@@ -248,8 +251,7 @@ public class OrderService {
         token.setType(signal);
         token.setSignal("ENTRY");
 
-        // FIXED LOT for NIFTY
-        token.setQuantity(75);
+        
 
         logger.info("ENTRY SELL Prepared → {}", token.getSymbol());
     }
