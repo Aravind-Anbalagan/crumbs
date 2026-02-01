@@ -42,13 +42,13 @@ public class PredictionScheduler {
 	// --------------------------------------------------------
 
 	// 09:15 – 09:55 (every 5 mins)
-	@Scheduled(cron = "0 15-59/5 9 * * MON-FRI", zone = "Asia/Kolkata")
+	//@Scheduled(cron = "0 15-59/5 9 * * MON-FRI", zone = "Asia/Kolkata")
 
 	// 10:00 – 14:55 (every 5 mins)
-	@Scheduled(cron = "0 */5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
+	//@Scheduled(cron = "0 */5 10-14 * * MON-FRI", zone = "Asia/Kolkata")
 
 	// 15:00 – 15:30 (every 5 mins)
-	@Scheduled(cron = "0 0-30/5 15 * * MON-FRI", zone = "Asia/Kolkata")
+	//@Scheduled(cron = "0 0-30/5 15 * * MON-FRI", zone = "Asia/Kolkata")
 	public void runMarketPrediction() throws SmartAPIException {
 
 		if ("Y".equalsIgnoreCase(strategyRepo.findByName("WEIGHTAGE").getActive())) {

@@ -36,6 +36,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.broker.Samco;
 import com.crumbs.trade.dto.CombinedChartPoint;
 import com.crumbs.trade.dto.CombinedChartResponse;
 import com.crumbs.trade.dto.StraddlePremiumDto;
@@ -83,6 +84,8 @@ public class StraddleIntradayService {
 	TaskService taskService;
 	@Autowired
 	TelegramService telegramService;
+	@Autowired
+	Samco samco;
 	
 	// ================= VWAP STATE =================
 	private final Map<String, BigDecimal> tpvMap = new HashMap<>();
@@ -133,8 +136,9 @@ public class StraddleIntradayService {
             // =====================================================
             //logger.setLoggingEnabled(strategy);
             
-			BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
-
+			//BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
+			String session = samco.getSamcoSession();
+			BigDecimal spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
 			// VALIDATION: Check if spot price is valid
 			if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 				logger.error("Invalid spot price for {}: {}", name, spotPrice);
@@ -262,6 +266,15 @@ public class StraddleIntradayService {
 		}
 	}
 	
+	public String getSymbolByName(String name) {
+		if ("NIFTY".equalsIgnoreCase(name)) {
+			return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol();
+		} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+			return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol1();
+		}
+		return null;
+	}
+	
 	private void fetchVwapInParallel(
 		    List<StraddlePremiumDto> strikesWithPrices,
 		    SmartConnect smartConnect,
@@ -345,7 +358,7 @@ public class StraddleIntradayService {
 		        Thread.currentThread().interrupt();
 		    }
 		}
-	private List<StraddlePremiumDto> getOrBuildStrikeList(
+	public List<StraddlePremiumDto> getOrBuildStrikeList(
 		    String name,
 		    BigDecimal atmStrike
 		) {
@@ -1023,7 +1036,7 @@ public class StraddleIntradayService {
 	// Fetches previous day close prices (similar to prevHigh/prevLow)
 	// =====================================================
 
-	private void fetchPreviousDayCloseForAllStrikes(
+	public void fetchPreviousDayCloseForAllStrikes(
 	    List<StraddlePremiumDto> strikeList,
 	    SmartConnect smartConnect,
 	    Strategy strategy
@@ -1166,7 +1179,7 @@ public class StraddleIntradayService {
 	// Populates DTO from cached previous close data
 	// =====================================================
 
-	private void populatePrevCloseFromCache(List<StraddlePremiumDto> strikeList, String strategyName) {
+	public void populatePrevCloseFromCache(List<StraddlePremiumDto> strikeList, String strategyName) {
 	    
 	    Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(strategyName);
 	    

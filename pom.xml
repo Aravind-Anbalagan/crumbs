@@ -72,6 +72,12 @@
   <artifactId>smartapi-java</artifactId>
   <version>2.2.6</version>
 </dependency>
+<dependency>
+    <groupId>io.samco</groupId>
+    <artifactId>stocknote-bridge-java</artifactId>
+    <version>3.0.0</version>
+</dependency>
+
 		<!-- H2 Database -->
 		<dependency>
 			<groupId>com.h2database</groupId>
