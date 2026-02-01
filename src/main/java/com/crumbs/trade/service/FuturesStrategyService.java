@@ -543,6 +543,7 @@ public class FuturesStrategyService {
         req.put("interval", "ONE_HOUR");
         req.put("fromdate", window[0].toString().replace("T", " "));
         req.put("todate", window[1].toString().replace("T", " "));
+        logger.info("");
         return smartConnect.candleData(req);
     }
 
