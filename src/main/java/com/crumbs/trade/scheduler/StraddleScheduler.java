@@ -25,11 +25,10 @@ public class StraddleScheduler {
 
     // -------------------- CRUDE --------------------
 
-    /*@Schedules({
+    @Schedules({
         @Scheduled(cron = "0 * 16-22 * * MON-FRI", zone = "Asia/Kolkata"),
         @Scheduled(cron = "0 0-45 23 * * MON-FRI", zone = "Asia/Kolkata")
-    })*/
-    @Scheduled(cron = "0 * * * * *")
+    })
     public void straddleCrude() {
         executionService.execute("CRUDEOIL");
     }
