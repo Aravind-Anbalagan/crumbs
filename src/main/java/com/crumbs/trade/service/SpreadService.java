@@ -132,7 +132,7 @@ public class SpreadService {
     // Configuration Class for Strike Selection
     // --------------------------------------------------------------------- 
     public static class StrikeSelectionConfig {
-        private StrikeSelectionMode mode = StrikeSelectionMode.COMBINED;
+        private StrikeSelectionMode mode = StrikeSelectionMode.OI_BASED;
 
         // OI Configuration
         private BigDecimal minOIThreshold = BigDecimal.valueOf(1000);
