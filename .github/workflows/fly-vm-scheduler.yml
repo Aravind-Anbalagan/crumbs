@@ -2,11 +2,11 @@ name: Fly VM Scheduler
 
 on:
   schedule:
-    # Start VM ~8:00 AM IST (compensated for GitHub delay)
-    - cron: "30 0 * * *"
+    # Start VM at 8:00 AM IST (02:30 UTC)
+        - cron: "30 2 * * *"
 
-    # Stop VM at 12:00 AM IST
-    - cron: "30 18 * * *"
+    # Stop VM at 12:00 AM IST (18:30 UTC)
+        - cron: "30 18 * * *"
   workflow_dispatch:
     inputs:
       action:
