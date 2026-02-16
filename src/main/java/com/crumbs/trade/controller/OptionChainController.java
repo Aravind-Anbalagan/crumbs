@@ -40,8 +40,8 @@ public class OptionChainController {
 	
 
 	// @Scheduled(fixedRate = 10000)
-	@GetMapping("/dailyoi")
-	@Scheduled(cron = "0 00 20 * * ?") // Works
+	//@GetMapping("/dailyoi")
+	//@Scheduled(cron = "0 00 20 * * ?") // Works
 	public void optionChain() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("NIFTY_OI").getActive().equals("Y")) {
 			oiDataService.getOptionChain("NIFTY_OI");

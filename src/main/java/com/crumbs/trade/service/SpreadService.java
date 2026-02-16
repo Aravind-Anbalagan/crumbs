@@ -93,6 +93,10 @@ public class SpreadService {
     private final Set<String> processedIndicatorsToday = Collections.synchronizedSet(new HashSet<>());
     private int spreadsPlacedToday = 0;
     private int stocksSkippedDueToMaxLoss = 0;
+    
+    private static final int MAX_RETRIES = 3;
+    private static final long INITIAL_DELAY_MS = 300;   // start delay
+    private static final long RATE_LIMIT_DELAY_MS = 200; // between API calls
 
     // --------------------------------------------------------------------- 
     // Enums
@@ -269,7 +273,7 @@ public class SpreadService {
      */
     public void getStockList() {
         StrikeSelectionConfig config = new StrikeSelectionConfig();
-        config.setMode(StrikeSelectionMode.COMBINED);
+        config.setMode(StrikeSelectionMode.OI_BASED);
         getStockListWithConfig(config);
     }
 
@@ -1470,7 +1474,7 @@ public class SpreadService {
         boolean sameMonth = expiryDate.getYear() == today.getYear() &&
                 expiryDate.getMonth() == today.getMonth();
 
-        if (sameMonth && currentDay >= 15) {
+        if (sameMonth && currentDay >= 20) {
             log.warn("Skipping: expiry {} is current month and today={} >= 15", expiryName, currentDay);
             return false;
         }
@@ -1479,18 +1483,52 @@ public class SpreadService {
     }
 
     private BigDecimal fetchLTP(SmartConnect smartConnect, Indicator indicator) {
-        try {
-            return angelOneService.getcurrentPrice(
-                    smartConnect,
-                    indicator.getExchange(),
-                    indicator.getTradingSymbol(),
-                    indicator.getToken(),
-                    "ltp"
-            );
-        } catch (Exception e) {
-            log.error("Failed to fetch LTP for {}: {}", indicator.getTradingSymbol(), e.getMessage(), e);
-            return null;
+
+        int attempt = 0;
+        long delay = INITIAL_DELAY_MS;
+
+        while (attempt < MAX_RETRIES) {
+            try {
+
+                // 🔹 Simple Rate Limiting
+                Thread.sleep(RATE_LIMIT_DELAY_MS);
+
+                BigDecimal ltp = angelOneService.getcurrentPrice(
+                        smartConnect,
+                        indicator.getExchange(),
+                        indicator.getTradingSymbol(),
+                        indicator.getToken(),
+                        "ltp"
+                );
+
+                if (ltp != null && ltp.compareTo(BigDecimal.ZERO) > 0) {
+                    return ltp;
+                }
+
+                log.warn("LTP returned null/zero for {} (Attempt {}/{})",
+                        indicator.getTradingSymbol(), attempt + 1, MAX_RETRIES);
+
+            } catch (Exception e) {
+                log.error("Attempt {} failed for {}: {}",
+                        attempt + 1,
+                        indicator.getTradingSymbol(),
+                        e.getMessage());
+            }
+
+            // 🔹 Exponential Backoff
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+
+            delay *= 2; // 300 → 600 → 1200
+            attempt++;
         }
+
+        log.error("All retries failed for {}", indicator.getTradingSymbol());
+        return null;
     }
 
     private List<BigDecimal> fetchAllStrikesForInstrument(String tradingSymbol, String expiry) {

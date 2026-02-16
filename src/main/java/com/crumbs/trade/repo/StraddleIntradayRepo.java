@@ -150,5 +150,21 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
             .minusMinutes(minutes);
         return findSinceAdviceTime(name, sinceTime);
     }
+    
+    /**
+     * Find all strikes for a specific name and timestamp (used by pre-market analysis)
+     */
+    @Query("SELECT s FROM StraddleIntraday s WHERE s.name = :name AND s.timestamp = :timestamp")
+    List<StraddleIntraday> findByNameAndTimestamp(
+        @Param("name") String name,
+        @Param("timestamp") LocalDateTime timestamp
+    );
 
+    StraddleIntraday findTopByNameAndExpiryAndStrikeOrderByTimestampDesc(
+    	    String name, String expiry, BigDecimal strike
+    	);
+
+    	List<StraddleIntraday> findByNameAndExpiryAndStrikeOrderByTimestampDesc(
+    	    String name, String expiry, BigDecimal strike
+    	);
 }

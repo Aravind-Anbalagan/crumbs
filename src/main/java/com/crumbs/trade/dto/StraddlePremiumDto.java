@@ -51,6 +51,12 @@ public class StraddlePremiumDto {
     private BigDecimal pePrevHigh;  // NEW
     private BigDecimal pePrevLow;   // NEW
     
+    private BigDecimal ceHigh;  // NEW
+    private BigDecimal ceLow;   // NEW
+    
+    private BigDecimal peHigh;  // NEW
+    private BigDecimal peLow;   // NEW
+    
  // Add these fields to the DTO class
     private BigDecimal cePrevClose;
     private BigDecimal pePrevClose;

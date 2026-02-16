@@ -8,6 +8,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -30,6 +31,7 @@ import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.OrderRepository;
+import com.crumbs.trade.repo.PreMarketAnalysisRepo;
 import com.crumbs.trade.repo.PredictionHistoryRepo;
 import com.crumbs.trade.repo.PriceHeikinashiMcxRepo;
 import com.crumbs.trade.repo.PriceHeikinashiNiftyRepo;
@@ -128,27 +130,81 @@ public class AngelOneService {
 	
 	@Autowired
 	PredictionHistoryRepo predictionHistoryRepo;
+	
+	@Autowired
+	PreMarketAnalysisRepo preMarketAnalysisRepo;
+	
 	/*
 	 * Get current price
 	 */
-	public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol,
-			String symboltoken) {
-		try {
-			Thread.sleep(500);
-			JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
-			if (jsonObject != null) {
-				return new BigDecimal(String.valueOf(jsonObject.get("ltp")));
-			} else {
-				return new BigDecimal(0);
+	private static final int MAX_RETRIES = 3;
+	private static final long INITIAL_DELAY_MS = 300;
 
-			}
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			logger.error("Error while read current price : ", tradingSymbol);
-			
-		}
-		return new BigDecimal(0);
+	private final Map<String, BigDecimal> lastKnownLtp = new ConcurrentHashMap<>();
+
+	public BigDecimal getcurrentPrice(
+	        SmartConnect smartConnect,
+	        String exchange,
+	        String tradingSymbol,
+	        String symboltoken) {
+
+	    int attempt = 0;
+	    long delay = INITIAL_DELAY_MS;
+
+	    while (attempt < MAX_RETRIES) {
+	        try {
+
+	            JSONObject jsonObject =
+	                    smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
+
+	            if (jsonObject == null) {
+	                logger.warn("Null response from Angel for {}", tradingSymbol);
+	            } else if (!jsonObject.has("ltp")) {
+	                logger.warn("LTP missing in response for {}: {}",
+	                        tradingSymbol, jsonObject.toString());
+	            } else {
+
+	                BigDecimal ltp =
+	                        new BigDecimal(jsonObject.get("ltp").toString());
+
+	                if (ltp.compareTo(BigDecimal.ZERO) > 0) {
+
+	                    // ✅ store last known
+	                    lastKnownLtp.put(tradingSymbol, ltp);
+
+	                    return ltp;
+	                }
+	            }
+
+	        } catch (Exception e) {
+	            logger.error("Attempt {} failed for {}: {}",
+	                    attempt + 1, tradingSymbol, e.getMessage());
+	        }
+
+	        // 🔁 Exponential Backoff
+	        try {
+	            Thread.sleep(delay);
+	        } catch (InterruptedException ie) {
+	            Thread.currentThread().interrupt();
+	            break;
+	        }
+
+	        delay *= 2;
+	        attempt++;
+	    }
+
+	    // ⚡ Fallback to last known
+	    BigDecimal fallback = lastKnownLtp.get(tradingSymbol);
+
+	    if (fallback != null) {
+	        logger.warn("Using fallback LTP for {}", tradingSymbol);
+	        return fallback;
+	    }
+
+	    logger.error("All retries failed for {}. Returning null.", tradingSymbol);
+	    return null;   // ❗ DO NOT return 0
 	}
+
 	
 	@Transactional
 	public void deleteOrders() {
@@ -174,6 +230,7 @@ public class AngelOneService {
 		straddleIntradayRepo.deleteAll();
 		tradeExecutionRepo.deleteAll();
 		predictionHistoryRepo.deleteAll();
+		preMarketAnalysisRepo.deleteAll();
 	}
 	/*
 	 * Get current price

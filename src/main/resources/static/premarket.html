@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pre-Market Cross-Plot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-gradient-1: #1e3c72;
+            --bg-gradient-2: #2a5298;
+            --container-bg: #ffffff;
+            --panel-bg: #ffffff;
+            --text-primary: #2c3e50;
+            --text-secondary: #6c757d;
+            --metric-bg: #f8f9fa;
+            --main-bg: #f5f7fa;
+            --tooltip-bg: rgba(255, 255, 255, 0.9);
+            --tooltip-text: #2c3e50;
+            --shadow: rgba(0,0,0,0.08);
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-1: #0a0e27;
+            --bg-gradient-2: #1a1d35;
+            --container-bg: #1e2139;
+            --panel-bg: #252945;
+            --text-primary: #e4e6eb;
+            --text-secondary: #b0b3b8;
+            --metric-bg: #2d3250;
+            --main-bg: #1a1d35;
+            --tooltip-bg: rgba(37, 41, 69, 0.95);
+            --tooltip-text: #e4e6eb;
+            --shadow: rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            transition: background 0.3s ease;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1600px;
+            height: 96vh;
+            background: var(--container-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: background 0.3s ease;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header h1 {
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+
+        .header-info {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 3px;
+        }
+
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .theme-toggle:active {
+            transform: scale(0.95);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 15px;
+            background: var(--main-bg);
+            min-height: 0;
+            transition: background 0.3s ease;
+        }
+
+        .view-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            height: 100%;
+        }
+
+        .view-single {
+            display: block;
+            height: 100%;
+        }
+
+        .chart-panel {
+            background: var(--panel-bg);
+            border-radius: 10px;
+            box-shadow: 0 2px 10px var(--shadow);
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            height: 100%;
+            transition: background 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .chart-panel.ce {
+            border-top: 4px solid #e74c3c;
+        }
+
+        .chart-panel.pe {
+            border-top: 4px solid #3498db;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .panel-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: var(--text-primary);
+            transition: color 0.3s ease;
+        }
+
+        .panel-title.ce {
+            color: #e74c3c;
+        }
+
+        .panel-title.pe {
+            color: #3498db;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: white;
+        }
+
+        .btn-max {
+            background: #f39c12;
+        }
+
+        .btn-max:hover {
+            background: #e67e22;
+            transform: scale(1.05);
+        }
+
+        .btn-reset {
+            background: #95a5a6;
+        }
+
+        .btn-reset:hover {
+            background: #7f8c8d;
+            transform: scale(1.05);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .metric {
+            text-align: center;
+            padding: 8px;
+            background: var(--metric-bg);
+            border-radius: 6px;
+            transition: background 0.3s ease;
+        }
+
+        .metric-label {
+            font-size: 0.7em;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: color 0.3s ease;
+        }
+
+        .metric-value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: var(--text-primary);
+            margin-top: 3px;
+            transition: color 0.3s ease;
+        }
+
+        .metric-value.current {
+            font-size: 1.4em;
+        }
+
+        .metric-value.ce {
+            color: #e74c3c;
+        }
+
+        .metric-value.pe {
+            color: #3498db;
+        }
+
+        .metric-value.target {
+            color: #9b59b6;
+        }
+
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        .alert {
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .alert.active {
+            display: block;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .alert.bullish {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+
+        .alert.bearish {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+
+        [data-theme="dark"] .alert.bullish {
+            background: #1e4620;
+            color: #7ef07e;
+            border-color: #2d6a2f;
+        }
+
+        [data-theme="dark"] .alert.bearish {
+            background: #4a1f1f;
+            color: #f07e7e;
+            border-color: #6a2d2d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>📊 Pre-Market Cross-Plot</h1>
+                <div class="header-info" id="headerInfo">Loading...</div>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">
+                <span id="themeIcon">🌙</span>
+                <span id="themeText">Dark Mode</span>
+            </button>
+        </div>
+        <div class="main-content" id="mainContent"></div>
+    </div>
+
+    <script>
+        let currentTheme = localStorage.getItem('theme') || 'light';
+        
+        function toggleTheme() {
+            currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+            applyTheme();
+            localStorage.setItem('theme', currentTheme);
+            renderView();
+        }
+        
+        function applyTheme() {
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            const icon = document.getElementById('themeIcon');
+            const text = document.getElementById('themeText');
+            
+            if (currentTheme === 'dark') {
+                icon.textContent = '☀️';
+                text.textContent = 'Light Mode';
+            } else {
+                icon.textContent = '🌙';
+                text.textContent = 'Dark Mode';
+            }
+        }
+
+        const data = {
+            ce: { current: 0, high: 0, low: 0, target: 0 },
+            pe: { current: 0, high: 0, low: 0, target: 0 },
+            atmStrike: 0,
+            ltpDiff: 0,
+            midPoint: 0,
+            combinedLtp: 0,
+            name: '',
+            expiry: '',
+            tradingDate: ''
+        };
+
+        let ceChart, peChart;
+        let times = [];
+        let cePrices = [];
+        let pePrices = [];
+        let currentView = 'split';
+
+        function getChartColors() {
+            const isDark = currentTheme === 'dark';
+            return {
+                gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                textColor: isDark ? '#e4e6eb' : '#2c3e50',
+                tooltipBg: isDark ? 'rgba(37, 41, 69, 0.95)' : 'rgba(255, 255, 255, 0.9)',
+                tooltipText: isDark ? '#e4e6eb' : '#2c3e50'
+            };
+        }
+
+        function renderView() {
+            const container = document.getElementById('mainContent');
+            
+            if (currentView === 'split') {
+                container.innerHTML = `
+                    <div class="view-split">
+                        ${renderCEPanel(true)}
+                        ${renderPEPanel(true)}
+                    </div>
+                `;
+            } else if (currentView === 'ce') {
+                container.innerHTML = `
+                    <div class="view-single">
+                        ${renderCEPanel(false)}
+                    </div>
+                `;
+            } else if (currentView === 'pe') {
+                container.innerHTML = `
+                    <div class="view-single">
+                        ${renderPEPanel(false)}
+                    </div>
+                `;
+            }
+            
+            setTimeout(() => {
+                if (currentView === 'split' || currentView === 'ce') createCEChart();
+                if (currentView === 'split' || currentView === 'pe') createPEChart();
+            }, 50);
+        }
+
+        function renderCEPanel(showMax) {
+            return `
+                <div class="chart-panel ce">
+                    <div class="panel-header">
+                        <div class="panel-title ce">CALL (CE)</div>
+                        <button class="btn ${showMax ? 'btn-max' : 'btn-reset'}" onclick="${showMax ? 'setView(\'ce\')' : 'setView(\'split\')'}">
+                            ${showMax ? '⛶ MAX' : '↶ RESET'}
+                        </button>
+                    </div>
+                    <div class="metrics-row">
+                        <div class="metric">
+                            <div class="metric-label">Current</div>
+                            <div class="metric-value current ce" id="ceCurrent">₹${data.ce.current.toFixed(2)}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Prev High</div>
+                            <div class="metric-value">₹${data.ce.high.toFixed(2)}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Prev Low</div>
+                            <div class="metric-value">₹${data.ce.low.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="ceChart"></canvas>
+                    </div>
+                    <div class="metric" style="margin-top: 8px; background: #f3e5f5;">
+                        <div class="metric-label">🎯 Target (PE Low)</div>
+                        <div class="metric-value target">₹${data.ce.target.toFixed(2)}</div>
+                    </div>
+                    <div class="alert" id="ceAlert">✅ Target Reached!</div>
+                </div>
+            `;
+        }
+
+        function renderPEPanel(showMax) {
+            return `
+                <div class="chart-panel pe">
+                    <div class="panel-header">
+                        <div class="panel-title pe">PUT (PE)</div>
+                        <button class="btn ${showMax ? 'btn-max' : 'btn-reset'}" onclick="${showMax ? 'setView(\'pe\')' : 'setView(\'split\')'}">
+                            ${showMax ? '⛶ MAX' : '↶ RESET'}
+                        </button>
+                    </div>
+                    <div class="metrics-row">
+                        <div class="metric">
+                            <div class="metric-label">Current</div>
+                            <div class="metric-value current pe" id="peCurrent">₹${data.pe.current.toFixed(2)}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Prev High</div>
+                            <div class="metric-value">₹${data.pe.high.toFixed(2)}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Prev Low</div>
+                            <div class="metric-value">₹${data.pe.low.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="peChart"></canvas>
+                    </div>
+                    <div class="metric" style="margin-top: 8px; background: #f3e5f5;">
+                        <div class="metric-label">🎯 Target (CE Low)</div>
+                        <div class="metric-value target">₹${data.pe.target.toFixed(2)}</div>
+                    </div>
+                    <div class="alert" id="peAlert">✅ Target Reached!</div>
+                </div>
+            `;
+        }
+
+        function setView(view) {
+            currentView = view;
+            renderView();
+        }
+
+        function createCEChart() {
+            const canvas = document.getElementById('ceChart');
+            if (!canvas) return;
+            
+            const colors = getChartColors();
+            const ctx = canvas.getContext('2d');
+            ceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: times,
+                    datasets: [{
+                        label: 'CE Price',
+                        data: cePrices,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#e74c3c',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }, {
+                        label: 'Prev High',
+                        data: Array(times.length).fill(data.ce.high),
+                        borderColor: '#f39c12',
+                        borderWidth: 2,
+                        borderDash: [8, 4],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    }, {
+                        label: 'Prev Low',
+                        data: Array(times.length).fill(data.ce.low),
+                        borderColor: '#27ae60',
+                        borderWidth: 2,
+                        borderDash: [8, 4],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    }, {
+                        label: '🎯 Target',
+                        data: Array(times.length).fill(data.ce.target),
+                        borderColor: '#9b59b6',
+                        borderWidth: 3,
+                        borderDash: [12, 6],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: colors.tooltipBg,
+                            titleColor: colors.tooltipText,
+                            bodyColor: '#e74c3c',
+                            borderColor: 'rgba(231, 76, 60, 0.8)',
+                            borderWidth: 2,
+                            padding: 8,
+                            titleFont: { size: 11, weight: 'normal' },
+                            bodyFont: { size: 13, weight: 'bold' },
+                            displayColors: false,
+                            callbacks: {
+                                beforeBody: () => [],
+                                afterBody: () => [],
+                                title: (context) => context[0].label,
+                                label: (context) => context.datasetIndex === 0 ? 'Current Price: ₹' + context.parsed.y.toFixed(2) : null
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: colors.gridColor },
+                            ticks: {
+                                callback: (val) => '₹' + val.toFixed(2),
+                                color: colors.textColor,
+                                font: { size: 10 }
+                            }
+                        },
+                        x: {
+                            grid: { color: colors.gridColor },
+                            ticks: { color: colors.textColor, font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createPEChart() {
+            const canvas = document.getElementById('peChart');
+            if (!canvas) return;
+            
+            const colors = getChartColors();
+            const ctx = canvas.getContext('2d');
+            peChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: times,
+                    datasets: [{
+                        label: 'PE Price',
+                        data: pePrices,
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#3498db',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }, {
+                        label: 'Prev High',
+                        data: Array(times.length).fill(data.pe.high),
+                        borderColor: '#f39c12',
+                        borderWidth: 2,
+                        borderDash: [8, 4],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    }, {
+                        label: 'Prev Low',
+                        data: Array(times.length).fill(data.pe.low),
+                        borderColor: '#27ae60',
+                        borderWidth: 2,
+                        borderDash: [8, 4],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    }, {
+                        label: '🎯 Target',
+                        data: Array(times.length).fill(data.pe.target),
+                        borderColor: '#9b59b6',
+                        borderWidth: 3,
+                        borderDash: [12, 6],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHitRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: colors.tooltipBg,
+                            titleColor: colors.tooltipText,
+                            bodyColor: '#3498db',
+                            borderColor: 'rgba(52, 152, 219, 0.8)',
+                            borderWidth: 2,
+                            padding: 8,
+                            titleFont: { size: 11, weight: 'normal' },
+                            bodyFont: { size: 13, weight: 'bold' },
+                            displayColors: false,
+                            callbacks: {
+                                beforeBody: () => [],
+                                afterBody: () => [],
+                                title: (context) => context[0].label,
+                                label: (context) => context.datasetIndex === 0 ? 'Current Price: ₹' + context.parsed.y.toFixed(2) : null
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: colors.gridColor },
+                            ticks: {
+                                callback: (val) => '₹' + val.toFixed(2),
+                                color: colors.textColor,
+                                font: { size: 10 }
+                            }
+                        },
+                        x: {
+                            grid: { color: colors.gridColor },
+                            ticks: { color: colors.textColor, font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function fetchChartData(strategyName = 'NIFTY') {
+            try {
+                const response = await fetch(`/api/straddle/pre-market/chart/${strategyName}`);
+                const json = await response.json();
+                
+                if (json.status === 'success' && json.data) {
+                    const d = json.data;
+                    
+                    data.ce.high = d.ce.prevHigh;
+                    data.ce.low = d.ce.prevLow;
+                    data.ce.target = d.crossPlotTargets.ceTarget;
+                    data.pe.high = d.pe.prevHigh;
+                    data.pe.low = d.pe.prevLow;
+                    data.pe.target = d.crossPlotTargets.peTarget;
+                    data.atmStrike = d.selectedAtm.strike;
+                    data.ltpDiff = d.selectedAtm.ltpDiff;
+                    data.midPoint = d.selectedAtm.midPoint;
+                    data.combinedLtp = d.combined.ltp;
+                    data.name = d.strategy;
+                    data.expiry = d.expiry;
+                    data.tradingDate = d.tradingDate;
+                    
+                    times = d.timestamps;
+                    cePrices = d.ce.pricesSeries;
+                    pePrices = d.pe.pricesSeries;
+                    
+                    const latestCE = cePrices[cePrices.length - 1];
+                    const latestPE = pePrices[pePrices.length - 1];
+                    data.ce.current = latestCE;
+                    data.pe.current = latestPE;
+                    
+                    if (ceChart && peChart) {
+                        ceChart.data.labels = times;
+                        ceChart.data.datasets[0].data = cePrices;
+                        ceChart.data.datasets[1].data = Array(times.length).fill(data.ce.high);
+                        ceChart.data.datasets[2].data = Array(times.length).fill(data.ce.low);
+                        ceChart.data.datasets[3].data = Array(times.length).fill(data.ce.target);
+                        ceChart.update('none');
+                        
+                        peChart.data.labels = times;
+                        peChart.data.datasets[0].data = pePrices;
+                        peChart.data.datasets[1].data = Array(times.length).fill(data.pe.high);
+                        peChart.data.datasets[2].data = Array(times.length).fill(data.pe.low);
+                        peChart.data.datasets[3].data = Array(times.length).fill(data.pe.target);
+                        peChart.update('none');
+                        
+                        document.getElementById('ceCurrent').textContent = '₹' + latestCE.toFixed(2);
+                        document.getElementById('peCurrent').textContent = '₹' + latestPE.toFixed(2);
+                    } else {
+                        updateHeader();
+                        renderView();
+                    }
+                    
+                    const ceAlert = document.getElementById('ceAlert');
+                    const peAlert = document.getElementById('peAlert');
+                    if (ceAlert && latestCE <= data.ce.target) ceAlert.classList.add('active', 'bullish');
+                    if (peAlert && latestPE <= data.pe.target) peAlert.classList.add('active', 'bearish');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function updateHeader() {
+            document.getElementById('headerInfo').textContent = 
+                `${data.name} | Strike: ${data.atmStrike} | ${data.expiry} @ ${data.tradingDate}`;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            applyTheme();
+            fetchChartData('NIFTY');
+            setInterval(() => fetchChartData('NIFTY'), 60000);
+        });
+    </script>
+</body>
+</html>

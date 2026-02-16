@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -730,6 +731,8 @@ public class StraddleIntradayService {
 			Map<String, BigDecimal> openMap = new HashMap<>();
 			Map<String, BigDecimal> oIMap = new HashMap<>();
 			Map<String, BigDecimal> volumeMap = new HashMap<>();
+			Map<String, BigDecimal> highMap = new HashMap<>();
+			Map<String, BigDecimal> lowMap = new HashMap<>();
 			
 			for (int i = 0; i < fetched.length(); i++) {
 				JSONObject item = fetched.getJSONObject(i);
@@ -740,6 +743,8 @@ public class StraddleIntradayService {
 					openMap.put(token, item.optBigDecimal("open", BigDecimal.ZERO));
 					oIMap.put(token, item.optBigDecimal("opnInterest", BigDecimal.ZERO));
 					volumeMap.put(token, item.optBigDecimal("tradeVolume", BigDecimal.ZERO));
+					highMap.put(token, item.optBigDecimal("high", BigDecimal.ZERO));
+					lowMap.put(token, item.optBigDecimal("low", BigDecimal.ZERO));
 				}
 			}
 
@@ -751,11 +756,15 @@ public class StraddleIntradayService {
 					BigDecimal open = openMap.get(t);
 					BigDecimal oi = oIMap.get(t);
 					BigDecimal volume = volumeMap.get(t);
+					BigDecimal high = highMap.get(t);
+					BigDecimal low = lowMap.get(t);
 					
 					dto.setCePrice(ltp);
 					dto.setCeOpenPrice(open);
 					dto.setCeOI(oi);
 					dto.setCeVolume(volume);
+					dto.setCeHigh(high);
+					dto.setCeLow(low);
 					
 					if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
 						logger.warn("No valid CE price for token {}, strike {}", 
@@ -769,11 +778,15 @@ public class StraddleIntradayService {
 					BigDecimal open = openMap.get(t);
 					BigDecimal oi = oIMap.get(t);
 					BigDecimal volume = volumeMap.get(t);
-							
+					BigDecimal high = highMap.get(t);
+					BigDecimal low = lowMap.get(t);
+					
 					dto.setPePrice(ltp);
 					dto.setPeOpenPrice(open);
 					dto.setPeOI(oi);
 					dto.setPeVolume(volume);
+					dto.setPeHigh(high);
+					dto.setPeLow(low);
 					
 					if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
 						logger.warn("No valid PE price for token {}, strike {}", 
@@ -1206,7 +1219,11 @@ public class StraddleIntradayService {
 	        
 	        // Calculate combined prev close if both available
 	        if (dto.getCePrevClose() != null && dto.getPePrevClose() != null) {
-	            dto.setCombinedPrevClose(dto.getCePrevClose().add(dto.getPePrevClose()));
+
+	            BigDecimal sum = dto.getCePrevClose().add(dto.getPePrevClose());
+	            BigDecimal average = sum.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+
+	            dto.setCombinedPrevClose(average);
 	        }
 	    }
 	}
@@ -2176,5 +2193,142 @@ public class StraddleIntradayService {
 	    logger.debug("Combined IV: ({} + {}) / 2 = {}", ceIV, peIV, combined);
 	    
 	    return combined;
+	}
+	
+	// =====================================================
+	// ADD THIS METHOD TO YOUR EXISTING StraddleIntradayService.java
+	// =====================================================
+
+	/**
+	 * Pre-market data fetching (9:10 AM)
+	 * Fetches LTP and previous day data WITHOUT saving to StraddleIntraday
+	 * Returns list of strikes for pre-market analysis
+	 */
+	public List<StraddlePremiumDto> getPreMarketLTP(String name) {
+	    
+	    try {
+	        SmartConnect smartconnect = angelOne.signIn();
+	        
+	        if (smartconnect == null) {
+	            logger.error("Failed to sign in to Angel One for pre-market");
+	            return new ArrayList<>();
+	        }
+
+	        Strategy strategy = strategyRepo.findByName(name);
+	        
+	        if (strategy == null) {
+	            logger.error("Strategy not found: {}", name);
+	            return new ArrayList<>();
+	        }
+	        
+	        logger.info("=== PRE-MARKET DATA FETCH STARTED FOR {} ===", name);
+	        
+	        // 1. Get spot price
+	        String session = samco.getSamcoSession();
+	        BigDecimal spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+	        
+	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
+	            logger.error("Invalid spot price for {}: {}", name, spotPrice);
+	            return new ArrayList<>();
+	        }
+	        
+	        logger.info("Pre-market spot price for {}: {}", name, spotPrice);
+
+	        // 2. Calculate ATM strike
+	        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
+	        
+	        if (atmStrike == null || atmStrike.compareTo(BigDecimal.ZERO) <= 0) {
+	            logger.error("Invalid ATM strike for {}: {}", name, atmStrike);
+	            return new ArrayList<>();
+	        }
+	        
+	        logger.info("Pre-market ATM strike for {}: {}", name, atmStrike);
+	        
+	        // 3. Build strike list (reuse existing method)
+	        List<StraddlePremiumDto> strikeList = getOrBuildStrikeList(name, atmStrike);
+	        
+	        // 4. Get token details (reuse existing method)
+	        strikeList = getAllTokenDetails(strikeList, strategy);
+	        
+	        long validTokenCount = strikeList.stream()
+	            .filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
+	            .count();
+	            
+	        if (validTokenCount == 0) {
+	            logger.error("No valid tokens found for pre-market: {}", name);
+	            return new ArrayList<>();
+	        }
+	        
+	        logger.info("Found {} strikes with valid tokens for pre-market", validTokenCount);
+
+	        // 5. Fetch previous day close (reuse existing method)
+	        Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(name);
+	        
+	        if (strategyCloseCache == null || strategyCloseCache.isEmpty()) {
+	            logger.info("Fetching previous day close for pre-market: {}", name);
+	            fetchPreviousDayCloseForAllStrikes(strikeList, smartconnect, strategy);
+	        } else {
+	            logger.debug("Using cached previous day close for pre-market: {}", name);
+	            populatePrevCloseFromCache(strikeList, name);
+	        }
+	        
+	     // ⚠️ ADD DELAY BEFORE BATCH PRICE FETCH
+	        logger.info("Waiting 2 seconds before fetching pre-market LTP (rate limit prevention)...");
+	        Thread.sleep(2000); // 2 second delay
+
+	        // 6. Fetch current LTP (reuse existing method)
+	        strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect, strategy.getExchange());
+	        
+	        long validPriceCount = strikeList.stream()
+	            .filter(dto -> 
+	                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+	                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+	            )
+	            .count();
+	            
+	        if (validPriceCount == 0) {
+	            logger.error("No valid prices fetched for pre-market: {}", name);
+	            return new ArrayList<>();
+	        }
+	        
+	        logger.info("Successfully fetched pre-market prices for {} strikes", validPriceCount);
+
+	        // 7. Fetch previous day high/low (reuse existing method)
+	        resetPrevDayDataIfNewDay();
+	        
+	        Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
+	        Map<String, BigDecimal> strategyLowCache = prevLowMap.get(name);
+	        
+	        if (strategyHighCache == null || strategyLowCache == null || 
+	            strategyHighCache.isEmpty() || strategyLowCache.isEmpty()) {
+	            
+	            logger.info("Fetching previous day high/low for pre-market: {}", name);
+	            fetchPreviousDayHighLowForAllStrikes(strikeList, smartconnect, strategy);
+	        } else {
+	            logger.debug("Using cached previous day data for pre-market: {}", name);
+	            populatePrevDayDataFromCache(strikeList, name);
+	        }
+	        
+	        logger.info("✓ PRE-MARKET DATA FETCH COMPLETED: {} strikes ready", strikeList.size());
+	        
+	        // 8. Return list WITHOUT saving to database
+	        return strikeList;
+
+	    } catch (Exception e) {
+	        logger.error("Error in getPreMarketLTP for {}", name, e);
+	        return new ArrayList<>();
+	    }
+	}
+	
+	/**
+	 * Get ALL time-series data (no limit)
+	 * Returns complete price history for the strike
+	 */
+	public List<StraddleIntraday> getTimeSeriesByStrike(String name, String expiry, BigDecimal strike) {
+	    List<StraddleIntraday> records = straddleIntradayRepo
+	        .findByNameAndExpiryAndStrikeOrderByTimestampDesc(name, expiry, strike);
+	    
+	    Collections.reverse(records);
+	    return records;
 	}
 }
