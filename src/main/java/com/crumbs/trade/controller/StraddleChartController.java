@@ -11,6 +11,8 @@ import java.util.Optional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +22,7 @@ import com.crumbs.trade.dto.PreMarketAnalysisResponseDto;
 import com.crumbs.trade.dto.PreMarketAnalysisResponseDto.CrossPlotTargetsDto;
 import com.crumbs.trade.dto.PreMarketAnalysisResponseDto.OptionDataDto;
 import com.crumbs.trade.dto.PreMarketAnalysisResponseDto.PreMarketDataDto;
+import com.crumbs.trade.dto.SecondMidPointRequest;
 import com.crumbs.trade.entity.PreMarketAnalysis;
 import com.crumbs.trade.entity.StraddleIntraday;
 import com.crumbs.trade.service.PreMarketAnalysisService;
@@ -171,5 +174,12 @@ public class StraddleChartController {
                 "message", e.getMessage()
             ));
         }
+    }
+    
+    @PostMapping("/second-mid-point")
+    public ResponseEntity<PreMarketAnalysis> updateSecondMidPoint(
+            @RequestBody SecondMidPointRequest request) {
+        PreMarketAnalysis updated = preMarketAnalysisService.updateSecondMidPoint(request);
+        return ResponseEntity.ok(updated);
     }
 }

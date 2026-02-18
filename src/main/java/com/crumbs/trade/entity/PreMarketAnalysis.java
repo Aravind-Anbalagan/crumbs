@@ -37,6 +37,7 @@ public class PreMarketAnalysis {
     private BigDecimal ceLtp;         // CE price at 9:10
     private BigDecimal peLtp;         // PE price at 9:10
     private BigDecimal midPoint;      // (CE + PE) / 2
+    private BigDecimal secondMidPoint;
     
     // ===== PREVIOUS DAY DATA =====
     private BigDecimal cePrevHigh;    // Previous day CE high

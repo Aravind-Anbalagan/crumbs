@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.crumbs.trade.dto.SecondMidPointRequest;
 import com.crumbs.trade.dto.StraddlePremiumDto;
 import com.crumbs.trade.entity.PreMarketAnalysis;
 import com.crumbs.trade.entity.Strategy;
@@ -189,5 +190,15 @@ public class PreMarketAnalysisService {
      */
     public Optional<PreMarketAnalysis> getLatestAnalysis(String name) {
         return preMarketAnalysisRepo.findTopByNameOrderByTimestampDesc(name);
+    }
+    
+    public PreMarketAnalysis updateSecondMidPoint(SecondMidPointRequest request) {
+        PreMarketAnalysis analysis = preMarketAnalysisRepo
+                .findTopByNameOrderByTimestampDesc(request.getName())
+                .orElseThrow(() -> new RuntimeException(
+                        "No PreMarketAnalysis found for name: " + request.getName()));
+
+        analysis.setSecondMidPoint(request.getSecondMidPoint());
+        return preMarketAnalysisRepo.save(analysis);
     }
 }

@@ -10,27 +10,23 @@ import org.springframework.stereotype.Component;
 public class NSEWorkingDays {
 	
     // List of public holidays (in format yyyy-MM-dd) for 2026
-    private static final List<LocalDate> publicHolidays = Arrays.asList(
-            LocalDate.of(2026, 1, 26),   // Republic Day (26-Jan-2026)
-            LocalDate.of(2026, 2, 16),   // Mahashivratri (16-Feb-2026)
-            LocalDate.of(2026, 3, 6),    // Holi (6-Mar-2026)
-            LocalDate.of(2026, 3, 20),   // Id-Ul-Fitr (Ramzan Id) (20-Mar-2026)
-            LocalDate.of(2026, 3, 30),   // Shri Mahavir Jayanti (30-Mar-2026)
-            LocalDate.of(2026, 4, 3),    // Good Friday (3-Apr-2026)
-            LocalDate.of(2026, 4, 6),    // Shri Ram Navami (6-Apr-2026)
-            LocalDate.of(2026, 4, 14),   // Dr. Baba Saheb Ambedkar Jayanti (14-Apr-2026)
-            LocalDate.of(2026, 5, 1),    // Maharashtra Day (1-May-2026)
-            LocalDate.of(2026, 5, 27),   // Id-Ul-Adha (Bakri Id) (27-May-2026)
-            LocalDate.of(2026, 8, 15),   // Independence Day (15-Aug-2026)
-            LocalDate.of(2026, 8, 16),   // Shri Ganesh Chaturthi (16-Aug-2026)
-            LocalDate.of(2026, 9, 26),   // Muharram (26-Sep-2026)
-            LocalDate.of(2026, 10, 2),   // Mahatma Gandhi Jayanti (2-Oct-2026)
-            LocalDate.of(2026, 10, 20),  // Dussehra (20-Oct-2026)
-            LocalDate.of(2026, 11, 8),   // Diwali Laxmi Pujan (8-Nov-2026)
-            LocalDate.of(2026, 11, 9),   // Diwali Balipratipada (9-Nov-2026)
-            LocalDate.of(2026, 11, 24),  // Prakash Gurpurb Sri Guru Nanak Dev (24-Nov-2026)
-            LocalDate.of(2026, 12, 25)   // Christmas (25-Dec-2026)
-    );
+	private static final List<LocalDate> publicHolidays = Arrays.asList(
+		    LocalDate.of(2026, 1, 26),   // Republic Day
+		    LocalDate.of(2026, 3, 3),    // Holi ← was Mar 06
+		    LocalDate.of(2026, 3, 26),   // Shri Ram Navami ← was Apr 06
+		    LocalDate.of(2026, 3, 31),   // Shri Mahavir Jayanti ← was Mar 30
+		    LocalDate.of(2026, 4, 3),    // Good Friday
+		    LocalDate.of(2026, 4, 14),   // Dr. Baba Saheb Ambedkar Jayanti
+		    LocalDate.of(2026, 5, 1),    // Maharashtra Day
+		    LocalDate.of(2026, 5, 28),   // Bakri Id ← was May 27
+		    LocalDate.of(2026, 6, 26),   // Muharram ← was Sep 26
+		    LocalDate.of(2026, 9, 14),   // Ganesh Chaturthi ← was Aug 16
+		    LocalDate.of(2026, 10, 2),   // Mahatma Gandhi Jayanti
+		    LocalDate.of(2026, 10, 20),  // Dussehra
+		    LocalDate.of(2026, 11, 10),  // Diwali-Balipratipada ← was Nov 09
+		    LocalDate.of(2026, 11, 24),  // Prakash Gurpurb Sri Guru Nanak Dev
+		    LocalDate.of(2026, 12, 25)   // Christmas
+		);
     
     // Method to check if a date is a working day for NSE
     public static boolean isNSEWorkingDay(LocalDate date) {
