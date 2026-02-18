@@ -131,6 +131,7 @@ public class StraddleChartController {
             selectedAtm.put("strike", preMarket.getAtmStrike());
             selectedAtm.put("ltpDiff", preMarket.getLtpDiff());
             selectedAtm.put("midPoint", preMarket.getMidPoint());
+            selectedAtm.put("secondMidPoint", preMarket.getSecondMidPoint());
             dataMap.put("selectedAtm", selectedAtm);
             
             // CE data (pre-market + time-series)
