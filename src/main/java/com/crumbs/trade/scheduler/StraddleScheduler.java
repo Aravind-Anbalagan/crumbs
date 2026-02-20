@@ -12,9 +12,9 @@ public class StraddleScheduler {
     
     private final StraddleExecutionService executionService;
     
-    // ==================== PRE-MARKET ANALYSIS (9:10 AM) ====================
+    // ==================== PRE-MARKET ANALYSIS (9:00 AM) ====================
     
-    @Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata")
     //@Scheduled(fixedRate = 10000)
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
