@@ -1095,7 +1095,7 @@ public class StraddleIntradayService {
 	                req.put("todate", toDate);
 	                
 	                // Add delay to avoid rate limiting
-	                Thread.sleep(500);
+	                Thread.sleep(1000);
 	                
 	                JSONArray candles = smartConnect.candleData(req);
 	                
@@ -1139,7 +1139,7 @@ public class StraddleIntradayService {
 	                req.put("todate", toDate);
 	                
 	                // Add delay to avoid rate limiting
-	                Thread.sleep(500);
+	                Thread.sleep(1000);
 	                
 	                JSONArray candles = smartConnect.candleData(req);
 	                
