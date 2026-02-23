@@ -18,20 +18,20 @@ public class WebSocketService {
 	StrategyRepo strategyRepo;
 	
 
-    public Map<String, String> getInstrumentKey(String name) {
+	public Map<String, String> getInstrumentKey(String name) {
 
-        Strategy strategy = strategyRepo
-                .findByNameIgnoreCase(name)
-                .orElseThrow(() ->
-                        new IllegalArgumentException("Unknown instrument: " + name)
-                );
+		Strategy strategy = strategyRepo.findByNameIgnoreCase(name)
+				.orElseThrow(() -> new IllegalArgumentException("Unknown instrument: " + name));
 
-        String key = strategy.getExchange() + "_" + strategy.getToken();
+		String prefix = switch (name.toUpperCase()) {
+		case "NIFTY" -> "NSE_FO";
+		case "CRUDEOIL" -> "MCX_FO"; // Adjust per broker
+		case "SILVERM" -> "MCX_FO";
+		default -> strategy.getExchange(); // Fallback
+		};
+		String key = prefix + "_" + strategy.getToken();
 
-        return Map.of(
-                "name", strategy.getName().toUpperCase(),
-                "key", key
-        );
-    }
+		return Map.of("name", strategy.getName().toUpperCase(), "key", key);
+	}
 	
 }

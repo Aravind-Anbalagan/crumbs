@@ -182,6 +182,34 @@ public class AngelWebSocketService {
 
         log.info("Subscribed successfully | {}", key);
     }
+    
+    public synchronized void unsubscribeAll() {
+        try {
+            if (smartStreamTicker == null) {
+                log.warn("WebSocket not initialized — cannot unsubscribe");
+                return;
+            }
+
+            if (subscribedTokens.isEmpty()) {
+                log.info("No subscribed tokens to unsubscribe");
+                return;
+            }
+
+            Set<TokenID> tokenSet = new HashSet<>(subscribedTokens.values());
+
+            smartStreamTicker.unsubscribe(SmartStreamSubsMode.LTP, tokenSet);
+
+            log.info("Unsubscribed all tokens | Count: {}", tokenSet.size());
+
+            // Clear all internal tracking
+            subscribedTokens.clear();
+            latestLtpMap.clear();
+            lastTickTime.clear();
+
+        } catch (Exception e) {
+            log.error("Failed to unsubscribe all tokens", e);
+        }
+    }
 
     // LTP Getter
     public BigDecimal getLatestLTP(ExchangeType exchangeType, String token) {

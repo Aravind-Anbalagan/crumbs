@@ -5,9 +5,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,309 +28,412 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PreMarketLevelOrderManagementService {
 
-	private static final Logger log = LoggerFactory.getLogger(PreMarketLevelOrderManagementService.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(PreMarketLevelOrderManagementService.class);
 
-	// ============================================================
-	// ================= STRATEGY CONSTANTS =======================
-	// ============================================================
+    // ============================================================
+    // ================= STATIC CONFIG =============================
+    // ============================================================
+
+    private static final String STRATEGY_NAME = "Market_Level";
+    private static final ExchangeType EXCHANGE = ExchangeType.NSE_FO;
+
+    private static final BigDecimal STOP_LOSS_POINTS = BigDecimal.valueOf(10);
+    private static final BigDecimal TRAIL_START_POINTS = BigDecimal.valueOf(20);
+    private static final BigDecimal TRAIL_STEP = BigDecimal.valueOf(5);
+    private static final BigDecimal BUFFER_PERCENT = BigDecimal.valueOf(0.002);
+
+    private static final int COOLDOWN_MINUTES = 3;
+    private static final int FORCE_EXIT_HOUR = 15;
+    private static final int FORCE_EXIT_MINUTE = 20;
 
-	private static final String STRATEGY_NAME = "Market_Level";
-	private static final ExchangeType EXCHANGE = ExchangeType.NSE_FO;
-	private static final boolean LIVE_TRADING = false;
+    private static final String ORDER_TYPE_ENTRY = "ENTRY";
+    private static final String ORDER_TYPE_EXIT = "EXIT";
+    private static final String ORDER_TYPE_FORCE_EXIT = "FORCE_EXIT";
 
-	private static final BigDecimal STOP_LOSS_POINTS = BigDecimal.valueOf(10);
-	private static final BigDecimal TRAIL_START_POINTS = BigDecimal.valueOf(20);
-	private static final BigDecimal TRAIL_STEP = BigDecimal.valueOf(5);
-	private static final BigDecimal BUFFER_PERCENT = BigDecimal.valueOf(0.002);
+    // ================= SL MODE =================
 
-	private static final int COOLDOWN_MINUTES = 3;
-	private static final int QUANTITY = 50;
+    public enum SlMode {
+        TRAILING,
+        FIXED_PREV_HIGH
+    }
 
-	// ============================================================
-	// ================= DATE FORMAT ===============================
-	// ============================================================
+    // 🔥 Change here when needed
+    private static final SlMode SL_MODE = SlMode.FIXED_PREV_HIGH;
+    // private static final SlMode SL_MODE = SlMode.FIXED_PREV_HIGH;
 
-	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss");
+    // ================= TELEGRAM TEMPLATES =================
 
-	// ============================================================
-	// ================= TELEGRAM TEMPLATES =======================
-	// ============================================================
+    private static final String ENTRY_TEMPLATE =
+            "🟢 ENTRY\n" +
+            "Strike : %s\n" +
+            "Entry  : %.2f\n" +
+            "SL     : %.2f";
 
-	private static final String ENTRY_TEMPLATE = """
-			🟢 ENTRY
-			Signal : %s
-			Entry  : %.2f
-			SL     : %.2f
-			""";
+    private static final String EXIT_SL_TEMPLATE =
+            "❌ EXIT (SL)\n" +
+            "Strike : %s\n" +
+            "Exit   : %.2f\n" +
+            "PnL    : %.2f";
 
-	private static final String EXIT_PROFIT_TEMPLATE = """
-			🎯 EXIT (TRAIL TARGET)
-			Exit   : %.2f
-			PnL    : %.2f
-			""";
+    private static final String EXIT_TRAIL_TEMPLATE =
+            "🎯 EXIT (TRAIL)\n" +
+            "Strike : %s\n" +
+            "Exit   : %.2f\n" +
+            "PnL    : %.2f";
 
-	private static final String EXIT_LOSS_TEMPLATE = """
-			❌ EXIT (SL HIT)
-			Exit   : %.2f
-			PnL    : %.2f
-			""";
+    private static final String EXIT_FORCE_TEMPLATE =
+            "⏰ FORCE EXIT (3:20 PM)\n" +
+            "Strike : %s\n" +
+            "Exit   : %.2f\n" +
+            "PnL    : %.2f";
 
-	private static final String TELEGRAM_HEADER = """
-			📊 %s | %s
+    private static final String TELEGRAM_HEADER =
+            "📊 %s | %s\n\n%s\n🕒 %s";
 
-			%s
-			🕒 %s
-			""";
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss");
 
-	// ============================================================
-	// ================= DEPENDENCIES =============================
-	// ============================================================
+    // ============================================================
+    // ================= DEPENDENCIES =============================
+    // ============================================================
 
-	private final AngelWebSocketService webSocketService;
-	private final AngelOne angelOne;
-	private final PreMarketAnalysisRepo preMarketRepo;
-	private final OrderRepository ordersRepo;
-	private final TelegramService telegramService;
+    private final AngelWebSocketService webSocketService;
+    private final AngelOne angelOne;
+    private final PreMarketAnalysisRepo preMarketRepo;
+    private final OrderRepository ordersRepo;
+    private final TelegramService telegramService;
 
-	// ============================================================
-	// ================= RUNTIME STATE ============================
-	// ============================================================
+    // ============================================================
+    // ================= RUNTIME STATE ============================
+    // ============================================================
 
-	private TradeState state = TradeState.IDLE;
-	private TradeDirection direction;
-	private BigDecimal entryPrice;
-	private BigDecimal currentSL;
-	private String slOrderId;
-	private LocalDateTime cooldownUntil;
+    private TradeState state = TradeState.IDLE;
+    private TradeDirection direction;
+    private TradeDirection lastCompletedDirection;
 
-	private final Set<String> subscribedTokens = new HashSet<>();
+    private BigDecimal entryPrice;
+    private BigDecimal currentSL;
+    private BigDecimal highestPrice;
 
-	// ============================================================
-	// ================= MAIN LOOP ================================
-	// ============================================================
+    private String slOrderId;
+    private LocalDateTime cooldownUntil;
 
-	public void runCycle(String instrumentName) {
+    private final Set<String> subscribedTokens =
+            ConcurrentHashMap.newKeySet();
 
-		Optional<PreMarketAnalysis> optional = preMarketRepo.findByNameAndTradingDate(instrumentName, LocalDate.now());
+    // ============================================================
+    // ================= MAIN LOOP ================================
+    // ============================================================
 
-		if (optional.isEmpty())
-			return;
+    public synchronized void runCycle(String instrumentName) {
 
-		PreMarketAnalysis data = optional.get();
+        LocalDateTime now = LocalDateTime.now();
 
-		ensureSubscribed(data.getCeToken());
-		ensureSubscribed(data.getPeToken());
+        // 3:20 PM Force Exit
+        if (state == TradeState.ACTIVE &&
+                (now.getHour() > FORCE_EXIT_HOUR ||
+                 (now.getHour() == FORCE_EXIT_HOUR &&
+                  now.getMinute() >= FORCE_EXIT_MINUTE))) {
 
-		BigDecimal ce = getLivePrice(data.getCeToken());
-		BigDecimal pe = getLivePrice(data.getPeToken());
+            forceExit();
+            return;
+        }
 
-		if (ce == null || pe == null)
-			return;
+        Optional<PreMarketAnalysis> optional =
+                preMarketRepo.findByNameAndTradingDate(
+                        instrumentName, LocalDate.now());
 
-		switch (state) {
+        if (optional.isEmpty()) return;
 
-		case IDLE -> checkEntry(data, ce, pe);
+        PreMarketAnalysis data = optional.get();
 
-		case ACTIVE -> manageTrade(data, ce, pe);
+        ensureSubscribed(data.getCeToken());
+        ensureSubscribed(data.getPeToken());
 
-		case COOLDOWN -> {
-			if (LocalDateTime.now().isAfter(cooldownUntil)) {
-				state = TradeState.IDLE;
-			}
-		}
-		}
-	}
+        BigDecimal ce = getLivePrice(data.getCeToken());
+        BigDecimal pe = getLivePrice(data.getPeToken());
 
-	// ============================================================
-	// ================= ENTRY LOGIC ==============================
-	// ============================================================
+        if (ce == null || pe == null) return;
 
-	private void checkEntry(PreMarketAnalysis data, BigDecimal ce, BigDecimal pe) {
+        switch (state) {
 
-		// Prevent duplicate active trade for this strategy
-		if (ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1).isPresent())
-			return;
+            case IDLE -> checkEntry(data, ce, pe);
 
-		BigDecimal mid = data.getMidPoint();
+            case ACTIVE -> manageTrade(data, ce, pe);
 
-		BigDecimal upper = mid.multiply(BigDecimal.ONE.add(BUFFER_PERCENT));
-		BigDecimal lower = mid.multiply(BigDecimal.ONE.subtract(BUFFER_PERCENT));
+            case COOLDOWN -> {
+                if (LocalDateTime.now().isAfter(cooldownUntil)) {
+                    state = TradeState.IDLE;
+                }
+            }
+        }
+    }
 
-		TradeDirection signal = null;
+    // ============================================================
+    // ================= ENTRY LOGIC ==============================
+    // ============================================================
 
-		if (ce.compareTo(upper) > 0 && pe.compareTo(lower) < 0)
-			signal = TradeDirection.BUY_CE;
+    private void checkEntry(PreMarketAnalysis data,
+                            BigDecimal ce,
+                            BigDecimal pe) {
 
-		if (pe.compareTo(upper) > 0 && ce.compareTo(lower) < 0)
-			signal = TradeDirection.BUY_PE;
+        if (ordersRepo.findTopByNameAndActiveOrderByIdDesc(
+                STRATEGY_NAME, 1).isPresent())
+            return;
 
-		if (signal == null)
-			return;
+        BigDecimal mid = data.getMidPoint();
+        BigDecimal upper =
+                mid.multiply(BigDecimal.ONE.add(BUFFER_PERCENT));
+        BigDecimal lower =
+                mid.multiply(BigDecimal.ONE.subtract(BUFFER_PERCENT));
 
-		direction = signal;
-		entryPrice = (direction == TradeDirection.BUY_CE) ? ce : pe;
+        TradeDirection signal = null;
 
-		BigDecimal slPrice = entryPrice.subtract(STOP_LOSS_POINTS);
+        if (ce.compareTo(upper) > 0 && pe.compareTo(lower) < 0)
+            signal = TradeDirection.BUY_CE;
 
-		try {
+        if (pe.compareTo(upper) > 0 && ce.compareTo(lower) < 0)
+            signal = TradeDirection.BUY_PE;
 
-			String token = getToken(data);
+        if (signal == null) return;
 
-			if (LIVE_TRADING) {
-				/*
-				 * angelOne.placeMarketOrder(EXCHANGE.name(), token, "BUY"); slOrderId =
-				 * angelOne.placeSLMarketOrder( EXCHANGE.name(), token, slPrice, "SELL");
-				 */
-			} else {
-				slOrderId = "TEST-" + System.currentTimeMillis();
-			}
+        if (lastCompletedDirection != null &&
+                signal == lastCompletedDirection)
+            return;
 
-			currentSL = slPrice;
-			state = TradeState.ACTIVE;
+        direction = signal;
+        entryPrice =
+                (direction == TradeDirection.BUY_CE) ? ce : pe;
 
-			saveEntryOrder(data, token);
+        if (SL_MODE == SlMode.TRAILING) {
+            currentSL = entryPrice.subtract(STOP_LOSS_POINTS);
+        } else {
+            currentSL = getPreviousHigh(data);
+        }
 
-			send(data.getName(), String.format(ENTRY_TEMPLATE, direction, entryPrice, currentSL));
+        highestPrice = entryPrice;
+        state = TradeState.ACTIVE;
+        slOrderId = "TEST-" + System.currentTimeMillis();
 
-		} catch (Exception e) {
-			log.error("Entry failed", e);
-		}
-	}
+        saveEntryOrder(data, getToken(data));
 
-	private void saveEntryOrder(PreMarketAnalysis data, String token) {
+        send(data.getName(),
+                String.format(ENTRY_TEMPLATE,
+                        getStrikeDisplay(data),
+                        entryPrice,
+                        currentSL));
+    }
 
-		Orders order = new Orders();
+    // ============================================================
+    // ================= TRADE MANAGEMENT =========================
+    // ============================================================
 
-		order.setOrderid(slOrderId);
-		order.setCreatedOn(LocalDateTime.now().toString());
-		order.setName(STRATEGY_NAME);
-		order.setSymbol(data.getName());
-		order.setToken(token);
-		order.setAskPrice(entryPrice.intValue());
-		order.setSl(currentSL.intValue());
-		order.setActive(1);
-		order.setBreakeven(0);
-		order.setSignal(direction.name());
-		order.setExchange(EXCHANGE.name());
-		order.setQuantity(QUANTITY);
-		order.setType("ENTRY");
+    private void manageTrade(PreMarketAnalysis data,
+                             BigDecimal ce,
+                             BigDecimal pe) {
 
-		ordersRepo.save(order);
-	}
+        BigDecimal currentPrice =
+                (direction == TradeDirection.BUY_CE) ? ce : pe;
 
-	// ============================================================
-	// ================= TRADE MANAGEMENT =========================
-	// ============================================================
+        if (currentPrice.compareTo(highestPrice) > 0)
+            highestPrice = currentPrice;
 
-	private void manageTrade(PreMarketAnalysis data, BigDecimal ce, BigDecimal pe) {
+        if (currentPrice.compareTo(currentSL) <= 0) {
 
-		BigDecimal currentPrice = (direction == TradeDirection.BUY_CE) ? ce : pe;
+            closeOrder(currentPrice, ORDER_TYPE_EXIT);
 
-		BigDecimal profit = currentPrice.subtract(entryPrice);
+            String template =
+                    currentSL.compareTo(entryPrice) >= 0
+                            ? EXIT_TRAIL_TEMPLATE
+                            : EXIT_SL_TEMPLATE;
 
-		// ===== SL HIT =====
-		if (currentPrice.compareTo(currentSL) <= 0) {
+            send(data.getName(),
+                    String.format(template,
+                            getStrikeDisplay(data),
+                            currentPrice,
+                            currentPrice.subtract(entryPrice)));
 
-			closeOrder(currentPrice);
+            lastCompletedDirection = direction;
+            resetState();
+            return;
+        }
 
-			boolean profitExit = currentSL.compareTo(entryPrice) >= 0;
+        if (SL_MODE == SlMode.TRAILING) {
 
-			String message = profitExit ? String.format(EXIT_PROFIT_TEMPLATE, currentPrice, profit)
-					: String.format(EXIT_LOSS_TEMPLATE, currentPrice, profit);
+            BigDecimal peakProfit =
+                    highestPrice.subtract(entryPrice);
 
-			send(data.getName(), message);
+            if (peakProfit.compareTo(TRAIL_START_POINTS) >= 0) {
 
-			state = TradeState.COOLDOWN;
-			cooldownUntil = LocalDateTime.now().plusMinutes(COOLDOWN_MINUTES);
-			return;
-		}
+                BigDecimal locked =
+                        peakProfit.subtract(TRAIL_START_POINTS)
+                                .divide(TRAIL_STEP, 0, RoundingMode.DOWN)
+                                .multiply(TRAIL_STEP);
 
-		// ===== START TRAILING AFTER +20 =====
-		if (profit.compareTo(TRAIL_START_POINTS) >= 0) {
+                BigDecimal newSL =
+                        entryPrice.add(locked);
 
-			BigDecimal newSL;
+                if (newSL.compareTo(currentSL) > 0) {
+                    currentSL = newSL;
+                    updateSLInDb(newSL);
+                }
+            }
+        }
+    }
 
-			if (currentSL.compareTo(entryPrice) < 0) {
-				newSL = entryPrice; // move to break-even first
-			} else {
-				newSL = currentPrice.subtract(TRAIL_STEP);
-			}
+    // ============================================================
+    // ================= FORCE EXIT ===============================
+    // ============================================================
 
-			if (newSL.compareTo(currentSL) > 0) {
+    private void forceExit() {
 
-				if (LIVE_TRADING)
-					// angelOne.modifyOrder(slOrderId, newSL);
+        Optional<Orders> optional =
+                ordersRepo.findTopByNameAndActiveOrderByIdDesc(
+                        STRATEGY_NAME, 1);
 
-					currentSL = newSL;
-				updateSLInDb(newSL);
-			}
-		}
-	}
+        if (optional.isEmpty()) return;
 
-	private void updateSLInDb(BigDecimal newSL) {
+        Orders order = optional.get();
 
-		Optional<Orders> optional = ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1);
+        BigDecimal currentPrice =
+                webSocketService.getLatestLTP(
+                        EXCHANGE, order.getToken());
 
-		if (optional.isPresent()) {
-			Orders order = optional.get();
-			order.setSl(newSL.intValue());
-			ordersRepo.save(order);
-		}
-	}
+        if (currentPrice == null) return;
+
+        closeOrder(currentPrice, ORDER_TYPE_FORCE_EXIT);
 
-	private void closeOrder(BigDecimal exitPrice) {
-
-		Optional<Orders> optional = ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1);
-
-		if (optional.isPresent()) {
-
-			Orders order = optional.get();
-
-			int exit = exitPrice.intValue();
-			int pnl = (exit - order.getAskPrice()) * order.getQuantity();
-
-			order.setExitPrice(exit);
-			order.setPl(pnl);
-			order.setActive(0);
-			order.setType("EXIT");
-
-			ordersRepo.save(order);
-		}
-	}
-
-	// ============================================================
-	// ================= HELPERS ==================================
-	// ============================================================
-
-	private String getToken(PreMarketAnalysis data) {
-		return (direction == TradeDirection.BUY_CE) ? data.getCeToken() : data.getPeToken();
-	}
-
-	private BigDecimal getLivePrice(String token) {
-		BigDecimal price = webSocketService.getLatestLTP(EXCHANGE, token);
-
-		return (price == null) ? null : price.setScale(2, RoundingMode.HALF_UP);
-	}
-
-	private void ensureSubscribed(String token) {
-		if (!subscribedTokens.contains(token)) {
-			webSocketService.subscribe(EXCHANGE, token);
-			subscribedTokens.add(token);
-		}
-	}
-
-	private void send(String instrument, String body) {
-
-		try {
-
-			String formattedTime = LocalDateTime.now().format(DATE_FORMAT);
-
-			String message = String.format(TELEGRAM_HEADER, STRATEGY_NAME, instrument, body, formattedTime);
-
-			telegramService.sendMessage(message);
-
-		} catch (Exception e) {
-			log.error("Telegram failed", e);
-		}
-	}
+        send(order.getSymbol(),
+                String.format(EXIT_FORCE_TEMPLATE,
+                        order.getSignal(),
+                        currentPrice,
+                        currentPrice.subtract(
+                                BigDecimal.valueOf(order.getAskPrice()))));
+
+        lastCompletedDirection = direction;
+        resetState();
+    }
+
+    // ============================================================
+    // ================= HELPER METHODS ===========================
+    // ============================================================
+
+    private BigDecimal getPreviousHigh(PreMarketAnalysis data) {
+        return (direction == TradeDirection.BUY_CE)
+                ? data.getCePrevHigh()
+                : data.getPePrevHigh();
+    }
+
+    private String getStrikeDisplay(PreMarketAnalysis data) {
+
+        String strike =
+                data.getAtmStrike()
+                        .stripTrailingZeros()
+                        .toPlainString();
+
+        return (direction == TradeDirection.BUY_CE)
+                ? strike + " CE"
+                : strike + " PE";
+    }
+
+    private void saveEntryOrder(PreMarketAnalysis data,
+                                String token) {
+
+        Orders order = new Orders();
+        order.setOrderid(slOrderId);
+        order.setCreatedOn(LocalDateTime.now().toString());
+        order.setName(STRATEGY_NAME);
+        order.setSymbol(data.getName());
+        order.setToken(token);
+        order.setAskPrice(entryPrice.intValue());
+        order.setSl(currentSL.intValue());
+        order.setActive(1);
+        order.setSignal(direction.name());
+        order.setExchange(EXCHANGE.name());
+        order.setType(ORDER_TYPE_ENTRY);
+
+        ordersRepo.save(order);
+    }
+
+    private void updateSLInDb(BigDecimal newSL) {
+        ordersRepo.findTopByNameAndActiveOrderByIdDesc(
+                STRATEGY_NAME, 1)
+                .ifPresent(order -> {
+                    order.setSl(newSL.intValue());
+                    ordersRepo.save(order);
+                });
+    }
+
+    private void closeOrder(BigDecimal exitPrice,
+                            String exitType) {
+
+        ordersRepo.findTopByNameAndActiveOrderByIdDesc(
+                STRATEGY_NAME, 1)
+                .ifPresent(order -> {
+
+                    int exit = exitPrice.intValue();
+                    int pnl = exit - order.getAskPrice();
+
+                    order.setExitPrice(exit);
+                    order.setPl(pnl);
+                    order.setActive(0);
+                    order.setType(exitType);
+
+                    ordersRepo.save(order);
+                });
+    }
+
+    private void resetState() {
+        state = TradeState.COOLDOWN;
+        cooldownUntil =
+                LocalDateTime.now().plusMinutes(COOLDOWN_MINUTES);
+
+        direction = null;
+        entryPrice = null;
+        currentSL = null;
+        highestPrice = null;
+        slOrderId = null;
+    }
+
+    private String getToken(PreMarketAnalysis data) {
+        return (direction == TradeDirection.BUY_CE)
+                ? data.getCeToken()
+                : data.getPeToken();
+    }
+
+    private BigDecimal getLivePrice(String token) {
+        BigDecimal price =
+                webSocketService.getLatestLTP(
+                        EXCHANGE, token);
+
+        return price == null
+                ? null
+                : price.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void ensureSubscribed(String token) {
+        if (subscribedTokens.add(token)) {
+            webSocketService.subscribe(EXCHANGE, token);
+        }
+    }
+
+    private void send(String instrument,
+                      String body) {
+
+        try {
+            String message =
+                    String.format(TELEGRAM_HEADER,
+                            STRATEGY_NAME,
+                            instrument,
+                            body,
+                            LocalDateTime.now()
+                                    .format(DATE_FORMAT));
+
+            telegramService.sendMessage(message);
+
+        } catch (Exception e) {
+            log.error("Telegram failed", e);
+        }
+    }
 }

@@ -1095,9 +1095,11 @@ public class StraddleIntradayService {
 	                req.put("todate", toDate);
 	                
 	                // Add delay to avoid rate limiting
-	                Thread.sleep(1000);
-	                
-	                JSONArray candles = smartConnect.candleData(req);
+	                JSONArray candles = fetchCandleWithRetry(
+	                	    smartConnect,
+	                	    req,
+	                	    dto.getCeToken().getToken()
+	                	);
 	                
 	                if (candles != null && candles.length() > 0) {
 	                    JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
@@ -1139,9 +1141,11 @@ public class StraddleIntradayService {
 	                req.put("todate", toDate);
 	                
 	                // Add delay to avoid rate limiting
-	                Thread.sleep(1000);
-	                
-	                JSONArray candles = smartConnect.candleData(req);
+	                JSONArray candles = fetchCandleWithRetry(
+	                	    smartConnect,
+	                	    req,
+	                	    dto.getPeToken().getToken()   // ✅ CORRECT
+	                	);
 	                
 	                if (candles != null && candles.length() > 0) {
 	                    JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
@@ -1186,7 +1190,48 @@ public class StraddleIntradayService {
 	        strategy.getName(), successCount, failureCount);
 	}
 
+	private JSONArray fetchCandleWithRetry(
+		    SmartConnect smartConnect,
+		    JSONObject request,
+		    String token
+		) {
 
+		    int maxAttempts = 3;
+		    long delay = 2000; // 2 sec initial
+
+		    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+
+		        try {
+		            JSONArray candles = smartConnect.candleData(request);
+
+		            if (candles != null && candles.length() > 0) {
+		                if (attempt > 1) {
+		                    logger.info("Retry success for token {} on attempt {}", token, attempt);
+		                }
+		                return candles;
+		            }
+
+		            logger.warn("Empty candle response for token {} attempt {}", token, attempt);
+
+		        } catch (Exception e) {
+		            logger.warn("Attempt {} failed for token {}: {}", attempt, token, e.getMessage());
+		        }
+
+		        // exponential backoff
+		        try {
+		            Thread.sleep(delay);
+		        } catch (InterruptedException ie) {
+		            Thread.currentThread().interrupt();
+		            return null;
+		        }
+
+		        delay *= 2; // 2s → 4s → 8s
+		    }
+
+		    logger.error("All retry attempts failed for token {}", token);
+		    return null;
+		}
+	
 	// =====================================================
 	// NEW METHOD: populatePrevCloseFromCache
 	// Populates DTO from cached previous close data

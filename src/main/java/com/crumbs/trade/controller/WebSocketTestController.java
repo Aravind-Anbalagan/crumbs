@@ -54,6 +54,14 @@ public class WebSocketTestController {
         log.info("Subscribed NIFTY and CRUDEOIL");
         return ResponseEntity.ok("Subscribed NIFTY and CRUDEOIL");
     }
+    
+	@GetMapping("/unsubscribe/all")
+	public ResponseEntity<String> sunubscribeAll() {
+		angelWebSocketService.unsubscribeAll();
+
+		log.info("Unsubscribed");
+		return ResponseEntity.ok("Unsubscribed");
+	}
 
     @GetMapping("/ltp/nifty")
     public ResponseEntity<?> getNiftyLTP() {
