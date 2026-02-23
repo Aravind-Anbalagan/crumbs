@@ -43,7 +43,7 @@ public class PreMarketAnalysisService {
         
         try {
             logger.info("=== PRE-MARKET ANALYSIS STARTED FOR {} ===", name);
-            
+            preMarketAnalysisRepo.deleteAll();
             // 1. Get strategy details
             Strategy strategy = strategyRepo.findByName(name);
             if (strategy == null) {
@@ -170,7 +170,8 @@ public class PreMarketAnalysisService {
         analysis.setCePrevLow(selected.getCePrevLow());
         analysis.setPePrevHigh(selected.getPePrevHigh());
         analysis.setPePrevLow(selected.getPePrevLow());
-        
+        analysis.setCeToken(selected.getCeToken().getToken());
+        analysis.setPeToken(selected.getPeToken().getToken());
         return analysis;
     }
     

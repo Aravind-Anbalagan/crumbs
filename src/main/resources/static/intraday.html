@@ -5,11 +5,10 @@
   <title>Chart with Manual Load & State Persistence</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <script>
-    // Authentication check - must be at the top
     if (!sessionStorage.getItem('isLoggedIn')) {
         window.location.href = '/';
     }
-</script>
+  </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
     html, body, #container {
@@ -29,562 +28,233 @@
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
       background: #ffffff;
     }
-    #chart.drawing-mode {
-      cursor: crosshair;
-    }
+    #chart.drawing-mode { cursor: crosshair; }
     #loader {
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      display: none; 
+      display: none;
       flex-direction: column;
-      align-items: center; 
-      justify-content: center;
+      align-items: center; justify-content: center;
       background: rgba(255,255,255,0.95);
-      z-index: 10;
-      border-radius: 12px;
-      gap: 16px;
+      z-index: 10; border-radius: 12px; gap: 16px;
     }
     .spinner {
-      border: 6px solid #e0e0e0;
-      border-top: 6px solid #4a5568;
-      border-radius: 50%;
-      width: 48px; height: 48px;
+      border: 6px solid #e0e0e0; border-top: 6px solid #4a5568;
+      border-radius: 50%; width: 48px; height: 48px;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    #loaderText {
-      font-size: 15px;
-      font-weight: 600;
-      color: #4a5568;
-      text-align: center;
-    }
-    #retryCount {
-      font-size: 13px;
-      color: #666;
-      margin-top: -8px;
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loaderText { font-size: 15px; font-weight: 600; color: #4a5568; text-align: center; }
+    #retryCount { font-size: 13px; color: #666; margin-top: -8px; }
     #error {
-      position: absolute;
-      top: 40%; left: 50%;
+      position: absolute; top: 40%; left: 50%;
       transform: translate(-50%, -50%);
-      background: #ffe6e6;
-      color: #cc0000;
-      padding: 20px 30px;
-      border-radius: 12px;
-      font-weight: 600;
-      display: none;
-      z-index: 20;
-      max-width: 80vw;
-      text-align: center;
-      font-size: 16px;
-      box-shadow: 0 4px 12px rgba(204,0,0,0.3);
+      background: #ffe6e6; color: #cc0000;
+      padding: 20px 30px; border-radius: 12px; font-weight: 600;
+      display: none; z-index: 20; max-width: 80vw; text-align: center;
+      font-size: 16px; box-shadow: 0 4px 12px rgba(204,0,0,0.3);
     }
     #apiErrorToast {
-      position: absolute;
-      top: 100px;
-      left: 50%;
+      position: absolute; top: 100px; left: 50%;
       transform: translateX(-50%);
-      background: rgba(239, 68, 68, 0.95);
-      color: white;
-      padding: 14px 24px;
-      border-radius: 10px;
-      font-weight: 600;
-      display: none;
-      z-index: 40;
-      font-size: 14px;
+      background: rgba(239, 68, 68, 0.95); color: white;
+      padding: 14px 24px; border-radius: 10px; font-weight: 600;
+      display: none; z-index: 40; font-size: 14px;
       box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
-      backdrop-filter: blur(10px);
-      animation: slideDown 0.3s ease;
+      backdrop-filter: blur(10px); animation: slideDown 0.3s ease;
     }
-    #apiErrorToast.show {
-      display: block;
-    }
-    #apiErrorToast.fade-out {
-      animation: fadeOut 0.5s ease forwards;
-    }
+    #apiErrorToast.show { display: block; }
+    #apiErrorToast.fade-out { animation: fadeOut 0.5s ease forwards; }
     @keyframes fadeOut {
-      from {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-      }
-      to {
-        opacity: 0;
-        transform: translateX(-50%) translateY(-20px);
-      }
+      from { opacity: 1; transform: translateX(-50%) translateY(0); }
+      to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
     }
     #toolbar {
-      position: absolute;
-      top: 24px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 31;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 14px 24px;
+      position: absolute; top: 24px; left: 50%;
+      transform: translateX(-50%); z-index: 31;
+      background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 14px 24px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      display: flex;
-      gap: 20px;
-      align-items: center;
-      font-size: 14px;
-      user-select: none;
-      width: auto;
-      max-width: 90vw;
+      display: flex; gap: 20px; align-items: center; font-size: 14px;
+      user-select: none; width: auto; max-width: 90vw;
       border: 1px solid rgba(255, 255, 255, 0.3);
     }
-    #toolbar .center-group {
-      display: flex;
-      gap: 20px;
-      align-items: center;
-    }
-    #toolbar .right-group {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
+    #toolbar .center-group { display: flex; gap: 20px; align-items: center; }
+    #toolbar .right-group { display: flex; gap: 12px; align-items: center; }
     #toolbar label {
-      margin-right: 8px;
-      font-weight: 500;
-      color: #444;
-      line-height: 1.2;
-      height: 24px;
-      display: flex;
-      align-items: center;
+      margin-right: 8px; font-weight: 500; color: #444;
+      line-height: 1.2; height: 24px; display: flex; align-items: center;
     }
     #toolbar select {
-      font-size: 13px;
-      padding: 6px 12px;
-      border-radius: 8px;
-      min-width: 110px;
-      height: 32px;
-      line-height: 1.2;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      font-weight: 500;
-      color: #444;
-      border: 2px solid #e0e0e0;
-      background: white;
+      font-size: 13px; padding: 6px 12px; border-radius: 8px;
+      min-width: 110px; height: 32px; line-height: 1.2; cursor: pointer;
+      transition: all 0.3s ease; font-weight: 500; color: #444;
+      border: 2px solid #e0e0e0; background: white;
     }
     #toolbar select:hover, #toolbar button:hover,
     #toolbar select:focus, #toolbar button:focus {
-      outline: none;
-      border-color: #4a5568;
-      box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
-      transform: translateY(-1px);
+      outline: none; border-color: #4a5568;
+      box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1); transform: translateY(-1px);
     }
     #refreshButton, #settingsButton, #todayButton {
       background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-      color: white;
-      border: none;
-      font-weight: 600;
-      min-width: 100px;
-      padding: 8px 18px;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      user-select: none;
+      color: white; border: none; font-weight: 600;
+      min-width: 100px; padding: 8px 18px; border-radius: 8px;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 6px; user-select: none;
       transition: all 0.3s ease;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); font-size: 14px;
     }
     #todayButton {
       background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
       min-width: 80px;
     }
     #refreshButton:hover, #settingsButton:hover, #todayButton:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     }
-    #settingsDropdown {
-      position: absolute;
-      top: 24px;
-      left: 24px;
-      z-index: 30;
-      user-select: none;
-    }
+    #settingsDropdown { position: absolute; top: 24px; left: 24px; z-index: 30; user-select: none; }
     #settingsMenu {
-      display: none;
-      position: absolute;
-      top: 48px;
-      left: 0;
-      background: rgba(255, 255, 255, 0.98);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 12px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.15);
-      padding: 16px 24px;
-      min-width: 260px;
-      font-size: 13px;
-      color: #333;
-      transition: all 0.3s ease;
+      display: none; position: absolute; top: 48px; left: 0;
+      background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15); padding: 16px 24px;
+      min-width: 260px; font-size: 13px; color: #333; transition: all 0.3s ease;
     }
-    #settingsMenu.visible {
-      display: block;
-      animation: slideDown 0.3s ease;
-    }
+    #settingsMenu.visible { display: block; animation: slideDown 0.3s ease; }
     @keyframes slideDown {
-      from {
-        opacity: 0;
-        transform: translateY(-10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     #settingsMenu label {
-      display: flex;
-      align-items: center;
-      margin-bottom: 12px;
-      cursor: pointer;
-      user-select: none;
-      transition: all 0.2s ease;
-      padding: 4px;
-      border-radius: 6px;
+      display: flex; align-items: center; margin-bottom: 12px;
+      cursor: pointer; user-select: none; transition: all 0.2s ease;
+      padding: 4px; border-radius: 6px;
     }
-    #settingsMenu label:hover {
-      background: rgba(74, 85, 104, 0.08);
-    }
-    #settingsMenu label:last-child {
-      margin-bottom: 14px;
-    }
+    #settingsMenu label:hover { background: rgba(74, 85, 104, 0.08); }
+    #settingsMenu label:last-child { margin-bottom: 14px; }
     #settingsMenu input[type="checkbox"] {
-      margin-right: 12px;
-      cursor: pointer;
-      width: 18px;
-      height: 18px;
-      accent-color: #4a5568;
+      margin-right: 12px; cursor: pointer; width: 18px; height: 18px; accent-color: #4a5568;
     }
     #resetButton, #fitButton {
-      display: block;
-      width: 100%;
-      padding: 10px 0;
-      font-size: 14px;
-      background: #f4f6f8;
-      border: 2px solid #e0e0e0;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: 600;
-      color: #444;
-      margin-top: 10px;
-      transition: all 0.25s ease;
-      user-select: none;
+      display: block; width: 100%; padding: 10px 0; font-size: 14px;
+      background: #f4f6f8; border: 2px solid #e0e0e0; border-radius: 10px;
+      cursor: pointer; font-weight: 600; color: #444; margin-top: 10px;
+      transition: all 0.25s ease; user-select: none;
     }
     #uncheckAllButton {
-      display: block;
-      width: 100%;
-      padding: 10px 0;
-      font-size: 14px;
-      background: #fff3e0;
-      border: 2px solid #ffb74d;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: 600;
-      color: #e65100;
-      margin-top: 10px;
-      transition: all 0.25s ease;
-      user-select: none;
+      display: block; width: 100%; padding: 10px 0; font-size: 14px;
+      background: #fff3e0; border: 2px solid #ffb74d; border-radius: 10px;
+      cursor: pointer; font-weight: 600; color: #e65100; margin-top: 10px;
+      transition: all 0.25s ease; user-select: none;
     }
     #fitButton {
       background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-      color: white;
-      border: none;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      color: white; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
-    #resetButton:hover, #uncheckAllButton:hover {
-      background: #e0e0e0;
-      transform: translateY(-1px);
-    }
-    #uncheckAllButton:hover {
-      background: #ffe0b2;
-    }
-    #fitButton:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-    }
+    #resetButton:hover { background: #e0e0e0; transform: translateY(-1px); }
+    #uncheckAllButton:hover { background: #ffe0b2; }
+    #fitButton:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); }
     #drawingTools {
-      position: absolute;
-      top: 24px;
-      right: 24px;
-      z-index: 30;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 12px;
+      position: absolute; top: 24px; right: 24px; z-index: 30;
+      background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 12px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      display: flex;
-      gap: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      align-items: center;
+      display: flex; gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.3); align-items: center;
     }
     .draw-btn {
-      background: white;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      width: 40px;
-      height: 40px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s ease;
-      font-size: 20px;
-      font-weight: bold;
-      color: #444;
-      user-select: none;
+      background: white; border: 2px solid #e0e0e0; border-radius: 8px;
+      width: 40px; height: 40px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; transition: all 0.2s ease;
+      font-size: 20px; font-weight: bold; color: #444; user-select: none;
     }
-    .draw-btn:hover {
-      border-color: #4a5568;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .draw-btn.active {
-      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-      color: white;
-      border-color: #4a5568;
-    }
-    #colorPicker {
-      width: 40px;
-      height: 40px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      cursor: pointer;
-      padding: 0;
-      transition: all 0.2s ease;
-    }
-    #colorPicker:hover {
-      border-color: #4a5568;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .color-divider {
-      width: 1px;
-      height: 30px;
-      background: #e0e0e0;
-      margin: 0 4px;
-    }
+    .draw-btn:hover { border-color: #4a5568; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .draw-btn.active { background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); color: white; border-color: #4a5568; }
+    #colorPicker { width: 40px; height: 40px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; padding: 0; transition: all 0.2s ease; }
+    #colorPicker:hover { border-color: #4a5568; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .color-divider { width: 1px; height: 30px; background: #e0e0e0; margin: 0 4px; }
     #drawingModeIndicator {
-      position: absolute;
-      bottom: 32px;
-      left: 50%;
+      position: absolute; bottom: 32px; left: 50%;
       transform: translateX(-50%);
-      background: rgba(74, 85, 104, 0.95);
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      display: none;
-      z-index: 30;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      background: rgba(74, 85, 104, 0.95); color: white;
+      padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      display: none; z-index: 30; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       animation: slideUp 0.3s ease;
     }
     @keyframes slideUp {
-      from {
-        opacity: 0;
-        transform: translate(-50%, 10px);
-      }
-      to {
-        opacity: 1;
-        transform: translate(-50%, 0);
-      }
+      from { opacity: 0; transform: translate(-50%, 10px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
     }
     #signalPanel {
-      position: absolute;
-      bottom: 24px;
-      left: 24px;
-      z-index: 30;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 16px 20px;
+      position: absolute; bottom: 24px; left: 24px; z-index: 30;
+      background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 16px 20px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      min-width: 280px;
-      display: none;
-      animation: slideUp 0.3s ease;
+      border: 1px solid rgba(255, 255, 255, 0.3); min-width: 280px;
+      display: none; animation: slideUp 0.3s ease;
     }
-    #signalPanel.visible {
-      display: block;
-    }
-    #signalPanel .signal-header {
-      font-size: 12px;
-      font-weight: 600;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 8px;
-    }
-    #signalPanel .signal-value {
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    #signalPanel .signal-value.buy {
-      color: #22c55e;
-    }
-    #signalPanel .signal-value.sell {
-      color: #ef4444;
-    }
-    #signalPanel .signal-value.hold {
-      color: #f59e0b;
-    }
-    #signalPanel .signal-value.neutral {
-      color: #6b7280;
-    }
-    #signalPanel .confidence-bar {
-      height: 6px;
-      background: #e5e7eb;
-      border-radius: 3px;
-      overflow: hidden;
-      margin-bottom: 8px;
-    }
-    #signalPanel .confidence-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: all 0.3s ease;
-    }
-    #signalPanel .confidence-fill.high {
-      background: linear-gradient(90deg, #22c55e, #16a34a);
-    }
-    #signalPanel .confidence-fill.medium {
-      background: linear-gradient(90deg, #f59e0b, #d97706);
-    }
-    #signalPanel .confidence-fill.low {
-      background: linear-gradient(90deg, #ef4444, #dc2626);
-    }
-    #signalPanel .confidence-text {
-      font-size: 11px;
-      font-weight: 600;
-      color: #666;
-      margin-bottom: 12px;
-    }
-    #signalPanel .reason-text {
-      font-size: 13px;
-      color: #444;
-      line-height: 1.5;
-      padding: 10px;
-      background: #f9fafb;
-      border-radius: 8px;
-      border-left: 3px solid #4a5568;
-      margin-bottom: 12px;
-    }
-    #signalPanel .timestamp {
-      font-size: 11px;
-      color: #888;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    #signalPanel .timestamp::before {
-      content: '🕐';
-      font-size: 14px;
-    }
+    #signalPanel.visible { display: block; }
+    #signalPanel .signal-header { font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    #signalPanel .signal-value { font-size: 24px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    #signalPanel .signal-value.buy { color: #22c55e; }
+    #signalPanel .signal-value.sell { color: #ef4444; }
+    #signalPanel .signal-value.hold { color: #f59e0b; }
+    #signalPanel .signal-value.neutral { color: #6b7280; }
+    #signalPanel .confidence-bar { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+    #signalPanel .confidence-fill { height: 100%; border-radius: 3px; transition: all 0.3s ease; }
+    #signalPanel .confidence-fill.high { background: linear-gradient(90deg, #22c55e, #16a34a); }
+    #signalPanel .confidence-fill.medium { background: linear-gradient(90deg, #f59e0b, #d97706); }
+    #signalPanel .confidence-fill.low { background: linear-gradient(90deg, #ef4444, #dc2626); }
+    #signalPanel .confidence-text { font-size: 11px; font-weight: 600; color: #666; margin-bottom: 12px; }
+    #signalPanel .reason-text { font-size: 13px; color: #444; line-height: 1.5; padding: 10px; background: #f9fafb; border-radius: 8px; border-left: 3px solid #4a5568; margin-bottom: 12px; }
+    #signalPanel .timestamp { font-size: 11px; color: #888; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+    #signalPanel .timestamp::before { content: '🕐'; font-size: 14px; }
     #timezoneIndicator {
-      position: absolute;
-      bottom: 24px;
-      right: 24px;
-      z-index: 30;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 8px;
-      padding: 8px 16px;
+      position: absolute; bottom: 24px; right: 24px; z-index: 30;
+      background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+      border-radius: 8px; padding: 8px 16px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.1);
       border: 1px solid rgba(255, 255, 255, 0.3);
-      font-size: 12px;
-      font-weight: 600;
-      color: #4a5568;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      min-width: 120px;
+      font-size: 12px; font-weight: 600; color: #4a5568;
+      display: flex; flex-direction: column; gap: 4px; min-width: 120px;
     }
-    #timezoneIndicator .tz-time {
-      font-size: 18px;
-      font-weight: 700;
-      color: #2d3748;
-      font-family: 'Monaco', 'Courier New', monospace;
-      text-align: center;
+    #timezoneIndicator .tz-time { font-size: 18px; font-weight: 700; color: #2d3748; font-family: 'Monaco', 'Courier New', monospace; text-align: center; }
+
+    /* ── SSE live dot in timezone box ── */
+    #sseStatus {
+      display: flex; align-items: center; justify-content: center;
+      gap: 5px; font-size: 10px; font-weight: 600; color: #888;
+      margin-top: 2px;
     }
+    #sseDot {
+      width: 6px; height: 6px; border-radius: 50%; background: #ccc;
+      display: inline-block; transition: background 0.3s;
+    }
+    #sseDot.live { background: #22c55e; animation: ssePulse 1.5s infinite; }
+    @keyframes ssePulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
     #currentPriceIndicator {
-      position: absolute;
-      top: 90px;
-      right: 24px;
-      z-index: 30;
-      background: rgba(255, 255, 255, 0.98);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 16px 20px;
+      position: absolute; top: 90px; right: 24px; z-index: 30;
+      background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 16px 20px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      min-width: 200px;
-      display: none;
+      border: 1px solid rgba(255, 255, 255, 0.3); min-width: 200px; display: none;
     }
-    #currentPriceIndicator.visible {
-      display: block;
-      animation: slideDown 0.3s ease;
-    }
-    #currentPriceIndicator .price-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
-    }
-    #currentPriceIndicator .price-value {
-      font-size: 28px;
-      font-weight: 700;
-      font-family: 'Monaco', 'Courier New', monospace;
-      margin-bottom: 8px;
-    }
-    #currentPriceIndicator .price-value.up {
-      color: #22c55e;
-    }
-    #currentPriceIndicator .price-value.down {
-      color: #ef4444;
-    }
-    #currentPriceIndicator .price-change {
-      font-size: 14px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    #currentPriceIndicator .price-change.up {
-      color: #22c55e;
-    }
-    #currentPriceIndicator .price-change.down {
-      color: #ef4444;
-    }
-    #currentPriceIndicator .price-stats {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #e5e7eb;
-      font-size: 12px;
-      color: #666;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    #currentPriceIndicator .stat-row {
-      display: flex;
-      justify-content: space-between;
-    }
-    #currentPriceIndicator .stat-label {
-      font-weight: 500;
-    }
-    #currentPriceIndicator .stat-value {
-      font-weight: 700;
-      font-family: 'Monaco', 'Courier New', monospace;
-    }
+    #currentPriceIndicator.visible { display: block; animation: slideDown 0.3s ease; }
+    #currentPriceIndicator .price-label { font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    #currentPriceIndicator .price-value { font-size: 28px; font-weight: 700; font-family: 'Monaco', 'Courier New', monospace; margin-bottom: 8px; }
+    #currentPriceIndicator .price-value.up { color: #22c55e; }
+    #currentPriceIndicator .price-value.down { color: #ef4444; }
+    #currentPriceIndicator .price-change { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    #currentPriceIndicator .price-change.up { color: #22c55e; }
+    #currentPriceIndicator .price-change.down { color: #ef4444; }
+    #currentPriceIndicator .price-stats { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #666; display: flex; flex-direction: column; gap: 6px; }
+    #currentPriceIndicator .stat-row { display: flex; justify-content: space-between; }
+    #currentPriceIndicator .stat-label { font-weight: 500; }
+    #currentPriceIndicator .stat-value { font-weight: 700; font-family: 'Monaco', 'Courier New', monospace; }
+
+    /* Live price flash on SSE tick */
+    @keyframes priceFlash { 0%,100%{background:transparent} 50%{background:rgba(34,197,94,0.15)} }
+    .price-flash { animation: priceFlash 0.4s ease; }
   </style>
 </head>
 <body>
@@ -611,7 +281,7 @@
         <button id="refreshButton">Refresh</button>
       </div>
     </div>
-    
+
     <div id="drawingTools">
       <button class="draw-btn" id="hLineBtn" title="Horizontal Line">—</button>
       <button class="draw-btn" id="vLineBtn" title="Vertical Line">|</button>
@@ -620,44 +290,35 @@
       <div class="color-divider"></div>
       <button class="draw-btn" id="clearDrawBtn" title="Clear All Drawings">✕</button>
     </div>
-    
+
     <div id="currentPriceIndicator">
       <div class="price-label">Current Price</div>
       <div class="price-value" id="currentPrice">-</div>
       <div class="price-change" id="priceChange">-</div>
       <div class="price-stats">
-        <div class="stat-row">
-          <span class="stat-label">Open:</span>
-          <span class="stat-value" id="openPrice">-</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">High:</span>
-          <span class="stat-value" id="highPrice">-</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Low:</span>
-          <span class="stat-value" id="lowPrice">-</span>
-        </div>
+        <div class="stat-row"><span class="stat-label">Open:</span><span class="stat-value" id="openPrice">-</span></div>
+        <div class="stat-row"><span class="stat-label">High:</span><span class="stat-value" id="highPrice">-</span></div>
+        <div class="stat-row"><span class="stat-label">Low:</span><span class="stat-value" id="lowPrice">-</span></div>
       </div>
     </div>
-    
+
     <div id="drawingModeIndicator">Click on chart to draw line</div>
-    
+
     <div id="signalPanel">
       <div class="signal-header">Final Signal</div>
       <div class="signal-value" id="signalValue">-</div>
-      <div class="confidence-bar">
-        <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
-      </div>
+      <div class="confidence-bar"><div class="confidence-fill" id="confidenceFill" style="width: 0%"></div></div>
       <div class="confidence-text" id="confidenceText">Confidence: -</div>
       <div class="reason-text" id="reasonText">No signal data available</div>
       <div class="timestamp" id="signalTimestamp">Updated: -</div>
     </div>
-    
+
     <div id="timezoneIndicator">
       <div class="tz-time" id="liveTime">--:--:--</div>
+      <!-- SSE live status dot -->
+      <div id="sseStatus"><span id="sseDot"></span><span id="sseLabel">Disconnected</span></div>
     </div>
-    
+
     <div id="chart"></div>
     <div id="loader">
       <div class="spinner"></div>
@@ -684,22 +345,154 @@
       </div>
     </div>
   </div>
+
 <script>
-  // Convert UTC timestamp to IST timestamp
-  // IST is UTC+5:30, which is 19800 seconds ahead
+  // Instrument key cache — fetched from backend, not hardcoded
+  const instrumentKeyCache = {};
+  let currentInstrumentKey = null; // pre-resolved key for selected symbol
+
+  async function getInstrumentKey(name) {
+    if (instrumentKeyCache[name]) return instrumentKeyCache[name];
+    try {
+      const res  = await fetch(`/api/websocket/instrument/key?name=${name}`);
+      const data = await res.json();
+      instrumentKeyCache[name] = data.key;
+      console.log(`Resolved key for ${name}: ${data.key}`);
+      return data.key;
+    } catch (e) {
+      console.error(`Failed to fetch key for ${name}:`, e);
+      return null;
+    }
+  }
+
+  // Pre-fetch key for current symbol so SSE listener is synchronous
+  async function resolveCurrentKey(name) {
+    const n = name || symbolDropdown.value; // always read from dropdown, not global
+    selectedSymbol = n;                      // keep in sync
+    currentInstrumentKey = await getInstrumentKey(n);
+    console.log(`Active key set to: ${currentInstrumentKey} for ${n}`);
+  }
+
+  let sseSource = null;
+  let ssePrevPrice = null;
+
+  function connectSSE() {
+    if (sseSource) sseSource.close();
+
+    sseSource = new EventSource('/api/stream/market');
+
+    sseSource.onopen = () => {
+      document.getElementById('sseDot').className = 'live';
+      document.getElementById('sseLabel').textContent = 'Live';
+    };
+
+    sseSource.onerror = () => {
+      document.getElementById('sseDot').className = '';
+      document.getElementById('sseLabel').textContent = 'Reconnecting...';
+      setTimeout(connectSSE, 3000);
+    };
+
+    // Receives live LTP from AngelWebSocketService on every tick
+    sseSource.addEventListener('ltp', e => {
+      const d = JSON.parse(e.data);
+      if (!currentInstrumentKey || d.key !== currentInstrumentKey) return;
+      updateCurrentPriceFromSSE(Number(d.price));
+    });
+  }
+
+  function updateCurrentPriceFromSSE(price) {
+    // Respect user setting
+    if (!toggleCurrentPriceCheckbox.checked) {
+      currentPriceIndicator.classList.remove('visible');
+    } else {
+      currentPriceEl.textContent = price.toFixed(2);
+      currentPriceIndicator.classList.add('visible');
+
+      // Flash + color on tick
+      if (ssePrevPrice !== null && price !== ssePrevPrice) {
+        currentPriceEl.classList.remove('price-flash');
+        void currentPriceEl.offsetWidth;
+        currentPriceEl.classList.add('price-flash');
+        currentPriceEl.className = 'price-value ' + (price > ssePrevPrice ? 'up' : 'down');
+      }
+
+      // Show O/H/L if candles loaded
+      if (lastCandles && lastCandles.length > 0) {
+        const now = new Date();
+        const todayIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        const todayStart = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate(), 0, 0, 0);
+        const todayStartTimestamp = Math.floor(todayStart.getTime() / 1000);
+        const todayCandles = lastCandles.filter(c => c.time >= todayStartTimestamp);
+        if (todayCandles.length > 0) {
+          const dayOpen = todayCandles[0].open;
+          const dayHigh = Math.max(Math.max(...todayCandles.map(c => c.high)), price);
+          const dayLow  = Math.min(Math.min(...todayCandles.map(c => c.low)),  price);
+          const priceChange = price - dayOpen;
+          const priceChangePercent = ((priceChange / dayOpen) * 100).toFixed(2);
+          currentPriceEl.className = 'price-value ' + (priceChange >= 0 ? 'up' : 'down');
+          const arrow = priceChange >= 0 ? '▲' : '▼';
+          priceChangeEl.innerHTML = `${arrow} ${Math.abs(priceChange).toFixed(2)} (${Math.abs(priceChangePercent)}%)`;
+          priceChangeEl.className = 'price-change ' + (priceChange >= 0 ? 'up' : 'down');
+          openPriceEl.textContent = dayOpen.toFixed(2);
+          highPriceEl.textContent = dayHigh.toFixed(2);
+          lowPriceEl.textContent  = dayLow.toFixed(2);
+        }
+      }
+    }
+
+    ssePrevPrice = price;
+
+    // ── Update current candle in chart tick by tick ──────────────────────────
+    if (!candleSeries || !lastCandles || lastCandles.length === 0) return;
+
+    const lastCandle = lastCandles[lastCandles.length - 1];
+
+    // Parse all values as Number — API may return BigDecimal/string from Java
+    const prevOpen   = Number(lastCandle.open);
+    const prevHigh   = Number(lastCandle.high);
+    const prevLow    = Number(lastCandle.low);
+    const prevClose  = Number(lastCandle.close);
+    const prevVolume = Number(lastCandle.volume) || 0;
+
+    const updatedCandle = {
+      time:   lastCandle.time,
+      open:   prevOpen,
+      high:   Math.max(prevHigh, price),
+      low:    Math.min(prevLow,  price),
+      close:  price,
+      volume: prevVolume
+    };
+
+    // Only push to chart if something changed
+    if (
+      updatedCandle.close !== prevClose ||
+      updatedCandle.high  !== prevHigh  ||
+      updatedCandle.low   !== prevLow
+    ) {
+      candleSeries.update(updatedCandle);
+      volumeSeries.update({
+        time:  updatedCandle.time,
+        value: updatedCandle.volume,
+        color: updatedCandle.close >= updatedCandle.open
+          ? 'rgba(38, 166, 154, 0.5)'
+          : 'rgba(239, 83, 80, 0.5)'
+      });
+
+      // Update in-memory so next tick compares correctly
+      lastCandles[lastCandles.length - 1] = updatedCandle;
+    }
+  }
+
+  // ── Original code below (unchanged) ────────────────────────────────────────
+
   const IST_OFFSET_SECONDS = 19800;
-  
-  function convertToIST(utcTimestamp) {
-    return utcTimestamp + IST_OFFSET_SECONDS;
-  }
-  
-  function convertFromIST(istTimestamp) {
-    return istTimestamp - IST_OFFSET_SECONDS;
-  }
+  function convertToIST(utcTimestamp) { return utcTimestamp + IST_OFFSET_SECONDS; }
+  function convertFromIST(istTimestamp) { return istTimestamp - IST_OFFSET_SECONDS; }
 
   const settings = {
     paSupport: true, paResistance: true, fiboSupport: true, fiboResistance: true,
-    signals: true, volume: true, currentPrice: true, grid: true, live: true, symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
+    signals: true, volume: true, currentPrice: true, grid: true, live: true,
+    symbol: 'NIFTY', timeframe: 'FIVE_MINUTE'
   };
 
   const chartEl = document.getElementById('chart');
@@ -730,21 +523,19 @@
   const colorPicker = document.getElementById('colorPicker');
   const drawingModeIndicator = document.getElementById('drawingModeIndicator');
   const todayButton = document.getElementById('todayButton');
-  
   const currentPriceIndicator = document.getElementById('currentPriceIndicator');
   const currentPriceEl = document.getElementById('currentPrice');
   const priceChangeEl = document.getElementById('priceChange');
   const openPriceEl = document.getElementById('openPrice');
   const highPriceEl = document.getElementById('highPrice');
   const lowPriceEl = document.getElementById('lowPrice');
-  
   const signalPanel = document.getElementById('signalPanel');
   const signalValue = document.getElementById('signalValue');
   const confidenceFill = document.getElementById('confidenceFill');
   const confidenceText = document.getElementById('confidenceText');
   const reasonText = document.getElementById('reasonText');
   const signalTimestamp = document.getElementById('signalTimestamp');
-  
+
   let selectedSymbol = settings.symbol;
   let selectedTimeFrame = settings.timeframe;
   let chart, candleSeries, volumeSeries;
@@ -758,173 +549,101 @@
   let liveClockInterval = null;
   let lastLineHash = '';
 
-  // Update live IST clock
   function updateLiveClock() {
     const now = new Date();
-    const timeString = now.toLocaleTimeString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
+    document.getElementById('liveTime').textContent = now.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     });
-    document.getElementById('liveTime').textContent = timeString;
   }
-
-  // Start live clock
   function startLiveClock() {
-    if (!liveClockInterval) {
-      updateLiveClock();
-      liveClockInterval = setInterval(updateLiveClock, 1000);
-    }
+    if (!liveClockInterval) { updateLiveClock(); liveClockInterval = setInterval(updateLiveClock, 1000); }
   }
-
-  // Stop live clock
   function stopLiveClock() {
-    if (liveClockInterval) {
-      clearInterval(liveClockInterval);
-      liveClockInterval = null;
-    }
+    if (liveClockInterval) { clearInterval(liveClockInterval); liveClockInterval = null; }
   }
 
-  // Generate hash of lines to check if redraw is needed
   function generateLineHash() {
     const paSupport = togglePASupportCheckbox.checked && lastData?.priceActionSupport ? lastData.priceActionSupport.join(',') : '';
-    const paResist = togglePAResistanceCheckbox.checked && lastData?.priceActionResistance ? lastData.priceActionResistance.join(',') : '';
-    const fiboSup = toggleFiboSupportCheckbox.checked && lastData?.fiboSupport ? lastData.fiboSupport.map(l => l.level).join(',') : '';
-    const fiboRes = toggleFiboResistanceCheckbox.checked && lastData?.fiboResistance ? lastData.fiboResistance.map(l => l.level).join(',') : '';
+    const paResist  = togglePAResistanceCheckbox.checked && lastData?.priceActionResistance ? lastData.priceActionResistance.join(',') : '';
+    const fiboSup   = toggleFiboSupportCheckbox.checked && lastData?.fiboSupport ? lastData.fiboSupport.map(l => l.level).join(',') : '';
+    const fiboRes   = toggleFiboResistanceCheckbox.checked && lastData?.fiboResistance ? lastData.fiboResistance.map(l => l.level).join(',') : '';
     return `${paSupport}|${paResist}|${fiboSup}|${fiboRes}`;
   }
 
-  // Zoom to today's intraday session
   function zoomToToday() {
     if (!chart || !lastCandles || lastCandles.length === 0) return;
-    
-    // Get today's date in IST
     const now = new Date();
     const todayIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     const todayStart = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate(), 0, 0, 0);
     const todayStartTimestamp = Math.floor(todayStart.getTime() / 1000);
-    
-    // Find today's candles
-    const todayCandles = lastCandles.filter(candle => candle.time >= todayStartTimestamp);
-    
+    const todayCandles = lastCandles.filter(c => c.time >= todayStartTimestamp);
     if (todayCandles.length > 0) {
       const lastTodayTime = todayCandles[todayCandles.length - 1].time;
-      
-      // Calculate time range to show (about 40-50 candles visible)
       let barsToShow = 50;
-      
-      // Adjust based on timeframe
-      if (selectedTimeFrame === 'ONE_MINUTE') {
-        barsToShow = 60; // Show 1 hour
-      } else if (selectedTimeFrame === 'FIVE_MINUTE') {
-        barsToShow = 50; // Show ~4 hours
-      } else if (selectedTimeFrame === 'FIFTEEN_MINUTE') {
-        barsToShow = 40; // Show ~10 hours
-      }
-      
-      // Calculate time per bar
-      let secondsPerBar = 300; // 5 minutes default
-      if (selectedTimeFrame === 'ONE_MINUTE') {
-        secondsPerBar = 60;
-      } else if (selectedTimeFrame === 'FIFTEEN_MINUTE') {
-        secondsPerBar = 900;
-      }
-      
+      if (selectedTimeFrame === 'ONE_MINUTE') barsToShow = 60;
+      else if (selectedTimeFrame === 'FIFTEEN_MINUTE') barsToShow = 40;
+      let secondsPerBar = 300;
+      if (selectedTimeFrame === 'ONE_MINUTE') secondsPerBar = 60;
+      else if (selectedTimeFrame === 'FIFTEEN_MINUTE') secondsPerBar = 900;
       const timeRangeToShow = barsToShow * secondsPerBar;
-      
-      // Center the current candle - show equal amount before and after
-      const fromTime = lastTodayTime - (timeRangeToShow * 0.6); // 60% before current
-      const toTime = lastTodayTime + (timeRangeToShow * 0.4); // 40% after current for breathing room
-      
+      const fromTime = lastTodayTime - (timeRangeToShow * 0.6);
+      const toTime   = lastTodayTime + (timeRangeToShow * 0.4);
       try {
-        chart.timeScale().setVisibleRange({
-          from: Math.max(todayStartTimestamp, fromTime),
-          to: toTime
-        });
-      } catch (e) {
-        console.warn('Could not set visible range:', e);
-        chart.timeScale().fitContent();
-      }
-    } else {
-      // If no today's candles found, just fit content
-      chart.timeScale().fitContent();
-    }
+        chart.timeScale().setVisibleRange({ from: Math.max(todayStartTimestamp, fromTime), to: toTime });
+      } catch (e) { chart.timeScale().fitContent(); }
+    } else { chart.timeScale().fitContent(); }
   }
 
-  // Update current price indicator
   function updateCurrentPriceIndicator() {
-    if (!toggleCurrentPriceCheckbox.checked) {
-      currentPriceIndicator.classList.remove('visible');
-      return;
-    }
-    
-    if (!lastCandles || lastCandles.length === 0) {
-      currentPriceIndicator.classList.remove('visible');
-      return;
-    }
-    
+    if (!toggleCurrentPriceCheckbox.checked) { currentPriceIndicator.classList.remove('visible'); return; }
+    if (!lastCandles || lastCandles.length === 0) { currentPriceIndicator.classList.remove('visible'); return; }
     const latestCandle = lastCandles[lastCandles.length - 1];
-    const currentPrice = latestCandle.close;
-    
-    // Get today's first candle for day open
+    // If SSE is providing live price, use that; otherwise fall back to last candle close
+    const currentPrice = ssePrevPrice !== null ? ssePrevPrice : latestCandle.close;
     const now = new Date();
     const todayIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     const todayStart = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate(), 0, 0, 0);
     const todayStartTimestamp = Math.floor(todayStart.getTime() / 1000);
-    const todayCandles = lastCandles.filter(candle => candle.time >= todayStartTimestamp);
-    
-    if (todayCandles.length === 0) {
-      currentPriceIndicator.classList.remove('visible');
-      return;
-    }
-    
+    const todayCandles = lastCandles.filter(c => c.time >= todayStartTimestamp);
+    if (todayCandles.length === 0) { currentPriceIndicator.classList.remove('visible'); return; }
     const dayOpen = todayCandles[0].open;
     const dayHigh = Math.max(...todayCandles.map(c => c.high));
-    const dayLow = Math.min(...todayCandles.map(c => c.low));
-    
+    const dayLow  = Math.min(...todayCandles.map(c => c.low));
     const priceChange = currentPrice - dayOpen;
     const priceChangePercent = ((priceChange / dayOpen) * 100).toFixed(2);
-    
-    // Update display
     currentPriceEl.textContent = currentPrice.toFixed(2);
-    currentPriceEl.className = 'price-value ' + (priceChange >= 0 ? 'up' : 'down');
-    
+    currentPriceEl.className   = 'price-value ' + (priceChange >= 0 ? 'up' : 'down');
     const arrow = priceChange >= 0 ? '▲' : '▼';
-    priceChangeEl.innerHTML = `${arrow} ${Math.abs(priceChange).toFixed(2)} (${Math.abs(priceChangePercent)}%)`;
-    priceChangeEl.className = 'price-change ' + (priceChange >= 0 ? 'up' : 'down');
-    
-    openPriceEl.textContent = dayOpen.toFixed(2);
-    highPriceEl.textContent = dayHigh.toFixed(2);
-    lowPriceEl.textContent = dayLow.toFixed(2);
-    
+    priceChangeEl.innerHTML   = `${arrow} ${Math.abs(priceChange).toFixed(2)} (${Math.abs(priceChangePercent)}%)`;
+    priceChangeEl.className   = 'price-change ' + (priceChange >= 0 ? 'up' : 'down');
+    openPriceEl.textContent   = dayOpen.toFixed(2);
+    highPriceEl.textContent   = dayHigh.toFixed(2);
+    lowPriceEl.textContent    = dayLow.toFixed(2);
     currentPriceIndicator.classList.add('visible');
   }
 
   function saveToSession(key, value) {
-    try { sessionStorage.setItem(key, JSON.stringify(value)); } 
-    catch (e) { console.error('Failed to save to session:', e); }
+    try { sessionStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
   }
-
   function getFromSession(key) {
-    try { 
-      const item = sessionStorage.getItem(key);
-      return item ? JSON.parse(item) : null;
-    } catch (e) { 
-      console.error('Failed to get from session:', e);
-      return null;
-    }
+    try { const item = sessionStorage.getItem(key); return item ? JSON.parse(item) : null; } catch (e) { return null; }
   }
 
-  colorPicker.addEventListener('change', (e) => { selectedColor = e.target.value; });
+  colorPicker.addEventListener('change', e => { selectedColor = e.target.value; });
 
   window.addEventListener('load', () => {
     startLiveClock();
+    selectedSymbol    = symbolDropdown.value;
+    selectedTimeFrame = timeframeDropdown.value;
+
+    // Restore session state first (may override selectedSymbol)
     const savedState = getFromSession('chartState');
     if (savedState && savedState.userHasLoadedChart && savedState.hasData) {
       restoreChartState(savedState);
     }
+
+    // Resolve key AFTER restore so selectedSymbol is final, then connect SSE
+    resolveCurrentKey(symbolDropdown.value).then(() => connectSSE());
   });
 
   window.addEventListener('beforeunload', () => { saveChartState(); });
@@ -934,7 +653,6 @@
     if (chartInitialized && lastCandles.length > 0 && chart) {
       const timeScale = chart.timeScale();
       const visibleRange = timeScale.getVisibleRange();
-      
       const chartState = {
         hasData: true,
         savedCandles: lastCandles.slice(),
@@ -943,18 +661,11 @@
         savedSymbol: selectedSymbol,
         savedTimeframe: selectedTimeFrame,
         savedDrawnLines: drawnLines.map(line => ({
-          type: line.type, 
-          price: line.price, 
-          time: line.time, 
-          color: line.color,
-          minPrice: line.minPrice, 
-          maxPrice: line.maxPrice
+          type: line.type, price: line.price, time: line.time, color: line.color,
+          minPrice: line.minPrice, maxPrice: line.maxPrice
         })),
         userHasLoadedChart: true,
-        visibleRange: visibleRange ? {
-          from: visibleRange.from,
-          to: visibleRange.to
-        } : null,
+        visibleRange: visibleRange ? { from: visibleRange.from, to: visibleRange.to } : null,
         settings: {
           paSupport: togglePASupportCheckbox.checked,
           paResistance: togglePAResistanceCheckbox.checked,
@@ -973,114 +684,60 @@
 
   function restoreChartState(savedState) {
     if (!savedState || !savedState.hasData || !savedState.userHasLoadedChart) return;
-    
-    selectedSymbol = savedState.savedSymbol;
+    selectedSymbol    = savedState.savedSymbol;
     selectedTimeFrame = savedState.savedTimeframe;
-    symbolDropdown.value = selectedSymbol;
+    symbolDropdown.value    = selectedSymbol;
     timeframeDropdown.value = selectedTimeFrame;
     lastCandles = savedState.savedCandles.slice();
     lastSignals = savedState.savedSignals.slice();
-    lastData = savedState.savedData;
-    
+    lastData    = savedState.savedData;
     if (savedState.settings) {
-      togglePASupportCheckbox.checked = savedState.settings.paSupport;
+      togglePASupportCheckbox.checked    = savedState.settings.paSupport;
       togglePAResistanceCheckbox.checked = savedState.settings.paResistance;
-      toggleFiboSupportCheckbox.checked = savedState.settings.fiboSupport;
+      toggleFiboSupportCheckbox.checked  = savedState.settings.fiboSupport;
       toggleFiboResistanceCheckbox.checked = savedState.settings.fiboResistance;
-      toggleSignalsCheckbox.checked = savedState.settings.signals;
-      toggleVolumeCheckbox.checked = savedState.settings.volume !== undefined ? savedState.settings.volume : true;
+      toggleSignalsCheckbox.checked      = savedState.settings.signals;
+      toggleVolumeCheckbox.checked       = savedState.settings.volume !== undefined ? savedState.settings.volume : true;
       toggleCurrentPriceCheckbox.checked = savedState.settings.currentPrice !== undefined ? savedState.settings.currentPrice : true;
-      toggleGridCheckbox.checked = savedState.settings.grid;
-      toggleLiveCheckbox.checked = savedState.settings.live;
+      toggleGridCheckbox.checked         = savedState.settings.grid;
+      toggleLiveCheckbox.checked         = savedState.settings.live;
       updateSettings();
     }
-    
     if (!chart) initChart();
-    
     if (lastCandles.length > 0) {
       candleSeries.setData(lastCandles);
       volumeSeries.setData(lastCandles.map(c => ({
         time: c.time, value: c.volume,
         color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
       })));
-      
       if (savedState.visibleRange && savedState.visibleRange.from && savedState.visibleRange.to) {
         setTimeout(() => {
-          try {
-            chart.timeScale().setVisibleRange({
-              from: savedState.visibleRange.from,
-              to: savedState.visibleRange.to
-            });
-          } catch (e) {
-            console.warn('Could not restore visible range:', e);
-            chart.timeScale().fitContent();
-          }
+          try { chart.timeScale().setVisibleRange({ from: savedState.visibleRange.from, to: savedState.visibleRange.to }); }
+          catch (e) { chart.timeScale().fitContent(); }
         }, 100);
-      } else {
-        chart.timeScale().fitContent();
-      }
-      
+      } else { chart.timeScale().fitContent(); }
       isFirstLoad = false;
       redrawLines();
-      
       if (savedState.savedDrawnLines && Array.isArray(savedState.savedDrawnLines)) {
         savedState.savedDrawnLines.forEach(lineData => {
           try {
             if (lineData.type === 'hline' && lineData.price != null) {
-              const line = candleSeries.createPriceLine({
-                price: lineData.price, 
-                color: lineData.color || selectedColor,
-                lineWidth: 2, 
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true, 
-                title: 'H-Line'
-              });
-              drawnLines.push({ 
-                type: 'hline', 
-                price: lineData.price, 
-                line: line, 
-                color: lineData.color || selectedColor 
-              });
+              const line = candleSeries.createPriceLine({ price: lineData.price, color: lineData.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
+              drawnLines.push({ type: 'hline', price: lineData.price, line, color: lineData.color || selectedColor });
             } else if (lineData.type === 'vline' && lineData.time != null) {
-              const vLineSeries = chart.addLineSeries({
-                color: lineData.color || selectedColor,
-                lineWidth: 2,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                priceFormat: { type: 'price' },
-                lastValueVisible: false,
-                priceLineVisible: false,
-                crosshairMarkerVisible: false,
-              });
-              vLineSeries.setData([
-                { time: lineData.time, value: lineData.minPrice },
-                { time: lineData.time, value: lineData.maxPrice }
-              ]);
-              drawnLines.push({ 
-                type: 'vline', 
-                time: lineData.time, 
-                series: vLineSeries, 
-                color: lineData.color || selectedColor,
-                minPrice: lineData.minPrice, 
-                maxPrice: lineData.maxPrice
-              });
+              const vLineSeries = chart.addLineSeries({ color: lineData.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+              vLineSeries.setData([{ time: lineData.time, value: lineData.minPrice }, { time: lineData.time, value: lineData.maxPrice }]);
+              drawnLines.push({ type: 'vline', time: lineData.time, series: vLineSeries, color: lineData.color || selectedColor, minPrice: lineData.minPrice, maxPrice: lineData.maxPrice });
             }
-          } catch (e) {
-            console.error('Failed to restore line:', e);
-          }
+          } catch (e) {}
         });
       }
-      
       if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-      
-      if (lastData) {
-        updateSignalPanel(lastData);
-      }
-      
+      if (lastData) updateSignalPanel(lastData);
       updateCurrentPriceIndicator();
-      
-      chartEl.style.display = 'block';
+      chartEl.style.display  = 'block';
       loaderEl.style.display = 'none';
-      errorEl.style.display = 'none';
+      errorEl.style.display  = 'none';
       chartInitialized = true;
       setTimeout(() => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); }, 50);
       if (toggleLiveCheckbox.checked) updateLiveStatus();
@@ -1088,143 +745,61 @@
   }
 
   function updateSettings() {
-    settings.paSupport = togglePASupportCheckbox.checked;
-    settings.paResistance = togglePAResistanceCheckbox.checked;
-    settings.fiboSupport = toggleFiboSupportCheckbox.checked;
+    settings.paSupport     = togglePASupportCheckbox.checked;
+    settings.paResistance  = togglePAResistanceCheckbox.checked;
+    settings.fiboSupport   = toggleFiboSupportCheckbox.checked;
     settings.fiboResistance = toggleFiboResistanceCheckbox.checked;
-    settings.signals = toggleSignalsCheckbox.checked;
-    settings.volume = toggleVolumeCheckbox.checked;
-    settings.currentPrice = toggleCurrentPriceCheckbox.checked;
-    settings.grid = toggleGridCheckbox.checked;
-    settings.live = toggleLiveCheckbox.checked;
-    settings.symbol = selectedSymbol;
-    settings.timeframe = selectedTimeFrame;
+    settings.signals       = toggleSignalsCheckbox.checked;
+    settings.volume        = toggleVolumeCheckbox.checked;
+    settings.currentPrice  = toggleCurrentPriceCheckbox.checked;
+    settings.grid          = toggleGridCheckbox.checked;
+    settings.live          = toggleLiveCheckbox.checked;
+    settings.symbol        = selectedSymbol;
+    settings.timeframe     = selectedTimeFrame;
   }
 
   function clearLines(lines) {
-    lines.forEach(line => {
-      try {
-        candleSeries.removePriceLine(line);
-      } catch (e) {
-        console.error('Failed to remove price line:', e);
-      }
-    });
+    lines.forEach(line => { try { candleSeries.removePriceLine(line); } catch (e) {} });
     return [];
   }
 
   function redrawLines() {
     if (!lastData) return;
-    
-    // Check if lines actually need redrawing
     const currentHash = generateLineHash();
-    if (currentHash === lastLineHash && priceActionSupportLines.length > 0) {
-      // Lines haven't changed, just redraw user lines
-      redrawUserLines();
-      return;
-    }
+    if (currentHash === lastLineHash && priceActionSupportLines.length > 0) { redrawUserLines(); return; }
     lastLineHash = currentHash;
-    
-    priceActionSupportLines = clearLines(priceActionSupportLines);
+    priceActionSupportLines    = clearLines(priceActionSupportLines);
     priceActionResistanceLines = clearLines(priceActionResistanceLines);
-    fiboSupportLines = clearLines(fiboSupportLines);
-    fiboResistanceLines = clearLines(fiboResistanceLines);
-    
-    if (togglePASupportCheckbox.checked && lastData.priceActionSupport) {
-      priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({
-        price: Number(price), color: 'green', lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true, title: 'Price Action Support'
-      }));
-    }
-    if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance) {
-      priceActionResistanceLines = lastData.priceActionResistance.map(price => candleSeries.createPriceLine({
-        price: Number(price), color: 'red', lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true, title: 'Price Action Resistance'
-      }));
-    }
-    if (toggleFiboSupportCheckbox.checked && lastData.fiboSupport) {
-      fiboSupportLines = lastData.fiboSupport.map(levelObj => candleSeries.createPriceLine({
-        price: Number(levelObj.level), color: 'blue', lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true, title: levelObj.label || 'Fibo Support'
-      }));
-    }
-    if (toggleFiboResistanceCheckbox.checked && lastData.fiboResistance) {
-      fiboResistanceLines = lastData.fiboResistance.map(levelObj => candleSeries.createPriceLine({
-        price: Number(levelObj.level), color: 'orange', lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true, title: levelObj.label || 'Fibo Resistance'
-      }));
-    }
+    fiboSupportLines           = clearLines(fiboSupportLines);
+    fiboResistanceLines        = clearLines(fiboResistanceLines);
+    if (togglePASupportCheckbox.checked && lastData.priceActionSupport)
+      priceActionSupportLines = lastData.priceActionSupport.map(price => candleSeries.createPriceLine({ price: Number(price), color: 'green', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'Price Action Support' }));
+    if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance)
+      priceActionResistanceLines = lastData.priceActionResistance.map(price => candleSeries.createPriceLine({ price: Number(price), color: 'red', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'Price Action Resistance' }));
+    if (toggleFiboSupportCheckbox.checked && lastData.fiboSupport)
+      fiboSupportLines = lastData.fiboSupport.map(levelObj => candleSeries.createPriceLine({ price: Number(levelObj.level), color: 'blue', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: levelObj.label || 'Fibo Support' }));
+    if (toggleFiboResistanceCheckbox.checked && lastData.fiboResistance)
+      fiboResistanceLines = lastData.fiboResistance.map(levelObj => candleSeries.createPriceLine({ price: Number(levelObj.level), color: 'orange', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: levelObj.label || 'Fibo Resistance' }));
     redrawUserLines();
   }
 
   function redrawUserLines() {
     if (!candleSeries || !chart) return;
-    
     const validLines = [];
-    
     drawnLines.forEach(lineData => {
       try {
         if (lineData.type === 'hline' && lineData.price != null) {
-          if (lineData.line) {
-            try {
-              candleSeries.removePriceLine(lineData.line);
-            } catch (e) {}
-          }
-          
-          const newLine = candleSeries.createPriceLine({
-            price: lineData.price, 
-            color: lineData.color || selectedColor,
-            lineWidth: 2, 
-            lineStyle: LightweightCharts.LineStyle.Solid,
-            axisLabelVisible: true, 
-            title: 'H-Line'
-          });
-          
-          validLines.push({
-            type: 'hline',
-            price: lineData.price,
-            line: newLine,
-            color: lineData.color || selectedColor
-          });
+          if (lineData.line) { try { candleSeries.removePriceLine(lineData.line); } catch (e) {} }
+          const newLine = candleSeries.createPriceLine({ price: lineData.price, color: lineData.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
+          validLines.push({ type: 'hline', price: lineData.price, line: newLine, color: lineData.color || selectedColor });
         } else if (lineData.type === 'vline' && lineData.time != null) {
-          if (lineData.series) {
-            try {
-              chart.removeSeries(lineData.series);
-            } catch (e) {}
-          }
-          
-          const vLineSeries = chart.addLineSeries({
-            color: lineData.color || selectedColor,
-            lineWidth: 2,
-            lineStyle: LightweightCharts.LineStyle.Solid,
-            priceFormat: { type: 'price' },
-            lastValueVisible: false,
-            priceLineVisible: false,
-            crosshairMarkerVisible: false,
-          });
-          
-          vLineSeries.setData([
-            { time: lineData.time, value: lineData.minPrice },
-            { time: lineData.time, value: lineData.maxPrice }
-          ]);
-          
-          validLines.push({
-            type: 'vline',
-            time: lineData.time,
-            series: vLineSeries,
-            color: lineData.color || selectedColor,
-            minPrice: lineData.minPrice,
-            maxPrice: lineData.maxPrice
-          });
+          if (lineData.series) { try { chart.removeSeries(lineData.series); } catch (e) {} }
+          const vLineSeries = chart.addLineSeries({ color: lineData.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+          vLineSeries.setData([{ time: lineData.time, value: lineData.minPrice }, { time: lineData.time, value: lineData.maxPrice }]);
+          validLines.push({ type: 'vline', time: lineData.time, series: vLineSeries, color: lineData.color || selectedColor, minPrice: lineData.minPrice, maxPrice: lineData.maxPrice });
         }
-      } catch (e) {
-        console.error('Failed to redraw line:', e);
-      }
+      } catch (e) {}
     });
-    
     drawnLines = validLines;
   }
 
@@ -1235,149 +810,86 @@
   toggleSignalsCheckbox.addEventListener('change', () => {
     updateSettings();
     if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-    
-    if (toggleSignalsCheckbox.checked && lastData) {
-      updateSignalPanel(lastData);
-    } else {
-      signalPanel.classList.remove('visible');
-      signalPanel.style.display = 'none';
-      console.log('Signal panel manually hidden via checkbox');
-    }
-    
+    if (toggleSignalsCheckbox.checked && lastData) updateSignalPanel(lastData);
+    else { signalPanel.classList.remove('visible'); signalPanel.style.display = 'none'; }
     saveChartState();
   });
   toggleVolumeCheckbox.addEventListener('change', () => {
     updateSettings();
-    if (!chart || !volumeSeries) return;
-    volumeSeries.applyOptions({
-      visible: toggleVolumeCheckbox.checked
-    });
+    if (volumeSeries) volumeSeries.applyOptions({ visible: toggleVolumeCheckbox.checked });
     saveChartState();
   });
   toggleCurrentPriceCheckbox.addEventListener('change', () => {
-    updateSettings();
-    updateCurrentPriceIndicator();
-    saveChartState();
+    updateSettings(); updateCurrentPriceIndicator(); saveChartState();
   });
   toggleGridCheckbox.addEventListener('change', () => {
     updateSettings();
-    if (!chart) return;
-    chart.applyOptions({
-      grid: {
-        vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
-        horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
-      }
-    });
+    if (chart) chart.applyOptions({ grid: { vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' }, horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' } } });
     saveChartState();
   });
   toggleLiveCheckbox.addEventListener('change', () => { updateSettings(); updateLiveStatus(); saveChartState(); });
 
   resetButton.addEventListener('click', () => {
-    togglePASupportCheckbox.checked = true;
-    togglePAResistanceCheckbox.checked = true;
-    toggleFiboSupportCheckbox.checked = true;
-    toggleFiboResistanceCheckbox.checked = true;
-    toggleSignalsCheckbox.checked = true;
-    toggleVolumeCheckbox.checked = true;
-    toggleCurrentPriceCheckbox.checked = true;
-    toggleGridCheckbox.checked = true;
-    toggleLiveCheckbox.checked = true;
-    updateSettings();
-    redrawLines();
+    togglePASupportCheckbox.checked = togglePAResistanceCheckbox.checked = toggleFiboSupportCheckbox.checked =
+    toggleFiboResistanceCheckbox.checked = toggleSignalsCheckbox.checked = toggleVolumeCheckbox.checked =
+    toggleCurrentPriceCheckbox.checked = toggleGridCheckbox.checked = toggleLiveCheckbox.checked = true;
+    updateSettings(); redrawLines();
     if (chart) {
-      chart.applyOptions({
-        grid: { vertLines: { visible: true, color: '#eee' }, horzLines: { visible: true, color: '#eee' } }
-      });
+      chart.applyOptions({ grid: { vertLines: { visible: true, color: '#eee' }, horzLines: { visible: true, color: '#eee' } } });
       if (candleSeries) candleSeries.setMarkers(lastSignals);
       if (volumeSeries) volumeSeries.applyOptions({ visible: true });
     }
-    updateCurrentPriceIndicator();
-    updateLiveStatus();
-    saveChartState();
+    updateCurrentPriceIndicator(); updateLiveStatus(); saveChartState();
   });
-  
+
   uncheckAllButton.addEventListener('click', () => {
-    togglePASupportCheckbox.checked = false;
-    togglePAResistanceCheckbox.checked = false;
-    toggleFiboSupportCheckbox.checked = false;
-    toggleFiboResistanceCheckbox.checked = false;
-    toggleSignalsCheckbox.checked = false;
-    toggleVolumeCheckbox.checked = false;
-    toggleCurrentPriceCheckbox.checked = false;
-    toggleGridCheckbox.checked = false;
-    toggleLiveCheckbox.checked = false;
-    updateSettings();
-    redrawLines();
+    togglePASupportCheckbox.checked = togglePAResistanceCheckbox.checked = toggleFiboSupportCheckbox.checked =
+    toggleFiboResistanceCheckbox.checked = toggleSignalsCheckbox.checked = toggleVolumeCheckbox.checked =
+    toggleCurrentPriceCheckbox.checked = toggleGridCheckbox.checked = toggleLiveCheckbox.checked = false;
+    updateSettings(); redrawLines();
     if (chart) {
-      chart.applyOptions({
-        grid: { vertLines: { visible: false, color: '#eee' }, horzLines: { visible: false, color: '#eee' } }
-      });
+      chart.applyOptions({ grid: { vertLines: { visible: false, color: '#eee' }, horzLines: { visible: false, color: '#eee' } } });
       if (candleSeries) candleSeries.setMarkers([]);
       if (volumeSeries) volumeSeries.applyOptions({ visible: false });
     }
     signalPanel.classList.remove('visible');
     currentPriceIndicator.classList.remove('visible');
-    updateLiveStatus();
-    saveChartState();
+    updateLiveStatus(); saveChartState();
   });
-  
-  fitButton.addEventListener('click', () => { 
-    if (chart) {
-      chart.timeScale().fitContent();
-      saveChartState();
-    }
-  });
+
+  fitButton.addEventListener('click', () => { if (chart) { chart.timeScale().fitContent(); saveChartState(); } });
 
   function clearChart() {
     if (chart && candleSeries) {
       drawnLines.forEach(lineData => {
         try {
-          if (lineData.type === 'hline' && lineData.line) {
-            candleSeries.removePriceLine(lineData.line);
-          } else if (lineData.type === 'vline' && lineData.series) {
-            chart.removeSeries(lineData.series);
-          }
-        } catch (e) {
-          console.error('Error removing line during clearChart:', e);
-        }
+          if (lineData.type === 'hline' && lineData.line) candleSeries.removePriceLine(lineData.line);
+          else if (lineData.type === 'vline' && lineData.series) chart.removeSeries(lineData.series);
+        } catch (e) {}
       });
     }
     drawnLines = [];
-    
     if (chart) {
-      if (candleSeries) { 
-        try { chart.removeSeries(candleSeries); } catch (e) {}
-        candleSeries = null; 
-      }
-      if (volumeSeries) { 
-        try { chart.removeSeries(volumeSeries); } catch (e) {}
-        volumeSeries = null; 
-      }
+      if (candleSeries) { try { chart.removeSeries(candleSeries); } catch (e) {} candleSeries = null; }
+      if (volumeSeries) { try { chart.removeSeries(volumeSeries); } catch (e) {} volumeSeries = null; }
       try { chart.remove(); } catch (e) {}
       chart = null;
     }
   }
 
   symbolDropdown.addEventListener('change', () => {
-    selectedSymbol = symbolDropdown.value;
-    console.log('Symbol changed to:', selectedSymbol);
-    clearChart();
-    isFirstLoad = true;
-    chartInitialized = false;
-    lastCandles = []; // Clear previous candles
-    refresh(true);
-    updateSettings();
+    const name = symbolDropdown.value;
+    selectedSymbol = name;
+    ssePrevPrice = null;
+    currentInstrumentKey = null;
+    resolveCurrentKey(name); // pass name explicitly, don't rely on global
+    clearChart(); isFirstLoad = true; chartInitialized = false; lastCandles = [];
+    refresh(true); updateSettings();
   });
-  
   timeframeDropdown.addEventListener('change', () => {
     selectedTimeFrame = timeframeDropdown.value;
-    console.log('Timeframe changed to:', selectedTimeFrame);
-    clearChart();
-    isFirstLoad = true;
-    chartInitialized = false;
-    lastCandles = []; // Clear previous candles
-    refresh(true);
-    updateSettings();
+    clearChart(); isFirstLoad = true; chartInitialized = false; lastCandles = [];
+    refresh(true); updateSettings();
   });
 
   function initChart() {
@@ -1386,478 +898,197 @@
       width: chartEl.clientWidth, height: chartEl.clientHeight,
       layout: { backgroundColor: '#fff', textColor: '#000' },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.2 } },
-      timeScale: {
-        timeVisible: true,
-        rightOffset: 30,
-        barSpacing: 6,
-        minBarSpacing: 3,
-        borderColor: '#d1d4dc',
-        borderVisible: true
-      },
+      timeScale: { timeVisible: true, rightOffset: 30, barSpacing: 6, minBarSpacing: 3, borderColor: '#d1d4dc', borderVisible: true },
       crosshair: {
         mode: LightweightCharts.CrosshairMode.Normal,
-        vertLine: {
-          width: 1,
-          color: '#758696',
-          style: LightweightCharts.LineStyle.Dashed,
-          labelBackgroundColor: '#4a5568',
-        },
-        horzLine: {
-          width: 1,
-          color: '#758696',
-          style: LightweightCharts.LineStyle.Dashed,
-          labelBackgroundColor: '#4a5568',
-        },
+        vertLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' },
+        horzLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' },
       },
-      grid: {
-        vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
-        horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
-      },
+      grid: { vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' }, horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' } },
       localization: {
         locale: 'en-IN',
         timeFormatter: (timestamp) => {
-          // API returns UTC timestamps, we need to display in IST (UTC + 5:30)
           const date = new Date(timestamp * 1000);
-          
-          // Add IST offset (5 hours 30 minutes = 19800 seconds)
           const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
-          
-          const hours = istDate.getUTCHours();
-          const minutes = istDate.getUTCMinutes();
-          
-          const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-          
-          // Debug logging
-          if (!window.timeFormatterLogged) {
-            console.log('TimeFormatter debug:', {
-              timestamp,
-              utcDate: date.toString(),
-              istDate: istDate.toString(),
-              formatted: timeStr
-            });
-            window.timeFormatterLogged = true;
-          }
-          
-          return timeStr;
+          const hours = istDate.getUTCHours(), minutes = istDate.getUTCMinutes();
+          return `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}`;
         }
       }
     });
-    candleSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-    });
-    chart.applyOptions({
-      priceScales: {
-        volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.9, bottom: 0 } }
-      },
-    });
-    volumeSeries = chart.addHistogramSeries({
-      color: 'rgba(38, 166, 154, 0.5)',
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
-      scaleMargins: { top: 0.9, bottom: 0 },
-      overlay: true,
-      lineWidth: 1,
-      visible: toggleVolumeCheckbox.checked
-    });
-    
+    candleSeries = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
+    chart.applyOptions({ priceScales: { volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.9, bottom: 0 } } } });
+    volumeSeries = chart.addHistogramSeries({ color: 'rgba(38, 166, 154, 0.5)', priceFormat: { type: 'volume' }, priceScaleId: 'volume', scaleMargins: { top: 0.9, bottom: 0 }, overlay: true, lineWidth: 1, visible: toggleVolumeCheckbox.checked });
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       if (chartInitialized && lastCandles.length > 0) {
         clearTimeout(window.savePositionTimeout);
-        window.savePositionTimeout = setTimeout(() => {
-          saveChartState();
-        }, 500);
+        window.savePositionTimeout = setTimeout(() => saveChartState(), 500);
       }
     });
-    
     setupDrawingHandlers();
     chartInitialized = true;
   }
 
-  function setupDrawingHandlers() {
-    chartEl.addEventListener('click', handleChartClick);
-  }
+  function setupDrawingHandlers() { chartEl.addEventListener('click', handleChartClick); }
 
   function handleChartClick(event) {
     if (!drawingMode || !chart) return;
-    
     const rect = chartEl.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
     if (drawingMode === 'hline') {
       const price = candleSeries.coordinateToPrice(y);
       if (price) {
-        const line = candleSeries.createPriceLine({
-          price: price,
-          color: selectedColor,
-          lineWidth: 2,
-          lineStyle: LightweightCharts.LineStyle.Solid,
-          axisLabelVisible: true,
-          title: 'H-Line'
-        });
-        drawnLines.push({ type: 'hline', price: price, line: line, color: selectedColor });
+        const line = candleSeries.createPriceLine({ price, color: selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
+        drawnLines.push({ type: 'hline', price, line, color: selectedColor });
         saveChartState();
       }
     } else if (drawingMode === 'vline') {
       const time = chart.timeScale().coordinateToTime(x);
-      
       if (time && lastCandles.length > 0) {
         let minPrice = Math.min(...lastCandles.map(c => c.low));
         let maxPrice = Math.max(...lastCandles.map(c => c.high));
         const padding = (maxPrice - minPrice) * 0.1;
-        minPrice -= padding;
-        maxPrice += padding;
-        
-        const vLineSeries = chart.addLineSeries({
-          color: selectedColor,
-          lineWidth: 2,
-          lineStyle: LightweightCharts.LineStyle.Solid,
-          priceFormat: { type: 'price' },
-          lastValueVisible: false,
-          priceLineVisible: false,
-          crosshairMarkerVisible: false,
-        });
-        
-        vLineSeries.setData([
-          { time: time, value: minPrice },
-          { time: time, value: maxPrice }
-        ]);
-        
-        drawnLines.push({ 
-          type: 'vline', 
-          time: time, 
-          series: vLineSeries, 
-          color: selectedColor,
-          minPrice: minPrice,
-          maxPrice: maxPrice
-        });
+        minPrice -= padding; maxPrice += padding;
+        const vLineSeries = chart.addLineSeries({ color: selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+        vLineSeries.setData([{ time, value: minPrice }, { time, value: maxPrice }]);
+        drawnLines.push({ type: 'vline', time, series: vLineSeries, color: selectedColor, minPrice, maxPrice });
         saveChartState();
       }
     }
-    drawingMode = null;
-    updateDrawingButtons();
+    drawingMode = null; updateDrawingButtons();
   }
 
   function updateDrawingButtons() {
     hLineBtn.classList.toggle('active', drawingMode === 'hline');
     vLineBtn.classList.toggle('active', drawingMode === 'vline');
     chartEl.classList.toggle('drawing-mode', drawingMode !== null);
-    
     if (drawingMode) {
       drawingModeIndicator.style.display = 'block';
       drawingModeIndicator.textContent = drawingMode === 'hline' ? 'Click to draw horizontal line' : 'Click to draw vertical line';
-    } else {
-      drawingModeIndicator.style.display = 'none';
-    }
+    } else { drawingModeIndicator.style.display = 'none'; }
   }
 
-  hLineBtn.addEventListener('click', () => {
-    drawingMode = drawingMode === 'hline' ? null : 'hline';
-    updateDrawingButtons();
-  });
-
-  vLineBtn.addEventListener('click', () => {
-    drawingMode = drawingMode === 'vline' ? null : 'vline';
-    updateDrawingButtons();
-  });
+  hLineBtn.addEventListener('click', () => { drawingMode = drawingMode === 'hline' ? null : 'hline'; updateDrawingButtons(); });
+  vLineBtn.addEventListener('click', () => { drawingMode = drawingMode === 'vline' ? null : 'vline'; updateDrawingButtons(); });
 
   clearDrawBtn.addEventListener('click', () => {
     if (!chart || !candleSeries) return;
-    
     drawnLines.forEach(lineData => {
       try {
-        if (lineData.type === 'hline' && lineData.line) {
-          candleSeries.removePriceLine(lineData.line);
-        } else if (lineData.type === 'vline' && lineData.series) {
-          chart.removeSeries(lineData.series);
-        }
-      } catch (e) {
-        console.error('Error removing line:', e);
-      }
+        if (lineData.type === 'hline' && lineData.line) candleSeries.removePriceLine(lineData.line);
+        else if (lineData.type === 'vline' && lineData.series) chart.removeSeries(lineData.series);
+      } catch (e) {}
     });
-    
-    drawnLines = [];
-    drawingMode = null;
-    updateDrawingButtons();
-    saveChartState();
+    drawnLines = []; drawingMode = null; updateDrawingButtons(); saveChartState();
   });
 
   function updateChart(data) {
     if (!data || !data.candles || !data.candles.length) return;
     lastData = data;
-    
-    // Timestamps are already in IST, use them directly
     const candles = data.candles;
-    
-    console.log(`Update type check: isFirstLoad=${isFirstLoad}, lastCandles.length=${lastCandles.length}, new candles.length=${candles.length}`);
-    
     if (isFirstLoad) {
-      console.log('FIRST_LOAD: Setting initial data and fitting content');
       candleSeries.setData(candles);
-      volumeSeries.setData(candles.map(c => ({
-        time: c.time,
-        value: c.volume,
-        color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-      })));
+      volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' })));
       lastCandles = candles.slice();
-      
       redrawLines();
-      
       if (Array.isArray(data.signals)) {
-        lastSignals = data.signals.map(signal => ({
-          time: signal.time,
-          position: 'aboveBar',
-          color: signal.type === 'buy' ? 'green' : 'red',
-          shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-          text: signal.type.toUpperCase()
-        }));
+        lastSignals = data.signals.map(signal => ({ time: signal.time, position: 'aboveBar', color: signal.type === 'buy' ? 'green' : 'red', shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown', text: signal.type.toUpperCase() }));
       }
       if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-      
       updateSignalPanel(data);
       updateCurrentPriceIndicator();
-      
       chart.timeScale().fitContent();
       isFirstLoad = false;
     } else {
-      // AUTO-REFRESH: Check for gaps and update accordingly
-      console.log('AUTO-REFRESH: Checking for gaps...');
-      
       const lastKnownTime = lastCandles.length > 0 ? lastCandles[lastCandles.length - 1].time : 0;
-      const newLastTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
-      
-      // Check if there are missing candles (gap detection)
       let missingCandles = [];
       if (lastCandles.length > 0 && candles.length > lastCandles.length) {
-        // More candles than before - likely missed some updates
-        console.log(`Gap detected! Had ${lastCandles.length} candles, now have ${candles.length}`);
-        
-        // Find all new candles
         const lastKnownIndex = candles.findIndex(c => c.time === lastKnownTime);
-        if (lastKnownIndex >= 0 && lastKnownIndex < candles.length - 1) {
-          missingCandles = candles.slice(lastKnownIndex + 1);
-          console.log(`Found ${missingCandles.length} missing candles to add`);
-        }
+        if (lastKnownIndex >= 0 && lastKnownIndex < candles.length - 1) missingCandles = candles.slice(lastKnownIndex + 1);
       }
-      
-      // If there's a significant gap (more than 2 candles missed), do full reload
       if (missingCandles.length > 2 || candles.length < lastCandles.length) {
-        console.log('Large gap detected or data mismatch - doing full reload');
         candleSeries.setData(candles);
-        volumeSeries.setData(candles.map(c => ({
-          time: c.time,
-          value: c.volume,
-          color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-        })));
+        volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' })));
         lastCandles = candles.slice();
-        
-        // Update signals
         if (Array.isArray(data.signals)) {
-          lastSignals = data.signals.map(signal => ({
-            time: signal.time,
-            position: 'aboveBar',
-            color: signal.type === 'buy' ? 'green' : 'red',
-            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: signal.type.toUpperCase()
-          }));
+          lastSignals = data.signals.map(signal => ({ time: signal.time, position: 'aboveBar', color: signal.type === 'buy' ? 'green' : 'red', shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown', text: signal.type.toUpperCase() }));
           if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
         }
-        
-        updateSignalPanel(data);
-        updateCurrentPriceIndicator();
-        
-        // Redraw lines for full reload
+        updateSignalPanel(data); updateCurrentPriceIndicator();
         setTimeout(() => redrawLines(), 50);
-        
       } else if (missingCandles.length > 0) {
-        // Fill the gap with missing candles
-        console.log('Filling gap with missing candles...');
         missingCandles.forEach(candle => {
           candleSeries.update(candle);
-          volumeSeries.update({
-            time: candle.time,
-            value: candle.volume,
-            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-          });
+          volumeSeries.update({ time: candle.time, value: candle.volume, color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' });
         });
         lastCandles = candles.slice();
-        console.log(`✓ Added ${missingCandles.length} missing candles`);
-        
-        // Update signals
         if (Array.isArray(data.signals)) {
-          const newSignals = data.signals.map(signal => ({
-            time: signal.time,
-            position: 'aboveBar',
-            color: signal.type === 'buy' ? 'green' : 'red',
-            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: signal.type.toUpperCase()
-          }));
-          
-          if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) {
-            lastSignals = newSignals;
-            if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-          }
+          const newSignals = data.signals.map(signal => ({ time: signal.time, position: 'aboveBar', color: signal.type === 'buy' ? 'green' : 'red', shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown', text: signal.type.toUpperCase() }));
+          if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) { lastSignals = newSignals; if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []); }
         }
-        
-        updateSignalPanel(data);
-        updateCurrentPriceIndicator();
-        
+        updateSignalPanel(data); updateCurrentPriceIndicator();
       } else {
-        // Normal incremental update - just update last candle if changed
         if (lastCandles.length > 0 && candles.length > 0) {
-          const oldLastCandle = lastCandles[lastCandles.length - 1];
-          const newLastCandle = candles[candles.length - 1];
-          
-          if (oldLastCandle.time === newLastCandle.time) {
-            // Same candle, check if values changed
-            if (oldLastCandle.close !== newLastCandle.close || 
-                oldLastCandle.high !== newLastCandle.high || 
-                oldLastCandle.low !== newLastCandle.low || 
-                oldLastCandle.volume !== newLastCandle.volume) {
-              console.log('Updating existing candle:', newLastCandle.time);
-              candleSeries.update(newLastCandle);
-              volumeSeries.update({
-                time: newLastCandle.time,
-                value: newLastCandle.volume,
-                color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-              });
-              lastCandles[lastCandles.length - 1] = newLastCandle;
-              console.log('✓ Chart updated incrementally');
-            } else {
-              console.log('No changes detected, skipping update');
+          const oldLast = lastCandles[lastCandles.length - 1];
+          const newLast = candles[candles.length - 1];
+          if (oldLast.time === newLast.time) {
+            if (oldLast.close !== newLast.close || oldLast.high !== newLast.high || oldLast.low !== newLast.low || oldLast.volume !== newLast.volume) {
+              candleSeries.update(newLast);
+              volumeSeries.update({ time: newLast.time, value: newLast.volume, color: newLast.close >= newLast.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' });
+              lastCandles[lastCandles.length - 1] = newLast;
             }
-          } else if (newLastCandle.time > oldLastCandle.time) {
-            // New candle added
-            console.log('Adding new candle:', newLastCandle.time);
-            candleSeries.update(newLastCandle);
-            volumeSeries.update({
-              time: newLastCandle.time,
-              value: newLastCandle.volume,
-              color: newLastCandle.close >= newLastCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-            });
+          } else if (newLast.time > oldLast.time) {
+            candleSeries.update(newLast);
+            volumeSeries.update({ time: newLast.time, value: newLast.volume, color: newLast.close >= newLast.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' });
             lastCandles = candles.slice();
-            console.log('✓ New candle added');
           }
         }
-        
-        // Update signals only if they changed
         if (Array.isArray(data.signals)) {
-          const newSignals = data.signals.map(signal => ({
-            time: signal.time,
-            position: 'aboveBar',
-            color: signal.type === 'buy' ? 'green' : 'red',
-            shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: signal.type.toUpperCase()
-          }));
-          
-          if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) {
-            lastSignals = newSignals;
-            if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-          }
+          const newSignals = data.signals.map(signal => ({ time: signal.time, position: 'aboveBar', color: signal.type === 'buy' ? 'green' : 'red', shape: signal.type === 'buy' ? 'arrowUp' : 'arrowDown', text: signal.type.toUpperCase() }));
+          if (JSON.stringify(newSignals) !== JSON.stringify(lastSignals)) { lastSignals = newSignals; if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []); }
         }
-        
-        updateSignalPanel(data);
-        updateCurrentPriceIndicator();
+        updateSignalPanel(data); updateCurrentPriceIndicator();
       }
-      
-      // Check if support/resistance lines changed, only redraw if needed
       const currentHash = generateLineHash();
-      if (currentHash !== lastLineHash) {
-        console.log('Lines changed, redrawing...');
-        setTimeout(() => redrawLines(), 50);
-      }
+      if (currentHash !== lastLineHash) setTimeout(() => redrawLines(), 50);
     }
   }
-  
+
   function updateSignalPanel(data) {
-    if (!toggleSignalsCheckbox.checked) {
-      signalPanel.classList.remove('visible');
-      signalPanel.style.display = 'none';
-      console.log('Signal panel hidden - Signals checkbox is unchecked');
-      return;
-    }
-    
-    const finalSignal = data.final_signal || data.finalSignal || data.FINAL_SIGNAL;
+    if (!toggleSignalsCheckbox.checked) { signalPanel.classList.remove('visible'); signalPanel.style.display = 'none'; return; }
+    const finalSignal     = data.final_signal || data.finalSignal || data.FINAL_SIGNAL;
     const finalConfidence = data.final_confidence || data.finalConfidence || data.FINAL_CONFIDENCE;
-    const finalReason = data.final_reason || data.finalReason || data.FINAL_REASON;
-    
-    console.log('Signal Panel Data:', { finalSignal, finalConfidence, finalReason });
-    console.log('Full API Response:', data);
-    console.log('Signals Checkbox Checked:', toggleSignalsCheckbox.checked);
-    
+    const finalReason     = data.final_reason || data.finalReason || data.FINAL_REASON;
     if (finalSignal && finalConfidence && finalReason) {
-      signalPanel.classList.add('visible');
-      signalPanel.style.display = 'block';
-      
+      signalPanel.classList.add('visible'); signalPanel.style.display = 'block';
       const signal = finalSignal.toLowerCase();
-      signalValue.textContent = finalSignal.toUpperCase();
-      signalValue.className = 'signal-value ' + signal;
-      
-      const emoji = signal === 'buy' ? '📈' : signal === 'sell' ? '📉' : signal === 'hold' ? '⏸️' : '➖';
+      const emoji  = signal === 'buy' ? '📈' : signal === 'sell' ? '📉' : signal === 'hold' ? '⏸️' : '➖';
       signalValue.innerHTML = `${emoji} ${finalSignal.toUpperCase()}`;
-      
+      signalValue.className = 'signal-value ' + signal;
       const confidence = finalConfidence.toLowerCase();
-      let confidencePercent = 0;
-      let confidenceClass = 'low';
-      
-      if (confidence.includes('high')) {
-        confidencePercent = 85;
-        confidenceClass = 'high';
-      } else if (confidence.includes('medium')) {
-        confidencePercent = 60;
-        confidenceClass = 'medium';
-      } else if (confidence.includes('low')) {
-        confidencePercent = 35;
-        confidenceClass = 'low';
-      }
-      
+      let confidencePercent = 35, confidenceClass = 'low';
+      if (confidence.includes('high'))   { confidencePercent = 85; confidenceClass = 'high'; }
+      else if (confidence.includes('medium')) { confidencePercent = 60; confidenceClass = 'medium'; }
       confidenceFill.style.width = confidencePercent + '%';
-      confidenceFill.className = 'confidence-fill ' + confidenceClass;
+      confidenceFill.className   = 'confidence-fill ' + confidenceClass;
       confidenceText.textContent = `Confidence: ${finalConfidence}`;
-      
-      reasonText.textContent = finalReason;
-      
+      reasonText.textContent     = finalReason;
       const now = new Date();
-      const timeString = now.toLocaleTimeString('en-IN', { 
-        timeZone: 'Asia/Kolkata',
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit',
-        hour12: true 
-      });
-      const dateString = now.toLocaleDateString('en-IN', { 
-        timeZone: 'Asia/Kolkata',
-        month: 'short', 
-        day: 'numeric' 
-      });
-      signalTimestamp.textContent = `Updated: ${dateString} at ${timeString}`;
-    } else {
-      signalPanel.classList.remove('visible');
-      signalPanel.style.display = 'none';
-      console.log('Signal panel hidden - missing data');
-    }
+      signalTimestamp.textContent = `Updated: ${now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric' })} at ${now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}`;
+    } else { signalPanel.classList.remove('visible'); signalPanel.style.display = 'none'; }
   }
 
   function showApiErrorToast(message) {
     apiErrorToast.textContent = `⚠️ ${message}`;
     apiErrorToast.classList.remove('fade-out');
     apiErrorToast.classList.add('show');
-    
     setTimeout(() => {
       apiErrorToast.classList.add('fade-out');
-      setTimeout(() => {
-        apiErrorToast.classList.remove('show', 'fade-out');
-      }, 500);
+      setTimeout(() => apiErrorToast.classList.remove('show', 'fade-out'), 500);
     }, 3000);
   }
 
   async function fetchData(timeFrame = selectedTimeFrame, name = selectedSymbol) {
     const url = `/api/newIntraday?timeFrame=${timeFrame}&name=${name}`;
-    console.log(`Fetching data: ${name} - ${timeFrame}`);
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
     return resp.json();
@@ -1865,38 +1096,21 @@
 
   async function refresh(firstLoad = false) {
     if (firstLoad) {
-      loaderEl.style.display = 'flex';
-      chartEl.style.display = 'none';
-      errorEl.style.display = 'none';
-      retryCount = 0;
-      loaderText.textContent = 'Loading chart data...';
-      retryCountEl.textContent = '';
+      loaderEl.style.display = 'flex'; chartEl.style.display = 'none'; errorEl.style.display = 'none';
+      retryCount = 0; loaderText.textContent = 'Loading chart data...'; retryCountEl.textContent = '';
     } else {
-      // Add visual feedback during auto-refresh
       const toolbar = document.getElementById('toolbar');
       toolbar.style.transition = 'box-shadow 0.3s ease';
-      toolbar.style.boxShadow = '0 8px 32px rgba(74, 85, 104, 0.4)';
-      setTimeout(() => {
-        toolbar.style.boxShadow = '0 8px 32px rgba(0,0,0,0.15)';
-      }, 500);
+      toolbar.style.boxShadow  = '0 8px 32px rgba(74, 85, 104, 0.4)';
+      setTimeout(() => { toolbar.style.boxShadow = '0 8px 32px rgba(0,0,0,0.15)'; }, 500);
     }
     try {
       const data = await fetchData(selectedTimeFrame, selectedSymbol);
       if (!chart) initChart();
       updateChart(data);
-      loaderEl.style.display = 'none';
-      errorEl.style.display = 'none';
-      chartEl.style.display = 'block';
+      loaderEl.style.display = 'none'; errorEl.style.display = 'none'; chartEl.style.display = 'block';
       retryCount = 0;
-      // REMOVED: chart resize on auto-refresh as it may reset view
-      // Only resize on first load
-      if (firstLoad) {
-        setTimeout(() => {
-          if (chart) {
-            chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-          }
-        }, 50);
-      }
+      if (firstLoad) setTimeout(() => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); }, 50);
     } catch (e) {
       if (firstLoad && retryCount < MAX_RETRIES) {
         retryCount++;
@@ -1904,91 +1118,53 @@
         retryCountEl.textContent = `Attempt ${retryCount} of ${MAX_RETRIES}`;
         setTimeout(() => refresh(true), RETRY_DELAY);
       } else if (firstLoad) {
-        loaderEl.style.display = 'none';
-        chartEl.style.display = 'none';
+        loaderEl.style.display = 'none'; chartEl.style.display = 'none';
         errorEl.textContent = `Failed after ${MAX_RETRIES} attempts: ${e.message}`;
-        errorEl.style.display = 'block';
-        retryCount = 0;
+        errorEl.style.display = 'block'; retryCount = 0;
       } else {
-        showApiErrorToast('API Error - Retrying...');
-        console.error('API update failed:', e.message);
+        showApiErrorToast('API Error - Retrying...'); console.error('API update failed:', e.message);
       }
     }
   }
 
   function updateLiveStatus() {
     if (toggleLiveCheckbox.checked && chartInitialized) {
-      if (!refreshInterval) {
-        refreshInterval = setInterval(() => refresh(false), 30000);
-      }
+      if (!refreshInterval) refreshInterval = setInterval(() => refresh(false), 30000);
     } else {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
-      }
+      if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
     }
   }
 
-  window.addEventListener('resize', () => {
-    if(chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-  });
+  window.addEventListener('resize', () => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); });
 
-  document.addEventListener("visibilitychange", () => {
+  document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      saveChartState();
-      stopLiveClock();
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
-      }
+      saveChartState(); stopLiveClock();
+      if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
     } else {
-      startLiveClock();
+      startLiveClock(); connectSSE(); // reconnect SSE on tab focus
       if (toggleLiveCheckbox.checked && chartInitialized) {
         refresh(false);
         refreshInterval = setInterval(() => refresh(false), 30000);
       }
-      if (chart) {
-        setTimeout(() => {
-          chart.resize(chartEl.clientWidth, chartEl.clientHeight);
-        }, 100);
-      }
+      if (chart) setTimeout(() => chart.resize(chartEl.clientWidth, chartEl.clientHeight), 100);
     }
   });
 
-  const refreshButton = document.getElementById('refreshButton');
-  refreshButton.addEventListener('click', () => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-      refreshInterval = null;
-    }
-    isFirstLoad = true;
-    retryCount = 0;
-    errorEl.style.display = 'none';
-    loaderEl.style.display = 'flex';
-    chartEl.style.display = 'none';
-    loaderText.textContent = 'Loading chart data...';
-    retryCountEl.textContent = '';
-    clearChart();
-    chartInitialized = false;
-    refresh(true).then(() => {
-      if (toggleLiveCheckbox.checked) {
-        refreshInterval = setInterval(() => refresh(false), 30000);
-      }
-    }).catch(() => {});
+  document.getElementById('refreshButton').addEventListener('click', () => {
+    if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+    isFirstLoad = true; retryCount = 0;
+    errorEl.style.display = 'none'; loaderEl.style.display = 'flex'; chartEl.style.display = 'none';
+    loaderText.textContent = 'Loading chart data...'; retryCountEl.textContent = '';
+    clearChart(); chartInitialized = false;
+    refresh(true).then(() => { if (toggleLiveCheckbox.checked) refreshInterval = setInterval(() => refresh(false), 30000); }).catch(() => {});
   });
 
-  todayButton.addEventListener('click', () => {
-    zoomToToday();
-  });
+  todayButton.addEventListener('click', () => zoomToToday());
 
-  settingsButton.addEventListener('click', () => {
-    settingsMenu.classList.toggle('visible');
-  });
-
+  settingsButton.addEventListener('click', () => settingsMenu.classList.toggle('visible'));
   document.addEventListener('click', e => {
-    if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) {
-      settingsMenu.classList.remove('visible');
-    }
+    if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) settingsMenu.classList.remove('visible');
   });
 </script>
 </body>

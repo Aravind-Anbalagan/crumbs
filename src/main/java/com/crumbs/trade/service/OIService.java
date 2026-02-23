@@ -414,7 +414,7 @@ public class OIService {
 		} else {
 			exchange = "MCX";
 		}
-		SmartConnect smartConnect = AngelOne.signIn();
+		SmartConnect smartConnect = angelOne.signIn();
 		JSONObject payload = new JSONObject();
 		payload.put("mode", "FULL"); // You can change the mode as needed
 		JSONObject exchangeTokens = new JSONObject();

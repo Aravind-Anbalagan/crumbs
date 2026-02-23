@@ -159,7 +159,7 @@ public class StrategyService {
         {
             Date currentTime = new Date(); // Instantiate a Date object
             Date updatedTIme = new Date(); // Instantiate a Date object
-            SmartConnect smartConnect = AngelOne.signIn();
+            SmartConnect smartConnect = angelOne.signIn();
             nifty_CurrentPrice = angelOneService.getcurrentPrice(smartConnect,
                     strategy.getExchange(), strategy.getTradingsymbol(),
                     strategy.getToken(),"ltp");

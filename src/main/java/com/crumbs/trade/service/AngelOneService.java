@@ -230,7 +230,7 @@ public class AngelOneService {
 		straddleIntradayRepo.deleteAll();
 		tradeExecutionRepo.deleteAll();
 		predictionHistoryRepo.deleteAll();
-		preMarketAnalysisRepo.deleteAll();
+		//preMarketAnalysisRepo.deleteAll();
 	}
 	/*
 	 * Get current price

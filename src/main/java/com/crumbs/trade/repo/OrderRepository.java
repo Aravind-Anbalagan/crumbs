@@ -1,6 +1,7 @@
 package com.crumbs.trade.repo;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,4 +15,8 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
 	@Modifying
 	@Query("delete from Orders o")
 	void deleteAll();
+	
+	Optional<Orders> findTopByNameAndActiveOrderByIdDesc(String name, int active);
+
+	List<Orders> findByName(String name);
 }

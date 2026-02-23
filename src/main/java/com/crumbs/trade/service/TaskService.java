@@ -2500,7 +2500,7 @@ public class TaskService {
 	
 
 	public void findBullishStocks() throws SmartAPIException {
-	    SmartConnect smartConnect = AngelOne.signIn(); // Sign in once
+	    SmartConnect smartConnect = angelOne.signIn(); // Sign in once
 
 	    List<Indicator> bullishList = indicatorRepo.findByPsarFlagDayInAndHeikinAshiDayIn(
 	            Arrays.asList("FIRST BUY"), Arrays.asList("FIRST BUY"));
@@ -2909,12 +2909,45 @@ public class TaskService {
 	/*
 	 * Get current price
 	 */
-	public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol,
-			String symboltoken, String keyword) {
-		JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
-		// currentPrice = new BigDecimal(String.valueOf(jsonObject.get(keyword)));
-		// System.out.println(currentPrice);
-		return new BigDecimal(String.valueOf(jsonObject.get(keyword)));
+	public BigDecimal getcurrentPrice(SmartConnect smartConnect,
+	                                           String exchange,
+	                                           String tradingSymbol,
+	                                           String symboltoken,
+	                                           String keyword) {
+
+	    int maxRetries = 3;
+	    long retryDelayMs = 1000; // 1 second
+
+	    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+	        try {
+
+	            JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
+
+	            if (jsonObject != null && jsonObject.has(keyword)) {
+	                String value = String.valueOf(jsonObject.get(keyword));
+	                return new BigDecimal(value);
+	            }
+
+	            throw new RuntimeException("Invalid LTP response");
+
+	        } catch (Exception e) {
+
+	            System.err.println("LTP fetch failed. Attempt: " + attempt + " | Error: " + e.getMessage());
+
+	            if (attempt == maxRetries) {
+	                throw new RuntimeException("Failed to fetch LTP after "
+	                        + maxRetries + " attempts", e);
+	            }
+
+	            try {
+	                Thread.sleep(retryDelayMs);
+	            } catch (InterruptedException ie) {
+	                Thread.currentThread().interrupt();
+	            }
+	        }
+	    }
+
+	    throw new RuntimeException("Unexpected error in LTP retry");
 	}
 
 	public List<String[]> getEmailData() {

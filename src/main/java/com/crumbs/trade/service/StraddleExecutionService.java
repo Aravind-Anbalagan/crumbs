@@ -37,13 +37,13 @@ public class StraddleExecutionService {
     public void executePreMarket(String name) {
         try {
             if (!isActive("STRADDLE_PREMIUM")) {
-                LoggerFactory.getLogger(getClass())
-                    .info("Strategy STRADDLE_PREMIUM is inactive, skipping pre-market analysis for {}", name);
+                //LoggerFactory.getLogger(getClass())
+                   // .info("Strategy STRADDLE_PREMIUM is inactive, skipping pre-market analysis for {}", name);
                 return;
             }
             
             LoggerFactory.getLogger(getClass())
-                .info("🚀 PRE-MARKET EXECUTION STARTED FOR {} at 9:10 AM", name);
+                .info("🚀 PRE-MARKET EXECUTION STARTED FOR {} at 9:00 AM", name);
             
             // Fetch pre-market data, analyze, and save to PreMarketAnalysis table
             // This internally calls straddleIntradayService.getPreMarketLTP()

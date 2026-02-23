@@ -26,6 +26,7 @@ import com.crumbs.trade.dto.SecondMidPointRequest;
 import com.crumbs.trade.entity.PreMarketAnalysis;
 import com.crumbs.trade.entity.StraddleIntraday;
 import com.crumbs.trade.service.PreMarketAnalysisService;
+import com.crumbs.trade.service.StraddleExecutionService;
 import com.crumbs.trade.service.StraddleGroupingService;
 import com.crumbs.trade.service.StraddleIntradayService;
 
@@ -39,6 +40,7 @@ public class StraddleChartController {
     private final StraddleIntradayService straddleIntradayService;
     private final StraddleGroupingService straddleGroupingService;
     private final PreMarketAnalysisService preMarketAnalysisService;
+    private final StraddleExecutionService straddleExecutionService;
     
     @GetMapping("/combined-chart")
     public ResponseEntity<?> getCombinedChart(
@@ -182,5 +184,10 @@ public class StraddleChartController {
             @RequestBody SecondMidPointRequest request) {
         PreMarketAnalysis updated = preMarketAnalysisService.updateSecondMidPoint(request);
         return ResponseEntity.ok(updated);
+    }
+    
+    @GetMapping("/preMarketAnalysis")
+    public void getPreMartketLevels() {
+        straddleExecutionService.executePreMarket("NIFTY");
     }
 }

@@ -47,4 +47,8 @@ public class PreMarketAnalysis {
     
     // ===== ADDITIONAL CONTEXT =====
     private BigDecimal combinedLtp;   // CE + PE (total premium)
+    
+    //Tokens
+    private String ceToken;
+    private String peToken;
 }

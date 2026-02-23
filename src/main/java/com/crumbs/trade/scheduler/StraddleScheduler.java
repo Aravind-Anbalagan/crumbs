@@ -19,7 +19,7 @@ public class StraddleScheduler {
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
     }
-    
+   
     
     
     // ==================== REGULAR INTRADAY (9:15+ onwards) ====================

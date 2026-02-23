@@ -523,6 +523,74 @@ function buildPE() {
     ];
 }
 
+/* ── Crosshair plugin ── */
+const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+        if (!chart._crosshairX) return;
+        const { ctx, chartArea: { top, bottom, left, right } } = chart;
+        const x = chart._crosshairX;
+        const y = chart._crosshairY;
+        const dark = currentTheme === 'dark';
+        const lineColor = dark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
+        const dotColor  = dark ? 'rgba(255,255,255,0.8)'  : 'rgba(0,0,0,0.7)';
+
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = lineColor;
+
+        // Vertical line
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
+        ctx.stroke();
+
+        // Horizontal line
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(right, y);
+        ctx.stroke();
+
+        // Intersection dot
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+
+        ctx.restore();
+    }
+};
+Chart.register(crosshairPlugin);
+
+/* Attach mouse events to a canvas to drive the crosshair */
+function attachCrosshair(canvas, getChart) {
+    canvas.addEventListener('mousemove', e => {
+        const chart = getChart();
+        if (!chart) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const ca = chart.chartArea;
+        if (x >= ca.left && x <= ca.right && y >= ca.top && y <= ca.bottom) {
+            chart._crosshairX = x;
+            chart._crosshairY = y;
+        } else {
+            chart._crosshairX = null;
+            chart._crosshairY = null;
+        }
+        chart.draw();
+    });
+    canvas.addEventListener('mouseleave', () => {
+        const chart = getChart();
+        if (!chart) return;
+        chart._crosshairX = null;
+        chart._crosshairY = null;
+        chart.draw();
+    });
+}
+
 /* ── Chart options — tooltip shows ONLY current price ── */
 function chartOptions(priceColor, priceLabel) {
     const c = cc();
@@ -575,6 +643,7 @@ function createCEChart() {
         data:{ labels:[...times], datasets:buildCE() },
         options: chartOptions('#ff4f6d','CE Price')
     });
+    attachCrosshair(canvas, () => ceChart);
 }
 function createPEChart() {
     const canvas = document.getElementById('peChart');
@@ -585,6 +654,7 @@ function createPEChart() {
         data:{ labels:[...times], datasets:buildPE() },
         options: chartOptions('#3b9eff','PE Price')
     });
+    attachCrosshair(canvas, () => peChart);
 }
 function rebuildCharts() {
     if (currentView !== 'pe') createCEChart();
