@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.json.JSONArray;
@@ -12,12 +13,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.crumbs.trade.entity.Strategy;
+
 import in.samco.api.UserLoginApi;
 import in.samco.api.update.MultiQuoteAPI;
 import in.samco.model.LoginRequest;
 import in.samco.model.LoginResponse;
 import in.samco.model.MultiQuoteResponse;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
+import in.samco.api.HistoricalCandleDataApi;
+import in.samco.model.HistoricalCandleData;
+import in.samco.model.HistoricalCandleResponse;
 @Component
 public class Samco {
 
@@ -82,4 +91,6 @@ public class Samco {
         logger.info("LTP fetched: {}", ltp);
         return ltp;
     }
+    
+  
 }

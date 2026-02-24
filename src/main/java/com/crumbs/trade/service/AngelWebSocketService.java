@@ -138,7 +138,7 @@ public class AngelWebSocketService {
             Thread startupSubscribeThread = new Thread(() -> {
                 try {
                     Thread.sleep(2000);
-                    log.info("Subscribing default instruments after connect delay...");
+                    //log.info("Subscribing default instruments after connect delay...");
                     subscribeDefaultInstruments();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -216,8 +216,8 @@ public class AngelWebSocketService {
         String normalizedToken = normalizeToken(token);
         String key = exchangeType.name() + "_" + normalizedToken;
 
-        log.info("Fetching LTP | Key: {}", key);
-        log.debug("Current LTP Map Snapshot | {}", latestLtpMap);
+        //log.info("Fetching LTP | Key: {}", key);
+        //log.debug("Current LTP Map Snapshot | {}", latestLtpMap);
 
         BigDecimal price = latestLtpMap.get(key);
         if (price == null) {
@@ -225,7 +225,7 @@ public class AngelWebSocketService {
             return BigDecimal.ZERO;
         }
 
-        log.info("Returning LTP | {} | {}", key, price);
+        //log.info("Returning LTP | {} | {}", key, price);
         return price;
     }
 

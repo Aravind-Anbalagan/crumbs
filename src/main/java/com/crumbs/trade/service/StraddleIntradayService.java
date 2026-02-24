@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,6 +54,7 @@ import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.ConditionalLogger;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
+import in.samco.util.SamcoConstants;
 import jakarta.transaction.Transactional;
 
 @Service
@@ -2295,6 +2297,11 @@ public class StraddleIntradayService {
 	        // 4. Get token details (reuse existing method)
 	        strikeList = getAllTokenDetails(strikeList, strategy);
 	        
+	        //5. Keep only atmStrike
+	        strikeList = strikeList.stream()
+	                .filter(dto -> dto.getStrikePrice().compareTo(atmStrike) == 0)
+	                .collect(Collectors.toList());
+	        
 	        long validTokenCount = strikeList.stream()
 	            .filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
 	            .count();
@@ -2303,25 +2310,15 @@ public class StraddleIntradayService {
 	            logger.error("No valid tokens found for pre-market: {}", name);
 	            return new ArrayList<>();
 	        }
-	        
-	        logger.info("Found {} strikes with valid tokens for pre-market", validTokenCount);
 
-	        // 5. Fetch previous day close (reuse existing method)
-	        Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(name);
-	        
-	        if (strategyCloseCache == null || strategyCloseCache.isEmpty()) {
-	            logger.info("Fetching previous day close for pre-market: {}", name);
-	            fetchPreviousDayCloseForAllStrikes(strikeList, smartconnect, strategy);
-	        } else {
-	            logger.debug("Using cached previous day close for pre-market: {}", name);
-	            populatePrevCloseFromCache(strikeList, name);
-	        }
-	        
+	        logger.info("ATM strike ready with valid tokens for pre-market");
+
+	    	        
 	     // ⚠️ ADD DELAY BEFORE BATCH PRICE FETCH
 	        logger.info("Waiting 2 seconds before fetching pre-market LTP (rate limit prevention)...");
 	        Thread.sleep(2000); // 2 second delay
 
-	        // 6. Fetch current LTP (reuse existing method)
+	        // 6. Fetch current LTP,High,Low (reuse existing method)
 	        strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect, strategy.getExchange());
 	        
 	        long validPriceCount = strikeList.stream()
@@ -2363,6 +2360,14 @@ public class StraddleIntradayService {
 	        logger.error("Error in getPreMarketLTP for {}", name, e);
 	        return new ArrayList<>();
 	    }
+	}
+	
+	private List<StraddlePremiumDto> getOnlyAtmStrikeList(BigDecimal atmStrike) {
+
+	    StraddlePremiumDto dto = new StraddlePremiumDto();
+	    dto.setStrikePrice(atmStrike);
+
+	    return Collections.singletonList(dto);
 	}
 	
 	/**

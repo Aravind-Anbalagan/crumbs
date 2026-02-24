@@ -8,236 +8,136 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.crumbs.trade.dto.CandleDTO;
-import com.crumbs.trade.dto.CandleRequestDto;
 import com.crumbs.trade.dto.ChartDataDTO;
-import com.crumbs.trade.dto.FibonacciLevel;
 import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SignalDTO;
-import com.crumbs.trade.entity.PricesIndex;
-import com.crumbs.trade.repo.PricesIndexRepo;
 import com.crumbs.trade.repo.StrategyRepo;
-import com.crumbs.trade.service.PredictivePriceActionService;
 import com.crumbs.trade.service.SRService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api")
 public class ChartController {
 
-	private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired SRService srService;
+    @Autowired StrategyRepo strategyRepo;
 
-	@Autowired
-	SRService srService;
-	
-	@Autowired
-	StrategyRepo strategyRepo;
-	
-	@Autowired
-	PredictivePriceActionService predictivePriceActionService;
-	
-	@Autowired
-	PricesIndexRepo pricesIndexRepo;
-	
+    private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
 
-	
-	private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
-	
+    // ==================== SAMPLE DATA (mock endpoint) ====================
+
     @GetMapping("/stock-data")
     public ResponseEntity<?> getStockData() {
         try {
-            List<Map<String, Object>> candles = generateCandles();
-
             Map<String, Object> response = new HashMap<>();
             response.put("name", "RELIANCE");
-            response.put("candles", candles);
-
-            // Sample markers (BUY, SELL, SL)
+            response.put("candles", generateCandles());
             response.put("markers", List.of(
-                    Map.of("time", toEpoch("2025-07-25T09:20:00"), "position", "belowBar", "color", "green", "shape", "arrowUp", "text", "BUY", "price", 101),
-                    Map.of("time", toEpoch("2025-07-25T09:30:00"), "position", "belowBar", "color", "orange", "shape", "circle", "text", "SL", "price", 101.5),
-                    Map.of("time", toEpoch("2025-07-25T09:40:00"), "position", "aboveBar", "color", "red", "shape", "arrowDown", "text", "SELL", "price", 102.3)
+                Map.of("time", toEpoch("2025-07-25T09:20:00"), "position", "belowBar", "color", "green",  "shape", "arrowUp",   "text", "BUY",  "price", 101),
+                Map.of("time", toEpoch("2025-07-25T09:30:00"), "position", "belowBar", "color", "orange", "shape", "circle",    "text", "SL",   "price", 101.5),
+                Map.of("time", toEpoch("2025-07-25T09:40:00"), "position", "aboveBar", "color", "red",    "shape", "arrowDown", "text", "SELL", "price", 102.3)
             ));
-
-            // Support & Resistance levels
-            response.put("supportLevels", List.of(101));
+            response.put("supportLevels",    List.of(101));
             response.put("resistanceLevels", List.of(102.8));
-
-            // Trend channel
             response.put("trendChannel", Map.of(
-                    "upper", List.of(
-                            Map.of("time", toEpoch("2025-07-25T09:15:00"), "value", 103),
-                            Map.of("time", toEpoch("2025-07-25T10:00:00"), "value", 105)
-                    ),
-                    "lower", List.of(
-                            Map.of("time", toEpoch("2025-07-25T09:15:00"), "value", 100),
-                            Map.of("time", toEpoch("2025-07-25T10:00:00"), "value", 102)
-                    )
-            ));
-
-            // Zigzag
-            response.put("zigzag", List.of(
+                "upper", List.of(
+                    Map.of("time", toEpoch("2025-07-25T09:15:00"), "value", 103),
+                    Map.of("time", toEpoch("2025-07-25T10:00:00"), "value", 105)
+                ),
+                "lower", List.of(
                     Map.of("time", toEpoch("2025-07-25T09:15:00"), "value", 100),
-                    Map.of("time", toEpoch("2025-07-25T09:20:00"), "value", 101.2),
-                    Map.of("time", toEpoch("2025-07-25T09:25:00"), "value", 100.4)
+                    Map.of("time", toEpoch("2025-07-25T10:00:00"), "value", 102)
+                )
             ));
-
-            // Feature flags
+            response.put("zigzag", List.of(
+                Map.of("time", toEpoch("2025-07-25T09:15:00"), "value", 100),
+                Map.of("time", toEpoch("2025-07-25T09:20:00"), "value", 101.2),
+                Map.of("time", toEpoch("2025-07-25T09:25:00"), "value", 100.4)
+            ));
             response.put("flags", Map.of(
-                    "showBuySell", true,
-                    "showSupportResistance", true,
-                    "showTrendLine", true,
-                    "showZigzag", true
+                "showBuySell",           true,
+                "showSupportResistance", true,
+                "showTrendLine",         true,
+                "showZigzag",            true
             ));
-
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
+    // ==================== LIVE ENDPOINTS ====================
+
+    /**
+     * Full chart data: S/R levels + candles + previous day candle.
+     * Uses predictive S/R analysis via analyzeIntraday().
+     */
+    @GetMapping(value = "/intraday", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ChartDataDTO getIntraday(
+            @RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
+            @RequestParam(name = "name") String name) {
+
+        return srService.analyzeIntraday(name, timeFrame);
+    }
+
+    /**
+     * Raw S/R analysis using the older priceActionService path (non-predictive).
+     * Kept for backward compatibility with existing clients.
+     */
+    @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ChartDataDTO getData(
+            @RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
+            @RequestParam(name = "name") String name,
+            @RequestParam(name = "exchange") String exchange,
+            @RequestParam(name = "symbol") String symbol) {
+
+        PriceActionResult priceActionResult = srService.getPriceAction(timeFrame, name, exchange, symbol);
+
+        ChartDataDTO dto = new ChartDataDTO();
+        dto.setCandles(srService.getcandleList());
+        dto.setSupportLevels(priceActionResult.getSupportLevels());
+        dto.setResistanceLevels(priceActionResult.getResistanceLevels());
+
+        String key = name + "|" + exchange + "|" + symbol;
+        dto.setPreviousDayCandle(previousDayCache.computeIfAbsent(
+                key, k -> srService.getPreviousOHLC("ONE_DAY", name, exchange, symbol)));
+
+        return dto;
+    }
+
+    // ==================== HELPERS ====================
+
     private List<Map<String, Object>> generateCandles() {
         return List.of(
-                candle("2025-07-25T09:15:00", 100, 101, 99.5, 100.5, 1000),
-                candle("2025-07-25T09:20:00", 100.5, 101.2, 100.2, 101, 1100),
-                candle("2025-07-25T09:25:00", 101, 101.5, 100.8, 101.3, 900),
-                candle("2025-07-25T09:30:00", 101.3, 101.8, 101, 101.6, 1050),
-                candle("2025-07-25T09:35:00", 101.6, 102, 101.5, 101.8, 980),
-                candle("2025-07-25T09:40:00", 101.8, 102.1, 101.4, 101.7, 1200),
-                candle("2025-07-25T09:45:00", 101.7, 102.2, 101.6, 102, 950),
-                candle("2025-07-25T09:50:00", 102, 102.5, 101.8, 102.3, 1100),
-                candle("2025-07-25T09:55:00", 102.3, 102.6, 102, 102.5, 1030),
-                candle("2025-07-25T10:00:00", 102.5, 103, 102.4, 102.8, 990)
+            candle("2025-07-25T09:15:00", 100,   101,   99.5,  100.5, 1000),
+            candle("2025-07-25T09:20:00", 100.5, 101.2, 100.2, 101,   1100),
+            candle("2025-07-25T09:25:00", 101,   101.5, 100.8, 101.3, 900),
+            candle("2025-07-25T09:30:00", 101.3, 101.8, 101,   101.6, 1050),
+            candle("2025-07-25T09:35:00", 101.6, 102,   101.5, 101.8, 980),
+            candle("2025-07-25T09:40:00", 101.8, 102.1, 101.4, 101.7, 1200),
+            candle("2025-07-25T09:45:00", 101.7, 102.2, 101.6, 102,   950),
+            candle("2025-07-25T09:50:00", 102,   102.5, 101.8, 102.3, 1100),
+            candle("2025-07-25T09:55:00", 102.3, 102.6, 102,   102.5, 1030),
+            candle("2025-07-25T10:00:00", 102.5, 103,   102.4, 102.8, 990)
         );
     }
 
     private Map<String, Object> candle(String time, double open, double high, double low, double close, int volume) {
-        Map<String, Object> candle = new HashMap<>();
-        candle.put("time", toEpoch(time));
-        candle.put("open", open);
-        candle.put("high", high);
-        candle.put("low", low);
-        candle.put("close", close);
-        candle.put("volume", volume);
-        return candle;
+        return Map.of(
+            "time",   toEpoch(time),
+            "open",   open,
+            "high",   high,
+            "low",    low,
+            "close",  close,
+            "volume", volume
+        );
     }
 
     private long toEpoch(String isoDateTime) {
-        LocalDateTime localDateTime = LocalDateTime.parse(isoDateTime);
-        ZoneId zoneId = ZoneId.of("Asia/Kolkata");
-        return localDateTime.atZone(zoneId).toEpochSecond();
-    }
-    
-    @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ChartDataDTO getChartData(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
-			@RequestParam(name = "name") String name,
-			@RequestParam(name = "exchange") String exchange,
-			@RequestParam(name = "symbol") String symbol) {
-    	
-    
-    	PriceActionResult priceActionResult = srService.getPriceAction(timeFrame,name,exchange,symbol);
-    
-    	List<CandleDTO> candles = List.of(
-            createCandle(1694343300L, "19550", "19575", "19540", "19565", "1500"),
-            createCandle(1694343360L, "19565", "19580", "19555", "19570", "2200"),
-            createCandle(1694343460L, "19565", "19580", "19555", "19570", "3200"),
-            createCandle(1694343560L, "19565", "19580", "19555", "19570", "5200")
-        );
-    	candles = srService.getcandleList();
-        List<BigDecimal> priceActionSupport = priceActionResult.getSr_nearestSupports();
-
-       
-        List<SignalDTO> signals = List.of(
-            createSignal(1694343360L, "buy"),
-            createSignal(1694343420L, "sell")
-        );
-
-        ChartDataDTO dto = new ChartDataDTO();
-        dto.setCandles(candles);
-        dto.setPriceActionSupport(priceActionResult.getSr_nearestSupports());
-        dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
-        dto.setFiboSupport(priceActionResult.getFibo_supports());
-        dto.setFiboResistance(priceActionResult.getFibo_resistances());
-        //dto.setSignals(signals);
-
-        return dto;
-    }
-    
-    @GetMapping(value = "/intraday", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ChartDataDTO getChartData(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
-			@RequestParam(name = "name") String name) {
-    	
-        String symbol = strategyRepo.findByName(name).getTradingsymbol();
-        String exchange = srService.getExchange(name);
-    	PriceActionResult priceActionResult = srService.getPriceAction(timeFrame,name,exchange,symbol);
-    
-    	List<CandleDTO> candles = List.of(
-            createCandle(1694343300L, "19550", "19575", "19540", "19565", "1500"),
-            createCandle(1694343360L, "19565", "19580", "19555", "19570", "2200"),
-            createCandle(1694343460L, "19565", "19580", "19555", "19570", "3200"),
-            createCandle(1694343560L, "19565", "19580", "19555", "19570", "5200")
-        );
-    	candles = srService.getcandleList();
-        List<BigDecimal> priceActionSupport = priceActionResult.getSr_nearestSupports();
-
-       
-        List<SignalDTO> signals = List.of(
-            createSignal(1694343360L, "buy"),
-            createSignal(1694343420L, "sell")
-        );
-
-        ChartDataDTO dto = new ChartDataDTO();
-        dto.setCandles(candles);
-        dto.setPriceActionSupport(priceActionResult.getSr_nearestSupports());
-        dto.setPriceActionResistance(priceActionResult.getSr_nearestResistances());
-        dto.setFiboSupport(priceActionResult.getFibo_supports());
-        dto.setFiboResistance(priceActionResult.getFibo_resistances());
-        CandleDTO candleDto = getPreviousDayCandle(name, exchange, symbol);
-        dto.setPreviousDayCandle(candleDto);
-        dto.setFinal_confidence(priceActionResult.getFinal_confidence());
-        dto.setFinal_reason(priceActionResult.getFinal_reason());
-        dto.setFinal_signal(priceActionResult.getFinal_signal());
-        
-        //dto.setSignals(signals);
-
-        return dto;
-    }
-    
-    @GetMapping("/newIntraday")
-    public ChartDataDTO getAnalysis(@RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
-			@RequestParam(name = "name") String name) {
-            return srService.analyzeIntraday(name,timeFrame);
-    }
-    
-    public CandleDTO getPreviousDayCandle(String name, String exchange, String symbol) {
-        String key = name + "|" + exchange + "|" + symbol;
-        return previousDayCache.computeIfAbsent(
-            key,
-            k -> srService.getPreviousOHLC("ONE_DAY", name, exchange, symbol)
-        );
-    }
-
-    private CandleDTO createCandle(long time, String open, String high, String low, String close, String volume) {
-        CandleDTO candle = new CandleDTO();
-        candle.setTime(time);
-        candle.setOpen(new BigDecimal(open));
-        candle.setHigh(new BigDecimal(high));
-        candle.setLow(new BigDecimal(low));
-        candle.setClose(new BigDecimal(close));
-        candle.setVolume(new BigDecimal(volume));
-        return candle;
-    }
-
-    private SignalDTO createSignal(long time, String type) {
-        SignalDTO signal = new SignalDTO();
-        signal.setTime(time);
-        signal.setType(type);
-        return signal;
+        return LocalDateTime.parse(isoDateTime)
+                .atZone(ZoneId.of("Asia/Kolkata"))
+                .toEpochSecond();
     }
 }

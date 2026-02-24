@@ -1,110 +1,16 @@
 package com.crumbs.trade.dto;
 
-import com.crumbs.trade.entity.PricesIndex;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 import java.math.BigDecimal;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class PriceActionResult {
-    private BigDecimal currentPrice;
-
-    // === Support/Resistance-Based ===
-    private String sr_signal;                      // BUY / SELL / HOLD
-    private String sr_trend;                       // UPTREND / DOWNTREND / SIDEWAYS / UNKNOWN
-    private String sr_reason;                      // Reason for SR signal
-    private String sr_confidence;                  // LOW / MEDIUM / HIGH
-    private boolean sr_priceActionTriggered;
-    private String exchange;
-    private BigDecimal sr_stopLoss;
-    private BigDecimal sr_projectedTarget;
-
-    private List<BigDecimal> sr_nearestSupports;
-    private List<BigDecimal> sr_nearestResistances;
-    private String sr_nearestSupportsJson;
-    private String sr_nearestResistancesJson;
-    private BigDecimal fibo_stopLoss;
-    private BigDecimal fibo_projectedTarget;
-    private boolean volumeConfirmed;
-    private String consolidatedDecision;
-    // === Fibonacci-Based ===
-    private boolean fibo_triggered;
-    private List<PricesIndex> candleList;
-    private List<FibonacciLevel> fibo_supports;
-    private List<FibonacciLevel> fibo_resistances;
-    private String fibo_supportsJson;
-    private String fibo_resistancesJson;
-
-    private FibonacciLevel fibo_nearestLevel;
-    private String fibo_label;
-    private String fibo_type;                      // Support / Resistance
-    private String fibo_bias;                      // Bullish bounce expected / Bearish rejection likely
-
-    // ✅ NEW: Future Fibonacci Signal Fields (logic to be implemented later)
-    private String fibo_signal;                    // BUY / SELL / HOLD
-    private String fibo_reason;                    // Reason for fibo signal
-    private String fibo_confidence;                // LOW / MEDIUM / HIGH
-    private String fibo_trend;                     // Optional trend from fibo swing
-
-    // === External SL Logic (Optional) ===
-    private BigDecimal buyStopLoss;
-    private BigDecimal sellStopLoss;
-
-    private String bias;                // Bullish / Bearish / Neutral
-    private String confluence;          // Description of confluence (e.g., "Support + Fibonacci + Volume")
-    private String betweenLevels;       // Example: "22000 - 22500"
-    private int confidenceScore;        // New: confidence score (0–100)
-    private String final_signal;
-    private String final_reason;
-    private String final_confidence;
-    private List<PricesIndex> priceList;
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-
-    // Min/Max Data (NEW)
-    private BigDecimal maxHigh;
-    private BigDecimal minLow;
-    private BigDecimal maxVolume;
-    private BigDecimal minVolume;
-    private BigDecimal priceRange;
-    
-    public void serializeListsToJson() {
-        this.sr_nearestSupportsJson = toJson(this.sr_nearestSupports);
-        this.sr_nearestResistancesJson = toJson(this.sr_nearestResistances);
-        this.fibo_supportsJson = toJson(this.fibo_supports);
-        this.fibo_resistancesJson = toJson(this.fibo_resistances);
-    }
-
-    public void deserializeJsonToLists() {
-        this.sr_nearestSupports = fromJson(sr_nearestSupportsJson, new TypeReference<>() {});
-        this.sr_nearestResistances = fromJson(sr_nearestResistancesJson, new TypeReference<>() {});
-        this.fibo_supports = fromJson(fibo_supportsJson, new TypeReference<>() {});
-        this.fibo_resistances = fromJson(fibo_resistancesJson, new TypeReference<>() {});
-    }
-
-    public static <T> String toJson(List<T> list) {
-        try {
-            return objectMapper.writeValueAsString(list);
-        } catch (JsonProcessingException e) {
-            return "[]";
-        }
-    }
-
-    public static <T> List<T> fromJson(String json, TypeReference<List<T>> typeRef) {
-        if (json == null || json.isEmpty()) return Collections.emptyList();
-        try {
-            return objectMapper.readValue(json, typeRef);
-        } catch (JsonProcessingException e) {
-            return Collections.emptyList();
-        }
-    }
+    private BigDecimal       currentPrice;
+    private List<SRLevelDTO> supportLevels;
+    private List<SRLevelDTO> resistanceLevels;
 }

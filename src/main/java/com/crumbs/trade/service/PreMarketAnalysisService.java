@@ -90,18 +90,7 @@ public class PreMarketAnalysisService {
                 analysis.getLtpDiff()
             );
             
-            logger.info("📊 LTP Data → CE:{}, PE:{}, Combined:{}", 
-                analysis.getCeLtp(),
-                analysis.getPeLtp(),
-                analysis.getCombinedLtp()
-            );
-            
-            logger.info("📊 Previous Day Data → CE High:{}, CE Low:{}, PE High:{}, PE Low:{}", 
-                analysis.getCePrevHigh(),
-                analysis.getCePrevLow(),
-                analysis.getPePrevHigh(),
-                analysis.getPePrevLow()
-            );
+           
             
         } catch (Exception e) {
             logger.error("Pre-market analysis failed for {}", name, e);
@@ -166,10 +155,10 @@ public class PreMarketAnalysisService {
         analysis.setMidPoint(midPoint);
         
         // Previous day data (already fetched by getPreMarketLTP method)
-        analysis.setCePrevHigh(selected.getCePrevHigh());
-        analysis.setCePrevLow(selected.getCePrevLow());
-        analysis.setPePrevHigh(selected.getPePrevHigh());
-        analysis.setPePrevLow(selected.getPePrevLow());
+        analysis.setCePrevHigh(selected.getCeHigh());
+        analysis.setCePrevLow(selected.getCeLow());
+        analysis.setPePrevHigh(selected.getPeHigh());
+        analysis.setPePrevLow(selected.getPeLow());
         analysis.setCeToken(selected.getCeToken().getToken());
         analysis.setPeToken(selected.getPeToken().getToken());
         return analysis;

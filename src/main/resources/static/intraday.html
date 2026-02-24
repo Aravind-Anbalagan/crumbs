@@ -80,27 +80,49 @@
       background: rgba(255,255,255,0.98); backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.3); border-radius: 12px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.15); padding: 16px 24px;
-      min-width: 260px; font-size: 13px; color: #333;
+      min-width: 280px; font-size: 13px; color: #333; max-height: 80vh; overflow-y: auto;
     }
     #settingsMenu.visible { display: block; animation: slideDown 0.3s ease; }
     @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
-    #settingsMenu label { display: flex; align-items: center; margin-bottom: 12px; cursor: pointer; padding: 4px; border-radius: 6px; }
+    .settings-section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+      color: #9ca3af; margin: 14px 0 8px 0; padding-bottom: 4px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .settings-section-title:first-child { margin-top: 0; }
+    #settingsMenu label { display: flex; align-items: center; margin-bottom: 8px; cursor: pointer; padding: 5px 6px; border-radius: 6px; gap: 10px; }
     #settingsMenu label:hover { background: rgba(74,85,104,0.08); }
-    #settingsMenu input[type="checkbox"] { margin-right: 12px; cursor: pointer; width: 18px; height: 18px; accent-color: #4a5568; }
+    #settingsMenu label .line-dot {
+      width: 12px; height: 3px; border-radius: 2px; flex-shrink: 0;
+    }
+    #settingsMenu input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: #4a5568; flex-shrink: 0; margin: 0; }
     #resetButton, #fitButton {
       display: block; width: 100%; padding: 10px 0; font-size: 14px;
       background: #f4f6f8; border: 2px solid #e0e0e0; border-radius: 10px;
-      cursor: pointer; font-weight: 600; color: #444; margin-top: 10px; transition: all 0.25s ease;
+      cursor: pointer; font-weight: 600; color: #444; margin-top: 8px; transition: all 0.25s ease;
     }
     #uncheckAllButton {
       display: block; width: 100%; padding: 10px 0; font-size: 14px;
       background: #fff3e0; border: 2px solid #ffb74d; border-radius: 10px;
-      cursor: pointer; font-weight: 600; color: #e65100; margin-top: 10px; transition: all 0.25s ease;
+      cursor: pointer; font-weight: 600; color: #e65100; margin-top: 8px; transition: all 0.25s ease;
     }
     #fitButton { background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); color: white; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     #resetButton:hover { background: #e0e0e0; transform: translateY(-1px); }
     #uncheckAllButton:hover { background: #ffe0b2; }
     #fitButton:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    #dynamicLayersContainer { /* populated by JS */ }
+    /* ── Strength filter chips ───────────────────────────────────── */
+    .sr-filter-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin: 8px 0 6px 6px; }
+    .sr-strength-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+    .sr-strength-chip { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; margin: 0; }
+    .sr-strength-chip:hover { background: rgba(74,85,104,0.08); }
+    .sr-strength-chip input[type="checkbox"] { width: 14px; height: 14px; margin: 0; flex-shrink: 0; }
+    .chip { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.3px; }
+    .chip.critical { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .chip.strong   { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+    .chip.moderate { background: #fefce8; color: #a16207; border: 1px solid #fde047; }
+    .chip.weak     { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+    .sr-count-badge { font-size: 10px; color: #9ca3af; font-weight: 500; margin-left: auto; }
     #drawingTools {
       position: absolute; top: 24px; right: 24px; z-index: 30;
       background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 12px;
@@ -122,26 +144,6 @@
       background: rgba(74,85,104,0.95); color: white; padding: 12px 24px;
       border-radius: 8px; font-size: 14px; font-weight: 600; display: none; z-index: 30;
     }
-    #signalPanel {
-      position: absolute; bottom: 24px; left: 24px; z-index: 30;
-      background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 12px;
-      padding: 16px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      border: 1px solid rgba(255,255,255,0.3); min-width: 280px; display: none;
-    }
-    #signalPanel.visible { display: block; }
-    #signalPanel .signal-header { font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-    #signalPanel .signal-value { font-size: 24px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-    #signalPanel .signal-value.buy { color: #22c55e; } #signalPanel .signal-value.sell { color: #ef4444; }
-    #signalPanel .signal-value.hold { color: #f59e0b; } #signalPanel .signal-value.neutral { color: #6b7280; }
-    #signalPanel .confidence-bar { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
-    #signalPanel .confidence-fill { height: 100%; border-radius: 3px; transition: all 0.3s ease; }
-    #signalPanel .confidence-fill.high   { background: linear-gradient(90deg, #22c55e, #16a34a); }
-    #signalPanel .confidence-fill.medium { background: linear-gradient(90deg, #f59e0b, #d97706); }
-    #signalPanel .confidence-fill.low    { background: linear-gradient(90deg, #ef4444, #dc2626); }
-    #signalPanel .confidence-text { font-size: 11px; font-weight: 600; color: #666; margin-bottom: 12px; }
-    #signalPanel .reason-text { font-size: 13px; color: #444; line-height: 1.5; padding: 10px; background: #f9fafb; border-radius: 8px; border-left: 3px solid #4a5568; margin-bottom: 12px; }
-    #signalPanel .timestamp { font-size: 11px; color: #888; font-weight: 500; display: flex; align-items: center; gap: 6px; }
-    #signalPanel .timestamp::before { content: '🕐'; font-size: 14px; }
     #timezoneIndicator {
       position: absolute; bottom: 24px; right: 24px; z-index: 30;
       background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 8px;
@@ -174,6 +176,63 @@
     #currentPriceIndicator .stat-value { font-weight: 700; font-family: 'Monaco','Courier New',monospace; }
     @keyframes priceFlash { 0%,100%{background:transparent} 50%{background:rgba(34,197,94,0.15)} }
     .price-flash { animation: priceFlash 0.4s ease; }
+    /* ── S&R Crosshair Tooltip */
+    #srTooltip {
+      position: fixed; z-index: 50; pointer-events: none;
+      display: none; width: 262px;
+    }
+    #srTooltip.visible { display: block; animation: srFadeIn 0.15s ease; }
+    @keyframes srFadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+    .sr-tooltip-card {
+      background: rgba(15,23,42,0.96); backdrop-filter: blur(12px);
+      border-radius: 12px; padding: 14px 16px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+      color: #f1f5f9; font-size: 12px;
+    }
+    .sr-tt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .sr-tt-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; }
+    .sr-tt-type.support    { background: rgba(34,197,94,0.2);  color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+    .sr-tt-type.resistance { background: rgba(239,68,68,0.2);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+    .sr-tt-price { font-size: 20px; font-weight: 700; font-family: 'Monaco','Courier New',monospace; }
+    .sr-tt-price.support    { color: #4ade80; }
+    .sr-tt-price.resistance { color: #f87171; }
+    .sr-tt-strength { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .sr-tt-strength-label { font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sr-tt-strength-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; }
+    .sr-tt-strength-badge.CRITICAL { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+    .sr-tt-strength-badge.STRONG   { background: #431407; color: #fdba74; border: 1px solid #7c2d12; }
+    .sr-tt-strength-badge.MODERATE { background: #422006; color: #fde047; border: 1px solid #713f12; }
+    .sr-tt-strength-badge.WEAK     { background: #052e16; color: #86efac; border: 1px solid #14532d; }
+    .sr-tt-dots { display: flex; gap: 3px; align-items: center; }
+    .sr-tt-dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; }
+    .sr-tt-dot.filled.support    { background: #22c55e; box-shadow: 0 0 4px #22c55e60; }
+    .sr-tt-dot.filled.resistance { background: #ef4444; box-shadow: 0 0 4px #ef444460; }
+    .sr-tt-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .sr-tt-stat { background: rgba(255,255,255,0.04); border-radius: 7px; padding: 7px 10px; border: 1px solid rgba(255,255,255,0.06); }
+    .sr-tt-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; margin-bottom: 3px; }
+    .sr-tt-stat-value { font-size: 16px; font-weight: 700; font-family: 'Monaco','Courier New',monospace; color: #e2e8f0; }
+    .sr-tt-stat-value.green { color: #4ade80; }
+    .sr-tt-stat-value.red   { color: #f87171; }
+    .sr-tt-stat-value.amber { color: #fbbf24; }
+    .sr-tt-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .sr-tt-bar-label { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: 700; width: 66px; flex-shrink: 0; }
+    .sr-tt-bar-track { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+    .sr-tt-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+    .sr-tt-bar-fill.green  { background: linear-gradient(90deg,#16a34a,#4ade80); }
+    .sr-tt-bar-fill.red    { background: linear-gradient(90deg,#dc2626,#f87171); }
+    .sr-tt-bar-count { font-size: 10px; color: #94a3b8; font-weight: 700; width: 26px; text-align: right; }
+    .sr-tt-footer { padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.07); display: flex; align-items: center; justify-content: space-between; }
+    .sr-tt-vc { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; }
+    .sr-tt-vc-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .sr-tt-vc-dot.on  { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
+    .sr-tt-vc-dot.off { background: #475569; }
+    .sr-tt-candles { font-size: 10px; color: #64748b; font-weight: 500; }
+    .sr-tt-candles span { color: #94a3b8; font-weight: 700; }
+    .sr-tt-decision { margin-top: 9px; padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-align: center; letter-spacing: 0.3px; }
+    .sr-tt-decision.strong-hold { background: rgba(34,197,94,0.15);   color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+    .sr-tt-decision.weak-hold   { background: rgba(234,179,8,0.15);   color: #fbbf24; border: 1px solid rgba(234,179,8,0.25); }
+    .sr-tt-decision.watch-break { background: rgba(239,68,68,0.15);   color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .sr-tt-decision.stale       { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
   </style>
 </head>
 <body>
@@ -223,13 +282,40 @@
 
   <div id="drawingModeIndicator">Click on chart to draw line</div>
 
-  <div id="signalPanel">
-    <div class="signal-header">Final Signal</div>
-    <div class="signal-value" id="signalValue">-</div>
-    <div class="confidence-bar"><div class="confidence-fill" id="confidenceFill" style="width:0%"></div></div>
-    <div class="confidence-text" id="confidenceText">Confidence: -</div>
-    <div class="reason-text" id="reasonText">No signal data available</div>
-    <div class="timestamp" id="signalTimestamp">Updated: -</div>
+  <!-- S&R Hover Tooltip -->
+  <div id="srTooltip">
+    <div class="sr-tooltip-card">
+      <div class="sr-tt-header">
+        <span class="sr-tt-type" id="srTTType">Support</span>
+        <div class="sr-tt-price" id="srTTPrice">-</div>
+      </div>
+      <div class="sr-tt-strength">
+        <span class="sr-tt-strength-label">STRENGTH</span>
+        <span class="sr-tt-strength-badge" id="srTTStrengthBadge">-</span>
+        <div class="sr-tt-dots" id="srTTDots"></div>
+      </div>
+      <div class="sr-tt-stats">
+        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Touches</div><div class="sr-tt-stat-value green" id="srTTTouches">-</div></div>
+        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Rejections</div><div class="sr-tt-stat-value green" id="srTTRejections">-</div></div>
+        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Breakouts</div><div class="sr-tt-stat-value" id="srTTBreakouts">-</div></div>
+        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Candles Ago</div><div class="sr-tt-stat-value amber" id="srTTCandles">-</div></div>
+      </div>
+      <div class="sr-tt-bar-row">
+        <div class="sr-tt-bar-label">Rejections</div>
+        <div class="sr-tt-bar-track"><div class="sr-tt-bar-fill green" id="srTTRejBar" style="width:0%"></div></div>
+        <div class="sr-tt-bar-count" id="srTTRejCount"></div>
+      </div>
+      <div class="sr-tt-bar-row">
+        <div class="sr-tt-bar-label">Breakouts</div>
+        <div class="sr-tt-bar-track"><div class="sr-tt-bar-fill red" id="srTTBrkBar" style="width:0%"></div></div>
+        <div class="sr-tt-bar-count" id="srTTBrkCount"></div>
+      </div>
+      <div class="sr-tt-footer">
+        <div class="sr-tt-vc"><div class="sr-tt-vc-dot" id="srTTVcDot"></div><span id="srTTVcText">Volume</span></div>
+        <div class="sr-tt-candles">Last touch <span id="srTTCandlesAgo">-</span> candles ago</div>
+      </div>
+      <div class="sr-tt-decision" id="srTTDecision"></div>
+    </div>
   </div>
 
   <div id="timezoneIndicator">
@@ -249,33 +335,485 @@
   <div id="settingsDropdown">
     <button id="settingsButton">Settings ▼</button>
     <div id="settingsMenu">
-      <label><input type="checkbox" id="togglePASupport"      checked /> Price Action Support</label>
-      <label><input type="checkbox" id="togglePAResistance"   checked /> Price Action Resistance</label>
-      <label><input type="checkbox" id="toggleFiboSupport"    checked /> Fibonacci Support</label>
-      <label><input type="checkbox" id="toggleFiboResistance" checked /> Fibonacci Resistance</label>
-      <label><input type="checkbox" id="toggleSignals"        checked /> Signals</label>
-      <label><input type="checkbox" id="toggleVolume"         checked /> Volume</label>
-      <label><input type="checkbox" id="toggleCurrentPrice"   checked /> Current Price</label>
-      <label><input type="checkbox" id="toggleGrid"           checked /> Grid</label>
-      <label><input type="checkbox" id="toggleLive"           checked /> Live</label>
+
+      <!-- ── Support & Resistance ── -->
+      <div class="settings-section-title">Support &amp; Resistance</div>
+      <label>
+        <input type="checkbox" id="toggleSupport" checked />
+        <span class="line-dot" style="background:#16a34a"></span>
+        <span>Support Levels</span>
+        <span class="sr-count-badge" id="supportCount"></span>
+      </label>
+      <label>
+        <input type="checkbox" id="toggleResistance" checked />
+        <span class="line-dot" style="background:#dc2626"></span>
+        <span>Resistance Levels</span>
+        <span class="sr-count-badge" id="resistanceCount"></span>
+      </label>
+      <div class="sr-filter-label">Filter by Strength</div>
+      <div class="sr-strength-grid">
+        <label class="sr-strength-chip"><input type="checkbox" id="srCRITICAL" checked /><span class="chip critical">CRITICAL</span></label>
+        <label class="sr-strength-chip"><input type="checkbox" id="srSTRONG"   checked /><span class="chip strong">STRONG</span></label>
+        <label class="sr-strength-chip"><input type="checkbox" id="srMODERATE" checked /><span class="chip moderate">MODERATE</span></label>
+        <label class="sr-strength-chip"><input type="checkbox" id="srWEAK"     checked /><span class="chip weak">WEAK</span></label>
+      </div>
+
+      <!-- Dynamic line layers — injected by JS based on API response -->
+      <div class="settings-section-title" id="layersSectionTitle" style="display:none">Other Layers</div>
+      <div id="dynamicLayersContainer"></div>
+
+      <!-- Static display options -->
+      <div class="settings-section-title">Display</div>
+      <label><input type="checkbox" id="toggleVolume"       checked /><span>Volume</span></label>
+      <label><input type="checkbox" id="toggleCurrentPrice" checked /><span>Current Price</span></label>
+      <label><input type="checkbox" id="toggleGrid"         checked /><span>Grid</span></label>
+      <label><input type="checkbox" id="toggleLive"         checked /><span>Live Updates</span></label>
+
       <button id="uncheckAllButton">Uncheck All</button>
       <button id="resetButton">Reset Defaults</button>
       <button id="fitButton">Fit Chart</button>
+    </div>
     </div>
   </div>
 </div>
 
 <script>
 // ════════════════════════════════════════════════════════════════════════
-// SSE / instrument-key setup
+// DYNAMIC LAYER SYSTEM
+// Scans API response and auto-builds toggles for any price-line arrays.
+// Non-line fields (candles, final_signal, etc.) are excluded.
 // ════════════════════════════════════════════════════════════════════════
 
-// KEY FIX 1: Cache of name → SSE key, resolved from backend
+// Fields that are NEVER treated as chart layers
+const NON_LAYER_FIELDS = new Set([
+  'candles','signals',
+  'supportLevels','resistanceLevels',
+  'final_signal','finalSignal','FINAL_SIGNAL',
+  'final_confidence','finalConfidence','FINAL_CONFIDENCE',
+  'final_reason','finalReason','FINAL_REASON'
+]);
+
+// ════════════════════════════════════════════════════════════════════════
+// SUPPORT & RESISTANCE SYSTEM
+// Handles supportLevels / resistanceLevels from API response.
+// Each level object: { price, touches, rejections, breakouts,
+//                      volumeConfirmed, candlesSinceLastTouch, strength }
+// ════════════════════════════════════════════════════════════════════════
+
+const SR_STYLES = {
+  CRITICAL: { lineWidth: 2, lineStyle: 0 },  // Solid thick
+  STRONG:   { lineWidth: 1, lineStyle: 0 },  // Solid thin
+  MODERATE: { lineWidth: 1, lineStyle: 1 },  // Dotted
+  WEAK:     { lineWidth: 1, lineStyle: 2 }   // Dashed
+};
+
+const SR_COLORS = {
+  support: {
+    CRITICAL: '#16a34a',
+    STRONG:   '#22c55e',
+    MODERATE: '#4ade80',
+    WEAK:     '#86efac'
+  },
+  resistance: {
+    CRITICAL: '#dc2626',
+    STRONG:   '#ef4444',
+    MODERATE: '#f87171',
+    WEAK:     '#fca5a5'
+  }
+};
+
+let srSupportLines   = [];
+let srResistancLines = [];
+
+function getEnabledStrengths() {
+  const s = new Set();
+  ['CRITICAL','STRONG','MODERATE','WEAK'].forEach(k => {
+    const cb = document.getElementById('sr' + k);
+    if (cb && cb.checked) s.add(k);
+  });
+  return s;
+}
+
+function clearSRLines(arr) {
+  arr.forEach(l => { try { candleSeries.removePriceLine(l); } catch {} });
+  arr.length = 0;
+}
+
+// ── srLevelRegistry: keeps level metadata indexed by price (rounded to 1dp)
+// so the crosshair handler can look up rich data without re-scanning the array ──
+let srLevelRegistry = {};   // { "25556.5_support": levelObj, ... }
+
+function registerSRLevel(type, level) {
+  const key = `${Number(level.price).toFixed(1)}_${type}`;
+  srLevelRegistry[key] = { ...level, _type: type };
+}
+
+function findNearestSRLevel(price, thresholdPct = 0.003) {
+  // thresholdPct = 0.3% of price distance
+  let best = null, bestDist = Infinity;
+  const threshold = price * thresholdPct;
+  Object.values(srLevelRegistry).forEach(lvl => {
+    const dist = Math.abs(Number(lvl.price) - price);
+    if (dist <= threshold && dist < bestDist) {
+      bestDist = dist; best = lvl;
+    }
+  });
+  return best;
+}
+
+// ── Compact axis title (max ~14 chars for readability) ──
+function buildSRTitle(type, level) {
+  const tag = type === 'support' ? '▲S' : '▼R';
+  const vc  = level.volumeConfirmed ? '●' : '○';
+  const t   = level.touches    != null ? `T${level.touches}`  : '';
+  const r   = level.rejections != null ? `R${level.rejections}` : '';
+  return `${tag} ${vc} ${t} ${r}`.trim();
+}
+
+// ── Decision signal logic ──
+function calcDecision(level) {
+  const t   = level.touches    || 0;
+  const r   = level.rejections || 0;
+  const brk = level.breakouts  || 0;
+  const cst = level.candlesSinceLastTouch || 9999;
+  const vc  = level.volumeConfirmed;
+  const str = (level.strength || '').toUpperCase();
+
+  // Stale: not touched in a very long time
+  if (cst > 500) return { cls: 'stale', icon: '⏸', label: 'Stale — Monitor Only', detail: `${cst} candles since last touch` };
+
+  // Strong hold: many rejections, 0 breakouts, recent, volume confirmed
+  const score = (r >= 50 ? 3 : r >= 20 ? 2 : 1)
+              + (brk === 0 ? 2 : brk <= 2 ? 0 : -2)
+              + (vc ? 2 : 0)
+              + (cst <= 100 ? 2 : cst <= 300 ? 1 : 0)
+              + (str === 'CRITICAL' ? 2 : str === 'STRONG' ? 1 : 0);
+
+  if (score >= 7) return { cls: 'strong-hold', icon: '🛡', label: 'Strong Hold Expected', detail: `${r} rejections, no breakouts` };
+  if (score >= 4) return { cls: 'weak-hold',   icon: '⚠️', label: 'Watch for Bounce',    detail: `${t} touches, ${brk} breakout${brk!==1?'s':''}` };
+  return             { cls: 'watch-break',  icon: '⚡', label: 'Potential Break Risk',  detail: `${brk} prior breakout${brk!==1?'s':''}` };
+}
+
+// ── Populate & position the tooltip ──
+function showSRTooltip(level, mouseX, mouseY) {
+  const tt = document.getElementById('srTooltip');
+  if (!tt) return;
+  const type    = level._type;
+  const strength = (level.strength || 'WEAK').toUpperCase();
+  const price   = Number(level.price);
+  const t       = level.touches    || 0;
+  const r       = level.rejections || 0;
+  const brk     = level.breakouts  || 0;
+  const cst     = level.candlesSinceLastTouch != null ? level.candlesSinceLastTouch : '-';
+  const vc      = !!level.volumeConfirmed;
+
+  // Header
+  const typeEl = document.getElementById('srTTType');
+  typeEl.textContent = type === 'support' ? 'Support' : 'Resistance';
+  typeEl.className   = `sr-tt-type ${type}`;
+
+  const priceEl = document.getElementById('srTTPrice');
+  priceEl.textContent = price.toFixed(1);
+  priceEl.className   = `sr-tt-price ${type}`;
+
+  // Strength badge
+  const badge = document.getElementById('srTTStrengthBadge');
+  badge.textContent = strength;
+  badge.className   = `sr-tt-strength-badge ${strength}`;
+
+  // Strength dots (1-4 filled based on strength)
+  const dotsEl  = document.getElementById('srTTDots');
+  const dotCount = { CRITICAL:4, STRONG:3, MODERATE:2, WEAK:1 }[strength] || 1;
+  dotsEl.innerHTML = Array.from({length:4}, (_,i) =>
+    `<div class="sr-tt-dot ${i < dotCount ? `filled ${type}` : ''}"></div>`).join('');
+
+  // Stats
+  document.getElementById('srTTTouches').textContent    = t;
+  document.getElementById('srTTRejections').textContent = r;
+
+  const brkEl = document.getElementById('srTTBreakouts');
+  brkEl.textContent = brk;
+  brkEl.className   = `sr-tt-stat-value ${brk === 0 ? 'green' : brk <= 2 ? 'amber' : 'red'}`;
+
+  document.getElementById('srTTCandles').textContent    = cst;
+  document.getElementById('srTTCandlesAgo').textContent = cst;
+
+  // Bars — rejections relative to max across all levels
+  const allLevels = Object.values(srLevelRegistry);
+  const maxR = Math.max(...allLevels.map(l => l.rejections || 0), 1);
+  const maxB = Math.max(...allLevels.map(l => l.breakouts  || 0), 1);
+  document.getElementById('srTTRejBar').style.width   = `${Math.min(100, (r / maxR) * 100).toFixed(1)}%`;
+  document.getElementById('srTTBrkBar').style.width   = `${Math.min(100, (brk / maxB) * 100).toFixed(1)}%`;
+  document.getElementById('srTTRejCount').textContent = r;
+  document.getElementById('srTTBrkCount').textContent = brk;
+
+  // Volume confirmed
+  const vcDot  = document.getElementById('srTTVcDot');
+  const vcText = document.getElementById('srTTVcText');
+  vcDot.className   = `sr-tt-vc-dot ${vc ? 'on' : 'off'}`;
+  vcText.textContent = vc ? 'Volume Confirmed ✓' : 'Not Volume Confirmed';
+  vcText.style.color = vc ? '#4ade80' : '#64748b';
+
+  // Decision
+  const dec    = calcDecision(level);
+  const decEl  = document.getElementById('srTTDecision');
+  decEl.className   = `sr-tt-decision ${dec.cls}`;
+  decEl.innerHTML   = `${dec.icon} <strong>${dec.label}</strong> — ${dec.detail}`;
+
+  // Position tooltip: keep inside chart bounds
+  const chartRect = chartEl.getBoundingClientRect();
+  const absX = chartRect.left + mouseX;
+  const absY = chartRect.top  + mouseY;
+  const TTW = 268, TTH = 300;
+  let left = absX + 14, top = absY - TTH / 2;
+
+  // Flip left if near right edge
+  if (left + TTW > window.innerWidth - 20) left = absX - TTW - 14;
+  // Clamp vertically
+  top = Math.max(10, Math.min(window.innerHeight - TTH - 10, top));
+
+  tt.style.left = `${left}px`;
+  tt.style.top  = `${top}px`;
+  tt.classList.add('visible');
+}
+
+function hideSRTooltip() {
+  const tt = document.getElementById('srTooltip');
+  if (tt) tt.classList.remove('visible');
+}
+
+// ── Crosshair subscription (called after chart init) ──
+function initSRCrosshair() {
+  if (!chart) return;
+  chart.subscribeCrosshairMove(param => {
+    if (!param || !param.point || param.point.x === undefined) { hideSRTooltip(); return; }
+    const price = candleSeries.coordinateToPrice(param.point.y);
+    if (price == null) { hideSRTooltip(); return; }
+    const level = findNearestSRLevel(price);
+    if (level) showSRTooltip(level, param.point.x, param.point.y);
+    else hideSRTooltip();
+  });
+}
+
+function drawSRLevel(type, level, enabledStrengths) {
+  if (!candleSeries) return null;
+  const strength = (level.strength || 'WEAK').toUpperCase();
+  if (!enabledStrengths.has(strength)) return null;
+  const style = SR_STYLES[strength] || SR_STYLES.WEAK;
+  const color = (SR_COLORS[type] || {})[strength] || (type === 'support' ? '#22c55e' : '#ef4444');
+  registerSRLevel(type, level);
+  try {
+    return candleSeries.createPriceLine({
+      price:            Number(level.price),
+      color,
+      lineWidth:        style.lineWidth,
+      lineStyle:        style.lineStyle,
+      axisLabelVisible: true,
+      title:            buildSRTitle(type, level)
+    });
+  } catch { return null; }
+}
+
+function drawSupportLevels(data) {
+  clearSRLines(srSupportLines);
+  const toggle = document.getElementById('toggleSupport');
+  if (!toggle || !toggle.checked || !candleSeries) return;
+  const levels  = data.supportLevels || [];
+  const enabled = getEnabledStrengths();
+  let drawn = 0;
+  levels.forEach(lvl => {
+    const line = drawSRLevel('support', lvl, enabled);
+    if (line) { srSupportLines.push(line); drawn++; }
+  });
+  const badge = document.getElementById('supportCount');
+  if (badge) badge.textContent = levels.length ? `${drawn}/${levels.length}` : '';
+}
+
+function drawResistanceLevels(data) {
+  clearSRLines(srResistancLines);
+  const toggle = document.getElementById('toggleResistance');
+  if (!toggle || !toggle.checked || !candleSeries) return;
+  const levels  = data.resistanceLevels || [];
+  const enabled = getEnabledStrengths();
+  let drawn = 0;
+  levels.forEach(lvl => {
+    const line = drawSRLevel('resistance', lvl, enabled);
+    if (line) { srResistancLines.push(line); drawn++; }
+  });
+  const badge = document.getElementById('resistanceCount');
+  if (badge) badge.textContent = levels.length ? `${drawn}/${levels.length}` : '';
+}
+
+function redrawSRLevels() {
+  if (!lastData || !candleSeries) return;
+  srLevelRegistry = {};    // reset registry before redrawing
+  drawSupportLevels(lastData);
+  drawResistanceLevels(lastData);
+}
+
+function initSRListeners() {
+  document.getElementById('toggleSupport').addEventListener('change',    () => { redrawSRLevels(); saveChartState(); });
+  document.getElementById('toggleResistance').addEventListener('change', () => { redrawSRLevels(); saveChartState(); });
+  ['CRITICAL','STRONG','MODERATE','WEAK'].forEach(k => {
+    document.getElementById('sr' + k).addEventListener('change', () => { redrawSRLevels(); saveChartState(); });
+  });
+}
+
+// Colour palette for layers (cycles if more layers than colours)
+const LAYER_COLORS = [
+  '#22c55e','#ef4444','#3b82f6','#f59e0b',
+  '#a855f7','#06b6d4','#f97316','#ec4899'
+];
+
+// layerRegistry: { [fieldKey]: { label, color, enabled, lines: [], valueType: 'number'|'object' } }
+let layerRegistry = {};
+let colorIndex = 0;
+
+// Convert camelCase / snake_case field names to readable labels
+function fieldToLabel(key) {
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/\w/g, c => c.toUpperCase())
+    .trim();
+}
+
+// Detect whether a field is a price-line array
+function isPriceLineArray(val) {
+  if (!Array.isArray(val) || val.length === 0) return false;
+  const first = val[0];
+  if (typeof first === 'number') return true;
+  if (typeof first === 'string' && !isNaN(Number(first))) return true;
+  if (typeof first === 'object' && first !== null && 'level' in first) return true;
+  return false;
+}
+
+// Determine value type of a layer array
+function getValueType(val) {
+  if (!Array.isArray(val) || val.length === 0) return null;
+  const first = val[0];
+  if (typeof first === 'number' || typeof first === 'string') return 'number';
+  if (typeof first === 'object' && 'level' in first) return 'object';
+  return null;
+}
+
+// Build / update the dynamic settings checkboxes from the API data
+function syncLayersFromData(data) {
+  let changed = false;
+  Object.entries(data).forEach(([key, val]) => {
+    if (NON_LAYER_FIELDS.has(key)) return;
+    if (!isPriceLineArray(val)) return;
+    if (layerRegistry[key]) return; // already registered
+
+    const savedEnabled = getSavedLayerState(key);
+    layerRegistry[key] = {
+      label:     fieldToLabel(key),
+      color:     LAYER_COLORS[colorIndex % LAYER_COLORS.length],
+      enabled:   savedEnabled !== null ? savedEnabled : true,
+      lines:     [],
+      valueType: getValueType(val)
+    };
+    colorIndex++;
+    changed = true;
+  });
+  if (changed) rebuildLayerUI();
+}
+
+// Render checkboxes for all registered layers
+function rebuildLayerUI() {
+  const container = document.getElementById('dynamicLayersContainer');
+  const title     = document.getElementById('layersSectionTitle');
+  container.innerHTML = '';
+
+  const keys = Object.keys(layerRegistry);
+  title.style.display = keys.length ? '' : 'none';
+
+  keys.forEach(key => {
+    const cfg   = layerRegistry[key];
+    const id    = `layer_${key}`;
+    const label = document.createElement('label');
+    label.htmlFor = id;
+
+    const cb  = document.createElement('input');
+    cb.type   = 'checkbox';
+    cb.id     = id;
+    cb.checked = cfg.enabled;
+    cb.addEventListener('change', () => {
+      layerRegistry[key].enabled = cb.checked;
+      redrawAllLayers();
+      saveChartState();
+    });
+
+    const dot = document.createElement('span');
+    dot.className = 'line-dot';
+    dot.style.background = cfg.color;
+
+    const text = document.createElement('span');
+    text.textContent = cfg.label;
+
+    label.appendChild(cb);
+    label.appendChild(dot);
+    label.appendChild(text);
+    container.appendChild(label);
+  });
+}
+
+// Clear drawn price lines for a single layer
+function clearLayer(key) {
+  const cfg = layerRegistry[key];
+  if (!cfg) return;
+  cfg.lines.forEach(l => { try { candleSeries.removePriceLine(l); } catch {} });
+  cfg.lines = [];
+}
+
+// Draw price lines for one layer from current API data
+function drawLayer(key, data) {
+  const cfg = layerRegistry[key];
+  if (!cfg || !cfg.enabled || !candleSeries) return;
+  clearLayer(key);
+
+  const raw = data[key];
+  if (!Array.isArray(raw)) return;
+
+  raw.forEach(item => {
+    try {
+      let price, title;
+      if (cfg.valueType === 'object') {
+        price = Number(item.level);
+        title = item.label || cfg.label;
+      } else {
+        price = Number(item);
+        title = cfg.label;
+      }
+      if (!isFinite(price)) return;
+      const line = candleSeries.createPriceLine({
+        price, title,
+        color:            cfg.color,
+        lineWidth:        1,
+        lineStyle:        LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true
+      });
+      cfg.lines.push(line);
+    } catch {}
+  });
+}
+
+// Redraw all layers (e.g. after toggle or symbol change)
+function redrawAllLayers() {
+  if (!lastData || !candleSeries) return;
+  Object.keys(layerRegistry).forEach(key => {
+    clearLayer(key);
+    if (layerRegistry[key].enabled) drawLayer(key, lastData);
+  });
+  redrawSRLevels();
+  redrawUserLines();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// SSE / instrument-key setup
+// ════════════════════════════════════════════════════════════════════════
 const instrumentKeyCache = {};
 let   currentInstrumentKey = null;
-
-// KEY FIX 2: Ticks that arrive BEFORE key is resolved are queued here
-//            and replayed immediately after key resolves.
 const pendingTicks = [];
 
 async function getInstrumentKey(name) {
@@ -283,8 +821,7 @@ async function getInstrumentKey(name) {
   try {
     const res  = await fetch(`/api/websocket/instrument/key?name=${encodeURIComponent(name)}`);
     const data = await res.json();
-    // Support both { key: "..." } and { instrumentKey: "..." }
-    const key = data.key || data.instrumentKey || null;
+    const key  = data.key || data.instrumentKey || null;
     if (key) instrumentKeyCache[name] = key;
     console.log(`[KEY] ${name} → "${key}"`);
     return key;
@@ -296,14 +833,10 @@ async function getInstrumentKey(name) {
 
 async function resolveCurrentKey(name) {
   selectedSymbol       = name || symbolDropdown.value;
-  currentInstrumentKey = null;                       // reset while resolving
-
+  currentInstrumentKey = null;
   const key = await getInstrumentKey(selectedSymbol);
   currentInstrumentKey = key;
-
   console.log(`[KEY] Active key: "${currentInstrumentKey}" for ${selectedSymbol}`);
-
-  // Replay any ticks that arrived during resolution
   if (pendingTicks.length > 0) {
     console.log(`[KEY] Replaying ${pendingTicks.length} queued tick(s)`);
     pendingTicks.forEach(p => applyTickToChart(p));
@@ -311,172 +844,96 @@ async function resolveCurrentKey(name) {
   }
 }
 
-// ── SSE connection ────────────────────────────────────────────────────────────
+// ── SSE ───────────────────────────────────────────────────────────────────────
 let sseSource    = null;
 let ssePrevPrice = null;
 
 function connectSSE() {
   if (sseSource) { sseSource.close(); sseSource = null; }
   sseSource = new EventSource('/api/stream/market');
-
   sseSource.onopen = () => {
-    document.getElementById('sseDot').className     = 'live';
-    document.getElementById('sseLabel').textContent  = 'Live';
+    document.getElementById('sseDot').className    = 'live';
+    document.getElementById('sseLabel').textContent = 'Live';
     console.log('[SSE] Connected');
   };
-
   sseSource.onerror = () => {
-    document.getElementById('sseDot').className     = '';
-    document.getElementById('sseLabel').textContent  = 'Reconnecting...';
+    document.getElementById('sseDot').className    = '';
+    document.getElementById('sseLabel').textContent = 'Reconnecting...';
     sseSource.close(); sseSource = null;
     setTimeout(connectSSE, 3000);
   };
-
-  // The stream sends:  event:ltp  data:{"price":25661.20,"key":"NSE_FO_59182"}
   sseSource.addEventListener('ltp', e => {
     let d;
     try { d = JSON.parse(e.data); } catch { return; }
     if (!d || d.price === undefined) return;
-
     const price   = Number(d.price);
     const tickKey = d.key ? String(d.key) : null;
-
     if (!isFinite(price) || price <= 0) return;
-
-    // KEY FIX 3: If key is not resolved yet, queue the tick
-    if (tickKey && !currentInstrumentKey) {
-      pendingTicks.push({ price, tickKey });
-      return;
-    }
-
-    // KEY FIX 4: Filter by key — exact string match
-    if (tickKey !== currentInstrumentKey) {
-  //console.warn('Key mismatch:', tickKey, '!=', currentInstrumentKey);
-  return;
-}
-
-
+    if (tickKey && !currentInstrumentKey) { pendingTicks.push({ price, tickKey }); return; }
+    if (tickKey !== currentInstrumentKey) return;
     applyTickToChart(price);
   });
 }
 
-// ── Apply a matched tick price to the chart + price indicator ─────────────────
 function applyTickToChart(priceOrObj) {
-  // Accept both plain number and {price, tickKey} from pending queue
   const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
-
-  // 1. Update price-indicator panel
   updatePricePanel(price);
-
   ssePrevPrice = price;
-
-  // 2. Update chart candle — guard against chart not being ready
   if (!candleSeries || !lastCandles || lastCandles.length === 0) return;
-
-  const last = lastCandles[lastCandles.length - 1];
-
+  const last       = lastCandles[lastCandles.length - 1];
   const prevOpen   = Number(last.open);
   const prevHigh   = Number(last.high);
   const prevLow    = Number(last.low);
   const prevClose  = Number(last.close);
   const prevVolume = Number(last.volume) || 0;
-
-  // KEY FIX 5: New-bar detection — use the last candle's OWN timestamp
-  //            plus the timeframe seconds. Compare against CURRENT UTC time
-  //            converted to match the backend's candle timestamp format.
-  //            (Backend stores candle time as IST unix seconds: UTC + 19800)
   const IST_OFFSET = 19800;
   const nowIST     = Math.floor(Date.now() / 1000) + IST_OFFSET;
-
   const TF_SECONDS = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 };
   const tfSec      = TF_SECONDS[selectedTimeFrame] || 300;
-
-  // Snap the current IST time to the bar floor
-  const currentBarFloor = Math.floor(nowIST / tfSec) * tfSec;
-
-  if (currentBarFloor > last.time) {
-    // A new bar has started — open a synthetic candle
-    const newCandle = {
-      time:   currentBarFloor,
-      open:   price,
-      high:   price,
-      low:    price,
-      close:  price,
-      volume: 0
-    };
+  const barFloor   = Math.floor(nowIST / tfSec) * tfSec;
+  if (barFloor > last.time) {
+    const nc = { time: barFloor, open: price, high: price, low: price, close: price, volume: 0 };
     try {
-      candleSeries.update(newCandle);
-      volumeSeries.update({ time: currentBarFloor, value: 0, color: 'rgba(38,166,154,0.5)' });
-      lastCandles.push(newCandle);
-      console.log(`[SSE] New bar opened at ${currentBarFloor}, price=${price}`);
-    } catch (err) {
-      console.error('[SSE] new bar update failed:', err);
-    }
+      candleSeries.update(nc);
+      volumeSeries.update({ time: barFloor, value: 0, color: 'rgba(38,166,154,0.5)' });
+      lastCandles.push(nc);
+    } catch (err) { console.error('[SSE] new bar failed:', err); }
     return;
   }
-
-  // Update existing last candle
   const updated = {
-    time:   last.time,
-    open:   prevOpen,
-    high:   Math.max(prevHigh, price),
-    low:    Math.min(prevLow,  price),
-    close:  price,
-    volume: prevVolume
+    time: last.time, open: prevOpen,
+    high: Math.max(prevHigh, price), low: Math.min(prevLow, price),
+    close: price, volume: prevVolume
   };
-
-  // Skip if nothing changed
   if (updated.close === prevClose && updated.high === prevHigh && updated.low === prevLow) return;
-
   try {
     candleSeries.update(updated);
-    volumeSeries.update({
-      time:  updated.time,
-      value: updated.volume,
-      color: updated.close >= updated.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)'
-    });
-    // Keep in-memory array in sync so next tick compares correctly
+    volumeSeries.update({ time: updated.time, value: updated.volume,
+      color: updated.close >= updated.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
     lastCandles[lastCandles.length - 1] = updated;
-  } catch (err) {
-    console.error('[SSE] candle update failed:', err);
-  }
+  } catch (err) { console.error('[SSE] candle update failed:', err); }
 }
 
-// ── Update the top-right price panel ─────────────────────────────────────────
 function updatePricePanel(price) {
-  console.log('Price update:', price, 'Toggle checked:', toggleCurrentPriceCheckbox.checked);
-  if (!toggleCurrentPriceCheckbox.checked) {
-    currentPriceIndicator.classList.remove('visible');
-    return;
-  }
-
+  if (!toggleCurrentPriceCheckbox.checked) { currentPriceIndicator.classList.remove('visible'); return; }
   currentPriceEl.textContent = price.toFixed(2);
   currentPriceIndicator.classList.add('visible');
-
-  // Flash animation
   if (ssePrevPrice !== null && price !== ssePrevPrice) {
     currentPriceEl.classList.remove('price-flash');
     void currentPriceEl.offsetWidth;
     currentPriceEl.classList.add('price-flash');
   }
-  currentPriceEl.className = 'price-value ' + (
-    ssePrevPrice === null || price >= ssePrevPrice ? 'up' : 'down'
-  );
-
-  // Today's O/H/L
+  currentPriceEl.className = 'price-value ' + (ssePrevPrice === null || price >= ssePrevPrice ? 'up' : 'down');
   if (!lastCandles || lastCandles.length === 0) return;
   const todayStart   = getTodayStartTimestamp();
   const todayCandles = lastCandles.filter(c => c.time >= todayStart);
   if (todayCandles.length === 0) return;
-
   const dayOpen = Number(todayCandles[0].open);
   const dayHigh = Math.max(Math.max(...todayCandles.map(c => Number(c.high))), price);
   const dayLow  = Math.min(Math.min(...todayCandles.map(c => Number(c.low))),  price);
   const change  = price - dayOpen;
   const pct     = ((change / dayOpen) * 100).toFixed(2);
-  const arrow   = change >= 0 ? '▲' : '▼';
-
-  priceChangeEl.innerHTML  = `${arrow} ${Math.abs(change).toFixed(2)} (${Math.abs(pct)}%)`;
+  priceChangeEl.innerHTML  = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)} (${Math.abs(pct)}%)`;
   priceChangeEl.className  = 'price-change ' + (change >= 0 ? 'up' : 'down');
   openPriceEl.textContent  = dayOpen.toFixed(2);
   highPriceEl.textContent  = dayHigh.toFixed(2);
@@ -496,102 +953,73 @@ function getTodayStartTimestamp() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// App state & DOM refs
+// DOM refs
 // ════════════════════════════════════════════════════════════════════════
-const settings = {
-  paSupport:true, paResistance:true, fiboSupport:true, fiboResistance:true,
-  signals:true, volume:true, currentPrice:true, grid:true, live:true,
-  symbol:'NIFTY', timeframe:'FIVE_MINUTE'
-};
+const chartEl                    = document.getElementById('chart');
+const loaderEl                   = document.getElementById('loader');
+const loaderText                 = document.getElementById('loaderText');
+const retryCountEl               = document.getElementById('retryCount');
+const errorEl                    = document.getElementById('error');
+const apiErrorToast              = document.getElementById('apiErrorToast');
+const settingsButton             = document.getElementById('settingsButton');
+const settingsMenu               = document.getElementById('settingsMenu');
+const toggleVolumeCheckbox       = document.getElementById('toggleVolume');
+const toggleCurrentPriceCheckbox = document.getElementById('toggleCurrentPrice');
+const toggleGridCheckbox         = document.getElementById('toggleGrid');
+const toggleLiveCheckbox         = document.getElementById('toggleLive');
+const resetButton                = document.getElementById('resetButton');
+const uncheckAllButton           = document.getElementById('uncheckAllButton');
+const fitButton                  = document.getElementById('fitButton');
+const symbolDropdown             = document.getElementById('symbolDropdown');
+const timeframeDropdown          = document.getElementById('timeframeDropdown');
+const hLineBtn                   = document.getElementById('hLineBtn');
+const vLineBtn                   = document.getElementById('vLineBtn');
+const clearDrawBtn               = document.getElementById('clearDrawBtn');
+const colorPicker                = document.getElementById('colorPicker');
+const drawingModeIndicator       = document.getElementById('drawingModeIndicator');
+const todayButton                = document.getElementById('todayButton');
+const currentPriceIndicator      = document.getElementById('currentPriceIndicator');
+const currentPriceEl             = document.getElementById('currentPrice');
+const priceChangeEl              = document.getElementById('priceChange');
+const openPriceEl                = document.getElementById('openPrice');
+const highPriceEl                = document.getElementById('highPrice');
+const lowPriceEl                 = document.getElementById('lowPrice');
 
-const chartEl                      = document.getElementById('chart');
-const loaderEl                     = document.getElementById('loader');
-const loaderText                   = document.getElementById('loaderText');
-const retryCountEl                 = document.getElementById('retryCount');
-const errorEl                      = document.getElementById('error');
-const apiErrorToast                = document.getElementById('apiErrorToast');
-const settingsButton               = document.getElementById('settingsButton');
-const settingsMenu                 = document.getElementById('settingsMenu');
-const togglePASupportCheckbox      = document.getElementById('togglePASupport');
-const togglePAResistanceCheckbox   = document.getElementById('togglePAResistance');
-const toggleFiboSupportCheckbox    = document.getElementById('toggleFiboSupport');
-const toggleFiboResistanceCheckbox = document.getElementById('toggleFiboResistance');
-const toggleSignalsCheckbox        = document.getElementById('toggleSignals');
-const toggleVolumeCheckbox         = document.getElementById('toggleVolume');
-const toggleCurrentPriceCheckbox   = document.getElementById('toggleCurrentPrice');
-const toggleGridCheckbox           = document.getElementById('toggleGrid');
-const toggleLiveCheckbox           = document.getElementById('toggleLive');
-const resetButton                  = document.getElementById('resetButton');
-const uncheckAllButton             = document.getElementById('uncheckAllButton');
-const fitButton                    = document.getElementById('fitButton');
-const symbolDropdown               = document.getElementById('symbolDropdown');
-const timeframeDropdown            = document.getElementById('timeframeDropdown');
-const hLineBtn                     = document.getElementById('hLineBtn');
-const vLineBtn                     = document.getElementById('vLineBtn');
-const clearDrawBtn                 = document.getElementById('clearDrawBtn');
-const colorPicker                  = document.getElementById('colorPicker');
-const drawingModeIndicator         = document.getElementById('drawingModeIndicator');
-const todayButton                  = document.getElementById('todayButton');
-const currentPriceIndicator        = document.getElementById('currentPriceIndicator');
-const currentPriceEl               = document.getElementById('currentPrice');
-const priceChangeEl                = document.getElementById('priceChange');
-const openPriceEl                  = document.getElementById('openPrice');
-const highPriceEl                  = document.getElementById('highPrice');
-const lowPriceEl                   = document.getElementById('lowPrice');
-const signalPanel                  = document.getElementById('signalPanel');
-const signalValue                  = document.getElementById('signalValue');
-const confidenceFill               = document.getElementById('confidenceFill');
-const confidenceText               = document.getElementById('confidenceText');
-const reasonText                   = document.getElementById('reasonText');
-const signalTimestamp              = document.getElementById('signalTimestamp');
-
-let selectedSymbol    = settings.symbol;
-let selectedTimeFrame = settings.timeframe;
+let selectedSymbol    = 'NIFTY';
+let selectedTimeFrame = 'FIVE_MINUTE';
 let chart, candleSeries, volumeSeries;
-let priceActionSupportLines = [], priceActionResistanceLines = [];
-let fiboSupportLines = [], fiboResistanceLines = [];
-let lastCandles = [], lastSignals = [], lastData = null;
+let lastCandles = [], lastData = null;
 let isFirstLoad = true, refreshInterval = null, retryCount = 0;
 const MAX_RETRIES = 3, RETRY_DELAY = 2000;
 let drawingMode = null, drawnLines = [], chartInitialized = false;
 let selectedColor = '#22c55e';
 let liveClockInterval = null;
-let lastLineHash = '';
 
-// ── Live clock ────────────────────────────────────────────────────────────────
+// ── Live clock ─────────────────────────────────────────────────────────────────
 function updateLiveClock() {
   document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('en-IN', {
     timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
   });
 }
 function startLiveClock() { if (!liveClockInterval) { updateLiveClock(); liveClockInterval = setInterval(updateLiveClock, 1000); } }
-function stopLiveClock()  { if (liveClockInterval) { clearInterval(liveClockInterval); liveClockInterval = null; } }
+function stopLiveClock()  { if (liveClockInterval)  { clearInterval(liveClockInterval); liveClockInterval = null; } }
 
-// ── Line hash ─────────────────────────────────────────────────────────────────
-function generateLineHash() {
-  const a = togglePASupportCheckbox.checked      && lastData?.priceActionSupport    ? lastData.priceActionSupport.join(',')            : '';
-  const b = togglePAResistanceCheckbox.checked   && lastData?.priceActionResistance ? lastData.priceActionResistance.join(',')         : '';
-  const c = toggleFiboSupportCheckbox.checked    && lastData?.fiboSupport           ? lastData.fiboSupport.map(l=>l.level).join(',')   : '';
-  const d = toggleFiboResistanceCheckbox.checked && lastData?.fiboResistance        ? lastData.fiboResistance.map(l=>l.level).join(',') : '';
-  return `${a}|${b}|${c}|${d}`;
-}
-
-// ── Today zoom ────────────────────────────────────────────────────────────────
+// ── Today zoom ─────────────────────────────────────────────────────────────────
 function zoomToToday() {
   if (!chart || !lastCandles || lastCandles.length === 0) return;
   const todayStart   = getTodayStartTimestamp();
   const todayCandles = lastCandles.filter(c => c.time >= todayStart);
   if (todayCandles.length > 0) {
-    const lastT  = todayCandles[todayCandles.length - 1].time;
-    const tf     = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 }[selectedTimeFrame] || 300;
-    const bars   = selectedTimeFrame === 'ONE_MINUTE' ? 60 : selectedTimeFrame === 'FIFTEEN_MINUTE' ? 40 : 50;
-    const range  = bars * tf;
+    const lastT = todayCandles[todayCandles.length - 1].time;
+    const tf    = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 }[selectedTimeFrame] || 300;
+    const bars  = selectedTimeFrame === 'ONE_MINUTE' ? 60 : selectedTimeFrame === 'FIFTEEN_MINUTE' ? 40 : 50;
+    const range = bars * tf;
     try { chart.timeScale().setVisibleRange({ from: Math.max(todayStart, lastT - range * 0.6), to: lastT + range * 0.4 }); }
     catch { chart.timeScale().fitContent(); }
   } else { chart.timeScale().fitContent(); }
 }
 
-// ── Current price indicator (on API load) ─────────────────────────────────────
+// ── Current price indicator ────────────────────────────────────────────────────
 function updateCurrentPriceIndicator() {
   if (!toggleCurrentPriceCheckbox.checked || !lastCandles || !lastCandles.length) {
     currentPriceIndicator.classList.remove('visible'); return;
@@ -615,9 +1043,21 @@ function updateCurrentPriceIndicator() {
   currentPriceIndicator.classList.add('visible');
 }
 
-// ── Session persistence ───────────────────────────────────────────────────────
-function saveToSession(key, value) { try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {} }
-function getFromSession(key)       { try { const i = sessionStorage.getItem(key); return i ? JSON.parse(i) : null; } catch { return null; } }
+// ════════════════════════════════════════════════════════════════════════
+// Session persistence
+// ════════════════════════════════════════════════════════════════════════
+function saveToSession(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} }
+function getFromSession(k)   { try { const i = sessionStorage.getItem(k); return i ? JSON.parse(i) : null; } catch { return null; } }
+
+function getSavedLayerState(key) {
+  const saved = getFromSession('layerStates');
+  return saved && key in saved ? saved[key] : null;
+}
+function saveLayerStates() {
+  const states = {};
+  Object.entries(layerRegistry).forEach(([k, v]) => states[k] = v.enabled);
+  saveToSession('layerStates', states);
+}
 
 colorPicker.addEventListener('change', e => { selectedColor = e.target.value; });
 
@@ -626,14 +1066,11 @@ window.addEventListener('load', () => {
   startLiveClock();
   selectedSymbol    = symbolDropdown.value;
   selectedTimeFrame = timeframeDropdown.value;
-
   const saved = getFromSession('chartState');
   if (saved && saved.userHasLoadedChart && saved.hasData) restoreChartState(saved);
-
-  // Resolve key THEN connect SSE so key is ready before first ticks
+  initSRListeners();
   resolveCurrentKey(symbolDropdown.value).then(() => connectSSE());
 });
-
 window.addEventListener('beforeunload', saveChartState);
 window.addEventListener('pagehide',     saveChartState);
 
@@ -641,190 +1078,176 @@ function saveChartState() {
   if (!chartInitialized || !lastCandles.length || !chart) return;
   const vr = chart.timeScale().getVisibleRange();
   saveToSession('chartState', {
-    hasData:true, savedCandles:lastCandles.slice(), savedSignals:lastSignals.slice(),
-    savedData:lastData, savedSymbol:selectedSymbol, savedTimeframe:selectedTimeFrame,
-    savedDrawnLines: drawnLines.map(l=>({ type:l.type, price:l.price, time:l.time, color:l.color, minPrice:l.minPrice, maxPrice:l.maxPrice })),
-    userHasLoadedChart:true,
-    visibleRange: vr ? { from:vr.from, to:vr.to } : null,
+    hasData: true, savedCandles: lastCandles.slice(), savedData: lastData,
+    savedSymbol: selectedSymbol, savedTimeframe: selectedTimeFrame,
+    savedDrawnLines: drawnLines.map(l => ({
+      type: l.type, price: l.price, time: l.time, color: l.color, minPrice: l.minPrice, maxPrice: l.maxPrice
+    })),
+    userHasLoadedChart: true,
+    visibleRange: vr ? { from: vr.from, to: vr.to } : null,
     settings: {
-      paSupport:togglePASupportCheckbox.checked, paResistance:togglePAResistanceCheckbox.checked,
-      fiboSupport:toggleFiboSupportCheckbox.checked, fiboResistance:toggleFiboResistanceCheckbox.checked,
-      signals:toggleSignalsCheckbox.checked, volume:toggleVolumeCheckbox.checked,
-      currentPrice:toggleCurrentPriceCheckbox.checked, grid:toggleGridCheckbox.checked, live:toggleLiveCheckbox.checked
+      volume:       toggleVolumeCheckbox.checked,
+      currentPrice: toggleCurrentPriceCheckbox.checked,
+      grid:         toggleGridCheckbox.checked,
+      live:         toggleLiveCheckbox.checked,
+      srSupport:     document.getElementById('toggleSupport')?.checked    ?? true,
+      srResistance:  document.getElementById('toggleResistance')?.checked ?? true,
+      srStrengths:   ['CRITICAL','STRONG','MODERATE','WEAK'].filter(k => document.getElementById('sr'+k)?.checked)
     }
   });
+  saveLayerStates();
 }
 
 function restoreChartState(s) {
   if (!s || !s.hasData || !s.userHasLoadedChart) return;
   selectedSymbol = s.savedSymbol; selectedTimeFrame = s.savedTimeframe;
   symbolDropdown.value = selectedSymbol; timeframeDropdown.value = selectedTimeFrame;
-  lastCandles = s.savedCandles.slice(); lastSignals = s.savedSignals.slice(); lastData = s.savedData;
+  lastCandles = s.savedCandles.slice(); lastData = s.savedData;
   if (s.settings) {
-    togglePASupportCheckbox.checked      = s.settings.paSupport;
-    togglePAResistanceCheckbox.checked   = s.settings.paResistance;
-    toggleFiboSupportCheckbox.checked    = s.settings.fiboSupport;
-    toggleFiboResistanceCheckbox.checked = s.settings.fiboResistance;
-    toggleSignalsCheckbox.checked        = s.settings.signals;
-    toggleVolumeCheckbox.checked         = s.settings.volume !== undefined ? s.settings.volume : true;
-    toggleCurrentPriceCheckbox.checked   = s.settings.currentPrice !== undefined ? s.settings.currentPrice : true;
-    toggleGridCheckbox.checked           = s.settings.grid;
-    toggleLiveCheckbox.checked           = s.settings.live;
-    updateSettings();
+    toggleVolumeCheckbox.checked       = s.settings.volume       !== undefined ? s.settings.volume       : true;
+    toggleCurrentPriceCheckbox.checked = s.settings.currentPrice !== undefined ? s.settings.currentPrice : true;
+    toggleGridCheckbox.checked         = s.settings.grid         !== undefined ? s.settings.grid         : true;
+    toggleLiveCheckbox.checked         = s.settings.live         !== undefined ? s.settings.live         : true;
+    if (s.settings.srSupport    !== undefined) { const el = document.getElementById('toggleSupport');    if (el) el.checked = s.settings.srSupport; }
+    if (s.settings.srResistance !== undefined) { const el = document.getElementById('toggleResistance'); if (el) el.checked = s.settings.srResistance; }
+    if (Array.isArray(s.settings.srStrengths)) {
+      ['CRITICAL','STRONG','MODERATE','WEAK'].forEach(k => {
+        const el = document.getElementById('sr'+k);
+        if (el) el.checked = s.settings.srStrengths.includes(k);
+      });
+    }
   }
   if (!chart) initChart();
   if (!lastCandles.length) return;
   candleSeries.setData(lastCandles);
-  volumeSeries.setData(lastCandles.map(c=>({ time:c.time, value:c.volume, color:c.close>=c.open?'rgba(38,166,154,0.5)':'rgba(239,83,80,0.5)' })));
+  volumeSeries.setData(lastCandles.map(c => ({
+    time: c.time, value: c.volume,
+    color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)'
+  })));
   if (s.visibleRange?.from && s.visibleRange?.to) {
-    setTimeout(()=>{ try{chart.timeScale().setVisibleRange({from:s.visibleRange.from,to:s.visibleRange.to})}catch{chart.timeScale().fitContent()} },100);
+    setTimeout(() => {
+      try { chart.timeScale().setVisibleRange({ from: s.visibleRange.from, to: s.visibleRange.to }); }
+      catch { chart.timeScale().fitContent(); }
+    }, 100);
   } else { chart.timeScale().fitContent(); }
-  isFirstLoad = false; redrawLines();
+  isFirstLoad = false;
+  if (lastData) { syncLayersFromData(lastData); redrawAllLayers(); }
   (s.savedDrawnLines || []).forEach(ld => {
     try {
-      if (ld.type==='hline'&&ld.price!=null) {
-        const line = candleSeries.createPriceLine({ price:ld.price, color:ld.color||selectedColor, lineWidth:2, lineStyle:LightweightCharts.LineStyle.Solid, axisLabelVisible:true, title:'H-Line' });
-        drawnLines.push({ type:'hline', price:ld.price, line, color:ld.color||selectedColor });
-      } else if (ld.type==='vline'&&ld.time!=null) {
-        const vls = chart.addLineSeries({ color:ld.color||selectedColor, lineWidth:2, lineStyle:LightweightCharts.LineStyle.Solid, priceFormat:{type:'price'}, lastValueVisible:false, priceLineVisible:false, crosshairMarkerVisible:false });
-        vls.setData([{time:ld.time,value:ld.minPrice},{time:ld.time,value:ld.maxPrice}]);
-        drawnLines.push({ type:'vline', time:ld.time, series:vls, color:ld.color||selectedColor, minPrice:ld.minPrice, maxPrice:ld.maxPrice });
+      if (ld.type === 'hline' && ld.price != null) {
+        const line = candleSeries.createPriceLine({ price: ld.price, color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
+        drawnLines.push({ type: 'hline', price: ld.price, line, color: ld.color || selectedColor });
+      } else if (ld.type === 'vline' && ld.time != null) {
+        const vls = chart.addLineSeries({ color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+        vls.setData([{ time: ld.time, value: ld.minPrice }, { time: ld.time, value: ld.maxPrice }]);
+        drawnLines.push({ type: 'vline', time: ld.time, series: vls, color: ld.color || selectedColor, minPrice: ld.minPrice, maxPrice: ld.maxPrice });
       }
     } catch {}
   });
-  if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-  if (lastData) updateSignalPanel(lastData);
   updateCurrentPriceIndicator();
-  chartEl.style.display='block'; loaderEl.style.display='none'; errorEl.style.display='none';
-  chartInitialized=true;
-  setTimeout(()=>{ if(chart) chart.resize(chartEl.clientWidth,chartEl.clientHeight); },50);
+  chartEl.style.display = 'block'; loaderEl.style.display = 'none'; errorEl.style.display = 'none';
+  chartInitialized = true;
+  setTimeout(() => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); }, 50);
   if (toggleLiveCheckbox.checked) updateLiveStatus();
 }
 
-function updateSettings() {
-  settings.paSupport=togglePASupportCheckbox.checked; settings.paResistance=togglePAResistanceCheckbox.checked;
-  settings.fiboSupport=toggleFiboSupportCheckbox.checked; settings.fiboResistance=toggleFiboResistanceCheckbox.checked;
-  settings.signals=toggleSignalsCheckbox.checked; settings.volume=toggleVolumeCheckbox.checked;
-  settings.currentPrice=toggleCurrentPriceCheckbox.checked; settings.grid=toggleGridCheckbox.checked;
-  settings.live=toggleLiveCheckbox.checked; settings.symbol=selectedSymbol; settings.timeframe=selectedTimeFrame;
-}
+// ── Settings listeners ─────────────────────────────────────────────────────────
+toggleVolumeCheckbox.addEventListener('change', () => {
+  if (volumeSeries) volumeSeries.applyOptions({ visible: toggleVolumeCheckbox.checked });
+  saveChartState();
+});
+toggleCurrentPriceCheckbox.addEventListener('change', () => { updateCurrentPriceIndicator(); saveChartState(); });
+toggleGridCheckbox.addEventListener('change', () => {
+  if (chart) chart.applyOptions({ grid: {
+    vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
+    horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
+  }});
+  saveChartState();
+});
+toggleLiveCheckbox.addEventListener('change', () => { updateLiveStatus(); saveChartState(); });
 
-function clearLines(lines) { lines.forEach(l=>{ try{candleSeries.removePriceLine(l)}catch{} }); return []; }
+const staticCheckboxes = [toggleVolumeCheckbox, toggleCurrentPriceCheckbox, toggleGridCheckbox, toggleLiveCheckbox];
 
-function redrawLines() {
-  if (!lastData) return;
-  const h = generateLineHash();
-  if (h===lastLineHash && priceActionSupportLines.length>0) { redrawUserLines(); return; }
-  lastLineHash=h;
-  priceActionSupportLines    = clearLines(priceActionSupportLines);
-  priceActionResistanceLines = clearLines(priceActionResistanceLines);
-  fiboSupportLines           = clearLines(fiboSupportLines);
-  fiboResistanceLines        = clearLines(fiboResistanceLines);
-  if (togglePASupportCheckbox.checked    && lastData.priceActionSupport)    priceActionSupportLines    = lastData.priceActionSupport.map(p=>candleSeries.createPriceLine({price:Number(p),color:'green',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:'Price Action Support'}));
-  if (togglePAResistanceCheckbox.checked && lastData.priceActionResistance) priceActionResistanceLines = lastData.priceActionResistance.map(p=>candleSeries.createPriceLine({price:Number(p),color:'red',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:'Price Action Resistance'}));
-  if (toggleFiboSupportCheckbox.checked  && lastData.fiboSupport)           fiboSupportLines           = lastData.fiboSupport.map(o=>candleSeries.createPriceLine({price:Number(o.level),color:'blue',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:o.label||'Fibo Support'}));
-  if (toggleFiboResistanceCheckbox.checked&&lastData.fiboResistance)        fiboResistanceLines        = lastData.fiboResistance.map(o=>candleSeries.createPriceLine({price:Number(o.level),color:'orange',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true,title:o.label||'Fibo Resistance'}));
-  redrawUserLines();
-}
-
-function redrawUserLines() {
-  if (!candleSeries||!chart) return;
-  const valid=[];
-  drawnLines.forEach(ld=>{
-    try {
-      if (ld.type==='hline'&&ld.price!=null) {
-        if(ld.line){try{candleSeries.removePriceLine(ld.line)}catch{}}
-        const nl=candleSeries.createPriceLine({price:ld.price,color:ld.color||selectedColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:'H-Line'});
-        valid.push({type:'hline',price:ld.price,line:nl,color:ld.color||selectedColor});
-      } else if (ld.type==='vline'&&ld.time!=null) {
-        if(ld.series){try{chart.removeSeries(ld.series)}catch{}}
-        const vls=chart.addLineSeries({color:ld.color||selectedColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,priceFormat:{type:'price'},lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false});
-        vls.setData([{time:ld.time,value:ld.minPrice},{time:ld.time,value:ld.maxPrice}]);
-        valid.push({type:'vline',time:ld.time,series:vls,color:ld.color||selectedColor,minPrice:ld.minPrice,maxPrice:ld.maxPrice});
-      }
-    } catch {}
+resetButton.addEventListener('click', () => {
+  staticCheckboxes.forEach(c => c.checked = true);
+  Object.values(layerRegistry).forEach(cfg => cfg.enabled = true);
+  rebuildLayerUI();
+  // Reset S&R checkboxes
+  ['toggleSupport','toggleResistance','srCRITICAL','srSTRONG','srMODERATE','srWEAK'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.checked = true;
   });
-  drawnLines=valid;
-}
+  if (chart) chart.applyOptions({ grid: { vertLines: { visible: true, color: '#eee' }, horzLines: { visible: true, color: '#eee' } } });
+  if (volumeSeries) volumeSeries.applyOptions({ visible: true });
+  redrawAllLayers(); updateCurrentPriceIndicator(); updateLiveStatus(); saveChartState();
+});
 
-// ── Settings listeners ────────────────────────────────────────────────────────
-togglePASupportCheckbox.addEventListener('change',      ()=>{ updateSettings(); redrawLines(); saveChartState(); });
-togglePAResistanceCheckbox.addEventListener('change',   ()=>{ updateSettings(); redrawLines(); saveChartState(); });
-toggleFiboSupportCheckbox.addEventListener('change',    ()=>{ updateSettings(); redrawLines(); saveChartState(); });
-toggleFiboResistanceCheckbox.addEventListener('change', ()=>{ updateSettings(); redrawLines(); saveChartState(); });
-toggleSignalsCheckbox.addEventListener('change', ()=>{
-  updateSettings();
-  if (candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked ? lastSignals : []);
-  if (toggleSignalsCheckbox.checked && lastData) updateSignalPanel(lastData);
-  else { signalPanel.classList.remove('visible'); signalPanel.style.display='none'; }
-  saveChartState();
-});
-toggleVolumeCheckbox.addEventListener('change', ()=>{ updateSettings(); if(volumeSeries) volumeSeries.applyOptions({visible:toggleVolumeCheckbox.checked}); saveChartState(); });
-toggleCurrentPriceCheckbox.addEventListener('change', ()=>{ updateSettings(); updateCurrentPriceIndicator(); saveChartState(); });
-toggleGridCheckbox.addEventListener('change', ()=>{
-  updateSettings();
-  if(chart) chart.applyOptions({grid:{vertLines:{visible:toggleGridCheckbox.checked,color:'#eee'},horzLines:{visible:toggleGridCheckbox.checked,color:'#eee'}}});
-  saveChartState();
-});
-toggleLiveCheckbox.addEventListener('change', ()=>{ updateSettings(); updateLiveStatus(); saveChartState(); });
-
-resetButton.addEventListener('click', ()=>{
-  [togglePASupportCheckbox,togglePAResistanceCheckbox,toggleFiboSupportCheckbox,toggleFiboResistanceCheckbox,
-   toggleSignalsCheckbox,toggleVolumeCheckbox,toggleCurrentPriceCheckbox,toggleGridCheckbox,toggleLiveCheckbox].forEach(c=>c.checked=true);
-  updateSettings(); redrawLines();
-  if(chart){chart.applyOptions({grid:{vertLines:{visible:true,color:'#eee'},horzLines:{visible:true,color:'#eee'}}});if(candleSeries)candleSeries.setMarkers(lastSignals);if(volumeSeries)volumeSeries.applyOptions({visible:true});}
-  updateCurrentPriceIndicator(); updateLiveStatus(); saveChartState();
-});
-uncheckAllButton.addEventListener('click', ()=>{
-  [togglePASupportCheckbox,togglePAResistanceCheckbox,toggleFiboSupportCheckbox,toggleFiboResistanceCheckbox,
-   toggleSignalsCheckbox,toggleVolumeCheckbox,toggleCurrentPriceCheckbox,toggleGridCheckbox,toggleLiveCheckbox].forEach(c=>c.checked=false);
-  updateSettings(); redrawLines();
-  if(chart){chart.applyOptions({grid:{vertLines:{visible:false,color:'#eee'},horzLines:{visible:false,color:'#eee'}}});if(candleSeries)candleSeries.setMarkers([]);if(volumeSeries)volumeSeries.applyOptions({visible:false});}
-  signalPanel.classList.remove('visible'); currentPriceIndicator.classList.remove('visible');
+uncheckAllButton.addEventListener('click', () => {
+  staticCheckboxes.forEach(c => c.checked = false);
+  Object.values(layerRegistry).forEach(cfg => cfg.enabled = false);
+  rebuildLayerUI();
+  // Uncheck S&R checkboxes
+  ['toggleSupport','toggleResistance','srCRITICAL','srSTRONG','srMODERATE','srWEAK'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.checked = false;
+  });
+  if (chart) chart.applyOptions({ grid: { vertLines: { visible: false, color: '#eee' }, horzLines: { visible: false, color: '#eee' } } });
+  if (volumeSeries) volumeSeries.applyOptions({ visible: false });
+  redrawAllLayers(); currentPriceIndicator.classList.remove('visible');
   updateLiveStatus(); saveChartState();
 });
-fitButton.addEventListener('click', ()=>{ if(chart){chart.timeScale().fitContent();saveChartState();} });
 
-// ── Chart lifecycle ───────────────────────────────────────────────────────────
+fitButton.addEventListener('click', () => { if (chart) { chart.timeScale().fitContent(); saveChartState(); } });
+
+// ── Chart lifecycle ────────────────────────────────────────────────────────────
 function clearChart() {
-  if(chart&&candleSeries) drawnLines.forEach(ld=>{ try{if(ld.type==='hline'&&ld.line)candleSeries.removePriceLine(ld.line);else if(ld.type==='vline'&&ld.series)chart.removeSeries(ld.series);}catch{} });
-  drawnLines=[];
-  if(chart){
-    if(candleSeries){try{chart.removeSeries(candleSeries)}catch{}candleSeries=null;}
-    if(volumeSeries){try{chart.removeSeries(volumeSeries)}catch{}volumeSeries=null;}
-    try{chart.remove()}catch{}chart=null;
+  if (chart && candleSeries) drawnLines.forEach(ld => {
+    try { if (ld.type === 'hline' && ld.line) candleSeries.removePriceLine(ld.line);
+          else if (ld.type === 'vline' && ld.series) chart.removeSeries(ld.series); } catch {}
+  });
+  drawnLines = [];
+  // Clear SR lines + registry
+  srLevelRegistry = {};
+  if (candleSeries) {
+    clearSRLines(srSupportLines);
+    clearSRLines(srResistancLines);
+  }
+  // Clear all dynamic layers
+  Object.keys(layerRegistry).forEach(k => { layerRegistry[k].lines = []; });
+  if (chart) {
+    if (candleSeries) { try { chart.removeSeries(candleSeries); } catch {} candleSeries = null; }
+    if (volumeSeries) { try { chart.removeSeries(volumeSeries); } catch {} volumeSeries = null; }
+    try { chart.remove(); } catch {} chart = null;
   }
 }
 
-symbolDropdown.addEventListener('change', ()=>{
+symbolDropdown.addEventListener('change', () => {
   const name = symbolDropdown.value;
-  selectedSymbol = name;
-  ssePrevPrice = null;
-  currentInstrumentKey = null;
-  pendingTicks.length = 0;
+  selectedSymbol = name; ssePrevPrice = null;
+  currentInstrumentKey = null; pendingTicks.length = 0;
+  // Reset layer registry on symbol change so new API fields get detected fresh
+  layerRegistry = {}; colorIndex = 0;
   resolveCurrentKey(name);
-  clearChart(); isFirstLoad=true; chartInitialized=false; lastCandles=[];
-  refresh(true); updateSettings();
+  clearChart(); isFirstLoad = true; chartInitialized = false; lastCandles = [];
+  refresh(true);
 });
-timeframeDropdown.addEventListener('change', ()=>{
+timeframeDropdown.addEventListener('change', () => {
   selectedTimeFrame = timeframeDropdown.value;
-  clearChart(); isFirstLoad=true; chartInitialized=false; lastCandles=[];
-  refresh(true); updateSettings();
+  clearChart(); isFirstLoad = true; chartInitialized = false; lastCandles = [];
+  refresh(true);
 });
 
 function initChart() {
-  if(chart) return;
+  if (chart) return;
   chart = LightweightCharts.createChart(chartEl, {
     width: chartEl.clientWidth, height: chartEl.clientHeight,
-    layout: { backgroundColor:'#fff', textColor:'#000' },
-    rightPriceScale: { borderVisible:false, scaleMargins:{top:0.1,bottom:0.2} },
-    timeScale: { timeVisible:true, rightOffset:30, barSpacing:6, minBarSpacing:3, borderColor:'#d1d4dc', borderVisible:true },
+    layout: { backgroundColor: '#fff', textColor: '#000' },
+    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.2 } },
+    timeScale: { timeVisible: true, rightOffset: 30, barSpacing: 6, minBarSpacing: 3, borderColor: '#d1d4dc', borderVisible: true },
     crosshair: {
       mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { width:1, color:'#758696', style:LightweightCharts.LineStyle.Dashed, labelBackgroundColor:'#4a5568' },
-      horzLine: { width:1, color:'#758696', style:LightweightCharts.LineStyle.Dashed, labelBackgroundColor:'#4a5568' }
+      vertLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' },
+      horzLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' }
     },
-    grid: { vertLines:{visible:toggleGridCheckbox.checked,color:'#eee'}, horzLines:{visible:toggleGridCheckbox.checked,color:'#eee'} },
+    grid: { vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' }, horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' } },
     localization: {
       locale: 'en-IN',
       timeFormatter: ts => {
@@ -833,168 +1256,200 @@ function initChart() {
       }
     }
   });
-  candleSeries = chart.addCandlestickSeries({ upColor:'#26a69a', downColor:'#ef5350', borderVisible:false, wickUpColor:'#26a69a', wickDownColor:'#ef5350' });
-  chart.applyOptions({ priceScales:{ volume:{ visible:true, borderVisible:false, scaleMargins:{top:0.9,bottom:0} } } });
-  volumeSeries = chart.addHistogramSeries({ color:'rgba(38,166,154,0.5)', priceFormat:{type:'volume'}, priceScaleId:'volume', scaleMargins:{top:0.9,bottom:0}, overlay:true, lineWidth:1, visible:toggleVolumeCheckbox.checked });
-  chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{
-    if(chartInitialized&&lastCandles.length){ clearTimeout(window.savePositionTimeout); window.savePositionTimeout=setTimeout(saveChartState,500); }
+  candleSeries = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
+  chart.applyOptions({ priceScales: { volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.9, bottom: 0 } } } });
+  volumeSeries = chart.addHistogramSeries({ color: 'rgba(38,166,154,0.5)', priceFormat: { type: 'volume' }, priceScaleId: 'volume', scaleMargins: { top: 0.9, bottom: 0 }, overlay: true, lineWidth: 1, visible: toggleVolumeCheckbox.checked });
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+    if (chartInitialized && lastCandles.length) { clearTimeout(window.savePositionTimeout); window.savePositionTimeout = setTimeout(saveChartState, 500); }
   });
   chartEl.addEventListener('click', handleChartClick);
-  chartInitialized=true;
+  initSRCrosshair();
+  chartInitialized = true;
 }
 
+// ── User drawing ───────────────────────────────────────────────────────────────
 function handleChartClick(event) {
-  if(!drawingMode||!chart) return;
-  const rect=chartEl.getBoundingClientRect(), x=event.clientX-rect.left, y=event.clientY-rect.top;
-  if(drawingMode==='hline'){
-    const price=candleSeries.coordinateToPrice(y);
-    if(price){ const line=candleSeries.createPriceLine({price,color:selectedColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:'H-Line'}); drawnLines.push({type:'hline',price,line,color:selectedColor}); saveChartState(); }
-  } else if(drawingMode==='vline'){
-    const time=chart.timeScale().coordinateToTime(x);
-    if(time&&lastCandles.length){
-      let minP=Math.min(...lastCandles.map(c=>Number(c.low))), maxP=Math.max(...lastCandles.map(c=>Number(c.high)));
-      const pad=(maxP-minP)*0.1; minP-=pad; maxP+=pad;
-      const vls=chart.addLineSeries({color:selectedColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,priceFormat:{type:'price'},lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false});
-      vls.setData([{time,value:minP},{time,value:maxP}]);
-      drawnLines.push({type:'vline',time,series:vls,color:selectedColor,minPrice:minP,maxPrice:maxP}); saveChartState();
+  if (!drawingMode || !chart) return;
+  const rect = chartEl.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
+  if (drawingMode === 'hline') {
+    const price = candleSeries.coordinateToPrice(y);
+    if (price) {
+      const line = candleSeries.createPriceLine({ price, color: selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
+      drawnLines.push({ type: 'hline', price, line, color: selectedColor }); saveChartState();
+    }
+  } else if (drawingMode === 'vline') {
+    const time = chart.timeScale().coordinateToTime(x);
+    if (time && lastCandles.length) {
+      let minP = Math.min(...lastCandles.map(c => Number(c.low))), maxP = Math.max(...lastCandles.map(c => Number(c.high)));
+      const pad = (maxP - minP) * 0.1; minP -= pad; maxP += pad;
+      const vls = chart.addLineSeries({ color: selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+      vls.setData([{ time, value: minP }, { time, value: maxP }]);
+      drawnLines.push({ type: 'vline', time, series: vls, color: selectedColor, minPrice: minP, maxPrice: maxP }); saveChartState();
     }
   }
-  drawingMode=null; updateDrawingButtons();
+  drawingMode = null; updateDrawingButtons();
 }
 
 function updateDrawingButtons() {
-  hLineBtn.classList.toggle('active', drawingMode==='hline');
-  vLineBtn.classList.toggle('active', drawingMode==='vline');
-  chartEl.classList.toggle('drawing-mode', drawingMode!==null);
-  if(drawingMode){ drawingModeIndicator.style.display='block'; drawingModeIndicator.textContent=drawingMode==='hline'?'Click to draw horizontal line':'Click to draw vertical line'; }
-  else { drawingModeIndicator.style.display='none'; }
+  hLineBtn.classList.toggle('active', drawingMode === 'hline');
+  vLineBtn.classList.toggle('active', drawingMode === 'vline');
+  chartEl.classList.toggle('drawing-mode', drawingMode !== null);
+  if (drawingMode) { drawingModeIndicator.style.display = 'block'; drawingModeIndicator.textContent = drawingMode === 'hline' ? 'Click to draw horizontal line' : 'Click to draw vertical line'; }
+  else { drawingModeIndicator.style.display = 'none'; }
 }
 
-hLineBtn.addEventListener('click', ()=>{ drawingMode=drawingMode==='hline'?null:'hline'; updateDrawingButtons(); });
-vLineBtn.addEventListener('click', ()=>{ drawingMode=drawingMode==='vline'?null:'vline'; updateDrawingButtons(); });
-clearDrawBtn.addEventListener('click', ()=>{
-  if(!chart||!candleSeries) return;
-  drawnLines.forEach(ld=>{ try{if(ld.type==='hline'&&ld.line)candleSeries.removePriceLine(ld.line);else if(ld.type==='vline'&&ld.series)chart.removeSeries(ld.series);}catch{} });
-  drawnLines=[]; drawingMode=null; updateDrawingButtons(); saveChartState();
+function redrawUserLines() {
+  if (!candleSeries || !chart) return;
+  const valid = [];
+  drawnLines.forEach(ld => {
+    try {
+      if (ld.type === 'hline' && ld.price != null) {
+        if (ld.line) { try { candleSeries.removePriceLine(ld.line); } catch {} }
+        const nl = candleSeries.createPriceLine({ price: ld.price, color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
+        valid.push({ type: 'hline', price: ld.price, line: nl, color: ld.color || selectedColor });
+      } else if (ld.type === 'vline' && ld.time != null) {
+        if (ld.series) { try { chart.removeSeries(ld.series); } catch {} }
+        const vls = chart.addLineSeries({ color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+        vls.setData([{ time: ld.time, value: ld.minPrice }, { time: ld.time, value: ld.maxPrice }]);
+        valid.push({ type: 'vline', time: ld.time, series: vls, color: ld.color || selectedColor, minPrice: ld.minPrice, maxPrice: ld.maxPrice });
+      }
+    } catch {}
+  });
+  drawnLines = valid;
+}
+
+hLineBtn.addEventListener('click', () => { drawingMode = drawingMode === 'hline' ? null : 'hline'; updateDrawingButtons(); });
+vLineBtn.addEventListener('click', () => { drawingMode = drawingMode === 'vline' ? null : 'vline'; updateDrawingButtons(); });
+clearDrawBtn.addEventListener('click', () => {
+  if (!chart || !candleSeries) return;
+  drawnLines.forEach(ld => { try { if (ld.type === 'hline' && ld.line) candleSeries.removePriceLine(ld.line); else if (ld.type === 'vline' && ld.series) chart.removeSeries(ld.series); } catch {} });
+  drawnLines = []; drawingMode = null; updateDrawingButtons(); saveChartState();
 });
 
-// ── Chart data update ─────────────────────────────────────────────────────────
+// ── Chart data update ──────────────────────────────────────────────────────────
 function updateChart(data) {
-  if(!data||!data.candles||!data.candles.length) return;
-  lastData=data;
-  const candles=data.candles;
-  if(isFirstLoad){
+  if (!data || !data.candles || !data.candles.length) return;
+  lastData = data;
+  const candles = data.candles;
+
+  // Detect & register any new line-layer fields from this API response
+  syncLayersFromData(data);
+
+  if (isFirstLoad) {
     candleSeries.setData(candles);
-    volumeSeries.setData(candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?'rgba(38,166,154,0.5)':'rgba(239,83,80,0.5)'})));
-    lastCandles=candles.slice(); redrawLines();
-    if(Array.isArray(data.signals)) lastSignals=data.signals.map(s=>({time:s.time,position:'aboveBar',color:s.type==='buy'?'green':'red',shape:s.type==='buy'?'arrowUp':'arrowDown',text:s.type.toUpperCase()}));
-    if(candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked?lastSignals:[]);
-    updateSignalPanel(data); updateCurrentPriceIndicator(); chart.timeScale().fitContent(); isFirstLoad=false;
+    volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })));
+    lastCandles = candles.slice();
+    redrawAllLayers();
+    updateCurrentPriceIndicator();
+    chart.timeScale().fitContent();
+    isFirstLoad = false;
   } else {
-    const lastKnown=lastCandles.length?lastCandles[lastCandles.length-1].time:0;
-    let missing=[];
-    if(lastCandles.length&&candles.length>lastCandles.length){ const idx=candles.findIndex(c=>c.time===lastKnown); if(idx>=0&&idx<candles.length-1) missing=candles.slice(idx+1); }
-    if(missing.length>2||candles.length<lastCandles.length){
-      candleSeries.setData(candles); volumeSeries.setData(candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?'rgba(38,166,154,0.5)':'rgba(239,83,80,0.5)'})));
-      lastCandles=candles.slice();
-      if(Array.isArray(data.signals)){ lastSignals=data.signals.map(s=>({time:s.time,position:'aboveBar',color:s.type==='buy'?'green':'red',shape:s.type==='buy'?'arrowUp':'arrowDown',text:s.type.toUpperCase()})); if(candleSeries) candleSeries.setMarkers(toggleSignalsCheckbox.checked?lastSignals:[]); }
-      updateSignalPanel(data); updateCurrentPriceIndicator(); setTimeout(()=>redrawLines(),50);
-    } else if(missing.length>0){
-      missing.forEach(c=>{ candleSeries.update(c); volumeSeries.update({time:c.time,value:c.volume,color:c.close>=c.open?'rgba(38,166,154,0.5)':'rgba(239,83,80,0.5)'}); }); lastCandles=candles.slice();
-      if(Array.isArray(data.signals)){ const ns=data.signals.map(s=>({time:s.time,position:'aboveBar',color:s.type==='buy'?'green':'red',shape:s.type==='buy'?'arrowUp':'arrowDown',text:s.type.toUpperCase()})); if(JSON.stringify(ns)!==JSON.stringify(lastSignals)){lastSignals=ns;if(candleSeries)candleSeries.setMarkers(toggleSignalsCheckbox.checked?lastSignals:[]);} }
-      updateSignalPanel(data); updateCurrentPriceIndicator();
+    const lastKnown = lastCandles.length ? lastCandles[lastCandles.length - 1].time : 0;
+    let missing = [];
+    if (lastCandles.length && candles.length > lastCandles.length) {
+      const idx = candles.findIndex(c => c.time === lastKnown);
+      if (idx >= 0 && idx < candles.length - 1) missing = candles.slice(idx + 1);
+    }
+    if (missing.length > 2 || candles.length < lastCandles.length) {
+      candleSeries.setData(candles);
+      volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })));
+      lastCandles = candles.slice();
+      setTimeout(() => redrawAllLayers(), 50);
+    } else if (missing.length > 0) {
+      missing.forEach(c => {
+        candleSeries.update(c);
+        volumeSeries.update({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
+      });
+      lastCandles = candles.slice();
     } else {
-      if(lastCandles.length&&candles.length){
-        const ol=lastCandles[lastCandles.length-1], nl=candles[candles.length-1];
-        if(ol.time===nl.time){
-          if(ol.close!==nl.close||ol.high!==nl.high||ol.low!==nl.low||ol.volume!==nl.volume){
-            candleSeries.update(nl); volumeSeries.update({time:nl.time,value:nl.volume,color:nl.close>=nl.open?'rgba(38,166,154,0.5)':'rgba(239,83,80,0.5)'}); lastCandles[lastCandles.length-1]=nl;
+      if (lastCandles.length && candles.length) {
+        const ol = lastCandles[lastCandles.length - 1], nl = candles[candles.length - 1];
+        if (ol.time === nl.time) {
+          if (ol.close !== nl.close || ol.high !== nl.high || ol.low !== nl.low || ol.volume !== nl.volume) {
+            candleSeries.update(nl);
+            volumeSeries.update({ time: nl.time, value: nl.volume, color: nl.close >= nl.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
+            lastCandles[lastCandles.length - 1] = nl;
           }
-        } else if(nl.time>ol.time){
-          candleSeries.update(nl); volumeSeries.update({time:nl.time,value:nl.volume,color:nl.close>=nl.open?'rgba(38,166,154,0.5)':'rgba(239,83,80,0.5)'}); lastCandles=candles.slice();
+        } else if (nl.time > ol.time) {
+          candleSeries.update(nl);
+          volumeSeries.update({ time: nl.time, value: nl.volume, color: nl.close >= nl.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
+          lastCandles = candles.slice();
         }
       }
-      if(Array.isArray(data.signals)){ const ns=data.signals.map(s=>({time:s.time,position:'aboveBar',color:s.type==='buy'?'green':'red',shape:s.type==='buy'?'arrowUp':'arrowDown',text:s.type.toUpperCase()})); if(JSON.stringify(ns)!==JSON.stringify(lastSignals)){lastSignals=ns;if(candleSeries)candleSeries.setMarkers(toggleSignalsCheckbox.checked?lastSignals:[]);} }
-      updateSignalPanel(data); updateCurrentPriceIndicator();
     }
-    if(generateLineHash()!==lastLineHash) setTimeout(()=>redrawLines(),50);
+    updateCurrentPriceIndicator();
+    // Redraw layers in case new data changed levels
+    setTimeout(() => redrawAllLayers(), 50);
   }
 }
 
-// ── Signal panel ──────────────────────────────────────────────────────────────
-function updateSignalPanel(data) {
-  if(!toggleSignalsCheckbox.checked){ signalPanel.classList.remove('visible'); signalPanel.style.display='none'; return; }
-  const fs=data.final_signal||data.finalSignal||data.FINAL_SIGNAL;
-  const fc=data.final_confidence||data.finalConfidence||data.FINAL_CONFIDENCE;
-  const fr=data.final_reason||data.finalReason||data.FINAL_REASON;
-  if(fs&&fc&&fr){
-    signalPanel.classList.add('visible'); signalPanel.style.display='block';
-    const sig=fs.toLowerCase(), emoji=sig==='buy'?'📈':sig==='sell'?'📉':sig==='hold'?'⏸️':'➖';
-    signalValue.innerHTML=`${emoji} ${fs.toUpperCase()}`; signalValue.className='signal-value '+sig;
-    const conf=fc.toLowerCase(); let pct=35,cls='low';
-    if(conf.includes('high')){pct=85;cls='high';}else if(conf.includes('medium')){pct=60;cls='medium';}
-    confidenceFill.style.width=pct+'%'; confidenceFill.className='confidence-fill '+cls;
-    confidenceText.textContent=`Confidence: ${fc}`; reasonText.textContent=fr;
-    const now=new Date();
-    signalTimestamp.textContent=`Updated: ${now.toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',month:'short',day:'numeric'})} at ${now.toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})}`;
-  } else { signalPanel.classList.remove('visible'); signalPanel.style.display='none'; }
-}
-
-// ── Error toast ───────────────────────────────────────────────────────────────
+// ── Error toast ────────────────────────────────────────────────────────────────
 function showApiErrorToast(msg) {
-  apiErrorToast.textContent=`⚠️ ${msg}`; apiErrorToast.classList.remove('fade-out'); apiErrorToast.classList.add('show');
-  setTimeout(()=>{ apiErrorToast.classList.add('fade-out'); setTimeout(()=>apiErrorToast.classList.remove('show','fade-out'),500); },3000);
+  apiErrorToast.textContent = `⚠️ ${msg}`; apiErrorToast.classList.remove('fade-out'); apiErrorToast.classList.add('show');
+  setTimeout(() => { apiErrorToast.classList.add('fade-out'); setTimeout(() => apiErrorToast.classList.remove('show','fade-out'), 500); }, 3000);
 }
 
-// ── Data fetching ─────────────────────────────────────────────────────────────
-async function fetchData(tf=selectedTimeFrame,name=selectedSymbol) {
-  const r=await fetch(`/api/newIntraday?timeFrame=${tf}&name=${name}`);
-  if(!r.ok) throw new Error(`API error: ${r.status}`);
+// ── Data fetch ─────────────────────────────────────────────────────────────────
+async function fetchData(tf = selectedTimeFrame, name = selectedSymbol) {
+  const r = await fetch(`/api/intraday?timeFrame=${tf}&name=${name}`);
+  if (!r.ok) throw new Error(`API error: ${r.status}`);
   return r.json();
 }
 
-async function refresh(firstLoad=false) {
-  if(firstLoad){ loaderEl.style.display='flex'; chartEl.style.display='none'; errorEl.style.display='none'; retryCount=0; loaderText.textContent='Loading chart data...'; retryCountEl.textContent=''; }
-  else { const tb=document.getElementById('toolbar'); tb.style.transition='box-shadow 0.3s ease'; tb.style.boxShadow='0 8px 32px rgba(74,85,104,0.4)'; setTimeout(()=>{tb.style.boxShadow='0 8px 32px rgba(0,0,0,0.15)'},500); }
+async function refresh(firstLoad = false) {
+  if (firstLoad) {
+    loaderEl.style.display = 'flex'; chartEl.style.display = 'none'; errorEl.style.display = 'none';
+    retryCount = 0; loaderText.textContent = 'Loading chart data...'; retryCountEl.textContent = '';
+  } else {
+    const tb = document.getElementById('toolbar');
+    tb.style.transition = 'box-shadow 0.3s ease'; tb.style.boxShadow = '0 8px 32px rgba(74,85,104,0.4)';
+    setTimeout(() => { tb.style.boxShadow = '0 8px 32px rgba(0,0,0,0.15)'; }, 500);
+  }
   try {
-    const data=await fetchData(selectedTimeFrame,selectedSymbol);
-    if(!chart) initChart();
+    const data = await fetchData(selectedTimeFrame, selectedSymbol);
+    if (!chart) initChart();
     updateChart(data);
-    loaderEl.style.display='none'; errorEl.style.display='none'; chartEl.style.display='block'; retryCount=0;
-    if(firstLoad) setTimeout(()=>{ if(chart) chart.resize(chartEl.clientWidth,chartEl.clientHeight); },50);
-  } catch(e) {
-    if(firstLoad&&retryCount<MAX_RETRIES){ retryCount++; loaderText.textContent='Connection failed. Retrying...'; retryCountEl.textContent=`Attempt ${retryCount} of ${MAX_RETRIES}`; setTimeout(()=>refresh(true),RETRY_DELAY); }
-    else if(firstLoad){ loaderEl.style.display='none'; chartEl.style.display='none'; errorEl.textContent=`Failed after ${MAX_RETRIES} attempts: ${e.message}`; errorEl.style.display='block'; retryCount=0; }
-    else { showApiErrorToast('API Error - Retrying...'); console.error('API update failed:',e.message); }
+    loaderEl.style.display = 'none'; errorEl.style.display = 'none'; chartEl.style.display = 'block'; retryCount = 0;
+    if (firstLoad) setTimeout(() => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); }, 50);
+  } catch (e) {
+    if (firstLoad && retryCount < MAX_RETRIES) {
+      retryCount++; loaderText.textContent = 'Connection failed. Retrying...'; retryCountEl.textContent = `Attempt ${retryCount} of ${MAX_RETRIES}`;
+      setTimeout(() => refresh(true), RETRY_DELAY);
+    } else if (firstLoad) {
+      loaderEl.style.display = 'none'; chartEl.style.display = 'none';
+      errorEl.textContent = `Failed after ${MAX_RETRIES} attempts: ${e.message}`; errorEl.style.display = 'block'; retryCount = 0;
+    } else { showApiErrorToast('API Error - Retrying...'); console.error('API update failed:', e.message); }
   }
 }
 
 function updateLiveStatus() {
-  if(toggleLiveCheckbox.checked&&chartInitialized){ if(!refreshInterval) refreshInterval=setInterval(()=>refresh(false),30000); }
-  else { if(refreshInterval){clearInterval(refreshInterval);refreshInterval=null;} }
+  if (toggleLiveCheckbox.checked && chartInitialized) { if (!refreshInterval) refreshInterval = setInterval(() => refresh(false), 30000); }
+  else { if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; } }
 }
 
-window.addEventListener('resize', ()=>{ if(chart) chart.resize(chartEl.clientWidth,chartEl.clientHeight); });
+window.addEventListener('resize', () => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); });
 
-document.addEventListener('visibilitychange', ()=>{
-  if(document.hidden){ saveChartState(); stopLiveClock(); if(refreshInterval){clearInterval(refreshInterval);refreshInterval=null;} }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { saveChartState(); stopLiveClock(); if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; } }
   else {
     startLiveClock(); connectSSE();
-    if(toggleLiveCheckbox.checked&&chartInitialized){ refresh(false); refreshInterval=setInterval(()=>refresh(false),30000); }
-    if(chart) setTimeout(()=>chart.resize(chartEl.clientWidth,chartEl.clientHeight),100);
+    if (toggleLiveCheckbox.checked && chartInitialized) { refresh(false); refreshInterval = setInterval(() => refresh(false), 30000); }
+    if (chart) setTimeout(() => chart.resize(chartEl.clientWidth, chartEl.clientHeight), 100);
   }
 });
 
-document.getElementById('refreshButton').addEventListener('click', ()=>{
-  if(refreshInterval){clearInterval(refreshInterval);refreshInterval=null;}
-  isFirstLoad=true; retryCount=0; errorEl.style.display='none'; loaderEl.style.display='flex'; chartEl.style.display='none';
-  loaderText.textContent='Loading chart data...'; retryCountEl.textContent=''; clearChart(); chartInitialized=false;
-  refresh(true).then(()=>{ if(toggleLiveCheckbox.checked) refreshInterval=setInterval(()=>refresh(false),30000); }).catch(()=>{});
+document.getElementById('refreshButton').addEventListener('click', () => {
+  if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+  isFirstLoad = true; retryCount = 0;
+  errorEl.style.display = 'none'; loaderEl.style.display = 'flex'; chartEl.style.display = 'none';
+  loaderText.textContent = 'Loading chart data...'; retryCountEl.textContent = '';
+  clearChart(); chartInitialized = false;
+  refresh(true).then(() => { if (toggleLiveCheckbox.checked) refreshInterval = setInterval(() => refresh(false), 30000); }).catch(() => {});
 });
 
 todayButton.addEventListener('click', zoomToToday);
-settingsButton.addEventListener('click', ()=>settingsMenu.classList.toggle('visible'));
-document.addEventListener('click', e=>{ if(!settingsButton.contains(e.target)&&!settingsMenu.contains(e.target)) settingsMenu.classList.remove('visible'); });
+settingsButton.addEventListener('click', () => settingsMenu.classList.toggle('visible'));
+document.addEventListener('click', e => { if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) settingsMenu.classList.remove('visible'); });
 </script>
 </body>
 </html>

@@ -1405,7 +1405,7 @@ public class TaskService {
 			}
 
 // Price action / Fibonacci analysis
-			PriceActionResult pa = priceActionService.analyze(index_CurrentPrice, last200,timeframe);
+			/*PriceActionResult pa = priceActionService.analyze(index_CurrentPrice, last200,timeframe);
 			indicator.setDailyPriceActionSupport(pa.getSr_nearestSupportsJson());
 			indicator.setDailyPriceActionResistance(pa.getSr_nearestResistancesJson());
 			indicator.setDailyPriceActionFlag(pa.isSr_priceActionTriggered());
@@ -1419,7 +1419,7 @@ public class TaskService {
 			indicator.setDaily_fibo_trend(pa.getFibo_trend());
 			indicator.setDaily_fibo_signal(pa.getFibo_signal());
 			indicator.setDaily_fibo_confidence(pa.getFibo_confidence());
-			indicator.setDaily_fibo_reason(pa.getFibo_reason());
+			indicator.setDaily_fibo_reason(pa.getFibo_reason());*/
 		} else {
 // Not enough data for price action analysis
 			indicator.setDailyPriceActionSupport(null);
@@ -2146,7 +2146,7 @@ public class TaskService {
 		List<PricesIndex> last200 = pricesList.subList(0, Math.min(200, pricesList.size()));
 		var analysis = priceActionService.analyze(index_CurrentPrice, last200,timeFrame);
 
-		indicator.setWeeklyPriceActionSupport(analysis.getSr_nearestSupportsJson());
+		/*indicator.setWeeklyPriceActionSupport(analysis.getSr_nearestSupportsJson());
 		indicator.setWeeklyPriceActionResistance(analysis.getSr_nearestResistancesJson());
 		indicator.setWeeklyPriceActionFlag(analysis.isSr_priceActionTriggered());
 
@@ -2162,7 +2162,7 @@ public class TaskService {
 		indicator.setWeekly_fibo_trend(analysis.getFibo_trend());
 		indicator.setWeekly_fibo_signal(analysis.getFibo_signal());
 		indicator.setWeekly_fibo_confidence(analysis.getFibo_confidence());
-		indicator.setWeekly_fibo_reason(analysis.getFibo_reason());
+		indicator.setWeekly_fibo_reason(analysis.getFibo_reason());*/
 
 		indicator.setOneweek("Y");
 		// Super Trend
