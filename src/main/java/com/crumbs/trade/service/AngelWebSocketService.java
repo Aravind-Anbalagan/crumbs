@@ -88,7 +88,7 @@ public class AngelWebSocketService {
                         String key      = exchange + "_" + token;
                         long rawPrice   = ltp.getLastTradedPrice();
 
-                        log.debug("RAW TICK | Key: {} | RawPrice: {}", key, rawPrice);
+                        //log.debug("RAW TICK | Key: {} | RawPrice: {}", key, rawPrice);
 
                         if (rawPrice == 0) {
                             log.warn("Ignoring zero LTP tick | {}", key);

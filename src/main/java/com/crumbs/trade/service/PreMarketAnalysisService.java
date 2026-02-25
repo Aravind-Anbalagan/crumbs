@@ -155,10 +155,10 @@ public class PreMarketAnalysisService {
         analysis.setMidPoint(midPoint);
         
         // Previous day data (already fetched by getPreMarketLTP method)
-        analysis.setCePrevHigh(selected.getCeHigh());
-        analysis.setCePrevLow(selected.getCeLow());
-        analysis.setPePrevHigh(selected.getPeHigh());
-        analysis.setPePrevLow(selected.getPeLow());
+        analysis.setCePrevHigh(selected.getCePrevHigh());
+        analysis.setCePrevLow(selected.getCePrevLow());
+        analysis.setPePrevHigh(selected.getPePrevHigh());
+        analysis.setPePrevLow(selected.getPePrevLow());
         analysis.setCeToken(selected.getCeToken().getToken());
         analysis.setPeToken(selected.getPeToken().getToken());
         return analysis;

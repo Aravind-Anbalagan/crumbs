@@ -72,4 +72,6 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     Indexes findByNameAndExchange(@Param("name") String name, @Param("exchange") String exchange);
 	
 	List<Indexes> findByNameInAndExchange(List<String> names,String exchange);
+	
+	Indexes findByToken(String token);
 }

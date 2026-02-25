@@ -1197,9 +1197,8 @@ public class StraddleIntradayService {
 		    JSONObject request,
 		    String token
 		) {
-
-		    int maxAttempts = 3;
-		    long delay = 2000; // 2 sec initial
+		    int maxAttempts = 5;        // ✅ increased from 3
+		    long delay = 3000;          // ✅ increased from 2000ms
 
 		    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
 
@@ -1208,29 +1207,33 @@ public class StraddleIntradayService {
 
 		            if (candles != null && candles.length() > 0) {
 		                if (attempt > 1) {
-		                    logger.info("Retry success for token {} on attempt {}", token, attempt);
+		                    logger.info("✅ Retry success for token {} on attempt {}/{}", 
+		                        token, attempt, maxAttempts);
 		                }
 		                return candles;
 		            }
 
-		            logger.warn("Empty candle response for token {} attempt {}", token, attempt);
+		            logger.warn("Empty candle response for token {} attempt {}/{}", 
+		                token, attempt, maxAttempts);
 
 		        } catch (Exception e) {
-		            logger.warn("Attempt {} failed for token {}: {}", attempt, token, e.getMessage());
+		            logger.warn("Attempt {}/{} failed for token {}: {}", 
+		                attempt, maxAttempts, token, e.getMessage());
 		        }
 
-		        // exponential backoff
-		        try {
-		            Thread.sleep(delay);
-		        } catch (InterruptedException ie) {
-		            Thread.currentThread().interrupt();
-		            return null;
+		        if (attempt < maxAttempts) {
+		            try {
+		                logger.info("Retrying token {} after {}ms...", token, delay);
+		                Thread.sleep(delay);
+		            } catch (InterruptedException ie) {
+		                Thread.currentThread().interrupt();
+		                return null;
+		            }
+		            delay *= 2; // 3s → 6s → 12s → 24s
 		        }
-
-		        delay *= 2; // 2s → 4s → 8s
 		    }
 
-		    logger.error("All retry attempts failed for token {}", token);
+		    logger.error("❌ All {} attempts exhausted for token {}", maxAttempts, token);
 		    return null;
 		}
 	
@@ -1306,14 +1309,15 @@ public class StraddleIntradayService {
 		LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(tradingDate);
 		
 		// Step 3: Working day BEFORE previous working day (for fromdate range)
-		LocalDate dayBeforePrevious = NSEWorkingDays.getLastWorkingDay(previousWorkingDay.minusDays(1));
+		LocalDate dayBeforePrevious = NSEWorkingDays.getLastWorkingDay(previousWorkingDay);
 		
 		// Step 4: Format date range
 		// From: Working day before target (at market close 15:30)
 		// To: Target day (at market close 15:30)
 		// Both dates MUST be working days
-		String fromDate = previousWorkingDay + " 15:30";
-		String toDate = tradingDate + " 15:30";
+		// ✅ AFTER:
+		String fromDate = dayBeforePrevious + " 15:30";   // Feb 23
+		String toDate   = previousWorkingDay + " 15:30";  // Feb 24 ← yesterday's candle
 		
 		
 		int successCount = 0;
@@ -1332,9 +1336,9 @@ public class StraddleIntradayService {
 					req.put("todate", toDate);
 					
 					// Add delay to avoid rate limiting
-					Thread.sleep(500);
 					
-					JSONArray candles = smartConnect.candleData(req);
+					
+					JSONArray candles = fetchCandleWithRetry(smartConnect, req, dto.getCeToken().getToken());
 					
 					if (candles != null && candles.length() > 0) {
 						JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
@@ -1378,9 +1382,9 @@ public class StraddleIntradayService {
 					req.put("todate", toDate);
 					
 					// Add delay to avoid rate limiting
-					Thread.sleep(500);
 					
-					JSONArray candles = smartConnect.candleData(req);
+					
+					JSONArray candles = fetchCandleWithRetry(smartConnect, req, dto.getPeToken().getToken());
 					
 					if (candles != null && candles.length() > 0) {
 						JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
@@ -2335,21 +2339,24 @@ public class StraddleIntradayService {
 	        
 	        logger.info("Successfully fetched pre-market prices for {} strikes", validPriceCount);
 
-	        // 7. Fetch previous day high/low (reuse existing method)
+	     // Step 7 — fetch prev high/low for ATM
 	        resetPrevDayDataIfNewDay();
-	        
+
 	        Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
-	        Map<String, BigDecimal> strategyLowCache = prevLowMap.get(name);
-	        
-	        if (strategyHighCache == null || strategyLowCache == null || 
+	        Map<String, BigDecimal> strategyLowCache  = prevLowMap.get(name);
+
+	        if (strategyHighCache == null || strategyLowCache == null ||
 	            strategyHighCache.isEmpty() || strategyLowCache.isEmpty()) {
-	            
-	            logger.info("Fetching previous day high/low for pre-market: {}", name);
+
 	            fetchPreviousDayHighLowForAllStrikes(strikeList, smartconnect, strategy);
 	        } else {
-	            logger.debug("Using cached previous day data for pre-market: {}", name);
 	            populatePrevDayDataFromCache(strikeList, name);
 	        }
+
+	        // ✅ Reset cache after pre-market use
+	        // So 9:15 intraday gets a fresh fetch for ALL strikes
+	        prevHighMap.remove(name);
+	        prevLowMap.remove(name);
 	        
 	        logger.info("✓ PRE-MARKET DATA FETCH COMPLETED: {} strikes ready", strikeList.size());
 	        

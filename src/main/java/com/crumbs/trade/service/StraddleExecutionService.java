@@ -30,7 +30,7 @@ public class StraddleExecutionService {
     }
     
     /**
-     * Pre-market execution (9:10 AM)
+     * Pre-market execution (8 AM)
      * Fetches data, analyzes, and saves to PreMarketAnalysis table
      * Does NOT save to StraddleIntraday
      */
