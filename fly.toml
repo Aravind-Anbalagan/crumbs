@@ -38,3 +38,4 @@ primary_region = "bom"
 [[mounts]]
   source      = "crumbs_data"
   destination = "/app/data"
+  name        = "data"
