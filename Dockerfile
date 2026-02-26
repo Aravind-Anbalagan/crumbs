@@ -41,9 +41,6 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Persist H2 file-based DB
-VOLUME /app/data
-
 # Copy fat JAR only (dependencies are bundled inside)
 COPY --from=build /app/target/crumbs.jar crumbs.jar
 
