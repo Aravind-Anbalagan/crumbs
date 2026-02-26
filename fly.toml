@@ -36,6 +36,6 @@ primary_region = "bom"
 
 # Persistent volume for H2 file DB
 [[mounts]]
-  source      = "crumbs_data"
+  source      = "data"
   destination = "/app/data"
   name        = "data"
