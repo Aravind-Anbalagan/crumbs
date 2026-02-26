@@ -1,41 +1,35 @@
-app            = "crumbs"
-primary_region = "bom"
+# fly.toml app configuration file for crumbs
+app            = 'crumbs'
+primary_region = 'bom'        # changed from iad → bom (Mumbai, closest to NSE)
 
 [build]
-  dockerfile = "Dockerfile"
 
 [env]
-  PORT                   = "8080"
-  TZ                     = "Asia/Kolkata"
+  TZ                     = "Asia/Kolkata"   # critical for 3:20 PM force exit
   SPRING_PROFILES_ACTIVE = "prod"
 
-[vm]
-  cpu_kind  = "shared"
-  cpus      = 1
-  memory_mb = 2048
+[[mounts]]
+  source      = 'data'
+  destination = '/app/data'
 
 [http_service]
   internal_port        = 8080
   force_https          = true
-  auto_stop_machines   = false
-  auto_start_machines  = false
-  min_machines_running = 1
-
-  [http_service.concurrency]
-    type       = "requests"
-    soft_limit = 25
-    hard_limit = 50
+  auto_stop_machines   = false   # critical — bot must never sleep
+  auto_start_machines  = false   # critical — bot must always be running
+  min_machines_running = 1       # always keep 1 machine running
+  processes            = ['app']
 
   # HTTP health check
   [[http_service.checks]]
-    interval     = "15s"
-    timeout      = "5s"
-    grace_period = "60s"
+    interval     = "30s"
+    timeout      = "10s"
+    grace_period = "120s"        # Java needs ~60s to start
     method       = "GET"
     path         = "/"
 
-# Persistent volume for H2 file DB
-[[mounts]]
-  source      = "data"
-  destination = "/app/data"
-  name        = "data"
+[[vm]]
+  memory     = '2gb'             # increased — Java needs headroom
+  cpu_kind   = 'shared'
+  cpus       = 1
+  memory_mb  = 2048
