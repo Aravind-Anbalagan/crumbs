@@ -1,6 +1,7 @@
 package com.crumbs.trade.repo;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -39,10 +40,10 @@ public interface PricesIndexRepo extends JpaRepository<PricesIndex, Long> {
 	 List<PricesIndex> findByNameAndTimeframeOrderByVolumeDesc(String name, String timeframe, Pageable pageable);
 	 List<PricesIndex> findByNameAndTimeframe(String name, String timeframe);
 	 
-		@Transactional
-		@Modifying
-		@Query("DELETE FROM PricesIndex p WHERE p.name = :name")
-		void deleteByName(@Param("name") String name);
+		
 		
 		List<PricesIndex> findByNameAndTimeframeOrderByIdDesc(String name, String timeframe, Pageable pageable);
+
+		void deleteByName(String name);
+	    Optional<PricesIndex> findByNameAndTimestamp(String name, String timestamp);
 }

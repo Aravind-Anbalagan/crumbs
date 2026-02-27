@@ -18,9 +18,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-import com.crumbs.trade.repo.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.cache.CandleCache;
 import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.dto.OHLC;
 import com.crumbs.trade.dto.StrategyDTO;
@@ -42,7 +44,13 @@ import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.ResultVix;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.Vix;
+import com.crumbs.trade.repo.IndexesRepo;
+import com.crumbs.trade.repo.PricesIndexRepo;
+import com.crumbs.trade.repo.ResultVixRepo;
+import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
+import com.crumbs.trade.utility.TimerLog;
 
 import jakarta.mail.internet.AddressException;
 import jakarta.transaction.Transactional;
@@ -104,6 +112,9 @@ public class ChartService {
 
     @Autowired
     StrategyRepo strategyRepo;
+    
+    @Autowired
+    CandleCache candleCache;
 
     private static final String MCX_SYMBOL = "CRUDEOIL";
 
@@ -287,12 +298,34 @@ public class ChartService {
 	/*
 	 * Update Candle Details
 	 */
-	public void updateCandleData(List<Candlestick> heikinAshiList, String candleType) {
-		if (heikinAshiList != null && !heikinAshiList.isEmpty()) {
-			heikinAshiList.stream().forEach(item -> {
-				updateCandle(item, candleType);
-			});
-		}
+ public void updateCandleData(List<Candlestick> list, String candleType) {
+	    if (list == null || list.isEmpty()) return;
+
+	    long t = TimerLog.start();
+	    List<Long> ids = list.stream().map(Candlestick::getId).collect(Collectors.toList());
+	    Map<Long, Vix> vixMap = vixRepo.findAllById(ids).stream()
+	            .collect(Collectors.toMap(Vix::getId, v -> v));
+	    TimerLog.end(logger, "findAllById for " + candleType, t);
+
+	    t = TimerLog.start();
+	    List<Vix> toUpdate = new ArrayList<>();
+	    for (Candlestick c : list) {
+	        Vix vix = vixMap.get(c.getId());
+	        if (vix == null) continue;
+	        switch (candleType.toUpperCase()) {
+	            case "PSAR"        -> vix.setPsar(c.getSignal());
+	            case "HEIKINACHI"  -> { vix.setHeikinachi(c.getSignal()); vix.setCandleType(c.getCandleType()); }
+	            case "MA"          -> { vix.setSmoothma(c.getSmoothMA()); vix.setMasignal(c.getMasignal()); }
+	            case "SUPER_TREND" -> { vix.setSuperTrend(c.getSuperTrend()); vix.setSupertrendSignal(c.getSuperTrendSignal()); }
+	            case "VWAP"        -> { vix.setVwap(c.getVwap()); vix.setVwapSignal(c.getSignal()); }
+	        }
+	        toUpdate.add(vix);
+	    }
+	    TimerLog.end(logger, "build update list for " + candleType, t);
+
+	    t = TimerLog.start();
+	    vixRepo.saveAll(toUpdate);
+	    TimerLog.end(logger, "saveAll " + candleType + " (" + toUpdate.size() + " records)", t);
 	}
 
 	public void updateCandle(Candlestick candleStick, String candleType) {
@@ -346,31 +379,114 @@ public class ChartService {
 		return null;
 	}
 
+	// ✅ Replace readCandle() with this
 	public void readCandle(Indexes indexes, String type, boolean testflag, String timeFrame, String name,
-			String fromDate, String toDate, String tableName) {
-		if (indexes != null) {
+	        String fromDate, String toDate, String tableName) {
+	    if (indexes == null) return;
 
-			JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
-			if (responseArray != null) {
-				responseArray.forEach(item -> {
+	    if ("HEIKIN_PSAR".equalsIgnoreCase(tableName)) {
+	        // ── Vix logic unchanged ──
+	        JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
+	        if (responseArray == null) return;
 
-					JSONArray ohlcArray = (JSONArray) item;
-					OHLC ohlc = getOHLC(ohlcArray);
-					if (ohlc != null) {
-						if("HEIKIN_PSAR".equalsIgnoreCase(tableName))
-						{
-							saveCandleData(ohlc, name);
-						}
-						else
-						{
-							saveCandleData_Index(ohlc, tableName,indexes.getExchange());
-						}
+	        List<Vix> batch = new ArrayList<>();
+	        responseArray.forEach(item -> {
+	            OHLC ohlc = getOHLC((JSONArray) item);
+	            if (ohlc != null) batch.add(buildVix(ohlc, name));
+	        });
+	        if (!batch.isEmpty()) vixRepo.saveAll(batch);
 
-					}
-				});
-			}
-		}
+	    } else {
+
+	        if (candleCache.isLoadedToday(name)) {
+	            // ✅ Cache hit — fetch latest 1 candle only from AngelOne
+	            logger.info("⚡ [CACHE] Hit for {} — updating latest candle only", name);
+	            updateLatestCandle(indexes, type, name);
+
+	        } else {
+	            // ✅ Cache miss — full fetch from AngelOne → cache only (no DB)
+	            logger.info("📦 [CACHE] Miss for {} — full fetch from AngelOne", name);
+
+	            long t = TimerLog.start();
+	            JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
+	            TimerLog.end(logger, "AngelOne API full fetch for " + name, t);
+
+	            if (responseArray == null) return;
+	            logger.info("📊 {} candles fetched for {}", responseArray.length(), name);
+
+	            t = TimerLog.start();
+	            List<PricesIndex> candles = new ArrayList<>();
+	            responseArray.forEach(item -> {
+	                OHLC ohlc = getOHLC((JSONArray) item);
+	                if (ohlc != null) candles.add(buildPricesIndex(ohlc, name, indexes.getExchange()));
+	            });
+	            TimerLog.end(logger, "Build in-memory list for " + name, t);
+
+	            // ✅ Cache only — NO DB save
+	            candleCache.loadAll(name, candles);
+	            logger.info("✅ [CACHE] {} candles loaded for {}", candles.size(), name);
+	        }
+	    }
 	}
+
+	// ✅ Fetch latest 1 candle from AngelOne (current 5 min window)
+	private void updateLatestCandle(Indexes indexes, String type, String name) {
+	    String from = getCurrentCandleTime("FROM");
+	    String to   = getCurrentCandleTime("TO");
+
+	    logger.info("🕯 [INCREMENTAL] Fetching latest candle for {} | from={} to={}", name, from, to);
+
+	    long t = TimerLog.start();
+	    JSONArray responseArray = getJsonDetails(indexes, type, false, from, to, "FIVE_MINUTE");
+	    TimerLog.end(logger, "AngelOne incremental fetch for " + name, t);
+
+	    if (responseArray == null || responseArray.isEmpty()) {
+	        logger.warn("⚠️ No candle returned for {} from={} to={}", name, from, to);
+	        return;
+	    }
+
+	    OHLC ohlc = getOHLC((JSONArray) responseArray.get(responseArray.length() - 1));
+	    if (ohlc == null) return;
+
+	    PricesIndex latest = buildPricesIndex(ohlc, name, indexes.getExchange());
+
+	    // ✅ Update cache only
+	    candleCache.addOrUpdateLatest(name, latest);
+	    logger.info("✅ [INCREMENTAL] Cache updated for {} @ {} | close={}", name, ohlc.getTimestamp(), ohlc.getClose());
+	}
+
+	// ✅ Build PricesIndex from OHLC
+	private PricesIndex buildPricesIndex(OHLC ohlc, String name, String exchange) {
+	    PricesIndex pi = new PricesIndex();
+	    pi.setTimestamp(formatTime(ohlc.getTimestamp()));
+	    pi.setClose(ohlc.getClose());
+	    pi.setHigh(ohlc.getHigh());
+	    pi.setOpen(ohlc.getOpen());
+	    pi.setLow(ohlc.getLow());
+	    pi.setName(name);
+	    pi.setVolume(ohlc.getVolume());
+	    pi.setRange(ohlc.getRange());
+	    pi.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
+	    pi.setExchange(exchange);
+	    return pi;
+	}
+
+	// ✅ Build Vix from OHLC
+	private Vix buildVix(OHLC ohlc, String name) {
+	    Vix vix = new Vix();
+	    vix.setTimestamp(ohlc.getTimestamp());
+	    vix.setClose(ohlc.getClose());
+	    vix.setHigh(ohlc.getHigh());
+	    vix.setOpen(ohlc.getOpen());
+	    vix.setLow(ohlc.getLow());
+	    vix.setName(name);
+	    vix.setVolume(ohlc.getVolume());
+	    vix.setRange(ohlc.getRange());
+	    vix.setType(taskService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
+	    return vix;
+	}
+
+	
 
 	/*
 	 * Save Candle Data

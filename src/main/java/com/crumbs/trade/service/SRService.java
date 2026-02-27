@@ -1,6 +1,7 @@
 package com.crumbs.trade.service;
 
 import com.crumbs.trade.builder.LevelBuilder;
+import com.crumbs.trade.cache.CandleCache;
 import com.crumbs.trade.dto.*;
 import com.crumbs.trade.entity.*;
 import com.crumbs.trade.repo.*;
@@ -18,6 +19,7 @@ import java.time.temporal.ChronoUnit;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.utility.NSEWorkingDays;
+import com.crumbs.trade.utility.TimerLog;
 import com.crumbs.trade.entity.Level;
 
 import jakarta.transaction.Transactional;
@@ -25,6 +27,7 @@ import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class SRService {
@@ -42,6 +45,7 @@ public class SRService {
     @Autowired LevelRepository levelRepo;
     @Autowired LevelBuilder levelBuilder;
     @Autowired PredictivePriceActionService predictivePriceActionService;
+    @Autowired CandleCache candleCache;
 
     private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
     private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
@@ -81,13 +85,21 @@ public class SRService {
 
     // ==================== CANDLE DATA ====================
 
+ // SRService.getCandleData()
     public List<PricesIndex> getCandleData(CandleRequestDto candleRequestDto, String name, String symbol) {
         Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
         if (indexes != null) {
-            chartService.readCandle(indexes, candleRequestDto.getType(), false,
-                    candleRequestDto.getTimeFrame(), candleRequestDto.getName(),
-                    candleRequestDto.getFromDate(), candleRequestDto.getToDate(), name);
-            return pricesIndexRepo.findAll();
+            chartService.readCandle(
+                    indexes,
+                    candleRequestDto.getType(),
+                    false,
+                    candleRequestDto.getTimeFrame(),
+                    name,                           // ✅ explicit name
+                    candleRequestDto.getFromDate(),
+                    candleRequestDto.getToDate(),
+                    name                            // ✅ tableName = name
+            );
+            return candleCache.get(name);           // ✅ always from cache
         }
         return null;
     }
@@ -275,40 +287,74 @@ public class SRService {
 
     public CandleDTO getPreviousDayCandle(String name, String exchange, String symbol) {
         String key = name + "|" + exchange + "|" + symbol;
-        return previousDayCache.computeIfAbsent(key,
-                k -> getPreviousOHLC("ONE_DAY", name, exchange, symbol));
+
+        // ✅ Return from cache if already loaded today
+        if (previousDayCache.containsKey(key)) {
+            logger.debug("⚡ [CACHE] Previous day candle hit for {}", name);
+            return previousDayCache.get(key);
+        }
+
+        // Fetch from AngelOne and cache it
+        CandleDTO candle = getPreviousOHLC("ONE_DAY", name, exchange, symbol);
+        previousDayCache.put(key, candle);
+        logger.info("✅ [CACHE] Previous day candle cached for {}", name);
+        return candle;
     }
 
     // ==================== INTRADAY ANALYSIS ====================
 
     public ChartDataDTO analyzeIntraday(String name, String timeFrame) {
-        ChartDataDTO dto = new ChartDataDTO();
-        pricesIndexRepo.deleteAll();
+        long total = TimerLog.start();
 
-        String symbol   = strategyRepo.findByName(name).getTradingsymbol();
+        long t = TimerLog.start();
+        Strategy strategy = strategyRepo.findByName(name);  // ✅ single fetch
+        String symbol   = strategy.getTradingsymbol();
         String exchange = getExchange(name);
-
-        // Step 1: candle timing
         CandleRequestDto candle = getCandleTiming(timeFrame, exchange);
+        candle.setName(name);                               // ✅ ensure name is set
+        TimerLog.end(logger, "getCandleTiming", t);
 
-        // Step 2: fetch candles
+        t = TimerLog.start();
         List<PricesIndex> candles = getCandleData(candle, name, symbol);
+        TimerLog.end(logger, "getCandleData", t);
+
+        if (candles == null || candles.isEmpty()) {
+            logger.warn("⚠️ No candles available for {}", name);
+            return null;
+        }
+
+        t = TimerLog.start();
         BigDecimal currentPrice = candles.get(candles.size() - 1).getClose();
+        PriceActionResult result = predictivePriceActionService.analyzePredictive(currentPrice, candles, timeFrame);
+        TimerLog.end(logger, "analyzePredictive", t);
 
-        // Step 3: S/R analysis
-        PriceActionResult priceActionResult =
-                predictivePriceActionService.analyzePredictive(currentPrice, candles, timeFrame);
+        ChartDataDTO dto = new ChartDataDTO();
+        dto.setSupportLevels(result.getSupportLevels());
+        dto.setResistanceLevels(result.getResistanceLevels());
 
-        dto.setSupportLevels(priceActionResult.getSupportLevels());
-        dto.setResistanceLevels(priceActionResult.getResistanceLevels());
-
-        // Previous day candle
+        t = TimerLog.start();
         dto.setPreviousDayCandle(getPreviousDayCandle(name, exchange, symbol));
+        TimerLog.end(logger, "getPreviousDayCandle", t);
 
-        // Candle list for chart
-        dto.setCandles(getcandleList());
+        dto.setCandles(toCandleList(candles));              // ✅ reuse in-memory list
 
+        TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
         return dto;
+    }
+
+    // ✅ Convert PricesIndex list to CandleDTO list (no DB call)
+    private List<CandleDTO> toCandleList(List<PricesIndex> pricesList) {
+        ZoneId istZone = ZoneId.of("Asia/Kolkata");
+        return pricesList.stream().map(p -> {
+            CandleDTO c = new CandleDTO();
+            c.setTime(Instant.parse(p.getTimestamp()).atZone(istZone).toEpochSecond());
+            c.setOpen(p.getOpen());
+            c.setHigh(p.getHigh());
+            c.setLow(p.getLow());
+            c.setClose(p.getClose());
+            c.setVolume(p.getVolume() != null ? p.getVolume() : BigDecimal.ZERO);
+            return c;
+        }).collect(Collectors.toList());
     }
 
     // ==================== SAVE LEVELS ====================
