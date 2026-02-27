@@ -1,10 +1,10 @@
-name: Fly VM Scheduler
+name: Railway VM Scheduler
 on:
   schedule:
-    # Trigger at 5:00 AM IST (23:30 UTC) → Actually starts ~8:00 AM IST
-    - cron: "30 23 * * *"
-    # Stop VM at 12:00 AM IST (18:30 UTC)
-    - cron: "30 18 * * *"
+    # Start at 8:00 AM IST (2:30 UTC) Mon-Fri
+    - cron: "30 2 * * 1-5"
+    # Stop at 12:00 AM IST (18:30 UTC) Mon-Fri
+    - cron: "30 18 * * 1-5"
   workflow_dispatch:
     inputs:
       action:
@@ -17,30 +17,36 @@ on:
           - stop
 
 jobs:
-  start-vm:
+  start-service:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'start') ||
-      (github.event_name == 'schedule' && github.event.schedule == '30 23 * * *')
+      (github.event_name == 'schedule' && github.event.schedule == '30 2 * * 1-5')
     steps:
-      - name: Start Fly.io VM
+      - name: Start Railway Service
         run: |
-          echo "Starting Fly.io VM..."
-          curl -s -X POST "https://api.machines.dev/v1/apps/crumbs/machines/81107ef9746418/start" \
-          -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
-          -H "Content-Type: application/json"
+          echo "Starting Railway service at 8:00 AM IST..."
+          curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+          -H "Authorization: Bearer ${{ secrets.RAILWAY_API_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "query": "mutation { serviceInstanceUpdate(input: { numReplicas: 1 }, environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\") }"
+          }'
           echo "Start request sent."
 
-  stop-vm:
+  stop-service:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'stop') ||
-      (github.event_name == 'schedule' && github.event.schedule == '30 18 * * *')
+      (github.event_name == 'schedule' && github.event.schedule == '30 18 * * 1-5')
     steps:
-      - name: Stop Fly.io VM
+      - name: Stop Railway Service
         run: |
-          echo "Stopping Fly.io VM..."
-          curl -s -X POST "https://api.machines.dev/v1/apps/crumbs/machines/81107ef9746418/stop" \
-          -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
-          -H "Content-Type: application/json"
+          echo "Stopping Railway service at 12:00 AM IST..."
+          curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+          -H "Authorization: Bearer ${{ secrets.RAILWAY_API_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "query": "mutation { serviceInstanceUpdate(input: { numReplicas: 0 }, environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\" ) }"
+          }'
           echo "Stop request sent."
