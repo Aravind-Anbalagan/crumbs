@@ -141,7 +141,7 @@ public class StraddleIntradayService {
             
 			//BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
 			String session = samco.getSamcoSession();
-			BigDecimal spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+			BigDecimal spotPrice = samco.getNifty50Price(session);
 			// VALIDATION: Check if spot price is valid
 			if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 				logger.error("Invalid spot price for {}: {}", name, spotPrice);
@@ -2276,7 +2276,7 @@ public class StraddleIntradayService {
 	        
 	        // 1. Get spot price
 	        String session = samco.getSamcoSession();
-	        BigDecimal spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+	        BigDecimal spotPrice = samco.getNifty50Price(session);
 	        
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 	            logger.error("Invalid spot price for {}: {}", name, spotPrice);

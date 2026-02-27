@@ -75,7 +75,8 @@ public class StrangleController {
 		LocalTime end = LocalTime.of(15, 30);
 
 		if (!now.isBefore(start) && !now.isAfter(end)) {
-			if (strategyRepo.findByName("STRANGLE").getActive().equals("Y")) {
+			if (strategyRepo.findByName("STRANGLE") != null
+					&& strategyRepo.findByName("STRANGLE").getActive().equals("Y")) {
 				strategyService.shortStrangleModified();
 			}
 		}
