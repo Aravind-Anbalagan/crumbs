@@ -141,7 +141,13 @@ public class StraddleIntradayService {
             
 			//BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
 			String session = samco.getSamcoSession();
-			BigDecimal spotPrice = samco.getNifty50Price(session);
+			BigDecimal spotPrice = null;
+			if ("NIFTY".equalsIgnoreCase(name)) {
+				spotPrice = samco.getNifty50Price(session);
+			} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+				spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+			}
+
 			// VALIDATION: Check if spot price is valid
 			if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 				logger.error("Invalid spot price for {}: {}", name, spotPrice);
