@@ -129,20 +129,24 @@
 	 <build>
         <finalName>crumbs</finalName> <!-- Creates crumbs.jar -->
 
-        <plugins>
-            <!-- Spring Boot Plugin -->
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>${spring-boot.version}</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal> <!-- makes it executable -->
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+	<plugins>
+		<!-- Spring Boot Plugin -->
+		<plugin>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-maven-plugin</artifactId>
+			<version>${spring-boot.version}</version>
+			<configuration>
+				<mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>  <!-- ✅ ADD THIS -->
+				<includeSystemScope>true</includeSystemScope>
+			</configuration>
+			<executions>
+				<execution>
+					<goals>
+						<goal>repackage</goal> <!-- makes it executable -->
+					</goals>
+				</execution>
+			</executions>
+		</plugin>
 
             <!-- Ensures proper Main-Class is set -->
             <plugin>
