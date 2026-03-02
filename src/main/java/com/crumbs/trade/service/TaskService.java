@@ -417,7 +417,8 @@ public class TaskService {
 	    try {
 	        String timeframe = candle.getTimeFrame();
 	        String stockName = index.getName();
-	      
+	        // ✅ Sleep FIRST before touching DB or API
+	        Thread.sleep(200); // reduced from 1000ms
 	        // ✅ FIX: Delete only THIS stock's data, not all stocks
 	        pricesIndexRepo.deleteByNameAndTimeframe(stockName, timeframe);
 	        
@@ -441,7 +442,7 @@ public class TaskService {
 	            requestObject.put("fromdate", fromDate);
 	            requestObject.put("todate", toDateStr);
 
-	            Thread.sleep(1000);
+	         
 	            JSONArray responseArray = safeCandleData(requestObject);
 
 	            if (responseArray != null) {
