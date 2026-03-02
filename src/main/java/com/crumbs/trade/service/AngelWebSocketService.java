@@ -1,14 +1,14 @@
 package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
-import java.util.HashSet;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +31,9 @@ import com.angelbroking.smartapi.smartstream.ticker.SmartStreamTicker;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class AngelWebSocketService {
@@ -64,6 +67,11 @@ public class AngelWebSocketService {
 
     @PostConstruct
     public void startWebSocket() {
+    	
+    	if (!isTradingDay()) {
+            log.info("Today is weekend. Skipping Angel WebSocket startup.");
+            return;
+        }
         try {
             log.info("Starting Angel WebSocket...");
 
@@ -319,5 +327,11 @@ public class AngelWebSocketService {
         } catch (Exception e) {
             log.error("Default subscription failed", e);
         }
+    }
+    
+    private boolean isTradingDay() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        DayOfWeek day = today.getDayOfWeek();
+        return !(day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY);
     }
 }

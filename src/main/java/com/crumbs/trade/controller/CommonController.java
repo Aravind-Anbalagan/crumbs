@@ -92,7 +92,7 @@ public class CommonController {
         }
     }
 
-    @Scheduled(cron = "0 10 9 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void clearScheduled() {
         try {
             log.info("Scheduled job: Delete All Data");

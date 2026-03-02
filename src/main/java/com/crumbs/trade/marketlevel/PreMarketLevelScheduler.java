@@ -21,7 +21,7 @@ public class PreMarketLevelScheduler {
     
  // ==================== PRE-MARKET ANALYSIS (8:00 AM) ====================
 
-    @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 30 8 * * MON", zone = "Asia/Kolkata")
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
     }

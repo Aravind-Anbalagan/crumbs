@@ -234,4 +234,29 @@ public class PSARCalculator {
 
 		return psarValues;
 	}
+	
+	public String computeSignal(List<PricesIndex> pricesDesc) {
+	    if (pricesDesc == null || pricesDesc.size() < 2) return null;
+
+	    // Reverse to chronological order
+	    List<Candle> candles = new ArrayList<>();
+	    for (int i = pricesDesc.size() - 1; i >= 0; i--) {
+	        PricesIndex p = pricesDesc.get(i);
+	        candles.add(new Candle(p.getOpen(), p.getHigh(), p.getLow(), p.getClose(),
+	                p.getTimestamp(), p.getCurrentprice(), BigDecimal.ZERO, p.getName()));
+	    }
+
+	    List<Candle> psarCandles = calculatePSAR(candles);
+	    if (psarCandles.size() < 2) return null;
+
+	    int last = psarCandles.size() - 1;
+	    String curr = getType(psarCandles.get(last));
+	    String prev = getType(psarCandles.get(last - 1));
+
+	    return curr.equals(prev) ? curr : "FIRST " + curr;
+	}
+
+	private String getType(Candle c) {
+	    return c.psarPrice.compareTo(c.currentprice) > 0 ? "SELL" : "BUY";
+	}
 }

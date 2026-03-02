@@ -175,4 +175,24 @@ public class HeikinAshiCalculator {
 
         return heikinAshiCandles;
     }
+    
+    public String computeSignal(List<PricesIndex> pricesDesc) {
+        if (pricesDesc == null || pricesDesc.size() < 2) return null;
+
+        // allData is DESC (newest first) — reverse to chronological for HA calc
+        List<Candle> candles = new ArrayList<>();
+        for (int i = pricesDesc.size() - 1; i >= 0; i--) {
+            PricesIndex p = pricesDesc.get(i);
+            candles.add(new Candle(p.getOpen(), p.getHigh(), p.getLow(), p.getClose(),
+                    p.getTimestamp(), p.getCurrentprice()));
+        }
+
+        List<Candle> haCandles = calculateHeikinAshi(candles);
+
+        int last = haCandles.size() - 1;
+        String curr = getPriceType(haCandles.get(last).open, haCandles.get(last).close);
+        String prev = getPriceType(haCandles.get(last - 1).open, haCandles.get(last - 1).close);
+
+        return curr.equals(prev) ? curr : "FIRST " + curr;
+    }
 }
