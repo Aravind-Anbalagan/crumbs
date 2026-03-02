@@ -196,18 +196,16 @@ public class ChartService {
 
 	}
 
-	public String getCurrentCandleTime(String input) {
-		LocalDateTime now = LocalDateTime.now();
-		CandleRange range = getLastFiveMinuteRange(now);
-		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+	public String getCurrentCandleTime(String input, int intervalMinutes) {
+	    LocalDateTime now = LocalDateTime.now();
+	    int minute = (now.getMinute() / intervalMinutes) * intervalMinutes;
+	    LocalDateTime to = intervalMinutes >= 60
+	        ? now.withMinute(0).withSecond(0).withNano(0)
+	        : now.withMinute(minute).withSecond(0).withNano(0);
+	    LocalDateTime from = to.minusMinutes(intervalMinutes);
 
-		if ("FROM".equalsIgnoreCase(input)) {
-			return range.getFrom().format(formatter);
-		} else if ("TO".equalsIgnoreCase(input)) {
-			return range.getTo().format(formatter);
-		}
-		return null;
-
+	    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+	    return "FROM".equalsIgnoreCase(input) ? from.format(formatter) : to.format(formatter);
 	}
     public static CandleRange getLastFiveMinuteRange(LocalDateTime time) {
         // Round down to nearest multiple of 5
@@ -397,15 +395,15 @@ public class ChartService {
 	        if (!batch.isEmpty()) vixRepo.saveAll(batch);
 
 	    } else {
-
-	        if (candleCache.isLoadedToday(name)) {
+	    	String cacheKey = name + "_" + timeFrame; // ✅ e.g. "NIFTY_ONE_MINUTE"
+	        if (candleCache.isLoadedToday(cacheKey)) {
 	            // ✅ Cache hit — fetch latest 1 candle only from AngelOne
-	            logger.info("⚡ [CACHE] Hit for {} — updating latest candle only", name);
-	            updateLatestCandle(indexes, type, name);
+	        	 logger.info("⚡ [CACHE] Hit for {} — updating latest candle only", cacheKey);
+	        	    updateLatestCandle(indexes, type, cacheKey, timeFrame);
 
 	        } else {
 	            // ✅ Cache miss — full fetch from AngelOne → cache only (no DB)
-	            logger.info("📦 [CACHE] Miss for {} — full fetch from AngelOne", name);
+	        	logger.info("📦 [CACHE] Miss for {} — full fetch from AngelOne", cacheKey);
 
 	            long t = TimerLog.start();
 	            JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
@@ -423,36 +421,29 @@ public class ChartService {
 	            TimerLog.end(logger, "Build in-memory list for " + name, t);
 
 	            // ✅ Cache only — NO DB save
-	            candleCache.loadAll(name, candles);
-	            logger.info("✅ [CACHE] {} candles loaded for {}", candles.size(), name);
+	            candleCache.loadAll(cacheKey, candles);
+	            logger.info("✅ [CACHE] {} candles loaded for {}", candles.size(), cacheKey);
 	        }
 	    }
 	}
 
 	// ✅ Fetch latest 1 candle from AngelOne (current 5 min window)
-	private void updateLatestCandle(Indexes indexes, String type, String name) {
-	    String from = getCurrentCandleTime("FROM");
-	    String to   = getCurrentCandleTime("TO");
+	private void updateLatestCandle(Indexes indexes, String type, String cacheKey, String timeFrame) {
+	    int intervalMinutes = SRService.TimeFrame.valueOf(timeFrame).getCandleMinutes();
+	    String from = getCurrentCandleTime("FROM", intervalMinutes);
+	    String to   = getCurrentCandleTime("TO",   intervalMinutes);
 
-	    logger.info("🕯 [INCREMENTAL] Fetching latest candle for {} | from={} to={}", name, from, to);
+	    logger.info("🕯 [INCREMENTAL] Fetching latest candle for {} | from={} to={}", cacheKey, from, to);
 
-	    long t = TimerLog.start();
-	    JSONArray responseArray = getJsonDetails(indexes, type, false, from, to, "FIVE_MINUTE");
-	    TimerLog.end(logger, "AngelOne incremental fetch for " + name, t);
+	    JSONArray responseArray = getJsonDetails(indexes, type, false, from, to, timeFrame); // ✅ not hardcoded
 
-	    if (responseArray == null || responseArray.isEmpty()) {
-	        logger.warn("⚠️ No candle returned for {} from={} to={}", name, from, to);
-	        return;
-	    }
+	    if (responseArray == null || responseArray.isEmpty()) return;
 
 	    OHLC ohlc = getOHLC((JSONArray) responseArray.get(responseArray.length() - 1));
 	    if (ohlc == null) return;
 
-	    PricesIndex latest = buildPricesIndex(ohlc, name, indexes.getExchange());
-
-	    // ✅ Update cache only
-	    candleCache.addOrUpdateLatest(name, latest);
-	    logger.info("✅ [INCREMENTAL] Cache updated for {} @ {} | close={}", name, ohlc.getTimestamp(), ohlc.getClose());
+	    PricesIndex latest = buildPricesIndex(ohlc, cacheKey, indexes.getExchange());
+	    candleCache.addOrUpdateLatest(cacheKey, latest); // ✅
 	}
 
 	// ✅ Build PricesIndex from OHLC

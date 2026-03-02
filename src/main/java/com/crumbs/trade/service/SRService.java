@@ -99,7 +99,9 @@ public class SRService {
                     candleRequestDto.getToDate(),
                     name                            // ✅ tableName = name
             );
-            return candleCache.get(name);           // ✅ always from cache
+            String cacheKey = name + "_" + candleRequestDto.getTimeFrame();
+            return candleCache.get(cacheKey); // ✅// ✅ always from cache
+                        
         }
         return null;
     }
