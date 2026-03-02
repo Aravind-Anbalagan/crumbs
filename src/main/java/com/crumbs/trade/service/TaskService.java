@@ -423,7 +423,7 @@ public class TaskService {
 	        
 	        Indexes indexes = indexesRepo.findByNameAndSymbol(stockName, index.getSymbol());
 
-	        JSONObject jsonObject = smartConnect.getLTP(index.getExchange(), index.getSymbol(), index.getToken());
+	        JSONObject jsonObject = getLTPWithRetry(smartConnect, index.getExchange(), index.getSymbol(), index.getToken());
 	        if (jsonObject != null) {
 	            BigDecimal index_CurrentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
 	            BigDecimal index_OpenPrice = new BigDecimal(String.valueOf(jsonObject.get("open")));
@@ -3653,4 +3653,33 @@ public class TaskService {
 	    // ❌ removed executor.shutdown()
 	}
 
+	private JSONObject getLTPWithRetry(SmartConnect smartConnect, String exchange, String symbol, String token) {
+	    int maxAttempts = 5;
+	    long backoff = 1000;
+
+	    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+	        try {
+	            JSONObject jsonObject = smartConnect.getLTP(exchange, symbol, token);
+	            if (jsonObject != null) {
+	                return jsonObject;
+	            }
+	            logger.warn("LTP returned null for {} (attempt {}/{}), retrying in {} ms",
+	                    symbol, attempt, maxAttempts, backoff);
+	        } catch (Exception e) {
+	            logger.warn("LTP error for {} (attempt {}/{}): {}, retrying in {} ms",
+	                    symbol, attempt, maxAttempts, e.getMessage(), backoff);
+	        }
+
+	        try {
+	            Thread.sleep(backoff);
+	        } catch (InterruptedException ie) {
+	            Thread.currentThread().interrupt();
+	            return null;
+	        }
+	        backoff *= 2; // exponential backoff: 1s → 2s → 4s → 8s → 16s
+	    }
+
+	    logger.error("LTP failed for {} after {} attempts — skipping", symbol, maxAttempts);
+	    return null;
+	}
 }
