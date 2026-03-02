@@ -254,10 +254,6 @@ public class TaskService {
 		if (timeId == 4L) {
 			indicatorRepo.deleteAll();
 		}
-		
-        pricesIndexRepo.deleteAll();
-        priceHeikinashiIndexRepo.deleteAll();
-        psarIndexRepo.deleteAll();
 		// Update Volume
 		// indexesRepo.updateVolume(null);
 		// volumeService.checkVolume();
@@ -419,11 +415,7 @@ public class TaskService {
 	        String stockName = index.getName();
 	        // ✅ Sleep FIRST before touching DB or API
 	        Thread.sleep(200); // reduced from 1000ms
-	        // ✅ FIX: Delete only THIS stock's data, not all stocks
-	        pricesIndexRepo.deleteByNameAndTimeframe(stockName, timeframe);
-	        
-	        Indexes indexes = indexesRepo.findByNameAndSymbol(stockName, index.getSymbol());
-
+	      
 	        JSONObject jsonObject = getLTPWithRetry(smartConnect, index.getExchange(), index.getSymbol(), index.getToken());
 	        if (jsonObject != null) {
 	            BigDecimal index_CurrentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
@@ -473,18 +465,18 @@ public class TaskService {
 	                    pricesList.add(prices);
 	                });
 
-	                pricesIndexRepo.saveAll(pricesList);
+	               
 	                //pricesIndexRepo.flush(); // ✅ Force commit immediately
 
+	             // ✅ Replace volume method calls with:
 	                if ("HOURLY".equalsIgnoreCase(candle.getName())) {
-	                    getHourlyVolumeData(timeframe, index, index_CurrentPrice, smartConnect, candle);
+	                    getHourlyVolumeData(timeframe, index, index_CurrentPrice, smartConnect, candle, pricesList);
 	                } else if ("DAY".equalsIgnoreCase(candle.getName())) {
 	                    getDayVolumeData(timeframe, index, index_CurrentPrice, smartConnect, candle,
-	                            index_OpenPrice, optionNameList,sectorMap);
+	                            index_OpenPrice, optionNameList, sectorMap, pricesList);
 	                }
 	                
-	                // ✅ Delete only THIS stock's data after processing
-	                pricesIndexRepo.deleteByNameAndTimeframe(stockName, timeframe);
+	          
 
 	            } else {
 	                logger.info("Unable to fetch candle data for {}", stockName);
@@ -826,19 +818,15 @@ public class TaskService {
 	private void getWeeklyCandleData(Indexes index, SmartConnect smartConnect, Candle candle)
 			throws IOException, SmartAPIException, ParseException {
 
-		// Delete only existing data for this index to avoid wiping other threads’ work
-		pricesIndexRepo.deleteByName(index.getName());
+		
 
-		List<PricesIndex> pricesList = fetchWeeklyPrices(index, smartConnect, candle);
-
-		// Save prices to DB (thread-safe since per-index)
-		pricesIndexRepo.saveAll(pricesList);
+		 List<PricesIndex> pricesList = fetchWeeklyPrices(index, smartConnect, candle);
+		
 
 		// Pass the data in-memory to avoid race conditions
-		getWeeklyVolumeData("WEEK", index, getCurrentPrice(pricesList), smartConnect, candle, getOpenPrice(pricesList),
-				pricesList);
-		//Delete once work is done
-		pricesIndexRepo.deleteByName(index.getName());
+		getWeeklyVolumeData("WEEK", index, getCurrentPrice(pricesList), smartConnect, candle,
+	            getOpenPrice(pricesList), pricesList);
+		
 	}
 
 	
@@ -1044,17 +1032,16 @@ public class TaskService {
 	}
 
 	public void getHourlyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
-			SmartConnect smartConnect, Candle candle) throws IOException, SmartAPIException {
+			SmartConnect smartConnect, Candle candle,List<PricesIndex> pricesList) throws IOException, SmartAPIException {
 
 		String name = indexes.getName();
 		String timeframe = timeFrame;
 
-		// ✅ Fetch only hourly records for this index
-		List<PricesIndex> pricesList = pricesIndexRepo.findByNameAndTimeframe(name, timeframe);
+		
 		if (pricesList == null || pricesList.isEmpty()) {
-			logger.info("No hourly data found for {} / {}", name, timeframe);
-			return;
-		}
+	        logger.info("No hourly data found for {} / {}", name, timeframe);
+	        return;
+	    }
 
 		// Last record for CPR or Open/Close
 		PricesIndex lastRecord = pricesList.get(pricesList.size() - 1);
@@ -1100,8 +1087,21 @@ public class TaskService {
 		indicator.setTradingSymbol(indexes.getSymbol());
 		indicator.setCreatedDate(LocalDateTime.now());
 		
+	
+		
+		indicator.setCpr(cprData);
+		indicator.setCurrentPrice(index_CurrentPrice);
+		indicator.setExecutedPrice(index_CurrentPrice);
+		
+		// Support/Resistance signal
+		indicator = checkForHourlySignal(indicator, supportList, resistanceList, index_CurrentPrice,
+				new BigDecimal(avgRange));
+
+		// ✅ Add this in getHourlyVolumeData before calling computeSignal:
+		List<PricesIndex> pricesDesc = new ArrayList<>(pricesList);
+		Collections.reverse(pricesDesc); // newest first for HA/PSAR calc
 		// ✅ FIX: Pass timeframe to getSignal_eq to avoid fetching wrong data
-		List<PricesIndex> last3h = pricesList.subList(0, Math.min(3, pricesList.size()));
+		List<PricesIndex> last3h = pricesDesc.subList(0, Math.min(3, pricesDesc.size()));
 		if (last3h.size() >= 3) {
 		    List<Integer> highList = last3h.stream()
 		        .map(p -> p.getHigh().intValue())
@@ -1114,23 +1114,14 @@ public class TaskService {
 		    indicator.setLast3HourCandleHigh(highList.toString());
 		    indicator.setLast3Hourcandlelow(lowList.toString());
 		}
+		indicator.setHeikinAshiHourly(heikinAshiCalculator.computeSignal(pricesDesc));
+		indicator.setPsarFlagHourly(psarCalculator.computeSignal(pricesDesc));
 		
-		indicator.setCpr(cprData);
-		indicator.setCurrentPrice(index_CurrentPrice);
-		indicator.setExecutedPrice(index_CurrentPrice);
-		
-		// Support/Resistance signal
-		indicator = checkForHourlySignal(indicator, supportList, resistanceList, index_CurrentPrice,
-				new BigDecimal(avgRange));
-
-		// Heikin-Ashi and PSAR
-		indicator.setHeikinAshiHourly(heikinAshiCalculator.computeSignal(pricesList));
-		indicator.setPsarFlagHourly(psarCalculator.computeSignal(pricesList));
-		
-		// Stop loss / buy-sell SL
-		indicator.setHourlysellsl(convertStringToList(indicator.getLast3HourCandleHigh(), "SELL"));
-		indicator.setHourlybuysl(convertStringToList(indicator.getLast3Hourcandlelow(), "BUY"));
-		
+		// ✅ Guard before calling convertStringToList
+		if (indicator.getLast3HourCandleHigh() != null && indicator.getLast3Hourcandlelow() != null) {
+		    indicator.setHourlysellsl(convertStringToList(indicator.getLast3HourCandleHigh(), "SELL"));
+		    indicator.setHourlybuysl(convertStringToList(indicator.getLast3Hourcandlelow(), "BUY"));
+		}
 		boolean changed = false;
 
 		if ("FIRST BUY".equalsIgnoreCase(indicator.getHeikinAshiHourly()) &&
@@ -1290,16 +1281,16 @@ public class TaskService {
 	// Get Day Volume
 
 	public void getDayVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
-	        SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice, List<String> optionNameList, Map<String, String> sectorMap)
+	        SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice, List<String> optionNameList, Map<String, String> sectorMap,
+	        List<PricesIndex> pricesList)
 	        throws IOException, SmartAPIException {
 
 	    String name = indexes.getName();
 	    String timeframe = timeFrame;
 
-	    // ✅ ONE fetch for everything — 200 records covers all downstream needs
-	    Pageable page200 = PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "id"));
-	    List<PricesIndex> allData = pricesIndexRepo.findByNameAndTimeframe(name, timeframe, page200);
-
+	 // ✅ API returns oldest→newest, reverse for DESC (newest first)
+	    List<PricesIndex> allData = new ArrayList<>(pricesList);
+	    Collections.reverse(allData);
 	    if (allData == null || allData.isEmpty()) {
 	        logger.info("No price rows found for {} / {} - skipping volume/indicator calc", name, timeframe);
 	        return;
