@@ -2,251 +2,241 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Chart with Manual Load & State Persistence</title>
+  <title>Chart</title>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <script>
     if (!sessionStorage.getItem('isLoggedIn')) { window.location.href = '/'; }
   </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
+    *, *::before, *::after { box-sizing: border-box; }
     html, body, #container {
-      margin: 0; padding: 0; width: 100vw; height: 100vh; position: relative;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-        Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: linear-gradient(135deg, #2c3e50 0%, #4a5568 100%);
-      color: #333; overflow: hidden;
+      color: #333;
     }
     #chart {
+      position: absolute; top: 16px; left: 16px;
       width: calc(100% - 32px); height: calc(100% - 32px);
-      margin: 16px; display: none; border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3); background: #ffffff;
+      display: none; border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3); background: #fff;
     }
     #chart.drawing-mode { cursor: crosshair; }
     #loader {
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      background: rgba(255,255,255,0.95); z-index: 10; border-radius: 12px; gap: 16px;
+      position: absolute; inset: 0; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.95); z-index: 10; gap: 16px;
     }
-    .spinner { border: 6px solid #e0e0e0; border-top: 6px solid #4a5568; border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; }
+    .spinner {
+      border: 6px solid #e0e0e0; border-top-color: #4a5568;
+      border-radius: 50%; width: 48px; height: 48px;
+      animation: spin 1s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #loaderText { font-size: 15px; font-weight: 600; color: #4a5568; text-align: center; }
-    #retryCount { font-size: 13px; color: #666; margin-top: -8px; }
+    #loaderText { font-size: 15px; font-weight: 600; color: #4a5568; }
+    #retryCount { font-size: 13px; color: #666; }
     #error {
-      position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      position: absolute; top: 40%; left: 50%; transform: translate(-50%,-50%);
       background: #ffe6e6; color: #cc0000; padding: 20px 30px; border-radius: 12px;
       font-weight: 600; display: none; z-index: 20; max-width: 80vw; text-align: center;
-      font-size: 16px; box-shadow: 0 4px 12px rgba(204,0,0,0.3);
+      box-shadow: 0 4px 12px rgba(204,0,0,0.3);
     }
     #apiErrorToast {
       position: absolute; top: 100px; left: 50%; transform: translateX(-50%);
-      background: rgba(239,68,68,0.95); color: white; padding: 14px 24px;
+      background: rgba(239,68,68,0.95); color: #fff; padding: 14px 24px;
       border-radius: 10px; font-weight: 600; display: none; z-index: 40; font-size: 14px;
       box-shadow: 0 8px 24px rgba(239,68,68,0.4); backdrop-filter: blur(10px);
     }
     #apiErrorToast.show { display: block; }
     #apiErrorToast.fade-out { animation: fadeOut 0.5s ease forwards; }
-    @keyframes fadeOut { from{opacity:1;transform:translateX(-50%) translateY(0)} to{opacity:0;transform:translateX(-50%) translateY(-20px)} }
+    @keyframes fadeOut {
+      from { opacity:1; transform:translateX(-50%) translateY(0); }
+      to   { opacity:0; transform:translateX(-50%) translateY(-20px); }
+    }
     #toolbar {
-      position: absolute; top: 24px; left: 50%; transform: translateX(-50%); z-index: 31;
-      background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 12px;
-      padding: 14px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 31; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 14px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
       display: flex; gap: 20px; align-items: center; font-size: 14px;
       user-select: none; max-width: 90vw; border: 1px solid rgba(255,255,255,0.3);
     }
-    #toolbar .center-group { display: flex; gap: 20px; align-items: center; }
-    #toolbar .right-group  { display: flex; gap: 12px; align-items: center; }
-    #toolbar label { margin-right: 8px; font-weight: 500; color: #444; height: 24px; display: flex; align-items: center; }
+    #toolbar .group { display: flex; gap: 12px; align-items: center; }
+    #toolbar label { font-weight: 500; color: #444; white-space: nowrap; }
     #toolbar select {
       font-size: 13px; padding: 6px 12px; border-radius: 8px; min-width: 110px; height: 32px;
-      cursor: pointer; transition: all 0.3s ease; font-weight: 500; color: #444;
-      border: 2px solid #e0e0e0; background: white;
+      cursor: pointer; font-weight: 500; color: #444; border: 2px solid #e0e0e0; background: #fff;
+      transition: border-color .2s;
     }
-    #toolbar select:hover, #toolbar button:hover,
-    #toolbar select:focus, #toolbar button:focus {
-      outline: none; border-color: #4a5568; box-shadow: 0 0 0 3px rgba(74,85,104,0.1); transform: translateY(-1px);
+    #toolbar select:focus { outline: none; border-color: #4a5568; }
+    .tb-btn {
+      background: linear-gradient(135deg, #4a5568, #2d3748); color: #fff;
+      border: none; font-weight: 600; padding: 8px 18px; border-radius: 8px;
+      cursor: pointer; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.2);
+      white-space: nowrap; transition: transform .2s, box-shadow .2s;
     }
-    #refreshButton, #settingsButton, #todayButton {
-      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-      color: white; border: none; font-weight: 600; min-width: 100px;
-      padding: 8px 18px; border-radius: 8px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 6px;
-      user-select: none; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px;
-    }
-    #todayButton { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); min-width: 80px; }
-    #refreshButton:hover, #settingsButton:hover, #todayButton:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .tb-btn.green { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    .tb-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.3); }
     #settingsDropdown { position: absolute; top: 24px; left: 24px; z-index: 30; user-select: none; }
     #settingsMenu {
       display: none; position: absolute; top: 48px; left: 0;
       background: rgba(255,255,255,0.98); backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.3); border-radius: 12px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.15); padding: 16px 24px;
-      min-width: 280px; font-size: 13px; color: #333; max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 12px 40px rgba(0,0,0,.15); padding: 16px 24px;
+      min-width: 290px; font-size: 13px; color: #333; max-height: 80vh; overflow-y: auto;
     }
-    #settingsMenu.visible { display: block; animation: slideDown 0.3s ease; }
-    @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
-    .settings-section-title {
+    #settingsMenu.open { display: block; animation: slideDown .25s ease; }
+    @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+    .sec-title {
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
-      color: #9ca3af; margin: 14px 0 8px 0; padding-bottom: 4px;
-      border-bottom: 1px solid #f0f0f0;
+      color: #9ca3af; margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #f0f0f0;
     }
-    .settings-section-title:first-child { margin-top: 0; }
-    #settingsMenu label { display: flex; align-items: center; margin-bottom: 8px; cursor: pointer; padding: 5px 6px; border-radius: 6px; gap: 10px; }
-    #settingsMenu label:hover { background: rgba(74,85,104,0.08); }
-    #settingsMenu label .line-dot {
-      width: 12px; height: 3px; border-radius: 2px; flex-shrink: 0;
+    .sec-title:first-child { margin-top: 0; }
+    #settingsMenu label {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+      padding: 5px 6px; border-radius: 6px; cursor: pointer;
     }
-    #settingsMenu input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: #4a5568; flex-shrink: 0; margin: 0; }
-    #resetButton, #fitButton {
-      display: block; width: 100%; padding: 10px 0; font-size: 14px;
-      background: #f4f6f8; border: 2px solid #e0e0e0; border-radius: 10px;
-      cursor: pointer; font-weight: 600; color: #444; margin-top: 8px; transition: all 0.25s ease;
+    #settingsMenu label:hover { background: rgba(74,85,104,.07); }
+    .line-dot { width: 14px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+    #settingsMenu input[type="checkbox"] {
+      width: 16px; height: 16px; cursor: pointer; accent-color: #4a5568; margin: 0; flex-shrink: 0;
     }
-    #uncheckAllButton {
-      display: block; width: 100%; padding: 10px 0; font-size: 14px;
-      background: #fff3e0; border: 2px solid #ffb74d; border-radius: 10px;
-      cursor: pointer; font-weight: 600; color: #e65100; margin-top: 8px; transition: all 0.25s ease;
+    .sr-count { font-size: 10px; color: #9ca3af; margin-left: auto; }
+    .conf-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; margin: 8px 0 6px 6px; }
+    .conf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px; }
+    .conf-chip { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; margin: 0; }
+    .conf-chip:hover { background: rgba(74,85,104,.07); }
+    .conf-chip input { width: 14px; height: 14px; margin: 0; flex-shrink: 0; cursor: pointer; accent-color: #4a5568; }
+    .chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .chip.ABSOLUTE { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
+    .chip.HIGH     { background:#fff7ed; color:#c2410c; border:1px solid #fdba74; }
+    .chip.MODERATE { background:#fefce8; color:#a16207; border:1px solid #fde047; }
+    .chip.LOW      { background:#f0fdf4; color:#15803d; border:1px solid #86efac; }
+    .chip.UNTESTED { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
+    .set-btn {
+      display: block; width: 100%; padding: 9px 0; font-size: 13px;
+      border-radius: 9px; cursor: pointer; font-weight: 600; margin-top: 7px; transition: .2s;
     }
-    #fitButton { background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); color: white; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-    #resetButton:hover { background: #e0e0e0; transform: translateY(-1px); }
-    #uncheckAllButton:hover { background: #ffe0b2; }
-    #fitButton:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
-    #dynamicLayersContainer { /* populated by JS */ }
-    /* ── Strength filter chips ───────────────────────────────────── */
-    .sr-filter-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin: 8px 0 6px 6px; }
-    .sr-strength-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
-    .sr-strength-chip { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; margin: 0; }
-    .sr-strength-chip:hover { background: rgba(74,85,104,0.08); }
-    .sr-strength-chip input[type="checkbox"] { width: 14px; height: 14px; margin: 0; flex-shrink: 0; }
-    .chip { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.3px; }
-    .chip.critical { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .chip.strong   { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
-    .chip.moderate { background: #fefce8; color: #a16207; border: 1px solid #fde047; }
-    .chip.weak     { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
-    .sr-count-badge { font-size: 10px; color: #9ca3af; font-weight: 500; margin-left: auto; }
+    #btnUncheckAll { background:#fff3e0; border:2px solid #ffb74d; color:#e65100; }
+    #btnReset      { background:#f4f6f8; border:2px solid #e0e0e0; color:#444; }
+    #btnFit        { background:linear-gradient(135deg,#4a5568,#2d3748); border:none; color:#fff; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+    #btnUncheckAll:hover { background:#ffe0b2; }
+    #btnReset:hover      { background:#e0e0e0; }
+    #btnFit:hover        { box-shadow:0 6px 20px rgba(0,0,0,.3); transform:translateY(-1px); }
     #drawingTools {
       position: absolute; top: 24px; right: 24px; z-index: 30;
-      background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 12px;
-      padding: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      display: flex; gap: 8px; border: 1px solid rgba(255,255,255,0.3); align-items: center;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 10px; box-shadow: 0 8px 32px rgba(0,0,0,.15);
+      display: flex; gap: 8px; align-items: center;
     }
     .draw-btn {
-      background: white; border: 2px solid #e0e0e0; border-radius: 8px;
-      width: 40px; height: 40px; cursor: pointer; display: flex;
-      align-items: center; justify-content: center; transition: all 0.2s ease;
-      font-size: 20px; font-weight: bold; color: #444; user-select: none;
+      width: 40px; height: 40px; border: 2px solid #e0e0e0; border-radius: 8px;
+      background: #fff; cursor: pointer; font-size: 20px; font-weight: 700; color: #444;
+      display: flex; align-items: center; justify-content: center; transition: .2s;
     }
-    .draw-btn:hover { border-color: #4a5568; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    .draw-btn.active { background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); color: white; border-color: #4a5568; }
-    #colorPicker { width: 40px; height: 40px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; padding: 0; }
-    .color-divider { width: 1px; height: 30px; background: #e0e0e0; margin: 0 4px; }
-    #drawingModeIndicator {
+    .draw-btn:hover  { border-color: #4a5568; transform: translateY(-2px); }
+    .draw-btn.active { background: linear-gradient(135deg,#4a5568,#2d3748); color:#fff; border-color:#4a5568; }
+    .color-div { width: 1px; height: 28px; background: #e0e0e0; }
+    #colorPicker { width:40px; height:40px; border:2px solid #e0e0e0; border-radius:8px; cursor:pointer; padding:0; }
+    #drawIndicator {
       position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
-      background: rgba(74,85,104,0.95); color: white; padding: 12px 24px;
-      border-radius: 8px; font-size: 14px; font-weight: 600; display: none; z-index: 30;
+      background: rgba(74,85,104,.95); color:#fff; padding:10px 22px;
+      border-radius: 8px; font-size:14px; font-weight:600; display:none; z-index:30;
     }
-    #timezoneIndicator {
+    #clockPanel {
       position: absolute; bottom: 24px; right: 24px; z-index: 30;
-      background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 8px;
-      padding: 8px 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-      border: 1px solid rgba(255,255,255,0.3); font-size: 12px; font-weight: 600; color: #4a5568;
-      display: flex; flex-direction: column; gap: 4px; min-width: 120px;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);
+      border-radius: 10px; padding: 8px 16px; box-shadow: 0 4px 16px rgba(0,0,0,.1);
+      font-size:12px; font-weight:600; color:#4a5568;
+      display:flex; flex-direction:column; gap:4px; min-width:120px; text-align:center;
     }
-    #timezoneIndicator .tz-time { font-size: 18px; font-weight: 700; color: #2d3748; font-family: 'Monaco','Courier New',monospace; text-align: center; }
-    #sseStatus { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 10px; font-weight: 600; color: #888; margin-top: 2px; }
-    #sseDot { width: 6px; height: 6px; border-radius: 50%; background: #ccc; display: inline-block; transition: background 0.3s; }
-    #sseDot.live { background: #22c55e; animation: ssePulse 1.5s infinite; }
-    @keyframes ssePulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
-    #currentPriceIndicator {
+    #liveTime { font-size:18px; font-weight:700; color:#2d3748; font-family:monospace; }
+    #sseStatus { display:flex; align-items:center; justify-content:center; gap:5px; font-size:10px; color:#888; }
+    #sseDot { width:6px; height:6px; border-radius:50%; background:#ccc; display:inline-block; }
+    #sseDot.live { background:#22c55e; animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.2} }
+    #pricePanel {
       position: absolute; top: 90px; right: 24px; z-index: 30;
-      background: rgba(255,255,255,0.98); backdrop-filter: blur(10px); border-radius: 12px;
-      padding: 16px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      border: 1px solid rgba(255,255,255,0.3); min-width: 200px; display: none;
+      background: rgba(255,255,255,0.98); backdrop-filter: blur(10px);
+      border-radius: 12px; padding: 16px 20px; box-shadow: 0 8px 32px rgba(0,0,0,.15);
+      min-width: 200px; display:none;
     }
-    #currentPriceIndicator.visible { display: block; }
-    #currentPriceIndicator .price-label { font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    #currentPriceIndicator .price-value { font-size: 28px; font-weight: 700; font-family: 'Monaco','Courier New',monospace; margin-bottom: 8px; }
-    #currentPriceIndicator .price-value.up   { color: #22c55e; }
-    #currentPriceIndicator .price-value.down { color: #ef4444; }
-    #currentPriceIndicator .price-change { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    #currentPriceIndicator .price-change.up   { color: #22c55e; }
-    #currentPriceIndicator .price-change.down { color: #ef4444; }
-    #currentPriceIndicator .price-stats { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #666; display: flex; flex-direction: column; gap: 6px; }
-    #currentPriceIndicator .stat-row   { display: flex; justify-content: space-between; }
-    #currentPriceIndicator .stat-label { font-weight: 500; }
-    #currentPriceIndicator .stat-value { font-weight: 700; font-family: 'Monaco','Courier New',monospace; }
-    @keyframes priceFlash { 0%,100%{background:transparent} 50%{background:rgba(34,197,94,0.15)} }
-    .price-flash { animation: priceFlash 0.4s ease; }
-    /* ── S&R Crosshair Tooltip */
-    #srTooltip {
-      position: fixed; z-index: 50; pointer-events: none;
-      display: none; width: 262px;
+    #pricePanel.show { display:block; }
+    .pp-label { font-size:11px; font-weight:600; color:#666; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .pp-price { font-size:28px; font-weight:700; font-family:monospace; margin-bottom:8px; }
+    .pp-price.up { color:#22c55e; } .pp-price.down { color:#ef4444; }
+    .pp-change { font-size:14px; font-weight:600; margin-bottom:10px; }
+    .pp-change.up { color:#22c55e; } .pp-change.down { color:#ef4444; }
+    .pp-stats { border-top:1px solid #e5e7eb; padding-top:10px; font-size:12px; color:#666; display:flex; flex-direction:column; gap:5px; }
+    .pp-row { display:flex; justify-content:space-between; }
+    .pp-val { font-weight:700; font-family:monospace; }
+    @keyframes priceFlash { 0%,100%{background:transparent} 50%{background:rgba(34,197,94,.15)} }
+    .flash { animation: priceFlash .4s ease; }
+    #srTooltip { position: fixed; z-index: 50; pointer-events: none; width: 270px; display: none; }
+    #srTooltip.show { display:block; animation: ttFade .15s ease; }
+    @keyframes ttFade { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+    .tt-card {
+      background: rgba(15,23,42,.97); backdrop-filter:blur(12px);
+      border-radius:12px; padding:14px 16px; color:#f1f5f9; font-size:12px;
+      box-shadow: 0 16px 48px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06);
     }
-    #srTooltip.visible { display: block; animation: srFadeIn 0.15s ease; }
-    @keyframes srFadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-    .sr-tooltip-card {
-      background: rgba(15,23,42,0.96); backdrop-filter: blur(12px);
-      border-radius: 12px; padding: 14px 16px;
-      box-shadow: 0 16px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
-      color: #f1f5f9; font-size: 12px;
-    }
-    .sr-tt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .sr-tt-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; }
-    .sr-tt-type.support    { background: rgba(34,197,94,0.2);  color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
-    .sr-tt-type.resistance { background: rgba(239,68,68,0.2);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
-    .sr-tt-price { font-size: 20px; font-weight: 700; font-family: 'Monaco','Courier New',monospace; }
-    .sr-tt-price.support    { color: #4ade80; }
-    .sr-tt-price.resistance { color: #f87171; }
-    .sr-tt-strength { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-    .sr-tt-strength-label { font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .sr-tt-strength-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; }
-    .sr-tt-strength-badge.CRITICAL { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
-    .sr-tt-strength-badge.STRONG   { background: #431407; color: #fdba74; border: 1px solid #7c2d12; }
-    .sr-tt-strength-badge.MODERATE { background: #422006; color: #fde047; border: 1px solid #713f12; }
-    .sr-tt-strength-badge.WEAK     { background: #052e16; color: #86efac; border: 1px solid #14532d; }
-    .sr-tt-dots { display: flex; gap: 3px; align-items: center; }
-    .sr-tt-dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; }
-    .sr-tt-dot.filled.support    { background: #22c55e; box-shadow: 0 0 4px #22c55e60; }
-    .sr-tt-dot.filled.resistance { background: #ef4444; box-shadow: 0 0 4px #ef444460; }
-    .sr-tt-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
-    .sr-tt-stat { background: rgba(255,255,255,0.04); border-radius: 7px; padding: 7px 10px; border: 1px solid rgba(255,255,255,0.06); }
-    .sr-tt-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; margin-bottom: 3px; }
-    .sr-tt-stat-value { font-size: 16px; font-weight: 700; font-family: 'Monaco','Courier New',monospace; color: #e2e8f0; }
-    .sr-tt-stat-value.green { color: #4ade80; }
-    .sr-tt-stat-value.red   { color: #f87171; }
-    .sr-tt-stat-value.amber { color: #fbbf24; }
-    .sr-tt-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .sr-tt-bar-label { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: 700; width: 66px; flex-shrink: 0; }
-    .sr-tt-bar-track { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
-    .sr-tt-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
-    .sr-tt-bar-fill.green  { background: linear-gradient(90deg,#16a34a,#4ade80); }
-    .sr-tt-bar-fill.red    { background: linear-gradient(90deg,#dc2626,#f87171); }
-    .sr-tt-bar-count { font-size: 10px; color: #94a3b8; font-weight: 700; width: 26px; text-align: right; }
-    .sr-tt-footer { padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.07); display: flex; align-items: center; justify-content: space-between; }
-    .sr-tt-vc { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; }
-    .sr-tt-vc-dot { width: 7px; height: 7px; border-radius: 50%; }
-    .sr-tt-vc-dot.on  { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
-    .sr-tt-vc-dot.off { background: #475569; }
-    .sr-tt-candles { font-size: 10px; color: #64748b; font-weight: 500; }
-    .sr-tt-candles span { color: #94a3b8; font-weight: 700; }
-    .sr-tt-decision { margin-top: 9px; padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-align: center; letter-spacing: 0.3px; }
-    .sr-tt-decision.strong-hold { background: rgba(34,197,94,0.15);   color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
-    .sr-tt-decision.weak-hold   { background: rgba(234,179,8,0.15);   color: #fbbf24; border: 1px solid rgba(234,179,8,0.25); }
-    .sr-tt-decision.watch-break { background: rgba(239,68,68,0.15);   color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
-    .sr-tt-decision.stale       { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+    .tt-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .tt-type { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:3px 8px; border-radius:4px; }
+    .tt-type.support    { background:rgba(34,197,94,.2);  color:#4ade80; border:1px solid rgba(34,197,94,.3); }
+    .tt-type.resistance { background:rgba(239,68,68,.2);  color:#f87171; border:1px solid rgba(239,68,68,.3); }
+    .tt-price { font-size:20px; font-weight:700; font-family:monospace; }
+    .tt-price.support { color:#4ade80; } .tt-price.resistance { color:#f87171; }
+    .tt-conf-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .tt-conf-lbl { font-size:9px; color:#94a3b8; font-weight:700; text-transform:uppercase; }
+    .tt-badge { font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; }
+    .tt-badge.ABSOLUTE { background:#7f1d1d; color:#fca5a5; border:1px solid #991b1b; }
+    .tt-badge.HIGH     { background:#431407; color:#fdba74; border:1px solid #7c2d12; }
+    .tt-badge.MODERATE { background:#422006; color:#fde047; border:1px solid #713f12; }
+    .tt-badge.LOW      { background:#052e16; color:#86efac; border:1px solid #14532d; }
+    .tt-badge.UNTESTED { background:#1e293b; color:#94a3b8; border:1px solid #334155; }
+    .tt-dots { display:flex; gap:3px; }
+    .tt-dot { width:7px; height:7px; border-radius:50%; background:#334155; }
+    .tt-dot.on.support    { background:#22c55e; box-shadow:0 0 4px #22c55e60; }
+    .tt-dot.on.resistance { background:#ef4444; box-shadow:0 0 4px #ef444460; }
+    .tt-stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
+    .tt-stat { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); border-radius:7px; padding:7px 10px; }
+    .tt-stat-lbl { font-size:9px; text-transform:uppercase; letter-spacing:.5px; color:#64748b; font-weight:700; margin-bottom:3px; }
+    .tt-stat-val { font-size:16px; font-weight:700; font-family:monospace; color:#e2e8f0; }
+    .tt-stat-val.green { color:#4ade80; } .tt-stat-val.red { color:#f87171; } .tt-stat-val.amber { color:#fbbf24; }
+    .tt-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    .tt-bar-lbl { font-size:9px; text-transform:uppercase; color:#64748b; font-weight:700; width:68px; flex-shrink:0; }
+    .tt-track { flex:1; height:5px; background:rgba(255,255,255,.08); border-radius:3px; overflow:hidden; }
+    .tt-fill { height:100%; border-radius:3px; transition:width .4s; }
+    .tt-fill.green { background:linear-gradient(90deg,#16a34a,#4ade80); }
+    .tt-fill.red   { background:linear-gradient(90deg,#dc2626,#f87171); }
+    .tt-bar-num { font-size:10px; color:#94a3b8; font-weight:700; width:24px; text-align:right; }
+    .tt-foot { border-top:1px solid rgba(255,255,255,.07); padding-top:8px; display:flex; align-items:center; justify-content:space-between; }
+    .tt-vc { display:flex; align-items:center; gap:5px; font-size:10px; font-weight:600; }
+    .tt-vc-dot { width:7px; height:7px; border-radius:50%; }
+    .tt-vc-dot.on { background:#22c55e; box-shadow:0 0 5px #22c55e; } .tt-vc-dot.off { background:#475569; }
+    .tt-last { font-size:10px; color:#64748b; } .tt-last span { color:#94a3b8; font-weight:700; }
+    .tt-decision { margin-top:9px; padding:8px 10px; border-radius:8px; font-size:11px; font-weight:700; text-align:center; }
+    .tt-decision.strong { background:rgba(34,197,94,.15); color:#4ade80; border:1px solid rgba(34,197,94,.25); }
+    .tt-decision.watch  { background:rgba(234,179,8,.15);  color:#fbbf24; border:1px solid rgba(234,179,8,.25); }
+    .tt-decision.risky  { background:rgba(239,68,68,.15);  color:#f87171; border:1px solid rgba(239,68,68,.25); }
+    .tt-decision.stale  { background:rgba(100,116,139,.15);color:#94a3b8; border:1px solid rgba(100,116,139,.2); }
   </style>
 </head>
 <body>
 <div id="container">
+
   <div id="toolbar">
-    <div class="center-group">
-      <label for="symbolDropdown">Name:</label>
-      <select id="symbolDropdown">
+    <div class="group">
+      <label for="symbolSelect">Name:</label>
+      <select id="symbolSelect">
         <option value="NIFTY" selected>NIFTY</option>
         <option value="CRUDEOIL">CRUDEOIL</option>
         <option value="SILVERM">SILVERM</option>
       </select>
-      <label for="timeframeDropdown">TimeFrame:</label>
-      <select id="timeframeDropdown">
+    </div>
+    <div class="group">
+      <label for="tfSelect">TimeFrame:</label>
+      <select id="tfSelect">
         <option value="ONE_MINUTE">1 Min</option>
         <option value="FIVE_MINUTE" selected>5 Min</option>
         <option value="FIFTEEN_MINUTE">15 Min</option>
@@ -254,1202 +244,780 @@
         <option value="ONE_DAY">1 Day</option>
       </select>
     </div>
-    <div class="right-group">
-      <button id="todayButton">📅 Today</button>
-      <button id="refreshButton">Refresh</button>
+    <div class="group">
+      <button class="tb-btn green" id="btnToday">Today</button>
+      <button class="tb-btn"       id="btnRefresh">Refresh</button>
+    </div>
+  </div>
+
+  <div id="settingsDropdown">
+    <button class="tb-btn" id="btnSettings">Settings</button>
+    <div id="settingsMenu">
+      <div class="sec-title">Support &amp; Resistance</div>
+      <label>
+        <input type="checkbox" id="chkSupport" checked>
+        <span class="line-dot" style="background:#047857"></span>
+        <span>Support Levels</span>
+        <span class="sr-count" id="supportCount"></span>
+      </label>
+      <label>
+        <input type="checkbox" id="chkResistance" checked>
+        <span class="line-dot" style="background:#991b1b"></span>
+        <span>Resistance Levels</span>
+        <span class="sr-count" id="resistanceCount"></span>
+      </label>
+      <div class="conf-label">Filter by Confidence</div>
+      <div class="conf-grid">
+        <label class="conf-chip"><input type="checkbox" id="chkABSOLUTE" checked><span class="chip ABSOLUTE">ABSOLUTE</span></label>
+        <label class="conf-chip"><input type="checkbox" id="chkHIGH"     checked><span class="chip HIGH">HIGH</span></label>
+        <label class="conf-chip"><input type="checkbox" id="chkMODERATE" checked><span class="chip MODERATE">MODERATE</span></label>
+        <label class="conf-chip"><input type="checkbox" id="chkLOW"      checked><span class="chip LOW">LOW</span></label>
+        <label class="conf-chip"><input type="checkbox" id="chkUNTESTED" checked><span class="chip UNTESTED">UNTESTED</span></label>
+      </div>
+      <div class="sec-title" id="layerTitle" style="display:none">Other Layers</div>
+      <div id="dynamicLayersContainer"></div>
+      <div class="sec-title">Display</div>
+      <label><input type="checkbox" id="chkVolume" checked><span>Volume</span></label>
+      <label><input type="checkbox" id="chkPrice"  checked><span>Current Price</span></label>
+      <label><input type="checkbox" id="chkGrid"   checked><span>Grid</span></label>
+      <label><input type="checkbox" id="chkLive"   checked><span>Live Updates</span></label>
+      <button class="set-btn" id="btnUncheckAll">Uncheck All</button>
+      <button class="set-btn" id="btnReset">Reset Defaults</button>
+      <button class="set-btn" id="btnFit">Fit Chart</button>
     </div>
   </div>
 
   <div id="drawingTools">
-    <button class="draw-btn" id="hLineBtn" title="Horizontal Line">—</button>
-    <button class="draw-btn" id="vLineBtn" title="Vertical Line">|</button>
-    <div class="color-divider"></div>
-    <input type="color" id="colorPicker" value="#22c55e" title="Line Color">
-    <div class="color-divider"></div>
-    <button class="draw-btn" id="clearDrawBtn" title="Clear All Drawings">✕</button>
+    <button class="draw-btn" id="btnHLine" title="Horizontal Line">&#8212;</button>
+    <button class="draw-btn" id="btnVLine" title="Vertical Line">|</button>
+    <div class="color-div"></div>
+    <input type="color" id="colorPicker" value="#22c55e">
+    <div class="color-div"></div>
+    <button class="draw-btn" id="btnClearDraw" title="Clear">&#x2715;</button>
   </div>
 
-  <div id="currentPriceIndicator">
-    <div class="price-label">Current Price</div>
-    <div class="price-value" id="currentPrice">-</div>
-    <div class="price-change" id="priceChange">-</div>
-    <div class="price-stats">
-      <div class="stat-row"><span class="stat-label">Open:</span><span class="stat-value" id="openPrice">-</span></div>
-      <div class="stat-row"><span class="stat-label">High:</span><span class="stat-value" id="highPrice">-</span></div>
-      <div class="stat-row"><span class="stat-label">Low:</span><span class="stat-value" id="lowPrice">-</span></div>
+  <div id="pricePanel">
+    <div class="pp-label">Current Price</div>
+    <div class="pp-price" id="ppPrice">-</div>
+    <div class="pp-change" id="ppChange">-</div>
+    <div class="pp-stats">
+      <div class="pp-row"><span>Open</span><span class="pp-val" id="ppOpen">-</span></div>
+      <div class="pp-row"><span>High</span><span class="pp-val" id="ppHigh">-</span></div>
+      <div class="pp-row"><span>Low</span> <span class="pp-val" id="ppLow">-</span></div>
     </div>
   </div>
 
-  <div id="drawingModeIndicator">Click on chart to draw line</div>
+  <div id="drawIndicator"></div>
 
-  <!-- S&R Hover Tooltip -->
   <div id="srTooltip">
-    <div class="sr-tooltip-card">
-      <div class="sr-tt-header">
-        <span class="sr-tt-type" id="srTTType">Support</span>
-        <div class="sr-tt-price" id="srTTPrice">-</div>
+    <div class="tt-card">
+      <div class="tt-head">
+        <span class="tt-type" id="ttType"></span>
+        <span class="tt-price" id="ttPrice"></span>
       </div>
-      <div class="sr-tt-strength">
-        <span class="sr-tt-strength-label">STRENGTH</span>
-        <span class="sr-tt-strength-badge" id="srTTStrengthBadge">-</span>
-        <div class="sr-tt-dots" id="srTTDots"></div>
+      <div class="tt-conf-row">
+        <span class="tt-conf-lbl">CONFIDENCE</span>
+        <span class="tt-badge" id="ttBadge"></span>
+        <div class="tt-dots" id="ttDots"></div>
       </div>
-      <div class="sr-tt-stats">
-        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Touches</div><div class="sr-tt-stat-value green" id="srTTTouches">-</div></div>
-        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Rejections</div><div class="sr-tt-stat-value green" id="srTTRejections">-</div></div>
-        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Breakouts</div><div class="sr-tt-stat-value" id="srTTBreakouts">-</div></div>
-        <div class="sr-tt-stat"><div class="sr-tt-stat-label">Candles Ago</div><div class="sr-tt-stat-value amber" id="srTTCandles">-</div></div>
+      <div class="tt-stats">
+        <div class="tt-stat"><div class="tt-stat-lbl">Visited</div> <div class="tt-stat-val green" id="ttVisited">-</div></div>
+        <div class="tt-stat"><div class="tt-stat-lbl">Reacted</div> <div class="tt-stat-val green" id="ttReacted">-</div></div>
+        <div class="tt-stat"><div class="tt-stat-lbl">Broken</div>  <div class="tt-stat-val"       id="ttBroken">-</div></div>
+        <div class="tt-stat"><div class="tt-stat-lbl">Heavy Vol</div><div class="tt-stat-val"      id="ttHeavyVol">-</div></div>
       </div>
-      <div class="sr-tt-bar-row">
-        <div class="sr-tt-bar-label">Rejections</div>
-        <div class="sr-tt-bar-track"><div class="sr-tt-bar-fill green" id="srTTRejBar" style="width:0%"></div></div>
-        <div class="sr-tt-bar-count" id="srTTRejCount"></div>
+      <div class="tt-bar-row">
+        <div class="tt-bar-lbl">Reactions</div>
+        <div class="tt-track"><div class="tt-fill green" id="ttRejBar" style="width:0%"></div></div>
+        <div class="tt-bar-num" id="ttRejNum"></div>
       </div>
-      <div class="sr-tt-bar-row">
-        <div class="sr-tt-bar-label">Breakouts</div>
-        <div class="sr-tt-bar-track"><div class="sr-tt-bar-fill red" id="srTTBrkBar" style="width:0%"></div></div>
-        <div class="sr-tt-bar-count" id="srTTBrkCount"></div>
+      <div class="tt-bar-row">
+        <div class="tt-bar-lbl">Breakouts</div>
+        <div class="tt-track"><div class="tt-fill red" id="ttBrkBar" style="width:0%"></div></div>
+        <div class="tt-bar-num" id="ttBrkNum"></div>
       </div>
-      <div class="sr-tt-footer">
-        <div class="sr-tt-vc"><div class="sr-tt-vc-dot" id="srTTVcDot"></div><span id="srTTVcText">Volume</span></div>
-        <div class="sr-tt-candles">Last touch <span id="srTTCandlesAgo">-</span> candles ago</div>
+      <div class="tt-foot">
+        <div class="tt-vc"><div class="tt-vc-dot" id="ttVcDot"></div><span id="ttVcText"></span></div>
+        <div class="tt-last" id="ttLast"></div>
       </div>
-      <div class="sr-tt-decision" id="srTTDecision"></div>
+      <div class="tt-decision" id="ttDecision"></div>
     </div>
   </div>
 
-  <div id="timezoneIndicator">
-    <div class="tz-time" id="liveTime">--:--:--</div>
+  <div id="clockPanel">
+    <div id="liveTime">--:--:--</div>
     <div id="sseStatus"><span id="sseDot"></span><span id="sseLabel">Disconnected</span></div>
   </div>
 
   <div id="chart"></div>
-  <div id="loader">
-    <div class="spinner"></div>
-    <div id="loaderText">Loading chart data...</div>
-    <div id="retryCount"></div>
-  </div>
+  <div id="loader"><div class="spinner"></div><div id="loaderText">Loading&hellip;</div><div id="retryCount"></div></div>
   <div id="error"></div>
-  <div id="apiErrorToast">⚠️ API Error - Retrying...</div>
-
-  <div id="settingsDropdown">
-    <button id="settingsButton">Settings ▼</button>
-    <div id="settingsMenu">
-
-      <!-- ── Support & Resistance ── -->
-      <div class="settings-section-title">Support &amp; Resistance</div>
-      <label>
-        <input type="checkbox" id="toggleSupport" checked />
-        <span class="line-dot" style="background:#16a34a"></span>
-        <span>Support Levels</span>
-        <span class="sr-count-badge" id="supportCount"></span>
-      </label>
-      <label>
-        <input type="checkbox" id="toggleResistance" checked />
-        <span class="line-dot" style="background:#dc2626"></span>
-        <span>Resistance Levels</span>
-        <span class="sr-count-badge" id="resistanceCount"></span>
-      </label>
-      <div class="sr-filter-label">Filter by Strength</div>
-      <div class="sr-strength-grid">
-        <label class="sr-strength-chip"><input type="checkbox" id="srCRITICAL" checked /><span class="chip critical">CRITICAL</span></label>
-        <label class="sr-strength-chip"><input type="checkbox" id="srSTRONG"   checked /><span class="chip strong">STRONG</span></label>
-        <label class="sr-strength-chip"><input type="checkbox" id="srMODERATE" checked /><span class="chip moderate">MODERATE</span></label>
-        <label class="sr-strength-chip"><input type="checkbox" id="srWEAK"     checked /><span class="chip weak">WEAK</span></label>
-      </div>
-
-      <!-- Dynamic line layers — injected by JS based on API response -->
-      <div class="settings-section-title" id="layersSectionTitle" style="display:none">Other Layers</div>
-      <div id="dynamicLayersContainer"></div>
-
-      <!-- Static display options -->
-      <div class="settings-section-title">Display</div>
-      <label><input type="checkbox" id="toggleVolume"       checked /><span>Volume</span></label>
-      <label><input type="checkbox" id="toggleCurrentPrice" checked /><span>Current Price</span></label>
-      <label><input type="checkbox" id="toggleGrid"         checked /><span>Grid</span></label>
-      <label><input type="checkbox" id="toggleLive"         checked /><span>Live Updates</span></label>
-
-      <button id="uncheckAllButton">Uncheck All</button>
-      <button id="resetButton">Reset Defaults</button>
-      <button id="fitButton">Fit Chart</button>
-    </div>
-    </div>
-  </div>
+  <div id="apiErrorToast"></div>
 </div>
 
 <script>
-// ════════════════════════════════════════════════════════════════════════
-// DYNAMIC LAYER SYSTEM
-// Scans API response and auto-builds toggles for any price-line arrays.
-// Non-line fields (candles, final_signal, etc.) are excluded.
-// ════════════════════════════════════════════════════════════════════════
+'use strict';
 
-// Fields that are NEVER treated as chart layers
-const NON_LAYER_FIELDS = new Set([
-  'candles','signals',
-  'supportLevels','resistanceLevels',
-  'final_signal','finalSignal','FINAL_SIGNAL',
-  'final_confidence','finalConfidence','FINAL_CONFIDENCE',
-  'final_reason','finalReason','FINAL_REASON'
-]);
+// ── Constants ──────────────────────────────────────────────────────────────────
+const CONFIDENCE_LEVELS = ['ABSOLUTE','HIGH','MODERATE','LOW','UNTESTED'];
+const CONF_DOTS = { ABSOLUTE:5, HIGH:4, MODERATE:3, LOW:2, UNTESTED:1 };
 
-// ════════════════════════════════════════════════════════════════════════
-// SUPPORT & RESISTANCE SYSTEM
-// Handles supportLevels / resistanceLevels from API response.
-// Each level object: { price, touches, rejections, breakouts,
-//                      volumeConfirmed, candlesSinceLastTouch, strength }
-// ════════════════════════════════════════════════════════════════════════
-
-const SR_STYLES = {
-  CRITICAL: { lineWidth: 2, lineStyle: 0 },  // Solid thick
-  STRONG:   { lineWidth: 1, lineStyle: 0 },  // Solid thin
-  MODERATE: { lineWidth: 1, lineStyle: 1 },  // Dotted
-  WEAK:     { lineWidth: 1, lineStyle: 2 }   // Dashed
+// All clearly visible on white background
+const SR_STYLE = {
+  ABSOLUTE: { lineWidth:3, lineStyle:0 },
+  HIGH:     { lineWidth:2, lineStyle:0 },
+  MODERATE: { lineWidth:2, lineStyle:1 },
+  LOW:      { lineWidth:2, lineStyle:2 },
+  UNTESTED: { lineWidth:1, lineStyle:2 },
+};
+const SR_COLOR = {
+  support:    { ABSOLUTE:'#047857', HIGH:'#059669', MODERATE:'#10b981', LOW:'#34d399', UNTESTED:'#6ee7b7' },
+  resistance: { ABSOLUTE:'#991b1b', HIGH:'#b91c1c', MODERATE:'#dc2626', LOW:'#ef4444', UNTESTED:'#f87171' },
 };
 
-const SR_COLORS = {
-  support: {
-    CRITICAL: '#16a34a',
-    STRONG:   '#22c55e',
-    MODERATE: '#4ade80',
-    WEAK:     '#86efac'
-  },
-  resistance: {
-    CRITICAL: '#dc2626',
-    STRONG:   '#ef4444',
-    MODERATE: '#f87171',
-    WEAK:     '#fca5a5'
-  }
-};
+const TF_SECS  = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 };
+const IST_OFFSET = 19800;
+const MAX_RETRY = 3, RETRY_DELAY = 2000;
+const NON_LAYER = new Set(['candles','signals','supportLevels','resistanceLevels',
+  'final_signal','finalSignal','final_confidence','finalConfidence','final_reason','finalReason']);
+const LAYER_COLORS = ['#22c55e','#ef4444','#3b82f6','#f59e0b','#a855f7','#06b6d4','#f97316','#ec4899'];
 
-let srSupportLines   = [];
-let srResistancLines = [];
+// ── Plain JS state ─────────────────────────────────────────────────────────────
+let chart = null, candleSeries = null, volumeSeries = null;
+let selectedSymbol = 'NIFTY', selectedTimeFrame = 'FIVE_MINUTE';
+let lastCandles = [], lastData = null;
+let isFirstLoad = true, chartReady = false;
+let refreshTimer = null, retryCount = 0;
+let drawMode = null, drawnLines = [], drawColor = '#22c55e';
+let ssePrevPrice = null;
+let srSupLines = [], srResLines = [], srRegistry = {};
+let layerReg = {}, layerColorIdx = 0;
+let sseSource = null, iKeyCurrent = null;
+const iKeyCache = {}, pendingTicks = [];
 
-function getEnabledStrengths() {
-  const s = new Set();
-  ['CRITICAL','STRONG','MODERATE','WEAK'].forEach(k => {
-    const cb = document.getElementById('sr' + k);
-    if (cb && cb.checked) s.add(k);
-  });
-  return s;
+// ── DOM shorthand ──────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const chartEl    = $('chart'),      loaderEl  = $('loader');
+const loaderText = $('loaderText'), retryEl   = $('retryCount');
+const errorEl    = $('error'),      toastEl   = $('apiErrorToast');
+const pricePanel = $('pricePanel'), srTooltip = $('srTooltip');
+const ppPrice=$('ppPrice'), ppChange=$('ppChange'), ppOpen=$('ppOpen'), ppHigh=$('ppHigh'), ppLow=$('ppLow');
+const drawIndicator=$('drawIndicator'), settingsMenu=$('settingsMenu');
+const chkSupport=$('chkSupport'), chkResistance=$('chkResistance');
+const chkVolume=$('chkVolume'), chkPrice=$('chkPrice'), chkGrid=$('chkGrid'), chkLive=$('chkLive');
+
+// ── Clock ──────────────────────────────────────────────────────────────────────
+let clockTimer = null;
+function tickClock() {
+  $('liveTime').textContent = new Date().toLocaleTimeString('en-IN',
+    { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+}
+function startClock() { if (!clockTimer) { tickClock(); clockTimer = setInterval(tickClock,1000); } }
+function stopClock()  { clearInterval(clockTimer); clockTimer = null; }
+
+// ── S&R Drawing ────────────────────────────────────────────────────────────────
+function getEnabledConf() {
+  return new Set(CONFIDENCE_LEVELS.filter(k => { const el=$('chk'+k); return el && el.checked; }));
 }
 
-function clearSRLines(arr) {
-  arr.forEach(l => { try { candleSeries.removePriceLine(l); } catch {} });
+function clearLines(arr) {
+  arr.forEach(l => { try { candleSeries.removePriceLine(l); } catch(e) {} });
   arr.length = 0;
 }
 
-// ── srLevelRegistry: keeps level metadata indexed by price (rounded to 1dp)
-// so the crosshair handler can look up rich data without re-scanning the array ──
-let srLevelRegistry = {};   // { "25556.5_support": levelObj, ... }
-
-function registerSRLevel(type, level) {
-  const key = `${Number(level.price).toFixed(1)}_${type}`;
-  srLevelRegistry[key] = { ...level, _type: type };
+function srTitle(type, lvl) {
+  const arrow = type==='support' ? 'S' : 'R';
+  const cmap  = { ABSOLUTE:'ABS', HIGH:'HIGH', MODERATE:'MOD', LOW:'LOW', UNTESTED:'?' };
+  const conf  = cmap[(lvl.confidence||'UNTESTED').toUpperCase()] || '?';
+  const vc    = lvl.heavyVolume ? '*' : '';
+  const v     = lvl.visited != null ? `V:${lvl.visited}` : '';
+  const r     = lvl.reacted != null ? `R:${lvl.reacted}` : '';
+  const b     = (lvl.broken > 0)    ? `B:${lvl.broken}`  : '';
+  return [arrow, conf, vc, v, r, b].filter(Boolean).join(' ');
 }
 
-function findNearestSRLevel(price, thresholdPct = 0.003) {
-  // thresholdPct = 0.3% of price distance
-  let best = null, bestDist = Infinity;
-  const threshold = price * thresholdPct;
-  Object.values(srLevelRegistry).forEach(lvl => {
-    const dist = Math.abs(Number(lvl.price) - price);
-    if (dist <= threshold && dist < bestDist) {
-      bestDist = dist; best = lvl;
-    }
-  });
-  return best;
-}
-
-// ── Compact axis title (max ~14 chars for readability) ──
-function buildSRTitle(type, level) {
-  const tag = type === 'support' ? '▲S' : '▼R';
-  const vc  = level.volumeConfirmed ? '●' : '○';
-  const t   = level.touches    != null ? `T${level.touches}`  : '';
-  const r   = level.rejections != null ? `R${level.rejections}` : '';
-  return `${tag} ${vc} ${t} ${r}`.trim();
-}
-
-// ── Decision signal logic ──
-function calcDecision(level) {
-  const t   = level.touches    || 0;
-  const r   = level.rejections || 0;
-  const brk = level.breakouts  || 0;
-  const cst = level.candlesSinceLastTouch || 9999;
-  const vc  = level.volumeConfirmed;
-  const str = (level.strength || '').toUpperCase();
-
-  // Stale: not touched in a very long time
-  if (cst > 500) return { cls: 'stale', icon: '⏸', label: 'Stale — Monitor Only', detail: `${cst} candles since last touch` };
-
-  // Strong hold: many rejections, 0 breakouts, recent, volume confirmed
-  const score = (r >= 50 ? 3 : r >= 20 ? 2 : 1)
-              + (brk === 0 ? 2 : brk <= 2 ? 0 : -2)
-              + (vc ? 2 : 0)
-              + (cst <= 100 ? 2 : cst <= 300 ? 1 : 0)
-              + (str === 'CRITICAL' ? 2 : str === 'STRONG' ? 1 : 0);
-
-  if (score >= 7) return { cls: 'strong-hold', icon: '🛡', label: 'Strong Hold Expected', detail: `${r} rejections, no breakouts` };
-  if (score >= 4) return { cls: 'weak-hold',   icon: '⚠️', label: 'Watch for Bounce',    detail: `${t} touches, ${brk} breakout${brk!==1?'s':''}` };
-  return             { cls: 'watch-break',  icon: '⚡', label: 'Potential Break Risk',  detail: `${brk} prior breakout${brk!==1?'s':''}` };
-}
-
-// ── Populate & position the tooltip ──
-function showSRTooltip(level, mouseX, mouseY) {
-  const tt = document.getElementById('srTooltip');
-  if (!tt) return;
-  const type    = level._type;
-  const strength = (level.strength || 'WEAK').toUpperCase();
-  const price   = Number(level.price);
-  const t       = level.touches    || 0;
-  const r       = level.rejections || 0;
-  const brk     = level.breakouts  || 0;
-  const cst     = level.candlesSinceLastTouch != null ? level.candlesSinceLastTouch : '-';
-  const vc      = !!level.volumeConfirmed;
-
-  // Header
-  const typeEl = document.getElementById('srTTType');
-  typeEl.textContent = type === 'support' ? 'Support' : 'Resistance';
-  typeEl.className   = `sr-tt-type ${type}`;
-
-  const priceEl = document.getElementById('srTTPrice');
-  priceEl.textContent = price.toFixed(1);
-  priceEl.className   = `sr-tt-price ${type}`;
-
-  // Strength badge
-  const badge = document.getElementById('srTTStrengthBadge');
-  badge.textContent = strength;
-  badge.className   = `sr-tt-strength-badge ${strength}`;
-
-  // Strength dots (1-4 filled based on strength)
-  const dotsEl  = document.getElementById('srTTDots');
-  const dotCount = { CRITICAL:4, STRONG:3, MODERATE:2, WEAK:1 }[strength] || 1;
-  dotsEl.innerHTML = Array.from({length:4}, (_,i) =>
-    `<div class="sr-tt-dot ${i < dotCount ? `filled ${type}` : ''}"></div>`).join('');
-
-  // Stats
-  document.getElementById('srTTTouches').textContent    = t;
-  document.getElementById('srTTRejections').textContent = r;
-
-  const brkEl = document.getElementById('srTTBreakouts');
-  brkEl.textContent = brk;
-  brkEl.className   = `sr-tt-stat-value ${brk === 0 ? 'green' : brk <= 2 ? 'amber' : 'red'}`;
-
-  document.getElementById('srTTCandles').textContent    = cst;
-  document.getElementById('srTTCandlesAgo').textContent = cst;
-
-  // Bars — rejections relative to max across all levels
-  const allLevels = Object.values(srLevelRegistry);
-  const maxR = Math.max(...allLevels.map(l => l.rejections || 0), 1);
-  const maxB = Math.max(...allLevels.map(l => l.breakouts  || 0), 1);
-  document.getElementById('srTTRejBar').style.width   = `${Math.min(100, (r / maxR) * 100).toFixed(1)}%`;
-  document.getElementById('srTTBrkBar').style.width   = `${Math.min(100, (brk / maxB) * 100).toFixed(1)}%`;
-  document.getElementById('srTTRejCount').textContent = r;
-  document.getElementById('srTTBrkCount').textContent = brk;
-
-  // Volume confirmed
-  const vcDot  = document.getElementById('srTTVcDot');
-  const vcText = document.getElementById('srTTVcText');
-  vcDot.className   = `sr-tt-vc-dot ${vc ? 'on' : 'off'}`;
-  vcText.textContent = vc ? 'Volume Confirmed ✓' : 'Not Volume Confirmed';
-  vcText.style.color = vc ? '#4ade80' : '#64748b';
-
-  // Decision
-  const dec    = calcDecision(level);
-  const decEl  = document.getElementById('srTTDecision');
-  decEl.className   = `sr-tt-decision ${dec.cls}`;
-  decEl.innerHTML   = `${dec.icon} <strong>${dec.label}</strong> — ${dec.detail}`;
-
-  // Position tooltip: keep inside chart bounds
-  const chartRect = chartEl.getBoundingClientRect();
-  const absX = chartRect.left + mouseX;
-  const absY = chartRect.top  + mouseY;
-  const TTW = 268, TTH = 300;
-  let left = absX + 14, top = absY - TTH / 2;
-
-  // Flip left if near right edge
-  if (left + TTW > window.innerWidth - 20) left = absX - TTW - 14;
-  // Clamp vertically
-  top = Math.max(10, Math.min(window.innerHeight - TTH - 10, top));
-
-  tt.style.left = `${left}px`;
-  tt.style.top  = `${top}px`;
-  tt.classList.add('visible');
-}
-
-function hideSRTooltip() {
-  const tt = document.getElementById('srTooltip');
-  if (tt) tt.classList.remove('visible');
-}
-
-// ── Crosshair subscription (called after chart init) ──
-function initSRCrosshair() {
-  if (!chart) return;
-  chart.subscribeCrosshairMove(param => {
-    if (!param || !param.point || param.point.x === undefined) { hideSRTooltip(); return; }
-    const price = candleSeries.coordinateToPrice(param.point.y);
-    if (price == null) { hideSRTooltip(); return; }
-    const level = findNearestSRLevel(price);
-    if (level) showSRTooltip(level, param.point.x, param.point.y);
-    else hideSRTooltip();
-  });
-}
-
-function drawSRLevel(type, level, enabledStrengths) {
+function drawOneSR(type, lvl, enabledSet) {
   if (!candleSeries) return null;
-  const strength = (level.strength || 'WEAK').toUpperCase();
-  if (!enabledStrengths.has(strength)) return null;
-  const style = SR_STYLES[strength] || SR_STYLES.WEAK;
-  const color = (SR_COLORS[type] || {})[strength] || (type === 'support' ? '#22c55e' : '#ef4444');
-  registerSRLevel(type, level);
+  const conf = (lvl.confidence || 'UNTESTED').toUpperCase();
+  // If no filters selected (shouldn't happen), show all
+  const eff  = enabledSet.size > 0 ? enabledSet : new Set(CONFIDENCE_LEVELS);
+  if (!eff.has(conf)) return null;
+
+  const st    = SR_STYLE[conf]  || SR_STYLE.UNTESTED;
+  const color = (SR_COLOR[type]||{})[conf] || (type==='support' ? '#059669' : '#b91c1c');
+
+  // Register for tooltip lookup
+  srRegistry[Number(lvl.price).toFixed(2) + '_' + type] = { ...lvl, _type: type };
+
   try {
     return candleSeries.createPriceLine({
-      price:            Number(level.price),
-      color,
-      lineWidth:        style.lineWidth,
-      lineStyle:        style.lineStyle,
+      price:            Number(lvl.price),
+      color:            color,
+      lineWidth:        st.lineWidth,
+      lineStyle:        st.lineStyle,
       axisLabelVisible: true,
-      title:            buildSRTitle(type, level)
+      title:            srTitle(type, lvl),
     });
-  } catch { return null; }
-}
-
-function drawSupportLevels(data) {
-  clearSRLines(srSupportLines);
-  const toggle = document.getElementById('toggleSupport');
-  if (!toggle || !toggle.checked || !candleSeries) return;
-  const levels  = data.supportLevels || [];
-  const enabled = getEnabledStrengths();
-  let drawn = 0;
-  levels.forEach(lvl => {
-    const line = drawSRLevel('support', lvl, enabled);
-    if (line) { srSupportLines.push(line); drawn++; }
-  });
-  const badge = document.getElementById('supportCount');
-  if (badge) badge.textContent = levels.length ? `${drawn}/${levels.length}` : '';
-}
-
-function drawResistanceLevels(data) {
-  clearSRLines(srResistancLines);
-  const toggle = document.getElementById('toggleResistance');
-  if (!toggle || !toggle.checked || !candleSeries) return;
-  const levels  = data.resistanceLevels || [];
-  const enabled = getEnabledStrengths();
-  let drawn = 0;
-  levels.forEach(lvl => {
-    const line = drawSRLevel('resistance', lvl, enabled);
-    if (line) { srResistancLines.push(line); drawn++; }
-  });
-  const badge = document.getElementById('resistanceCount');
-  if (badge) badge.textContent = levels.length ? `${drawn}/${levels.length}` : '';
-}
-
-function redrawSRLevels() {
-  if (!lastData || !candleSeries) return;
-  srLevelRegistry = {};    // reset registry before redrawing
-  drawSupportLevels(lastData);
-  drawResistanceLevels(lastData);
-}
-
-function initSRListeners() {
-  document.getElementById('toggleSupport').addEventListener('change',    () => { redrawSRLevels(); saveChartState(); });
-  document.getElementById('toggleResistance').addEventListener('change', () => { redrawSRLevels(); saveChartState(); });
-  ['CRITICAL','STRONG','MODERATE','WEAK'].forEach(k => {
-    document.getElementById('sr' + k).addEventListener('change', () => { redrawSRLevels(); saveChartState(); });
-  });
-}
-
-// Colour palette for layers (cycles if more layers than colours)
-const LAYER_COLORS = [
-  '#22c55e','#ef4444','#3b82f6','#f59e0b',
-  '#a855f7','#06b6d4','#f97316','#ec4899'
-];
-
-// layerRegistry: { [fieldKey]: { label, color, enabled, lines: [], valueType: 'number'|'object' } }
-let layerRegistry = {};
-let colorIndex = 0;
-
-// Convert camelCase / snake_case field names to readable labels
-function fieldToLabel(key) {
-  return key
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/_/g, ' ')
-    .replace(/\w/g, c => c.toUpperCase())
-    .trim();
-}
-
-// Detect whether a field is a price-line array
-function isPriceLineArray(val) {
-  if (!Array.isArray(val) || val.length === 0) return false;
-  const first = val[0];
-  if (typeof first === 'number') return true;
-  if (typeof first === 'string' && !isNaN(Number(first))) return true;
-  if (typeof first === 'object' && first !== null && 'level' in first) return true;
-  return false;
-}
-
-// Determine value type of a layer array
-function getValueType(val) {
-  if (!Array.isArray(val) || val.length === 0) return null;
-  const first = val[0];
-  if (typeof first === 'number' || typeof first === 'string') return 'number';
-  if (typeof first === 'object' && 'level' in first) return 'object';
-  return null;
-}
-
-// Build / update the dynamic settings checkboxes from the API data
-function syncLayersFromData(data) {
-  let changed = false;
-  Object.entries(data).forEach(([key, val]) => {
-    if (NON_LAYER_FIELDS.has(key)) return;
-    if (!isPriceLineArray(val)) return;
-    if (layerRegistry[key]) return; // already registered
-
-    const savedEnabled = getSavedLayerState(key);
-    layerRegistry[key] = {
-      label:     fieldToLabel(key),
-      color:     LAYER_COLORS[colorIndex % LAYER_COLORS.length],
-      enabled:   savedEnabled !== null ? savedEnabled : true,
-      lines:     [],
-      valueType: getValueType(val)
-    };
-    colorIndex++;
-    changed = true;
-  });
-  if (changed) rebuildLayerUI();
-}
-
-// Render checkboxes for all registered layers
-function rebuildLayerUI() {
-  const container = document.getElementById('dynamicLayersContainer');
-  const title     = document.getElementById('layersSectionTitle');
-  container.innerHTML = '';
-
-  const keys = Object.keys(layerRegistry);
-  title.style.display = keys.length ? '' : 'none';
-
-  keys.forEach(key => {
-    const cfg   = layerRegistry[key];
-    const id    = `layer_${key}`;
-    const label = document.createElement('label');
-    label.htmlFor = id;
-
-    const cb  = document.createElement('input');
-    cb.type   = 'checkbox';
-    cb.id     = id;
-    cb.checked = cfg.enabled;
-    cb.addEventListener('change', () => {
-      layerRegistry[key].enabled = cb.checked;
-      redrawAllLayers();
-      saveChartState();
-    });
-
-    const dot = document.createElement('span');
-    dot.className = 'line-dot';
-    dot.style.background = cfg.color;
-
-    const text = document.createElement('span');
-    text.textContent = cfg.label;
-
-    label.appendChild(cb);
-    label.appendChild(dot);
-    label.appendChild(text);
-    container.appendChild(label);
-  });
-}
-
-// Clear drawn price lines for a single layer
-function clearLayer(key) {
-  const cfg = layerRegistry[key];
-  if (!cfg) return;
-  cfg.lines.forEach(l => { try { candleSeries.removePriceLine(l); } catch {} });
-  cfg.lines = [];
-}
-
-// Draw price lines for one layer from current API data
-function drawLayer(key, data) {
-  const cfg = layerRegistry[key];
-  if (!cfg || !cfg.enabled || !candleSeries) return;
-  clearLayer(key);
-
-  const raw = data[key];
-  if (!Array.isArray(raw)) return;
-
-  raw.forEach(item => {
-    try {
-      let price, title;
-      if (cfg.valueType === 'object') {
-        price = Number(item.level);
-        title = item.label || cfg.label;
-      } else {
-        price = Number(item);
-        title = cfg.label;
-      }
-      if (!isFinite(price)) return;
-      const line = candleSeries.createPriceLine({
-        price, title,
-        color:            cfg.color,
-        lineWidth:        1,
-        lineStyle:        LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true
-      });
-      cfg.lines.push(line);
-    } catch {}
-  });
-}
-
-// Redraw all layers (e.g. after toggle or symbol change)
-function redrawAllLayers() {
-  if (!lastData || !candleSeries) return;
-  Object.keys(layerRegistry).forEach(key => {
-    clearLayer(key);
-    if (layerRegistry[key].enabled) drawLayer(key, lastData);
-  });
-  redrawSRLevels();
-  redrawUserLines();
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// SSE / instrument-key setup
-// ════════════════════════════════════════════════════════════════════════
-const instrumentKeyCache = {};
-let   currentInstrumentKey = null;
-const pendingTicks = [];
-
-async function getInstrumentKey(name) {
-  if (instrumentKeyCache[name]) return instrumentKeyCache[name];
-  try {
-    const res  = await fetch(`/api/websocket/instrument/key?name=${encodeURIComponent(name)}`);
-    const data = await res.json();
-    const key  = data.key || data.instrumentKey || null;
-    if (key) instrumentKeyCache[name] = key;
-    console.log(`[KEY] ${name} → "${key}"`);
-    return key;
-  } catch (e) {
-    console.error(`[KEY] Failed for ${name}:`, e);
+  } catch(e) {
+    console.warn('[SR] Failed to draw', type, lvl.price, conf, e.message);
     return null;
   }
 }
 
-async function resolveCurrentKey(name) {
-  selectedSymbol       = name || symbolDropdown.value;
-  currentInstrumentKey = null;
-  const key = await getInstrumentKey(selectedSymbol);
-  currentInstrumentKey = key;
-  console.log(`[KEY] Active key: "${currentInstrumentKey}" for ${selectedSymbol}`);
-  if (pendingTicks.length > 0) {
-    console.log(`[KEY] Replaying ${pendingTicks.length} queued tick(s)`);
-    pendingTicks.forEach(p => applyTickToChart(p));
-    pendingTicks.length = 0;
-  }
+function drawSupportLevels() {
+  clearLines(srSupLines);
+  const levels = (lastData && lastData.supportLevels) || [];
+  if (!chkSupport.checked || !candleSeries) { $('supportCount').textContent=''; return; }
+  const enabled = getEnabledConf();
+  let drawn = 0;
+  levels.forEach(function(lvl) {
+    const line = drawOneSR('support', lvl, enabled);
+    if (line) { srSupLines.push(line); drawn++; }
+  });
+  $('supportCount').textContent = levels.length ? drawn+'/'+levels.length : '';
+  console.log('[SR] Support: drew', drawn, 'of', levels.length);
 }
 
-// ── SSE ───────────────────────────────────────────────────────────────────────
-let sseSource    = null;
-let ssePrevPrice = null;
+function drawResistanceLevels() {
+  clearLines(srResLines);
+  const levels = (lastData && lastData.resistanceLevels) || [];
+  if (!chkResistance.checked || !candleSeries) { $('resistanceCount').textContent=''; return; }
+  const enabled = getEnabledConf();
+  let drawn = 0;
+  levels.forEach(function(lvl) {
+    const line = drawOneSR('resistance', lvl, enabled);
+    if (line) { srResLines.push(line); drawn++; }
+  });
+  $('resistanceCount').textContent = levels.length ? drawn+'/'+levels.length : '';
+  console.log('[SR] Resistance: drew', drawn, 'of', levels.length);
+}
 
-function connectSSE() {
-  if (sseSource) { sseSource.close(); sseSource = null; }
-  sseSource = new EventSource('/api/stream/market');
-  sseSource.onopen = () => {
-    document.getElementById('sseDot').className    = 'live';
-    document.getElementById('sseLabel').textContent = 'Live';
-    console.log('[SSE] Connected');
-  };
-  sseSource.onerror = () => {
-    document.getElementById('sseDot').className    = '';
-    document.getElementById('sseLabel').textContent = 'Reconnecting...';
-    sseSource.close(); sseSource = null;
-    setTimeout(connectSSE, 3000);
-  };
-  sseSource.addEventListener('ltp', e => {
-    let d;
-    try { d = JSON.parse(e.data); } catch { return; }
-    if (!d || d.price === undefined) return;
-    const price   = Number(d.price);
-    const tickKey = d.key ? String(d.key) : null;
-    if (!isFinite(price) || price <= 0) return;
-    if (tickKey && !currentInstrumentKey) { pendingTicks.push({ price, tickKey }); return; }
-    if (tickKey !== currentInstrumentKey) return;
-    applyTickToChart(price);
+function redrawSR() {
+  srRegistry = {};
+  drawSupportLevels();
+  drawResistanceLevels();
+}
+
+// ── S&R Tooltip ────────────────────────────────────────────────────────────────
+function findNearestSR(price) {
+  var threshold = price * 0.003;
+  var best = null, bestDist = Infinity;
+  Object.values(srRegistry).forEach(function(lvl) {
+    var d = Math.abs(Number(lvl.price) - price);
+    if (d <= threshold && d < bestDist) { bestDist=d; best=lvl; }
+  });
+  return best;
+}
+
+function calcDecision(lvl) {
+  var r=lvl.reacted||0, b=lvl.broken||0, vc=lvl.heavyVolume;
+  var conf=(lvl.confidence||'').toUpperCase();
+  if (conf==='UNTESTED') return {cls:'stale',icon:'&#9208;',label:'Stale &mdash; Monitor Only',detail:'Not yet tested'};
+  var score=(r>=50?3:r>=20?2:1)+(b===0?2:b<=2?0:-2)+(vc?2:0)
+           +(conf==='ABSOLUTE'?3:conf==='HIGH'?2:conf==='MODERATE'?1:0);
+  if (score>=7) return {cls:'strong',icon:'&#128737;',label:'Strong Hold Expected',detail:r+' reactions, '+(b===0?'no breakouts':'B:'+b)};
+  if (score>=4) return {cls:'watch', icon:'&#9888;&#65039;',label:'Watch for Bounce',   detail:(lvl.visited||0)+' visits, '+b+' breakout'+(b!==1?'s':'')};
+  return           {cls:'risky', icon:'&#9889;',label:'Potential Break Risk',  detail:b+' prior breakout'+(b!==1?'s':'')};
+}
+
+function showSRTooltip(lvl, mx, my) {
+  var type=lvl._type, conf=(lvl.confidence||'UNTESTED').toUpperCase();
+  var price=Number(lvl.price), v=lvl.visited||0, r=lvl.reacted||0, b=lvl.broken||0, vc=!!lvl.heavyVolume;
+
+  var typeEl=$('ttType'); typeEl.textContent=type==='support'?'Support':'Resistance'; typeEl.className='tt-type '+type;
+  var priceEl=$('ttPrice'); priceEl.textContent=price.toFixed(2); priceEl.className='tt-price '+type;
+  var badge=$('ttBadge'); badge.textContent=conf; badge.className='tt-badge '+conf;
+
+  var n=CONF_DOTS[conf]||1;
+  $('ttDots').innerHTML=Array.from({length:5},function(_,i){
+    return '<div class="tt-dot'+(i<n?' on '+type:'')+'"></div>';
+  }).join('');
+
+  $('ttVisited').textContent=v; $('ttReacted').textContent=r;
+  var bEl=$('ttBroken'); bEl.textContent=b; bEl.className='tt-stat-val '+(b===0?'green':b<=2?'amber':'red');
+  var hvEl=$('ttHeavyVol'); hvEl.textContent=vc?'Yes':'No'; hvEl.className='tt-stat-val '+(vc?'green':'red');
+
+  var allLvls=Object.values(srRegistry);
+  var maxR=Math.max.apply(null,allLvls.map(function(l){return l.reacted||0;}).concat([1]));
+  var maxB=Math.max.apply(null,allLvls.map(function(l){return l.broken||0;}).concat([1]));
+  $('ttRejBar').style.width=Math.min(100,(r/maxR)*100).toFixed(0)+'%';
+  $('ttBrkBar').style.width=Math.min(100,(b/maxB)*100).toFixed(0)+'%';
+  $('ttRejNum').textContent=r; $('ttBrkNum').textContent=b;
+
+  var vcDot=$('ttVcDot'); vcDot.className='tt-vc-dot '+(vc?'on':'off');
+  var vcTxt=$('ttVcText'); vcTxt.textContent=vc?'Heavy Volume':'No Heavy Volume'; vcTxt.style.color=vc?'#4ade80':'#64748b';
+  $('ttLast').innerHTML='Last: <span>'+(lvl.lastVisited||'&mdash;')+'</span>';
+
+  var dec=calcDecision(lvl);
+  var decEl=$('ttDecision'); decEl.className='tt-decision '+dec.cls;
+  decEl.innerHTML=dec.icon+' <strong>'+dec.label+'</strong> &mdash; '+dec.detail;
+
+  var rect=chartEl.getBoundingClientRect();
+  var ax=rect.left+mx, ay=rect.top+my, W=276, H=330;
+  var left=ax+16, top=ay-H/2;
+  if (left+W>window.innerWidth-16) left=ax-W-16;
+  top=Math.max(8,Math.min(window.innerHeight-H-8,top));
+  srTooltip.style.left=left+'px'; srTooltip.style.top=top+'px';
+  srTooltip.classList.add('show');
+}
+function hideSRTooltip() { srTooltip.classList.remove('show'); }
+
+function initSRCrosshair() {
+  chart.subscribeCrosshairMove(function(param) {
+    if (!param || !param.point || param.point.x == null) { hideSRTooltip(); return; }
+    var price = candleSeries.coordinateToPrice(param.point.y);
+    if (price == null) { hideSRTooltip(); return; }
+    var lvl = findNearestSR(price);
+    if (lvl) showSRTooltip(lvl, param.point.x, param.point.y);
+    else hideSRTooltip();
   });
 }
 
-function applyTickToChart(priceOrObj) {
-  const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
-  updatePricePanel(price);
-  ssePrevPrice = price;
-  if (!candleSeries || !lastCandles || lastCandles.length === 0) return;
-  const last       = lastCandles[lastCandles.length - 1];
-  const prevOpen   = Number(last.open);
-  const prevHigh   = Number(last.high);
-  const prevLow    = Number(last.low);
-  const prevClose  = Number(last.close);
-  const prevVolume = Number(last.volume) || 0;
-  const IST_OFFSET = 19800;
-  const nowIST     = Math.floor(Date.now() / 1000) + IST_OFFSET;
-  const TF_SECONDS = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 };
-  const tfSec      = TF_SECONDS[selectedTimeFrame] || 300;
-  const barFloor   = Math.floor(nowIST / tfSec) * tfSec;
-  if (barFloor > last.time) {
-    const nc = { time: barFloor, open: price, high: price, low: price, close: price, volume: 0 };
+// ── Dynamic Layers ─────────────────────────────────────────────────────────────
+function isPriceArray(val) {
+  if (!Array.isArray(val) || !val.length) return false;
+  var f=val[0];
+  return typeof f==='number' || (typeof f==='string' && !isNaN(+f)) || (typeof f==='object' && f!==null && 'level' in f);
+}
+function getValType(val) {
+  var f=val[0];
+  if (typeof f==='number'||typeof f==='string') return 'number';
+  if (typeof f==='object'&&'level' in f) return 'object';
+  return null;
+}
+function toLabel(key) {
+  return key.replace(/([A-Z])/g,' $1').replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}).trim();
+}
+function syncLayers(data) {
+  var changed=false;
+  Object.entries(data).forEach(function(kv) {
+    var key=kv[0], val=kv[1];
+    if (NON_LAYER.has(key)||!isPriceArray(val)||layerReg[key]) return;
+    layerReg[key]={label:toLabel(key),color:LAYER_COLORS[layerColorIdx++%LAYER_COLORS.length],enabled:true,lines:[],valType:getValType(val)};
+    changed=true;
+  });
+  if (changed) rebuildLayerUI();
+}
+function rebuildLayerUI() {
+  var container=$('dynamicLayersContainer'), title=$('layerTitle');
+  container.innerHTML='';
+  var keys=Object.keys(layerReg);
+  title.style.display=keys.length?'':'none';
+  keys.forEach(function(key) {
+    var cfg=layerReg[key];
+    var lbl=document.createElement('label');
+    var cb=document.createElement('input'); cb.type='checkbox'; cb.id='layer_'+key; cb.checked=cfg.enabled;
+    cb.addEventListener('change',function(){ layerReg[key].enabled=cb.checked; redrawAllLayers(); });
+    var dot=document.createElement('span'); dot.className='line-dot'; dot.style.background=cfg.color;
+    var txt=document.createElement('span'); txt.textContent=cfg.label;
+    lbl.append(cb,dot,txt); container.appendChild(lbl);
+  });
+}
+function clearLayer(key) {
+  var cfg=layerReg[key]; if(!cfg) return;
+  cfg.lines.forEach(function(l){try{candleSeries.removePriceLine(l);}catch(e){}});
+  cfg.lines=[];
+}
+function drawLayer(key,data) {
+  var cfg=layerReg[key];
+  if (!cfg||!cfg.enabled||!candleSeries) return;
+  clearLayer(key);
+  var raw=data[key]; if (!Array.isArray(raw)) return;
+  raw.forEach(function(item) {
     try {
-      candleSeries.update(nc);
-      volumeSeries.update({ time: barFloor, value: 0, color: 'rgba(38,166,154,0.5)' });
-      lastCandles.push(nc);
-    } catch (err) { console.error('[SSE] new bar failed:', err); }
+      var price=cfg.valType==='object'?+item.level:+item;
+      var title=cfg.valType==='object'?(item.label||cfg.label):cfg.label;
+      if (!isFinite(price)) return;
+      var line=candleSeries.createPriceLine({price:price,title:title,color:cfg.color,lineWidth:1,
+        lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:true});
+      cfg.lines.push(line);
+    } catch(e){}
+  });
+}
+function redrawAllLayers() {
+  if (!lastData||!candleSeries) return;
+  Object.keys(layerReg).forEach(function(k){ clearLayer(k); if(layerReg[k].enabled) drawLayer(k,lastData); });
+  redrawSR();
+  redrawUserLines();
+}
+
+// ── SSE ────────────────────────────────────────────────────────────────────────
+async function getInstrumentKey(name) {
+  if (iKeyCache[name]) return iKeyCache[name];
+  try {
+    var res=await fetch('/api/websocket/instrument/key?name='+encodeURIComponent(name));
+    var data=await res.json();
+    var key=data.key||data.instrumentKey||null;
+    if (key) iKeyCache[name]=key;
+    return key;
+  } catch(e){ console.error('[KEY]',name,e); return null; }
+}
+async function resolveKey(name) {
+  selectedSymbol=name||$('symbolSelect').value; iKeyCurrent=null;
+  var key=await getInstrumentKey(selectedSymbol); iKeyCurrent=key;
+  if (pendingTicks.length){ pendingTicks.forEach(applyTick); pendingTicks.length=0; }
+}
+function connectSSE() {
+  if (sseSource){ sseSource.close(); sseSource=null; }
+  sseSource=new EventSource('/api/stream/market');
+  sseSource.onopen=function(){ $('sseDot').className='live'; $('sseLabel').textContent='Live'; };
+  sseSource.onerror=function(){
+    $('sseDot').className=''; $('sseLabel').textContent='Reconnecting\u2026';
+    sseSource.close(); sseSource=null; setTimeout(connectSSE,3000);
+  };
+  sseSource.addEventListener('ltp',function(e){
+    var d; try{d=JSON.parse(e.data);}catch(ex){return;}
+    if (!d||d.price==null) return;
+    var price=+d.price, tickKey=d.key?String(d.key):null;
+    if (!isFinite(price)||price<=0) return;
+    if (tickKey&&!iKeyCurrent){pendingTicks.push({price:price,tickKey:tickKey});return;}
+    if (tickKey!==iKeyCurrent) return;
+    applyTick(price);
+  });
+}
+function applyTick(priceOrObj) {
+  var price=typeof priceOrObj==='object'?priceOrObj.price:priceOrObj;
+  updatePricePanel(price); ssePrevPrice=price;
+  if (!candleSeries||!lastCandles.length) return;
+  var last=lastCandles[lastCandles.length-1];
+  var tfSec=TF_SECS[selectedTimeFrame]||300;
+  var nowIST=Math.floor(Date.now()/1000)+IST_OFFSET;
+  var barFloor=Math.floor(nowIST/tfSec)*tfSec;
+  if (barFloor>last.time) {
+    var nc={time:barFloor,open:price,high:price,low:price,close:price,volume:0};
+    try{candleSeries.update(nc);volumeSeries.update({time:barFloor,value:0,color:'rgba(38,166,154,.5)'});lastCandles.push(nc);}catch(e){}
     return;
   }
-  const updated = {
-    time: last.time, open: prevOpen,
-    high: Math.max(prevHigh, price), low: Math.min(prevLow, price),
-    close: price, volume: prevVolume
-  };
-  if (updated.close === prevClose && updated.high === prevHigh && updated.low === prevLow) return;
-  try {
-    candleSeries.update(updated);
-    volumeSeries.update({ time: updated.time, value: updated.volume,
-      color: updated.close >= updated.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
-    lastCandles[lastCandles.length - 1] = updated;
-  } catch (err) { console.error('[SSE] candle update failed:', err); }
+  var upd={time:last.time,open:+last.open,high:Math.max(+last.high,price),low:Math.min(+last.low,price),close:price,volume:+last.volume||0};
+  if (upd.close===+last.close&&upd.high===+last.high&&upd.low===+last.low) return;
+  try{
+    candleSeries.update(upd);
+    volumeSeries.update({time:upd.time,value:upd.volume,color:upd.close>=upd.open?'rgba(38,166,154,.5)':'rgba(239,83,80,.5)'});
+    lastCandles[lastCandles.length-1]=upd;
+  }catch(e){}
 }
 
+// ── Price Panel ────────────────────────────────────────────────────────────────
+function todayStart() {
+  var now=new Date(), ist=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+  return Math.floor(new Date(ist.getFullYear(),ist.getMonth(),ist.getDate()).getTime()/1000);
+}
 function updatePricePanel(price) {
-  if (!toggleCurrentPriceCheckbox.checked) { currentPriceIndicator.classList.remove('visible'); return; }
-  currentPriceEl.textContent = price.toFixed(2);
-  currentPriceIndicator.classList.add('visible');
-  if (ssePrevPrice !== null && price !== ssePrevPrice) {
-    currentPriceEl.classList.remove('price-flash');
-    void currentPriceEl.offsetWidth;
-    currentPriceEl.classList.add('price-flash');
+  if (!chkPrice.checked){ pricePanel.classList.remove('show'); return; }
+  pricePanel.classList.add('show');
+  if (ssePrevPrice!==null&&price!==ssePrevPrice){
+    ppPrice.classList.remove('flash'); void ppPrice.offsetWidth; ppPrice.classList.add('flash');
   }
-  currentPriceEl.className = 'price-value ' + (ssePrevPrice === null || price >= ssePrevPrice ? 'up' : 'down');
-  if (!lastCandles || lastCandles.length === 0) return;
-  const todayStart   = getTodayStartTimestamp();
-  const todayCandles = lastCandles.filter(c => c.time >= todayStart);
-  if (todayCandles.length === 0) return;
-  const dayOpen = Number(todayCandles[0].open);
-  const dayHigh = Math.max(Math.max(...todayCandles.map(c => Number(c.high))), price);
-  const dayLow  = Math.min(Math.min(...todayCandles.map(c => Number(c.low))),  price);
-  const change  = price - dayOpen;
-  const pct     = ((change / dayOpen) * 100).toFixed(2);
-  priceChangeEl.innerHTML  = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)} (${Math.abs(pct)}%)`;
-  priceChangeEl.className  = 'price-change ' + (change >= 0 ? 'up' : 'down');
-  openPriceEl.textContent  = dayOpen.toFixed(2);
-  highPriceEl.textContent  = dayHigh.toFixed(2);
-  lowPriceEl.textContent   = dayLow.toFixed(2);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Helpers
-// ════════════════════════════════════════════════════════════════════════
-const IST_OFFSET_SECONDS = 19800;
-
-function getTodayStartTimestamp() {
-  const now      = new Date();
-  const todayIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const midnight = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate());
-  return Math.floor(midnight.getTime() / 1000);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// DOM refs
-// ════════════════════════════════════════════════════════════════════════
-const chartEl                    = document.getElementById('chart');
-const loaderEl                   = document.getElementById('loader');
-const loaderText                 = document.getElementById('loaderText');
-const retryCountEl               = document.getElementById('retryCount');
-const errorEl                    = document.getElementById('error');
-const apiErrorToast              = document.getElementById('apiErrorToast');
-const settingsButton             = document.getElementById('settingsButton');
-const settingsMenu               = document.getElementById('settingsMenu');
-const toggleVolumeCheckbox       = document.getElementById('toggleVolume');
-const toggleCurrentPriceCheckbox = document.getElementById('toggleCurrentPrice');
-const toggleGridCheckbox         = document.getElementById('toggleGrid');
-const toggleLiveCheckbox         = document.getElementById('toggleLive');
-const resetButton                = document.getElementById('resetButton');
-const uncheckAllButton           = document.getElementById('uncheckAllButton');
-const fitButton                  = document.getElementById('fitButton');
-const symbolDropdown             = document.getElementById('symbolDropdown');
-const timeframeDropdown          = document.getElementById('timeframeDropdown');
-const hLineBtn                   = document.getElementById('hLineBtn');
-const vLineBtn                   = document.getElementById('vLineBtn');
-const clearDrawBtn               = document.getElementById('clearDrawBtn');
-const colorPicker                = document.getElementById('colorPicker');
-const drawingModeIndicator       = document.getElementById('drawingModeIndicator');
-const todayButton                = document.getElementById('todayButton');
-const currentPriceIndicator      = document.getElementById('currentPriceIndicator');
-const currentPriceEl             = document.getElementById('currentPrice');
-const priceChangeEl              = document.getElementById('priceChange');
-const openPriceEl                = document.getElementById('openPrice');
-const highPriceEl                = document.getElementById('highPrice');
-const lowPriceEl                 = document.getElementById('lowPrice');
-
-let selectedSymbol    = 'NIFTY';
-let selectedTimeFrame = 'FIVE_MINUTE';
-let chart, candleSeries, volumeSeries;
-let lastCandles = [], lastData = null;
-let isFirstLoad = true, refreshInterval = null, retryCount = 0;
-const MAX_RETRIES = 3, RETRY_DELAY = 2000;
-let drawingMode = null, drawnLines = [], chartInitialized = false;
-let selectedColor = '#22c55e';
-let liveClockInterval = null;
-
-// ── Live clock ─────────────────────────────────────────────────────────────────
-function updateLiveClock() {
-  document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('en-IN', {
-    timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-  });
-}
-function startLiveClock() { if (!liveClockInterval) { updateLiveClock(); liveClockInterval = setInterval(updateLiveClock, 1000); } }
-function stopLiveClock()  { if (liveClockInterval)  { clearInterval(liveClockInterval); liveClockInterval = null; } }
-
-// ── Today zoom ─────────────────────────────────────────────────────────────────
-function zoomToToday() {
-  if (!chart || !lastCandles || lastCandles.length === 0) return;
-  const todayStart   = getTodayStartTimestamp();
-  const todayCandles = lastCandles.filter(c => c.time >= todayStart);
-  if (todayCandles.length > 0) {
-    const lastT = todayCandles[todayCandles.length - 1].time;
-    const tf    = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 }[selectedTimeFrame] || 300;
-    const bars  = selectedTimeFrame === 'ONE_MINUTE' ? 60 : selectedTimeFrame === 'FIFTEEN_MINUTE' ? 40 : 50;
-    const range = bars * tf;
-    try { chart.timeScale().setVisibleRange({ from: Math.max(todayStart, lastT - range * 0.6), to: lastT + range * 0.4 }); }
-    catch { chart.timeScale().fitContent(); }
-  } else { chart.timeScale().fitContent(); }
-}
-
-// ── Current price indicator ────────────────────────────────────────────────────
-function updateCurrentPriceIndicator() {
-  if (!toggleCurrentPriceCheckbox.checked || !lastCandles || !lastCandles.length) {
-    currentPriceIndicator.classList.remove('visible'); return;
-  }
-  const todayStart   = getTodayStartTimestamp();
-  const todayCandles = lastCandles.filter(c => c.time >= todayStart);
-  if (!todayCandles.length) { currentPriceIndicator.classList.remove('visible'); return; }
-  const cp      = ssePrevPrice !== null ? ssePrevPrice : Number(lastCandles[lastCandles.length-1].close);
-  const dayOpen = Number(todayCandles[0].open);
-  const dayHigh = Math.max(...todayCandles.map(c => Number(c.high)));
-  const dayLow  = Math.min(...todayCandles.map(c => Number(c.low)));
-  const change  = cp - dayOpen;
-  const pct     = ((change / dayOpen) * 100).toFixed(2);
-  currentPriceEl.textContent = cp.toFixed(2);
-  currentPriceEl.className   = 'price-value ' + (change >= 0 ? 'up' : 'down');
-  priceChangeEl.innerHTML    = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)} (${Math.abs(pct)}%)`;
-  priceChangeEl.className    = 'price-change ' + (change >= 0 ? 'up' : 'down');
-  openPriceEl.textContent    = dayOpen.toFixed(2);
-  highPriceEl.textContent    = dayHigh.toFixed(2);
-  lowPriceEl.textContent     = dayLow.toFixed(2);
-  currentPriceIndicator.classList.add('visible');
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Session persistence
-// ════════════════════════════════════════════════════════════════════════
-function saveToSession(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} }
-function getFromSession(k)   { try { const i = sessionStorage.getItem(k); return i ? JSON.parse(i) : null; } catch { return null; } }
-
-function getSavedLayerState(key) {
-  const saved = getFromSession('layerStates');
-  return saved && key in saved ? saved[key] : null;
-}
-function saveLayerStates() {
-  const states = {};
-  Object.entries(layerRegistry).forEach(([k, v]) => states[k] = v.enabled);
-  saveToSession('layerStates', states);
-}
-
-colorPicker.addEventListener('change', e => { selectedColor = e.target.value; });
-
-// ── Boot ──────────────────────────────────────────────────────────────────────
-window.addEventListener('load', () => {
-  startLiveClock();
-  selectedSymbol    = symbolDropdown.value;
-  selectedTimeFrame = timeframeDropdown.value;
-  const saved = getFromSession('chartState');
-  if (saved && saved.userHasLoadedChart && saved.hasData) restoreChartState(saved);
-  initSRListeners();
-  resolveCurrentKey(symbolDropdown.value).then(() => connectSSE());
-});
-window.addEventListener('beforeunload', saveChartState);
-window.addEventListener('pagehide',     saveChartState);
-
-function saveChartState() {
-  if (!chartInitialized || !lastCandles.length || !chart) return;
-  const vr = chart.timeScale().getVisibleRange();
-  saveToSession('chartState', {
-    hasData: true, savedCandles: lastCandles.slice(), savedData: lastData,
-    savedSymbol: selectedSymbol, savedTimeframe: selectedTimeFrame,
-    savedDrawnLines: drawnLines.map(l => ({
-      type: l.type, price: l.price, time: l.time, color: l.color, minPrice: l.minPrice, maxPrice: l.maxPrice
-    })),
-    userHasLoadedChart: true,
-    visibleRange: vr ? { from: vr.from, to: vr.to } : null,
-    settings: {
-      volume:       toggleVolumeCheckbox.checked,
-      currentPrice: toggleCurrentPriceCheckbox.checked,
-      grid:         toggleGridCheckbox.checked,
-      live:         toggleLiveCheckbox.checked,
-      srSupport:     document.getElementById('toggleSupport')?.checked    ?? true,
-      srResistance:  document.getElementById('toggleResistance')?.checked ?? true,
-      srStrengths:   ['CRITICAL','STRONG','MODERATE','WEAK'].filter(k => document.getElementById('sr'+k)?.checked)
-    }
-  });
-  saveLayerStates();
-}
-
-function restoreChartState(s) {
-  if (!s || !s.hasData || !s.userHasLoadedChart) return;
-  selectedSymbol = s.savedSymbol; selectedTimeFrame = s.savedTimeframe;
-  symbolDropdown.value = selectedSymbol; timeframeDropdown.value = selectedTimeFrame;
-  lastCandles = s.savedCandles.slice(); lastData = s.savedData;
-  if (s.settings) {
-    toggleVolumeCheckbox.checked       = s.settings.volume       !== undefined ? s.settings.volume       : true;
-    toggleCurrentPriceCheckbox.checked = s.settings.currentPrice !== undefined ? s.settings.currentPrice : true;
-    toggleGridCheckbox.checked         = s.settings.grid         !== undefined ? s.settings.grid         : true;
-    toggleLiveCheckbox.checked         = s.settings.live         !== undefined ? s.settings.live         : true;
-    if (s.settings.srSupport    !== undefined) { const el = document.getElementById('toggleSupport');    if (el) el.checked = s.settings.srSupport; }
-    if (s.settings.srResistance !== undefined) { const el = document.getElementById('toggleResistance'); if (el) el.checked = s.settings.srResistance; }
-    if (Array.isArray(s.settings.srStrengths)) {
-      ['CRITICAL','STRONG','MODERATE','WEAK'].forEach(k => {
-        const el = document.getElementById('sr'+k);
-        if (el) el.checked = s.settings.srStrengths.includes(k);
-      });
-    }
-  }
-  if (!chart) initChart();
+  ppPrice.textContent=price.toFixed(2);
+  ppPrice.className='pp-price '+(ssePrevPrice===null||price>=ssePrevPrice?'up':'down');
   if (!lastCandles.length) return;
-  candleSeries.setData(lastCandles);
-  volumeSeries.setData(lastCandles.map(c => ({
-    time: c.time, value: c.volume,
-    color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)'
-  })));
-  if (s.visibleRange?.from && s.visibleRange?.to) {
-    setTimeout(() => {
-      try { chart.timeScale().setVisibleRange({ from: s.visibleRange.from, to: s.visibleRange.to }); }
-      catch { chart.timeScale().fitContent(); }
-    }, 100);
-  } else { chart.timeScale().fitContent(); }
-  isFirstLoad = false;
-  if (lastData) { syncLayersFromData(lastData); redrawAllLayers(); }
-  (s.savedDrawnLines || []).forEach(ld => {
-    try {
-      if (ld.type === 'hline' && ld.price != null) {
-        const line = candleSeries.createPriceLine({ price: ld.price, color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
-        drawnLines.push({ type: 'hline', price: ld.price, line, color: ld.color || selectedColor });
-      } else if (ld.type === 'vline' && ld.time != null) {
-        const vls = chart.addLineSeries({ color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-        vls.setData([{ time: ld.time, value: ld.minPrice }, { time: ld.time, value: ld.maxPrice }]);
-        drawnLines.push({ type: 'vline', time: ld.time, series: vls, color: ld.color || selectedColor, minPrice: ld.minPrice, maxPrice: ld.maxPrice });
-      }
-    } catch {}
-  });
-  updateCurrentPriceIndicator();
-  chartEl.style.display = 'block'; loaderEl.style.display = 'none'; errorEl.style.display = 'none';
-  chartInitialized = true;
-  setTimeout(() => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); }, 50);
-  if (toggleLiveCheckbox.checked) updateLiveStatus();
+  var ts=todayStart(), today=lastCandles.filter(function(c){return c.time>=ts;});
+  if (!today.length) return;
+  var open=+today[0].open;
+  var high=Math.max.apply(null,today.map(function(c){return +c.high;}).concat([price]));
+  var low =Math.min.apply(null,today.map(function(c){return +c.low; }).concat([price]));
+  var change=price-open, pct=((change/open)*100).toFixed(2);
+  ppChange.innerHTML=(change>=0?'&#9650;':'&#9660;')+' '+Math.abs(change).toFixed(2)+' ('+Math.abs(pct)+'%)';
+  ppChange.className='pp-change '+(change>=0?'up':'down');
+  ppOpen.textContent=open.toFixed(2); ppHigh.textContent=high.toFixed(2); ppLow.textContent=low.toFixed(2);
+}
+function refreshPricePanel() {
+  if (!lastCandles.length) return;
+  var cp=ssePrevPrice!==null?ssePrevPrice:+lastCandles[lastCandles.length-1].close;
+  updatePricePanel(cp);
 }
 
-// ── Settings listeners ─────────────────────────────────────────────────────────
-toggleVolumeCheckbox.addEventListener('change', () => {
-  if (volumeSeries) volumeSeries.applyOptions({ visible: toggleVolumeCheckbox.checked });
-  saveChartState();
-});
-toggleCurrentPriceCheckbox.addEventListener('change', () => { updateCurrentPriceIndicator(); saveChartState(); });
-toggleGridCheckbox.addEventListener('change', () => {
-  if (chart) chart.applyOptions({ grid: {
-    vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' },
-    horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' }
-  }});
-  saveChartState();
-});
-toggleLiveCheckbox.addEventListener('change', () => { updateLiveStatus(); saveChartState(); });
-
-const staticCheckboxes = [toggleVolumeCheckbox, toggleCurrentPriceCheckbox, toggleGridCheckbox, toggleLiveCheckbox];
-
-resetButton.addEventListener('click', () => {
-  staticCheckboxes.forEach(c => c.checked = true);
-  Object.values(layerRegistry).forEach(cfg => cfg.enabled = true);
-  rebuildLayerUI();
-  // Reset S&R checkboxes
-  ['toggleSupport','toggleResistance','srCRITICAL','srSTRONG','srMODERATE','srWEAK'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.checked = true;
-  });
-  if (chart) chart.applyOptions({ grid: { vertLines: { visible: true, color: '#eee' }, horzLines: { visible: true, color: '#eee' } } });
-  if (volumeSeries) volumeSeries.applyOptions({ visible: true });
-  redrawAllLayers(); updateCurrentPriceIndicator(); updateLiveStatus(); saveChartState();
-});
-
-uncheckAllButton.addEventListener('click', () => {
-  staticCheckboxes.forEach(c => c.checked = false);
-  Object.values(layerRegistry).forEach(cfg => cfg.enabled = false);
-  rebuildLayerUI();
-  // Uncheck S&R checkboxes
-  ['toggleSupport','toggleResistance','srCRITICAL','srSTRONG','srMODERATE','srWEAK'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.checked = false;
-  });
-  if (chart) chart.applyOptions({ grid: { vertLines: { visible: false, color: '#eee' }, horzLines: { visible: false, color: '#eee' } } });
-  if (volumeSeries) volumeSeries.applyOptions({ visible: false });
-  redrawAllLayers(); currentPriceIndicator.classList.remove('visible');
-  updateLiveStatus(); saveChartState();
-});
-
-fitButton.addEventListener('click', () => { if (chart) { chart.timeScale().fitContent(); saveChartState(); } });
-
-// ── Chart lifecycle ────────────────────────────────────────────────────────────
-function clearChart() {
-  if (chart && candleSeries) drawnLines.forEach(ld => {
-    try { if (ld.type === 'hline' && ld.line) candleSeries.removePriceLine(ld.line);
-          else if (ld.type === 'vline' && ld.series) chart.removeSeries(ld.series); } catch {}
-  });
-  drawnLines = [];
-  // Clear SR lines + registry
-  srLevelRegistry = {};
-  if (candleSeries) {
-    clearSRLines(srSupportLines);
-    clearSRLines(srResistancLines);
-  }
-  // Clear all dynamic layers
-  Object.keys(layerRegistry).forEach(k => { layerRegistry[k].lines = []; });
-  if (chart) {
-    if (candleSeries) { try { chart.removeSeries(candleSeries); } catch {} candleSeries = null; }
-    if (volumeSeries) { try { chart.removeSeries(volumeSeries); } catch {} volumeSeries = null; }
-    try { chart.remove(); } catch {} chart = null;
-  }
-}
-
-symbolDropdown.addEventListener('change', () => {
-  const name = symbolDropdown.value;
-  selectedSymbol = name; ssePrevPrice = null;
-  currentInstrumentKey = null; pendingTicks.length = 0;
-  // Reset layer registry on symbol change so new API fields get detected fresh
-  layerRegistry = {}; colorIndex = 0;
-  resolveCurrentKey(name);
-  clearChart(); isFirstLoad = true; chartInitialized = false; lastCandles = [];
-  refresh(true);
-});
-timeframeDropdown.addEventListener('change', () => {
-  selectedTimeFrame = timeframeDropdown.value;
-  clearChart(); isFirstLoad = true; chartInitialized = false; lastCandles = [];
-  refresh(true);
-});
-
+// ── Chart ──────────────────────────────────────────────────────────────────────
 function initChart() {
   if (chart) return;
-  chart = LightweightCharts.createChart(chartEl, {
-    width: chartEl.clientWidth, height: chartEl.clientHeight,
-    layout: { backgroundColor: '#fff', textColor: '#000' },
-    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.2 } },
-    timeScale: { timeVisible: true, rightOffset: 30, barSpacing: 6, minBarSpacing: 3, borderColor: '#d1d4dc', borderVisible: true },
-    crosshair: {
-      mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' },
-      horzLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' }
+  chart=LightweightCharts.createChart(chartEl,{
+    width:chartEl.clientWidth, height:chartEl.clientHeight,
+    layout:{backgroundColor:'#fff',textColor:'#000'},
+    rightPriceScale:{borderVisible:false,scaleMargins:{top:.1,bottom:.2}},
+    timeScale:{timeVisible:true,rightOffset:30,barSpacing:6,minBarSpacing:3,borderColor:'#d1d4dc'},
+    crosshair:{
+      mode:LightweightCharts.CrosshairMode.Normal,
+      vertLine:{width:1,color:'#758696',style:LightweightCharts.LineStyle.Dashed,labelBackgroundColor:'#4a5568'},
+      horzLine:{width:1,color:'#758696',style:LightweightCharts.LineStyle.Dashed,labelBackgroundColor:'#4a5568'},
     },
-    grid: { vertLines: { visible: toggleGridCheckbox.checked, color: '#eee' }, horzLines: { visible: toggleGridCheckbox.checked, color: '#eee' } },
-    localization: {
-      locale: 'en-IN',
-      timeFormatter: ts => {
-        const d = new Date((ts + IST_OFFSET_SECONDS) * 1000);
-        return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
-      }
-    }
+    grid:{vertLines:{visible:chkGrid.checked,color:'#eee'},horzLines:{visible:chkGrid.checked,color:'#eee'}},
+    localization:{timeFormatter:function(ts){
+      var d=new Date((ts+IST_OFFSET)*1000);
+      return String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0');
+    }}
   });
-  candleSeries = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
-  chart.applyOptions({ priceScales: { volume: { visible: true, borderVisible: false, scaleMargins: { top: 0.9, bottom: 0 } } } });
-  volumeSeries = chart.addHistogramSeries({ color: 'rgba(38,166,154,0.5)', priceFormat: { type: 'volume' }, priceScaleId: 'volume', scaleMargins: { top: 0.9, bottom: 0 }, overlay: true, lineWidth: 1, visible: toggleVolumeCheckbox.checked });
-  chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-    if (chartInitialized && lastCandles.length) { clearTimeout(window.savePositionTimeout); window.savePositionTimeout = setTimeout(saveChartState, 500); }
-  });
-  chartEl.addEventListener('click', handleChartClick);
+  candleSeries=chart.addCandlestickSeries({upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,wickUpColor:'#26a69a',wickDownColor:'#ef5350'});
+  volumeSeries=chart.addHistogramSeries({color:'rgba(38,166,154,.5)',priceFormat:{type:'volume'},priceScaleId:'volume',scaleMargins:{top:.9,bottom:0},overlay:true,lineWidth:1,visible:chkVolume.checked});
+  chartEl.addEventListener('click',onChartClick);
   initSRCrosshair();
-  chartInitialized = true;
+  chartReady=true;
 }
 
-// ── User drawing ───────────────────────────────────────────────────────────────
-function handleChartClick(event) {
-  if (!drawingMode || !chart) return;
-  const rect = chartEl.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
-  if (drawingMode === 'hline') {
-    const price = candleSeries.coordinateToPrice(y);
-    if (price) {
-      const line = candleSeries.createPriceLine({ price, color: selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
-      drawnLines.push({ type: 'hline', price, line, color: selectedColor }); saveChartState();
-    }
-  } else if (drawingMode === 'vline') {
-    const time = chart.timeScale().coordinateToTime(x);
-    if (time && lastCandles.length) {
-      let minP = Math.min(...lastCandles.map(c => Number(c.low))), maxP = Math.max(...lastCandles.map(c => Number(c.high)));
-      const pad = (maxP - minP) * 0.1; minP -= pad; maxP += pad;
-      const vls = chart.addLineSeries({ color: selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-      vls.setData([{ time, value: minP }, { time, value: maxP }]);
-      drawnLines.push({ type: 'vline', time, series: vls, color: selectedColor, minPrice: minP, maxPrice: maxP }); saveChartState();
-    }
-  }
-  drawingMode = null; updateDrawingButtons();
-}
-
-function updateDrawingButtons() {
-  hLineBtn.classList.toggle('active', drawingMode === 'hline');
-  vLineBtn.classList.toggle('active', drawingMode === 'vline');
-  chartEl.classList.toggle('drawing-mode', drawingMode !== null);
-  if (drawingMode) { drawingModeIndicator.style.display = 'block'; drawingModeIndicator.textContent = drawingMode === 'hline' ? 'Click to draw horizontal line' : 'Click to draw vertical line'; }
-  else { drawingModeIndicator.style.display = 'none'; }
-}
-
-function redrawUserLines() {
-  if (!candleSeries || !chart) return;
-  const valid = [];
-  drawnLines.forEach(ld => {
-    try {
-      if (ld.type === 'hline' && ld.price != null) {
-        if (ld.line) { try { candleSeries.removePriceLine(ld.line); } catch {} }
-        const nl = candleSeries.createPriceLine({ price: ld.price, color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'H-Line' });
-        valid.push({ type: 'hline', price: ld.price, line: nl, color: ld.color || selectedColor });
-      } else if (ld.type === 'vline' && ld.time != null) {
-        if (ld.series) { try { chart.removeSeries(ld.series); } catch {} }
-        const vls = chart.addLineSeries({ color: ld.color || selectedColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, priceFormat: { type: 'price' }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-        vls.setData([{ time: ld.time, value: ld.minPrice }, { time: ld.time, value: ld.maxPrice }]);
-        valid.push({ type: 'vline', time: ld.time, series: vls, color: ld.color || selectedColor, minPrice: ld.minPrice, maxPrice: ld.maxPrice });
-      }
-    } catch {}
+function destroyChart() {
+  hideSRTooltip(); srRegistry={};
+  drawnLines.forEach(function(ld){
+    try{if(ld.type==='hline')candleSeries.removePriceLine(ld.line);else chart.removeSeries(ld.series);}catch(e){}
   });
-  drawnLines = valid;
+  drawnLines=[];
+  clearLines(srSupLines); clearLines(srResLines);
+  Object.values(layerReg).forEach(function(cfg){
+    cfg.lines.forEach(function(l){try{candleSeries.removePriceLine(l);}catch(e){}});
+    cfg.lines=[];
+  });
+  if (chart){
+    if (candleSeries){try{chart.removeSeries(candleSeries);}catch(e){} candleSeries=null;}
+    if (volumeSeries){try{chart.removeSeries(volumeSeries);}catch(e){} volumeSeries=null;}
+    try{chart.remove();}catch(e){} chart=null;
+  }
+  chartReady=false;
 }
 
-hLineBtn.addEventListener('click', () => { drawingMode = drawingMode === 'hline' ? null : 'hline'; updateDrawingButtons(); });
-vLineBtn.addEventListener('click', () => { drawingMode = drawingMode === 'vline' ? null : 'vline'; updateDrawingButtons(); });
-clearDrawBtn.addEventListener('click', () => {
-  if (!chart || !candleSeries) return;
-  drawnLines.forEach(ld => { try { if (ld.type === 'hline' && ld.line) candleSeries.removePriceLine(ld.line); else if (ld.type === 'vline' && ld.series) chart.removeSeries(ld.series); } catch {} });
-  drawnLines = []; drawingMode = null; updateDrawingButtons(); saveChartState();
-});
+function vc(c){ return +c.close>=+c.open?'rgba(38,166,154,.5)':'rgba(239,83,80,.5)'; }
 
-// ── Chart data update ──────────────────────────────────────────────────────────
 function updateChart(data) {
-  if (!data || !data.candles || !data.candles.length) return;
-  lastData = data;
-  const candles = data.candles;
-
-  // Detect & register any new line-layer fields from this API response
-  syncLayersFromData(data);
-
-  if (isFirstLoad) {
+  if (!data||!data.candles||!data.candles.length) return;
+  lastData=data;
+  var candles=data.candles;
+  syncLayers(data);
+  if (isFirstLoad){
     candleSeries.setData(candles);
-    volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })));
-    lastCandles = candles.slice();
+    volumeSeries.setData(candles.map(function(c){return{time:c.time,value:c.volume,color:vc(c)};}));
+    lastCandles=candles.slice();
     redrawAllLayers();
-    updateCurrentPriceIndicator();
+    refreshPricePanel();
     chart.timeScale().fitContent();
-    isFirstLoad = false;
+    isFirstLoad=false;
+    return;
+  }
+  var lastT=lastCandles.length?lastCandles[lastCandles.length-1].time:0;
+  if (candles.length<lastCandles.length){
+    candleSeries.setData(candles);
+    volumeSeries.setData(candles.map(function(c){return{time:c.time,value:c.volume,color:vc(c)};}));
+    lastCandles=candles.slice();
+    setTimeout(redrawAllLayers,50);
   } else {
-    const lastKnown = lastCandles.length ? lastCandles[lastCandles.length - 1].time : 0;
-    let missing = [];
-    if (lastCandles.length && candles.length > lastCandles.length) {
-      const idx = candles.findIndex(c => c.time === lastKnown);
-      if (idx >= 0 && idx < candles.length - 1) missing = candles.slice(idx + 1);
-    }
-    if (missing.length > 2 || candles.length < lastCandles.length) {
+    var idx=candles.findIndex(function(c){return c.time===lastT;});
+    var missing=(idx>=0&&idx<candles.length-1)?candles.slice(idx+1):[];
+    if (missing.length>2){
       candleSeries.setData(candles);
-      volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })));
-      lastCandles = candles.slice();
-      setTimeout(() => redrawAllLayers(), 50);
-    } else if (missing.length > 0) {
-      missing.forEach(c => {
+      volumeSeries.setData(candles.map(function(c){return{time:c.time,value:c.volume,color:vc(c)};}));
+      lastCandles=candles.slice();
+      setTimeout(redrawAllLayers,50);
+    } else if (missing.length>0){
+      missing.forEach(function(c){
         candleSeries.update(c);
-        volumeSeries.update({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
+        volumeSeries.update({time:c.time,value:c.volume,color:vc(c)});
       });
-      lastCandles = candles.slice();
+      lastCandles=candles.slice();
     } else {
-      if (lastCandles.length && candles.length) {
-        const ol = lastCandles[lastCandles.length - 1], nl = candles[candles.length - 1];
-        if (ol.time === nl.time) {
-          if (ol.close !== nl.close || ol.high !== nl.high || ol.low !== nl.low || ol.volume !== nl.volume) {
-            candleSeries.update(nl);
-            volumeSeries.update({ time: nl.time, value: nl.volume, color: nl.close >= nl.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
-            lastCandles[lastCandles.length - 1] = nl;
-          }
-        } else if (nl.time > ol.time) {
+      var nl=candles[candles.length-1], ol=lastCandles[lastCandles.length-1];
+      if (ol.time===nl.time){
+        if (ol.close!==nl.close||ol.high!==nl.high||ol.low!==nl.low||ol.volume!==nl.volume){
           candleSeries.update(nl);
-          volumeSeries.update({ time: nl.time, value: nl.volume, color: nl.close >= nl.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' });
-          lastCandles = candles.slice();
+          volumeSeries.update({time:nl.time,value:nl.volume,color:vc(nl)});
+          lastCandles[lastCandles.length-1]=nl;
         }
+      } else if (+nl.time>+ol.time){
+        candleSeries.update(nl);
+        volumeSeries.update({time:nl.time,value:nl.volume,color:vc(nl)});
+        lastCandles=candles.slice();
       }
     }
-    updateCurrentPriceIndicator();
-    // Redraw layers in case new data changed levels
-    setTimeout(() => redrawAllLayers(), 50);
+    setTimeout(redrawAllLayers,50);
   }
+  refreshPricePanel();
 }
 
-// ── Error toast ────────────────────────────────────────────────────────────────
-function showApiErrorToast(msg) {
-  apiErrorToast.textContent = `⚠️ ${msg}`; apiErrorToast.classList.remove('fade-out'); apiErrorToast.classList.add('show');
-  setTimeout(() => { apiErrorToast.classList.add('fade-out'); setTimeout(() => apiErrorToast.classList.remove('show','fade-out'), 500); }, 3000);
-}
-
-// ── Data fetch ─────────────────────────────────────────────────────────────────
-async function fetchData(tf = selectedTimeFrame, name = selectedSymbol) {
-  const r = await fetch(`/api/intraday?timeFrame=${tf}&name=${name}`);
-  if (!r.ok) throw new Error(`API error: ${r.status}`);
+// ── Fetch / Refresh ────────────────────────────────────────────────────────────
+async function fetchData() {
+  var r=await fetch('/api/intraday?timeFrame='+selectedTimeFrame+'&name='+selectedSymbol);
+  if (!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
 }
-
-async function refresh(firstLoad = false) {
-  if (firstLoad) {
-    loaderEl.style.display = 'flex'; chartEl.style.display = 'none'; errorEl.style.display = 'none';
-    retryCount = 0; loaderText.textContent = 'Loading chart data...'; retryCountEl.textContent = '';
-  } else {
-    const tb = document.getElementById('toolbar');
-    tb.style.transition = 'box-shadow 0.3s ease'; tb.style.boxShadow = '0 8px 32px rgba(74,85,104,0.4)';
-    setTimeout(() => { tb.style.boxShadow = '0 8px 32px rgba(0,0,0,0.15)'; }, 500);
+function showToast(msg) {
+  toastEl.textContent='\u26a0\ufe0f '+msg;
+  toastEl.classList.remove('fade-out'); toastEl.classList.add('show');
+  setTimeout(function(){ toastEl.classList.add('fade-out'); setTimeout(function(){toastEl.classList.remove('show','fade-out');},500); },3000);
+}
+async function refresh(firstLoad) {
+  if (firstLoad){
+    loaderEl.style.display='flex'; chartEl.style.display='none'; errorEl.style.display='none';
+    retryCount=0; loaderText.textContent='Loading chart data\u2026'; retryEl.textContent='';
   }
   try {
-    const data = await fetchData(selectedTimeFrame, selectedSymbol);
+    var data=await fetchData();
     if (!chart) initChart();
     updateChart(data);
-    loaderEl.style.display = 'none'; errorEl.style.display = 'none'; chartEl.style.display = 'block'; retryCount = 0;
-    if (firstLoad) setTimeout(() => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); }, 50);
-  } catch (e) {
-    if (firstLoad && retryCount < MAX_RETRIES) {
-      retryCount++; loaderText.textContent = 'Connection failed. Retrying...'; retryCountEl.textContent = `Attempt ${retryCount} of ${MAX_RETRIES}`;
-      setTimeout(() => refresh(true), RETRY_DELAY);
-    } else if (firstLoad) {
-      loaderEl.style.display = 'none'; chartEl.style.display = 'none';
-      errorEl.textContent = `Failed after ${MAX_RETRIES} attempts: ${e.message}`; errorEl.style.display = 'block'; retryCount = 0;
-    } else { showApiErrorToast('API Error - Retrying...'); console.error('API update failed:', e.message); }
+    loaderEl.style.display='none'; errorEl.style.display='none'; chartEl.style.display='block'; retryCount=0;
+    if (firstLoad) setTimeout(function(){if(chart)chart.resize(chartEl.clientWidth,chartEl.clientHeight);},50);
+  } catch(e) {
+    if (firstLoad&&retryCount<MAX_RETRY){
+      retryCount++; loaderText.textContent='Connection failed. Retrying\u2026'; retryEl.textContent='Attempt '+retryCount+' of '+MAX_RETRY;
+      setTimeout(function(){refresh(true);},RETRY_DELAY);
+    } else if (firstLoad){
+      loaderEl.style.display='none'; chartEl.style.display='none';
+      errorEl.textContent='Failed after '+MAX_RETRY+' attempts: '+e.message; errorEl.style.display='block'; retryCount=0;
+    } else { showToast('API Error \u2013 Retrying\u2026'); }
   }
 }
-
-function updateLiveStatus() {
-  if (toggleLiveCheckbox.checked && chartInitialized) { if (!refreshInterval) refreshInterval = setInterval(() => refresh(false), 30000); }
-  else { if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; } }
+function setLiveRefresh(on) {
+  clearInterval(refreshTimer); refreshTimer=null;
+  if (on&&chartReady) refreshTimer=setInterval(function(){refresh(false);},30000);
 }
 
-window.addEventListener('resize', () => { if (chart) chart.resize(chartEl.clientWidth, chartEl.clientHeight); });
+// ── User Drawings ──────────────────────────────────────────────────────────────
+function setDrawMode(mode) {
+  drawMode=drawMode===mode?null:mode;
+  $('btnHLine').classList.toggle('active',drawMode==='hline');
+  $('btnVLine').classList.toggle('active',drawMode==='vline');
+  chartEl.classList.toggle('drawing-mode',drawMode!==null);
+  if (drawMode){ drawIndicator.style.display='block'; drawIndicator.textContent=drawMode==='hline'?'Click to draw horizontal line':'Click to draw vertical line'; }
+  else drawIndicator.style.display='none';
+}
+function onChartClick(e) {
+  if (!drawMode||!chart) return;
+  var rect=chartEl.getBoundingClientRect(), x=e.clientX-rect.left, y=e.clientY-rect.top;
+  if (drawMode==='hline'){
+    var price=candleSeries.coordinateToPrice(y);
+    if (price!=null){
+      var line=candleSeries.createPriceLine({price:price,color:drawColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:'\u2014'});
+      drawnLines.push({type:'hline',price:price,line:line,color:drawColor});
+    }
+  } else if (drawMode==='vline'){
+    var time=chart.timeScale().coordinateToTime(x);
+    if (time&&lastCandles.length){
+      var lows=lastCandles.map(function(c){return +c.low;}), highs=lastCandles.map(function(c){return +c.high;});
+      var pad=(Math.max.apply(null,highs)-Math.min.apply(null,lows))*0.1;
+      var minP=Math.min.apply(null,lows)-pad, maxP=Math.max.apply(null,highs)+pad;
+      var vls=chart.addLineSeries({color:drawColor,lineWidth:2,lineStyle:0,priceFormat:{type:'price'},lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false});
+      vls.setData([{time:time,value:minP},{time:time,value:maxP}]);
+      drawnLines.push({type:'vline',time:time,series:vls,color:drawColor,minP:minP,maxP:maxP});
+    }
+  }
+  setDrawMode(null);
+}
+function redrawUserLines() {
+  if (!candleSeries||!chart) return;
+  var valid=[];
+  drawnLines.forEach(function(ld){
+    try{
+      if (ld.type==='hline'){
+        if (ld.line){try{candleSeries.removePriceLine(ld.line);}catch(e){}}
+        var nl=candleSeries.createPriceLine({price:ld.price,color:ld.color,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,axisLabelVisible:true,title:'\u2014'});
+        valid.push({type:'hline',price:ld.price,line:nl,color:ld.color});
+      } else if (ld.type==='vline'){
+        if (ld.series){try{chart.removeSeries(ld.series);}catch(e){}}
+        var vls=chart.addLineSeries({color:ld.color,lineWidth:2,lineStyle:0,priceFormat:{type:'price'},lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false});
+        vls.setData([{time:ld.time,value:ld.minP},{time:ld.time,value:ld.maxP}]);
+        valid.push({type:'vline',time:ld.time,series:vls,color:ld.color,minP:ld.minP,maxP:ld.maxP});
+      }
+    }catch(e){}
+  });
+  drawnLines=valid;
+}
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { saveChartState(); stopLiveClock(); if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; } }
+// ── Today Zoom ─────────────────────────────────────────────────────────────────
+function zoomToToday() {
+  if (!chart||!lastCandles.length) return;
+  var ts=todayStart(), today=lastCandles.filter(function(c){return c.time>=ts;});
+  if (!today.length){ chart.timeScale().fitContent(); return; }
+  var lastT=today[today.length-1].time, tfSec=TF_SECS[selectedTimeFrame]||300;
+  var bars=selectedTimeFrame==='ONE_MINUTE'?60:selectedTimeFrame==='FIFTEEN_MINUTE'?40:50;
+  try{ chart.timeScale().setVisibleRange({from:Math.max(ts,lastT-bars*tfSec*0.6),to:lastT+bars*tfSec*0.4}); }
+  catch(e){ chart.timeScale().fitContent(); }
+}
+
+// ── Settings Listeners ─────────────────────────────────────────────────────────
+chkVolume.addEventListener('change', function(){ if(volumeSeries) volumeSeries.applyOptions({visible:chkVolume.checked}); });
+chkPrice.addEventListener('change',  function(){ refreshPricePanel(); });
+chkGrid.addEventListener('change',   function(){
+  if (chart) chart.applyOptions({grid:{vertLines:{visible:chkGrid.checked,color:'#eee'},horzLines:{visible:chkGrid.checked,color:'#eee'}}});
+});
+chkLive.addEventListener('change', function(){ setLiveRefresh(chkLive.checked); });
+chkSupport.addEventListener('change',    function(){ redrawSR(); });
+chkResistance.addEventListener('change', function(){ redrawSR(); });
+CONFIDENCE_LEVELS.forEach(function(k){
+  var el=$('chk'+k); if(el) el.addEventListener('change', function(){ redrawSR(); });
+});
+
+var SR_CHKS = ['chkSupport','chkResistance'].concat(CONFIDENCE_LEVELS.map(function(k){return 'chk'+k;}));
+var ALL_CHKS = ['chkVolume','chkPrice','chkGrid','chkLive'].concat(SR_CHKS);
+
+$('btnReset').addEventListener('click', function(){
+  ALL_CHKS.forEach(function(id){ var el=$(id); if(el) el.checked=true; });
+  Object.values(layerReg).forEach(function(cfg){ cfg.enabled=true; }); rebuildLayerUI();
+  if(chart) chart.applyOptions({grid:{vertLines:{visible:true,color:'#eee'},horzLines:{visible:true,color:'#eee'}}});
+  if(volumeSeries) volumeSeries.applyOptions({visible:true});
+  redrawAllLayers(); refreshPricePanel(); setLiveRefresh(true);
+});
+$('btnUncheckAll').addEventListener('click', function(){
+  ALL_CHKS.forEach(function(id){ var el=$(id); if(el) el.checked=false; });
+  Object.values(layerReg).forEach(function(cfg){ cfg.enabled=false; }); rebuildLayerUI();
+  if(chart) chart.applyOptions({grid:{vertLines:{visible:false,color:'#eee'},horzLines:{visible:false,color:'#eee'}}});
+  if(volumeSeries) volumeSeries.applyOptions({visible:false});
+  redrawAllLayers(); pricePanel.classList.remove('show'); setLiveRefresh(false);
+});
+$('btnFit').addEventListener('click', function(){ if(chart) chart.timeScale().fitContent(); });
+
+// Symbol / timeframe
+$('symbolSelect').addEventListener('change', function(){
+  var name=$('symbolSelect').value;
+  selectedSymbol=name; ssePrevPrice=null; iKeyCurrent=null; pendingTicks.length=0;
+  layerReg={}; layerColorIdx=0;
+  resolveKey(name);
+  destroyChart(); isFirstLoad=true; lastCandles=[];
+  refresh(true);
+});
+$('tfSelect').addEventListener('change', function(){
+  selectedTimeFrame=$('tfSelect').value;
+  destroyChart(); isFirstLoad=true; lastCandles=[];
+  refresh(true);
+});
+
+// Drawing tools
+$('btnHLine').addEventListener('click',    function(){ setDrawMode('hline'); });
+$('btnVLine').addEventListener('click',    function(){ setDrawMode('vline'); });
+$('colorPicker').addEventListener('change',function(e){ drawColor=e.target.value; });
+$('btnClearDraw').addEventListener('click',function(){
+  drawnLines.forEach(function(ld){
+    try{if(ld.type==='hline')candleSeries.removePriceLine(ld.line);else chart.removeSeries(ld.series);}catch(e){}
+  });
+  drawnLines=[]; setDrawMode(null);
+});
+
+// Toolbar
+$('btnToday').addEventListener('click',function(){ zoomToToday(); });
+$('btnRefresh').addEventListener('click',function(){
+  clearInterval(refreshTimer); refreshTimer=null;
+  isFirstLoad=true; retryCount=0;
+  errorEl.style.display='none'; loaderEl.style.display='flex'; chartEl.style.display='none';
+  loaderText.textContent='Loading chart data\u2026'; retryEl.textContent='';
+  destroyChart(); chartReady=false;
+  refresh(true).then(function(){ setLiveRefresh(chkLive.checked); }).catch(function(){});
+});
+$('btnSettings').addEventListener('click',function(e){ e.stopPropagation(); settingsMenu.classList.toggle('open'); });
+document.addEventListener('click',function(e){
+  if (!$('settingsDropdown').contains(e.target)) settingsMenu.classList.remove('open');
+});
+
+window.addEventListener('resize', function(){ if(chart) chart.resize(chartEl.clientWidth,chartEl.clientHeight); });
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden){ stopClock(); clearInterval(refreshTimer); refreshTimer=null; }
   else {
-    startLiveClock(); connectSSE();
-    if (toggleLiveCheckbox.checked && chartInitialized) { refresh(false); refreshInterval = setInterval(() => refresh(false), 30000); }
-    if (chart) setTimeout(() => chart.resize(chartEl.clientWidth, chartEl.clientHeight), 100);
+    startClock(); connectSSE();
+    if (chkLive.checked&&chartReady){ refresh(false); setLiveRefresh(true); }
+    if (chart) setTimeout(function(){chart.resize(chartEl.clientWidth,chartEl.clientHeight);},100);
   }
 });
 
-document.getElementById('refreshButton').addEventListener('click', () => {
-  if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
-  isFirstLoad = true; retryCount = 0;
-  errorEl.style.display = 'none'; loaderEl.style.display = 'flex'; chartEl.style.display = 'none';
-  loaderText.textContent = 'Loading chart data...'; retryCountEl.textContent = '';
-  clearChart(); chartInitialized = false;
-  refresh(true).then(() => { if (toggleLiveCheckbox.checked) refreshInterval = setInterval(() => refresh(false), 30000); }).catch(() => {});
+// ── Boot ───────────────────────────────────────────────────────────────────────
+window.addEventListener('load', function(){
+  startClock();
+  selectedSymbol    = $('symbolSelect').value;
+  selectedTimeFrame = $('tfSelect').value;
+  resolveKey(selectedSymbol).then(connectSSE);
+  refresh(true).then(function(){ setLiveRefresh(chkLive.checked); }).catch(function(){});
 });
-
-todayButton.addEventListener('click', zoomToToday);
-settingsButton.addEventListener('click', () => settingsMenu.classList.toggle('visible'));
-document.addEventListener('click', e => { if (!settingsButton.contains(e.target) && !settingsMenu.contains(e.target)) settingsMenu.classList.remove('visible'); });
 </script>
 </body>
 </html>

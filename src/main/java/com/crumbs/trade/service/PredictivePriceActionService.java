@@ -8,6 +8,10 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -15,32 +19,7 @@ import java.util.stream.Collectors;
 @Service
 public class PredictivePriceActionService {
 
-    // ==================== PUBLIC API ====================
-
-    /**
-     * Detects Support and Resistance zones from candle data.
-     * Returns price lists + rich SRLevelDTO objects with touch/strength metadata.
-     */
-    public PriceActionResult analyzePredictive(BigDecimal currentPrice,
-                                               List<PricesIndex> candles,
-                                               String timeframe) {
-
-        log.info("📐 S/R analysis | price={} | candles={} | tf={}",
-                currentPrice, candles == null ? 0 : candles.size(), timeframe);
-
-        if (candles == null || candles.size() < 10) {
-            log.warn("Not enough candles for S/R analysis");
-            return emptyResult(currentPrice);
-        }
-
-        // 0.2% of current price used for zone clustering
-        BigDecimal tolerance = currentPrice.multiply(BigDecimal.valueOf(0.002));
-
-        List<LevelAccumulator> supports    = detectLevels(candles, currentPrice, tolerance, true);
-        List<LevelAccumulator> resistances = detectLevels(candles, currentPrice, tolerance, false);
-
-        return buildResult(currentPrice, supports, resistances);
-    }
+   
 
     // ==================== LEVEL DETECTION ====================
 
@@ -141,7 +120,18 @@ public class PredictivePriceActionService {
             touches++;
             minCandlesAgo = Math.min(minCandlesAgo, candlesAgo);
         }
-
+        String calcConfidence() {
+            int score = touches * 10 + rejections * 15 - breakouts * 20;
+            if (volumeConfirmed) score += 20;
+            if (minCandlesAgo < 10) score += 10;
+            if (breakouts == 0) score += 15;
+            
+            if (score >= 80) return "ABSOLUTE";
+            if (score >= 60) return "HIGH";
+            if (score >= 40) return "MODERATE";
+            if (score >= 20) return "LOW";
+            return "UNTESTED";
+        }
         String calcStrength() {
             int score = 0;
             score += touches    * 10;
@@ -156,35 +146,53 @@ public class PredictivePriceActionService {
             return "WEAK";
         }
 
-        SRLevelDTO toDTO() {
+        SRLevelDTO toDTO(int candleMinutes) {
             return new SRLevelDTO(
-                price,
-                touches,
-                rejections,
-                breakouts,
-                volumeConfirmed,
-                minCandlesAgo == Integer.MAX_VALUE ? -1 : minCandlesAgo,
-                calcStrength()
-            );
-        }
+                    price,
+                    touches,
+                    rejections,
+                    breakouts,
+                    volumeConfirmed,
+                    formatLastVisited(minCandlesAgo, candleMinutes),
+                    calcConfidence()
+                );
+            
+            }
     }
 
+   
+
+    // Same formatLastVisited helper — add to PredictivePriceActionService too
+    private static String formatLastVisited(int candlesAgo, int candleMinutes) {
+        if (candlesAgo == Integer.MAX_VALUE || candlesAgo < 0) return "Unknown";
+        
+        LocalDateTime visitedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"))
+            .minusMinutes((long) candlesAgo * candleMinutes);
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+        long minutesAgo = ChronoUnit.MINUTES.between(visitedAt, now);
+
+        String timeStr = visitedAt.format(DateTimeFormatter.ofPattern("HH:mm"));
+        String dateStr = visitedAt.format(DateTimeFormatter.ofPattern("MMM dd"));
+
+        if (minutesAgo < 60) return minutesAgo + " mins ago (" + timeStr + ")";
+        if (minutesAgo < 1440) return (minutesAgo / 60) + " hours ago (" + timeStr + ")";
+        if (minutesAgo < 2880) return "Yesterday (" + timeStr + ")";
+        return (minutesAgo / 1440) + " days ago (" + dateStr + ")";
+    }
     // ==================== RESULT BUILDER ====================
 
-    private PriceActionResult buildResult(BigDecimal currentPrice,
-                                          List<LevelAccumulator> supports,
-                                          List<LevelAccumulator> resistances) {
+	private PriceActionResult buildResult(BigDecimal currentPrice, List<LevelAccumulator> supports,
+			List<LevelAccumulator> resistances, int candleMinutes) {
+		PriceActionResult result = new PriceActionResult();
+		result.setCurrentPrice(currentPrice);
 
-        PriceActionResult result = new PriceActionResult();
-        result.setCurrentPrice(currentPrice);
+		result.setSupportLevels(supports.stream().map(acc -> acc.toDTO(candleMinutes)).collect(Collectors.toList()));
 
-        result.setSupportLevels(
-            supports.stream().map(LevelAccumulator::toDTO).collect(Collectors.toList()));
-        result.setResistanceLevels(
-            resistances.stream().map(LevelAccumulator::toDTO).collect(Collectors.toList()));
+		result.setResistanceLevels(
+				resistances.stream().map(acc -> acc.toDTO(candleMinutes)).collect(Collectors.toList()));
 
-        return result;
-    }
+		return result;
+	}
 
     private PriceActionResult emptyResult(BigDecimal currentPrice) {
         PriceActionResult r = new PriceActionResult();

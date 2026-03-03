@@ -14,10 +14,10 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 public class SRLevelDTO {
     private BigDecimal price;
-    private int        touches;
-    private int        rejections;
-    private int        breakouts;
-    private boolean    volumeConfirmed;
-    private int        candlesSinceLastTouch;
-    private String     strength; // WEAK | MODERATE | STRONG | CRITICAL
+    private int        visited;
+    private int        reacted;
+    private int        broken;
+    private boolean    heavyVolume;
+    private String     lastVisited;   // "2 hours ago (10:30)"
+    private String     confidence;    // UNTESTED | LOW | MODERATE | HIGH | ABSOLUTE
 }

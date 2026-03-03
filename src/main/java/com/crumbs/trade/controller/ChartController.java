@@ -86,7 +86,7 @@ public class ChartController {
      * Raw S/R analysis using the older priceActionService path (non-predictive).
      * Kept for backward compatibility with existing clients.
      */
-    @GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
+    /*@GetMapping(value = "/data", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChartDataDTO getData(
             @RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
             @RequestParam(name = "name") String name,
@@ -105,7 +105,7 @@ public class ChartController {
                 key, k -> srService.getPreviousOHLC("ONE_DAY", name, exchange, symbol)));
 
         return dto;
-    }
+    }*/
 
     // ==================== HELPERS ====================
 

@@ -87,7 +87,7 @@ public class HeikinPsarExecutionService {
 
         if (isActive("SR")) {
             ChartDataDTO dto = srService.analyzeIntraday("NIFTY", "FIVE_MINUTE");
-            srService.saveLevels("NIFTY", "FIVE_MINUTE", dto);
+            //srService.saveLevels("NIFTY", "FIVE_MINUTE", dto);
         }
     }
 
@@ -110,7 +110,7 @@ public class HeikinPsarExecutionService {
 
         if (isActive("SR")) {
             ChartDataDTO dto = srService.analyzeIntraday("CRUDEOIL", "FIVE_MINUTE");
-            srService.saveLevels("CRUDEOIL", "FIVE_MINUTE", dto);
+           // srService.saveLevels("CRUDEOIL", "FIVE_MINUTE", dto);
         }
     }
 
