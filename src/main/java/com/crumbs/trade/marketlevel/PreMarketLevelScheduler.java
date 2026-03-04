@@ -19,9 +19,9 @@ public class PreMarketLevelScheduler {
     private final StrategyRepo strategyRepo;
     private final StraddleExecutionService executionService;
     
- // ==================== PRE-MARKET ANALYSIS (8:00 AM) ====================
+    // ==================== PRE-MARKET ANALYSIS (8:30 AM) ====================
 
-    @Scheduled(cron = "0 30 8 * * MON", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 30 8 * * MON-FRI", zone = "Asia/Kolkata")
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
     }
