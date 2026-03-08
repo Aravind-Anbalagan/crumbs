@@ -139,7 +139,7 @@ public class CommonController {
                     .body("Error: " + e.getMessage());
         }
     }
-
+/*
     @PostMapping("/extract-script-OnFly")
     public ResponseEntity<String> extractScript() {
         try {
@@ -157,7 +157,7 @@ public class CommonController {
                     .body("Error: " + e.getMessage());
         }
     }
-
+*/
     // ================================================================
     // ===================== CORE LOGIC ================================
     // ================================================================

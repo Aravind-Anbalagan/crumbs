@@ -10,6 +10,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.dto.FuturesConfigDto;
 import com.crumbs.trade.entity.FuturesBreakEvent;
 import com.crumbs.trade.entity.FuturesConfig;
@@ -32,9 +33,10 @@ public class FuturesStrategyController {
 
     /**
      * 🔧 Manual execution (bypasses market hours)
+     * @throws SmartAPIException 
      */
     @GetMapping("/execute")
-    public ResponseEntity<String> manualExecute() {
+    public ResponseEntity<String> manualExecute() throws SmartAPIException {
         try {
             logger.info("Manual execution triggered");
             futuresStrategyService.executeAll();
@@ -100,7 +102,7 @@ public class FuturesStrategyController {
 
     // ✅ Backward compatibility
     @GetMapping("/getDetails")
-    public ResponseEntity<String> executeOldEndpoint() {
+    public ResponseEntity<String> executeOldEndpoint() throws SmartAPIException {
         return manualExecute();
     }
     

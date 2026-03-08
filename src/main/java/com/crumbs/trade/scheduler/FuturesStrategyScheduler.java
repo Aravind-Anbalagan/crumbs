@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.FuturesStrategyService;
 
@@ -27,9 +28,10 @@ public class FuturesStrategyScheduler {
     private StrategyRepo strategyRepo;
     /**
      * ⏰ Every hour from 9:15 to 3:15
+     * @throws SmartAPIException 
      */
     @Scheduled(cron = "0 15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
-    public void scheduler915to315() {
+    public void scheduler915to315() throws SmartAPIException {
     	 if (!isActive("FUTURE")) {
              return;
          }
@@ -38,16 +40,17 @@ public class FuturesStrategyScheduler {
 
     /**
      * ⏰ Final execution at 3:30 PM
+     * @throws SmartAPIException 
      */
     @Scheduled(cron = "0 30 15 * * MON-FRI", zone = "Asia/Kolkata")
-    public void scheduler330() {
+    public void scheduler330() throws SmartAPIException {
     	 if (!isActive("FUTURE")) {
              return;
          }
         executeIfMarketOpen();
     }
 
-    private void executeIfMarketOpen() {
+    private void executeIfMarketOpen() throws SmartAPIException {
         LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
 
         if (now.isBefore(MARKET_START) || now.isAfter(MARKET_END)) {

@@ -13,6 +13,7 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.dto.OrderMeta;
 import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
@@ -29,34 +30,43 @@ public class OrderService {
 
     static Logger logger = LoggerFactory.getLogger(OrderService.class);
 
-    @Autowired AngelOne angelOne;
-    @Autowired StrategyRepo strategyRepo;
+    @Autowired AngelOne        angelOne;
+    @Autowired StrategyRepo    strategyRepo;
     @Autowired AngelOneService angelOneService;
     @Autowired OrderRepository ordersRepo;
-    @Autowired TaskService taskService;
-    @Autowired ChartService chartService;
-    @Autowired IndexesRepo indexesRepo;
-    // ========================================================================
-    // ENTRY point (strategy signal triggers)
-    // ========================================================================
+    @Autowired TaskService     taskService;
+    @Autowired ChartService    chartService;
+    @Autowired IndexesRepo     indexesRepo;
+
+    // =========================================================================
+    // ENTRY — without meta (backward compatible for other strategies)
+    // =========================================================================
     public void orderPlace(String strategyName, int spotPrice, String signal)
             throws SmartAPIException, Exception {
+        orderPlace(strategyName, spotPrice, signal, null);
+    }
 
-        logger.info("Order Trigger → Strategy: {} | Signal: {}", strategyName, signal);
+    // =========================================================================
+    // ENTRY — with meta (CPR strategy carries full context)
+    // =========================================================================
+    public void orderPlace(String strategyName, int spotPrice, String signal, OrderMeta meta)
+            throws SmartAPIException, Exception {
 
-        SmartConnect smartConnect = angelOne.signIn();
-        if (smartConnect == null) throw new Exception("AngelOne login failed");
+        logger.info("Order Trigger → Strategy={} | Signal={} | Meta={}",
+                strategyName, signal, meta);
+
+        SmartConnect sc = angelOne.signIn();
+        if (sc == null) throw new Exception("AngelOne login failed");
 
         Strategy strategy = strategyRepo.findByName(strategyName);
         if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
 
-        // --------------------------------------------------------------
-        // 1. Check ACTIVE trade
-        // --------------------------------------------------------------
+        // ------------------------------------------------------------------
+        // 1. Check active trade
+        // ------------------------------------------------------------------
         Orders activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
 
         if (activeTrade != null) {
-
             logger.info("Active Trade Found → {}", activeTrade.getSymbol());
 
             // Same direction → skip
@@ -67,212 +77,223 @@ public class OrderService {
 
             // Opposite → exit only, do not lose control
             logger.info("Opposite Signal → EXIT current trade");
-
             if ("Y".equalsIgnoreCase(strategy.getLive())) {
-            	 placeExitOrder(activeTrade);
+                placeExitOrder(activeTrade);
             }
-           
-            // Mark inactive AFTER exit
+
             activeTrade.setActive(0);
             ordersRepo.save(activeTrade);
+
+            // Return — let next cycle place the new entry
+            return;
         }
 
-        // --------------------------------------------------------------
-        // 2. Place new SELL entry
-        // --------------------------------------------------------------
-        placeNewEntry(strategyName, spotPrice, signal, smartConnect, strategy);
+        // ------------------------------------------------------------------
+        // 2. Place new entry
+        // ------------------------------------------------------------------
+        placeNewEntry(strategyName, spotPrice, signal, sc, strategy, meta);
     }
 
-
-
-    // ========================================================================
-    // CREATE NEW ENTRY (always SELL)
-    // ========================================================================
+    // =========================================================================
+    // CREATE NEW ENTRY
+    // =========================================================================
     private void placeNewEntry(String strategyName, int spotPrice, String signal,
-                               SmartConnect smartConnect, Strategy strategy)
+                               SmartConnect sc, Strategy strategy, OrderMeta meta)
             throws Exception, SmartAPIException {
 
         BigDecimal ltp = angelOneService.getcurrentPrice(
-                smartConnect,
-                strategy.getExchange(),
-                strategy.getTradingsymbol(),
-                strategy.getToken()
-        );
+                sc, strategy.getExchange(),
+                strategy.getTradingsymbol(), strategy.getToken());
 
         if (ltp == null) throw new Exception("LTP fetch failed");
-
         logger.info("LTP: {}", ltp);
 
-        // SELL CE when SELL signal. SELL PE when BUY signal.
-        Token token = createToken(strategy,signal);
+        Token token = createToken(strategy, signal);
+        prepareSellOrder(token, strategyName, signal, meta);
 
-        prepareSellOrder(token, strategyName, signal);
-
-        placeFinalOrder(
-                smartConnect,
-                token,
-                strategy,
-                signal.equalsIgnoreCase("BUY") ? StrategyService.MIN : StrategyService.MAX
-        );
+        placeFinalOrder(sc, token, strategy,
+                signal.equalsIgnoreCase("BUY") ? StrategyService.MIN : StrategyService.MAX,
+                meta);
     }
 
-	public Token createToken(Strategy strategy, String signal) {
-		// Get Name and Trading Symbol
+    // =========================================================================
+    // CREATE TOKEN
+    // =========================================================================
+    public Token createToken(Strategy strategy, String signal) {
         Token token = new Token();
-		try {
-			StrategyDTO strategyModified = taskService.getStrategyDetails(strategy.getName(), strategy.getExchange());
-			strategyModified = getNameAndTradingSymbol(strategyModified, signal);
-			token.setSymbol(strategyModified.getTradingsymbol());
-			token.setToken(strategyModified.getToken());
-			token.setExch_seg(strategyModified.getExchange());
-			// FIXED LOT for NIFTY
-	        token.setQuantity(strategyModified.getLotSize());
-		} catch (AddressException | MessagingException | IOException e) {
-			// TODO Auto-generated catch block
-			logger.error("Error Found during Token Creation");
-		}
-		return token;
-	}
+        try {
+            StrategyDTO dto = taskService.getStrategyDetails(
+                    strategy.getName(), strategy.getExchange());
+            dto = getNameAndTradingSymbol(dto, signal);
 
-	public StrategyDTO getNameAndTradingSymbol(StrategyDTO strategy, String type)
-			throws AddressException, MessagingException, IOException {
+            token.setSymbol(dto.getTradingsymbol());
+            token.setToken(dto.getToken());
+            token.setExch_seg(dto.getExchange());
+            token.setQuantity(dto.getLotSize());
+        } catch (AddressException | MessagingException | IOException e) {
+            logger.error("❌ Error during Token creation: {}", e.getMessage());
+        }
+        return token;
+    }
 
-		if (strategy == null || strategy.getName() == null || strategy.getExchange() == null) {
-			logger.warn("Invalid strategy data provided");
-			return strategy;
-		}
+    public StrategyDTO getNameAndTradingSymbol(StrategyDTO strategy, String type)
+            throws AddressException, MessagingException, IOException {
 
-		SmartConnect smartconnect = angelOne.signIn();
-		BigDecimal currentPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(),
-				strategy.getTradingsymbol(), strategy.getToken());
+        if (strategy == null || strategy.getName() == null || strategy.getExchange() == null) {
+            logger.warn("Invalid strategy data provided");
+            return strategy;
+        }
 
-		if (currentPrice == null) {
-			logger.warn("Unable to fetch current price for {}", strategy.getName());
-			return strategy;
-		}
+        SmartConnect sc           = angelOne.signIn();
+        BigDecimal   currentPrice = angelOneService.getcurrentPrice(sc,
+                strategy.getExchange(), strategy.getTradingsymbol(), strategy.getToken());
 
-		String name = strategy.getName().toUpperCase();
-		int strikeInterval;
+        if (currentPrice == null) {
+            logger.warn("Unable to fetch current price for {}", strategy.getName());
+            return strategy;
+        }
 
-		String key = name.trim().toUpperCase();
+        String key = strategy.getName().trim().toUpperCase();
+        int strikeInterval;
 
-		switch (key) {
-		case "NIFTY":
-		case "CPR_STRATEGY":
-		case "CRUDEOIL":
-			strikeInterval = 50;
-			break;
+        switch (key) {
+            case "NIFTY":
+            case "CPR_STRATEGY":
+            case "CRUDEOIL":
+                strikeInterval = 50;
+                break;
+            case "SILVERM":
+                strikeInterval = 1000;
+                return strategy;
+            default:
+                logger.warn("Unknown symbol: {}", strategy.getName());
+                return strategy;
+        }
 
-		case "SILVERM":
-			strikeInterval = 1000;
-			return strategy;
+        int    nearestStrike = chartService.findNearestMultiple(currentPrice.intValue(), strikeInterval);
+        String optionType    = "BUY".equalsIgnoreCase(type) ? "PE" : "CE";
+        String tradingSymbol = String.format("%s%s%d%s",
+                strategy.getName(), strategy.getExpiry(), nearestStrike, optionType);
 
-		default:
-			logger.warn("Unknown symbol name: {}", strategy.getName());
-			return strategy;
-		}
+        logger.info("Trading Symbol: {} | LTP={} | Type={} | Strike={}",
+                tradingSymbol, currentPrice, optionType, nearestStrike);
 
-		int nearestStrike = chartService.findNearestMultiple(currentPrice.intValue(), strikeInterval);
-		//BUY mean PE - Option seller perspective
-		String optionType = "BUY".equalsIgnoreCase(type) ? "PE" : "CE";
+        strategy.setTradingsymbol(tradingSymbol);
 
+        Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), tradingSymbol);
+        if (indexes != null) {
+            strategy.setToken(indexes.getToken());
+            strategy.setExchange(indexes.getExchange());
+            strategy.setLotSize(indexes.getLotsize());
+        } else {
+            logger.error("❌ Index not found for symbol {}", tradingSymbol);
+        }
 
-		String tradingSymbol = String.format("%s%s%d%s", strategy.getName(), strategy.getExpiry(), nearestStrike,
-				optionType);
+        return strategy;
+    }
 
-		logger.info("Generated Trading Symbol: {} | CurrentPrice: {} | Type: {} | Strike: {}", tradingSymbol,
-				currentPrice, optionType, nearestStrike);
+    // =========================================================================
+    // EXIT ACTIVE TRADE  (public — called from StrategyService)
+    // =========================================================================
+    public void exitActiveTrade(String strategyName)
+            throws IOException, SmartAPIException {
 
-		strategy.setTradingsymbol(tradingSymbol);
-		Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), strategy.getTradingsymbol());
-		if (indexes != null) {
-			strategy.setToken(indexes.getToken());
-			strategy.setExchange(indexes.getExchange());
-			strategy.setLotSize(indexes.getLotsize());
-			// symbol added
-		} else {
-			logger.error("Unable to find the Index Value for symbol {}", tradingSymbol);
-		}
-		return strategy;
-	}
-    // ========================================================================
-    // EXIT (BUY)
-    // ========================================================================
+        Strategy strategy   = strategyRepo.findByName(strategyName);
+        Orders   activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
+
+        if (activeTrade == null) {
+            logger.info("ℹ️ No active trade for strategy → {}", strategyName);
+            return;
+        }
+
+        logger.info("🚪 Exiting active trade → {}", activeTrade.getSymbol());
+
+        if ("Y".equalsIgnoreCase(strategy.getLive())) {
+            placeExitOrder(activeTrade);
+        }
+
+        activeTrade.setActive(0);
+        ordersRepo.save(activeTrade);
+        logger.info("✅ Trade closed → {}", activeTrade.getSymbol());
+    }
+
+    // =========================================================================
+    // EXIT ORDER (private)
+    // =========================================================================
     private void placeExitOrder(Orders activeTrade)
             throws IOException, SmartAPIException {
 
-        logger.info("Preparing EXIT (BUY) → {}", activeTrade.getSymbol());
+        logger.info("Preparing EXIT → {}", activeTrade.getSymbol());
 
-        SmartConnect smartConnect = angelOne.signIn();
-
-        Token token = new Token();
+        SmartConnect sc    = angelOne.signIn();
+        Token        token = new Token();
         token.setToken(activeTrade.getToken());
         token.setSymbol(activeTrade.getSymbol());
         token.setExch_seg(activeTrade.getExchange());
         token.setQuantity(activeTrade.getQuantity());
 
         prepareBuyOrder(token, activeTrade.getName());
+        angelOneService.placeOrder(sc, token);
 
-        // BUY to exit SELL entry
-        angelOneService.placeOrder(smartConnect, token);
-
-        logger.info("EXIT BUY ORDER SENT → {}", activeTrade.getSymbol());
+        logger.info("✅ EXIT BUY ORDER SENT → {}", activeTrade.getSymbol());
     }
 
-
-
-    // ========================================================================
+    // =========================================================================
     // ORDER PREPARE HELPERS
-    // ========================================================================
+    // =========================================================================
     private void prepareBuyOrder(Token token, String strategyName) {
-
         token.setProductType(Constants.PRODUCT_CARRYFORWARD);
         token.setVariety(Constants.VARIETY_NORMAL);
         token.setOrderType(Constants.ORDER_TYPE_MARKET);
-
-        token.setTransactionType(Constants.TRANSACTION_TYPE_BUY); // EXIT
-
+        token.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
         token.setName(strategyName);
         token.setSignal("EXIT");
-
         logger.info("EXIT Order Prepared → {}", token.getSymbol());
     }
 
-
-    private void prepareSellOrder(Token token, String strategyName, String signal) {
-
+    private void prepareSellOrder(Token token, String strategyName,
+                                  String signal, OrderMeta meta) {
         token.setProductType(Constants.PRODUCT_CARRYFORWARD);
         token.setVariety(Constants.VARIETY_NORMAL);
         token.setOrderType(Constants.ORDER_TYPE_MARKET);
-
-        token.setTransactionType(Constants.TRANSACTION_TYPE_SELL); // ENTRY
-
+        token.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
         token.setName(strategyName);
         token.setType(signal);
         token.setSignal("ENTRY");
 
-        
+        // Enrich token with meta if available
+        if (meta != null) {
+            token.setEntryPrice(meta.getEntryPrice());
+            token.setSlPrice(meta.getSlPrice());
+            token.setFirst5High(meta.getFirst5High());
+            token.setFirst5Low(meta.getFirst5Low());
+            token.setUpperBand(meta.getUpperBand());
+            token.setLowerBand(meta.getLowerBand());
+            token.setPivot(meta.getPivot());
+            token.setMarketType(meta.getMarketType());
+            token.setEntryTime(meta.getEntryTime());
+            logger.info("📋 Order Meta attached → {}", meta);
+        }
 
         logger.info("ENTRY SELL Prepared → {}", token.getSymbol());
     }
 
-
-
-    // ========================================================================
-    // EXECUTION (LIVE/PAPER)
-    // ========================================================================
-    private void placeFinalOrder(SmartConnect smartConnect, Token token, Strategy strategy, int paperType)
+    // =========================================================================
+    // EXECUTION (LIVE / PAPER)
+    // =========================================================================
+    private void placeFinalOrder(SmartConnect sc, Token token,
+                                 Strategy strategy, int paperType,
+                                 OrderMeta meta)
             throws SmartAPIException, Exception {
 
         if ("Y".equalsIgnoreCase(strategy.getLive())) {
-            angelOneService.placeOrder(smartConnect, token);
-            logger.info("LIVE ENTRY SELL ORDER → {}", token.getSymbol());
+            angelOneService.placeOrder(sc, token);
+            logger.info("✅ LIVE ENTRY ORDER → {}", token.getSymbol());
         }
 
         if ("Y".equalsIgnoreCase(strategy.getPapertrade())) {
             angelOneService.insertOrder(token, paperType);
-            logger.info("PAPER ENTRY SELL ORDER → {}", token.getSymbol());
+            logger.info("📄 PAPER ENTRY ORDER → {}", token.getSymbol());
         }
     }
-
 }
