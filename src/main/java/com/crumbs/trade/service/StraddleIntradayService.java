@@ -61,9 +61,9 @@ import jakarta.transaction.Transactional;
 public class StraddleIntradayService {
 
 	  // NEW CODE:
-    //private static final Logger baseLogger = LoggerFactory.getLogger(StraddleIntradayService.class);
-    //private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
-	Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
+    private static final Logger baseLogger = LoggerFactory.getLogger(StraddleIntradayService.class);
+    private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
+	//Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
 	
 	@Autowired
 	private PredictionService predictionService;
@@ -2306,13 +2306,13 @@ public class StraddleIntradayService {
 	        Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
 	        Map<String, BigDecimal> strategyLowCache  = prevLowMap.get(name);
 
-	        if (strategyHighCache == null || strategyLowCache == null ||
-	            strategyHighCache.isEmpty() || strategyLowCache.isEmpty()) {
+			if (strategyHighCache == null || strategyLowCache == null || strategyHighCache.isEmpty()
+					|| strategyLowCache.isEmpty()) {
 
-	            fetchPreviousDayHighLowForAllStrikes(strikeList, smartconnect, strategy);
-	        } else {
-	            populatePrevDayDataFromCache(strikeList, name);
-	        }
+				fetchPreviousDayDataForAllStrikes(strikeList, smartconnect, strategy); // ✅ new merged method
+			} else {
+				populatePrevDayDataFromCache(strikeList, name);
+			}
 
 	        // ✅ Reset cache after pre-market use
 	        // So 9:15 intraday gets a fresh fetch for ALL strikes
