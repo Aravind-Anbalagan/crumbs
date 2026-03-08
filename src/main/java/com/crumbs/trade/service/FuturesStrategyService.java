@@ -467,7 +467,7 @@ public class FuturesStrategyService {
         event.setRangePercent(f.getRangePercent());
         event.setPercentMove(f.getPercentMove());
         event.setStatus("ACTIVE");
-
+        event.setLastExpiryDate(f.getLastExpiryDate());
         logger.info("✅ {} for {} (indexType={}) | Entry={} | SL={} | %Move={}%",
                 breakType, f.getName(), primaryIndexType,
                 hourClose, event.getStopLoss(), event.getPercentMove());

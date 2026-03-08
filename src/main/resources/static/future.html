@@ -1747,7 +1747,7 @@
         return '';
       };
 
-      const columns = ['name', 'breakType', 'status', 'referenceLevel', 'breakPrice', 'stopLoss', 'breakDate', 'percentMove', 'rangePercent'];
+      const columns = ['name', 'breakType', 'status', 'referenceLevel', 'breakPrice', 'stopLoss', 'lastExpiryDate', 'breakDate', 'percentMove', 'rangePercent'];
 
       let tableHTML = `
         <div class="table-container">
@@ -1826,6 +1826,7 @@
         'referenceLevel': 'Reference Level',
         'breakPrice': 'Break Price',
         'stopLoss': 'Stop Loss',
+        'lastExpiryDate':  'Last Expiry', 
         'breakDate': 'Break Date/Time',
         'percentMove': '% Move',
         'rangePercent': 'Range %'
@@ -1845,6 +1846,7 @@
         'referenceLevel': 'Entry trigger level - expiry high for breakout, expiry low for breakdown',
         'breakPrice': 'Entry price - the hourly candle close that triggered the breakout/breakdown',
         'stopLoss': 'Stop loss level - expiry low for breakout, expiry high for breakdown',
+        'lastExpiryDate': 'Last futures expiry date used as reference for OHLC calculation',
         'breakDate': 'Date and time when breakout/breakdown occurred',
         'percentMove': 'Percentage change in price from last expiry close to current trading price',
         'rangePercent': 'Intraday price range percentage on expiry day - indicates how volatile the stock was'
@@ -1854,6 +1856,14 @@
 
     function formatBreakoutCellValue(column, value, row) {
 
+// Last Expiry Date → DD-MMM-YYYY
+if (column === 'lastExpiryDate') {
+    if (!value) return '-';
+    const [year, month, day] = value.split('-');
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
+                        'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${day}-${monthNames[parseInt(month) - 1]}-${year}`;
+}
   // ✅ Break Date/Time → use createdAt ONLY
   if (column === 'breakDate') {
     const createdAt = row?.createdAt;

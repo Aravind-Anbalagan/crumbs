@@ -61,9 +61,9 @@ import jakarta.transaction.Transactional;
 public class StraddleIntradayService {
 
 	  // NEW CODE:
-    private static final Logger baseLogger = LoggerFactory.getLogger(StraddleIntradayService.class);
-    private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
-	//Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
+    //private static final Logger baseLogger = LoggerFactory.getLogger(StraddleIntradayService.class);
+    //private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
+	Logger logger = LoggerFactory.getLogger(StraddleIntradayService.class);
 	
 	@Autowired
 	private PredictionService predictionService;
@@ -120,159 +120,133 @@ public class StraddleIntradayService {
 	// =====================================================
 	public void getCombineStraddlePremium(String name) {
 
-		try {
-			SmartConnect smartconnect = angelOne.signIn();
-			
-			if (smartconnect == null) {
-				logger.error("Failed to sign in to Angel One");
-				return;
-			}
-
-			Strategy strategy = strategyRepo.findByName(name);
-			
-			if (strategy == null) {
-				logger.error("Strategy not found: {}", name);
-				return;
-			}
-			// =====================================================
-            // 🔥 NEW: Set logging flag based on strategy
-            // =====================================================
-            //logger.setLoggingEnabled(strategy);
-            
-			//BigDecimal spotPrice = flatTradeService.getLtpFromFlatTrade(strategy.getExchange(), strategy.getToken());
-			String session = samco.getSamcoSession();
-			BigDecimal spotPrice = null;
-			if ("NIFTY".equalsIgnoreCase(name)) {
-				spotPrice = samco.getNifty50Price(session);
-			} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
-				spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
-			}
-
-			// VALIDATION: Check if spot price is valid
-			if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
-				logger.error("Invalid spot price for {}: {}", name, spotPrice);
-				return;
-			}
-			
-			logger.debug("Spot price for {}: {}", name, spotPrice);
-
-			BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
-			
-			// VALIDATION: Check ATM strike
-			if (atmStrike == null || atmStrike.compareTo(BigDecimal.ZERO) <= 0) {
-				logger.error("Invalid ATM strike for {}: {}", name, atmStrike);
-				return;
-			}
-			
-			logger.info("ATM strike for {}: {}", name, atmStrike);
-			// ⚠️ ATM used ONLY for first build
-			List<StraddlePremiumDto> strikeList =
-			    getOrBuildStrikeList(name, atmStrike);
-			strikeList = getAllTokenDetails(strikeList, strategy);
-			
-			// VALIDATION: Check if any tokens were found
-			long validTokenCount = strikeList.stream()
-				.filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
-				.count();
-				
-			if (validTokenCount == 0) {
-				logger.error("No valid tokens found for strategy: {}", name);
-				return;
-			}
-			
-			logger.info("Found {} strikes with valid tokens out of {}", 
-				validTokenCount, strikeList.size());
-
-			// Check if THIS STRATEGY has cached prev close data
-			Map<String, BigDecimal> strategyCloseCache = prevCloseMap.get(name);
-
-			// Fetch previous day close ONLY if this strategy hasn't been fetched yet today
-			if (strategyCloseCache == null || strategyCloseCache.isEmpty()) {
-			    
-			    logger.info("Fetching previous day close for strategy: {} (one-time fetch)", name);
-			    fetchPreviousDayCloseForAllStrikes(strikeList, smartconnect, strategy);
-			} else {
-			    // Populate DTOs from cache for this strategy
-			    logger.debug("Using cached previous day close data for strategy: {}", name);
-			    populatePrevCloseFromCache(strikeList, name);
-			}
+	    try {
+	        SmartConnect smartconnect = angelOne.signIn();
 	        
-			strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect,strategy.getExchange());
-			
-			
-			// VALIDATION: Check if prices were fetched
-			long validPriceCount = strikeList.stream()
-				.filter(dto -> 
-					(dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
-					(dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
-				)
-				.count();
-				
-			if (validPriceCount == 0) {
-				logger.error("No valid prices fetched for strategy: {}", name);
-				return;
-			}
-			
-			logger.info("Successfully fetched prices for {} strikes", validPriceCount);
+	        if (smartconnect == null) {
+	            logger.error("Failed to sign in to Angel One");
+	            return;
+	        }
 
-			// ✅ NEW: FETCH IV FROM GREEKS API
+	        Strategy strategy = strategyRepo.findByName(name);
+	        
+	        if (strategy == null) {
+	            logger.error("Strategy not found: {}", name);
+	            return;
+	        }
+
+	        String session = samco.getSamcoSession();
+	        BigDecimal spotPrice = null;
+	        if ("NIFTY".equalsIgnoreCase(name)) {
+	            spotPrice = samco.getNifty50Price(session);
+	        } else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+	        }
+
+	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
+	            logger.error("Invalid spot price for {}: {}", name, spotPrice);
+	            return;
+	        }
+
+	        logger.debug("Spot price for {}: {}", name, spotPrice);
+
+	        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
+
+	        if (atmStrike == null || atmStrike.compareTo(BigDecimal.ZERO) <= 0) {
+	            logger.error("Invalid ATM strike for {}: {}", name, atmStrike);
+	            return;
+	        }
+
+	        logger.info("ATM strike for {}: {}", name, atmStrike);
+
+	        List<StraddlePremiumDto> strikeList = getOrBuildStrikeList(name, atmStrike);
+	        strikeList = getAllTokenDetails(strikeList, strategy);
+
+	        long validTokenCount = strikeList.stream()
+	            .filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
+	            .count();
+
+	        if (validTokenCount == 0) {
+	            logger.error("No valid tokens found for strategy: {}", name);
+	            return;
+	        }
+
+	        logger.info("Found {} strikes with valid tokens out of {}",
+	            validTokenCount, strikeList.size());
+
+	        // =========================================================
+	        // PREVIOUS DAY OHLC — ONCE PER DAY (High + Low + Close)
+	        // =========================================================
+	        resetPrevDayDataIfNewDay();
+
+	        Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
+
+	        if (strategyHighCache == null || strategyHighCache.isEmpty()) {
+	            logger.info("Fetching previous day OHLC for strategy: {} (one-time fetch)", name);
+	            fetchPreviousDayDataForAllStrikes(strikeList, smartconnect, strategy); // ← ONE merged call
+	        } else {
+	            logger.debug("Using cached previous day data for strategy: {}", name);
+	            populatePrevDayDataFromCache(strikeList, name); // ← cache lookup, no API call
+	        }
+
+	        // =========================================================
+	        // CURRENT PRICES — EVERY 1 MIN (batch — single API call)
+	        // =========================================================
+	        strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect, strategy.getExchange());
+
+	        long validPriceCount = strikeList.stream()
+	            .filter(dto ->
+	                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+	                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+	            )
+	            .count();
+
+	        if (validPriceCount == 0) {
+	            logger.error("No valid prices fetched for strategy: {}", name);
+	            return;
+	        }
+
+	        logger.info("Successfully fetched prices for {} strikes", validPriceCount);
+
+	        // =========================================================
+	        // IV FROM GREEKS API
+	        // =========================================================
 	        Map<String, BigDecimal> ivMap = fetchIVFromGreeksAPI(
-	            smartconnect,
-	            strategy.getName(),
-	            strategy.getExpiry()
+	            smartconnect, strategy.getName(), strategy.getExpiry()
 	        );
-	        
-	     // ✅ Populate IV ONLY if map is valid
+
 	        if (ivMap != null && !ivMap.isEmpty()) {
 	            populateIVFromGreeksMap(strikeList, ivMap);
 	        } else {
-	            logger.warn("IV map is null/empty for {} {}", 
-	                strategy.getName(), strategy.getExpiry());
+	            logger.warn("IV map is null/empty for {} {}", strategy.getName(), strategy.getExpiry());
 	        }
-			
-			// ========= PREVIOUS DAY HIGH/LOW (ONCE PER DAY PER STRATEGY) =========
-			resetPrevDayDataIfNewDay();
-			
-			// Check if THIS STRATEGY has cached data
-			Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
-			Map<String, BigDecimal> strategyLowCache = prevLowMap.get(name);
-			
-			// Fetch previous day high/low ONLY if this strategy hasn't been fetched yet today
-			if (strategyHighCache == null || strategyLowCache == null || 
-				strategyHighCache.isEmpty() || strategyLowCache.isEmpty()) {
-				
-				logger.info("Fetching previous day high/low for strategy: {} (one-time fetch)", name);
-				fetchPreviousDayHighLowForAllStrikes(strikeList, smartconnect, strategy);
-			} else {
-				// Populate DTOs from cache for this strategy
-				logger.debug("Using cached previous day data for strategy: {}", name);
-				populatePrevDayDataFromCache(strikeList, name);
-			}
-			
-			// ========= VWAP (INCREMENTAL) - OPTIMIZED =========
-			resetVwapIfNewDay();
 
-			// OPTIMIZATION: Only fetch VWAP for strikes with valid prices
-			List<StraddlePremiumDto> strikesWithPrices = strikeList.stream()
-				.filter(dto -> 
-					(dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
-					(dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
-				)
-				.collect(Collectors.toList());
-			
-			logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)", 
-				strikesWithPrices.size(), strikeList.size());
-			fetchVwapInParallel(strikesWithPrices, smartconnect, strategy.getExchange());
-			
+	        // =========================================================
+	        // VWAP — EVERY 1 MIN (ONE_MINUTE candle per token)
+	        // =========================================================
+	        resetVwapIfNewDay();
 
+	        List<StraddlePremiumDto> strikesWithPrices = strikeList.stream()
+	            .filter(dto ->
+	                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+	                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+	            )
+	            .collect(Collectors.toList());
 
-			// Save to DB - only valid records
-			int savedCount = savePriceDetails(strikeList, strategy, spotPrice);
-			logger.info("Saved {} records to database for {}", savedCount, name);
+	        logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)",
+	            strikesWithPrices.size(), strikeList.size());
 
-		} catch (Exception e) {
-			logger.error("Error in getCombineStraddlePremium for {}", name, e);
-		}
+	        fetchVwapInParallel(strikesWithPrices, smartconnect, strategy.getExchange());
+
+	        // =========================================================
+	        // SAVE TO DB
+	        // =========================================================
+	        int savedCount = savePriceDetails(strikeList, strategy, spotPrice);
+	        logger.info("Saved {} records to database for {}", savedCount, name);
+
+	    } catch (Exception e) {
+	        logger.error("Error in getCombineStraddlePremium for {}", name, e);
+	    }
 	}
 	
 	public String getSymbolByName(String name) {
@@ -1285,178 +1259,159 @@ public class StraddleIntradayService {
 	}
 
 
-	// =====================================================
-	// FETCH PREVIOUS DAY HIGH/LOW FOR ALL STRIKES (ONCE PER DAY PER STRATEGY)
-	// =====================================================
 	private void fetchPreviousDayHighLowForAllStrikes(
-		List<StraddlePremiumDto> strikeList,
-		SmartConnect smartConnect,
-		Strategy strategy
-	) {
-		
-		logger.info("=== FETCHING PREVIOUS DAY HIGH/LOW (ONE-TIME FOR {}) ===", strategy.getName());
-		
-		// Initialize nested maps for this strategy if not exists
-		prevHighMap.putIfAbsent(strategy.getName(), new HashMap<>());
-		prevLowMap.putIfAbsent(strategy.getName(), new HashMap<>());
-		
-		Map<String, BigDecimal> strategyHighCache = prevHighMap.get(strategy.getName());
-		Map<String, BigDecimal> strategyLowCache = prevLowMap.get(strategy.getName());
-		
-		// ✅ CORRECTED: Get date range for previous working day's data
-		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
-		
-		// Step 1: Current trading date (today if working day, else last working day before today)
-		LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(today)
-			? today
-			: NSEWorkingDays.getLastWorkingDay(today);
-		
-		// Step 2: Previous working day (the target day whose data we want)
-		LocalDate previousWorkingDay = NSEWorkingDays.getLastWorkingDay(tradingDate);
-		
-		// Step 3: Working day BEFORE previous working day (for fromdate range)
-		LocalDate dayBeforePrevious = NSEWorkingDays.getLastWorkingDay(previousWorkingDay);
-		
-		// Step 4: Format date range
-		// From: Working day before target (at market close 15:30)
-		// To: Target day (at market close 15:30)
-		// Both dates MUST be working days
-		// ✅ AFTER:
-		String fromDate = dayBeforePrevious + " 15:30";   // Feb 23
-		String toDate   = previousWorkingDay + " 15:30";  // Feb 24 ← yesterday's candle
-		
-		
-		int successCount = 0;
-		int failureCount = 0;
-		
-		for (StraddlePremiumDto dto : strikeList) {
-			
-			// Fetch CE previous high/low
-			if (dto.getCeToken() != null) {
-				try {
-					JSONObject req = new JSONObject();
-					req.put("exchange", strategy.getExchange());
-					req.put("symboltoken", dto.getCeToken().getToken());
-					req.put("interval", "ONE_DAY");
-					req.put("fromdate", fromDate);
-					req.put("todate", toDate);
-					
-					// Add delay to avoid rate limiting
-					
-					
-					JSONArray candles = fetchCandleWithRetry(smartConnect, req, dto.getCeToken().getToken());
-					
-					if (candles != null && candles.length() > 0) {
-						JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
-						
-						BigDecimal high = lastCandle.getBigDecimal(2);
-						BigDecimal low = lastCandle.getBigDecimal(3);
-						
-						// Store in strategy-specific cache
-						strategyHighCache.put(dto.getCeToken().getToken(), high);
-						strategyLowCache.put(dto.getCeToken().getToken(), low);
-						
-						// Set in DTO
-						dto.setCePrevHigh(high);
-						dto.setCePrevLow(low);
-						
-						successCount++;
-						
-						logger.debug("CE Strike {}: PrevHigh={}, PrevLow={}", 
-							dto.getStrikePrice(), high, low);
-					} else {
-						logger.warn("No candle data for CE token: {} (date range: {} to {})", 
-							dto.getCeToken().getToken(), dayBeforePrevious, previousWorkingDay);
-						failureCount++;
-					}
-					
-				} catch (Exception e) {
-					logger.error("Failed to fetch CE prev day data for strike {}: {}", 
-						dto.getStrikePrice(), e.getMessage());
-					failureCount++;
-				}
-			}
-			
-			// Fetch PE previous high/low
-			if (dto.getPeToken() != null) {
-				try {
-					JSONObject req = new JSONObject();
-					req.put("exchange", strategy.getExchange());
-					req.put("symboltoken", dto.getPeToken().getToken());
-					req.put("interval", "ONE_DAY");
-					req.put("fromdate", fromDate);
-					req.put("todate", toDate);
-					
-					// Add delay to avoid rate limiting
-					
-					
-					JSONArray candles = fetchCandleWithRetry(smartConnect, req, dto.getPeToken().getToken());
-					
-					if (candles != null && candles.length() > 0) {
-						JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
-						
-						BigDecimal high = lastCandle.getBigDecimal(2);
-						BigDecimal low = lastCandle.getBigDecimal(3);
-						
-						// Store in strategy-specific cache
-						strategyHighCache.put(dto.getPeToken().getToken(), high);
-						strategyLowCache.put(dto.getPeToken().getToken(), low);
-						
-						// Set in DTO
-						dto.setPePrevHigh(high);
-						dto.setPePrevLow(low);
-						
-						successCount++;
-						
-						logger.debug("PE Strike {}: PrevHigh={}, PrevLow={}", 
-							dto.getStrikePrice(), high, low);
-					} else {
-						logger.warn("No candle data for PE token: {} (date range: {} to {})", 
-							dto.getPeToken().getToken(), dayBeforePrevious, previousWorkingDay);
-						failureCount++;
-					}
-					
-				} catch (Exception e) {
-					logger.error("Failed to fetch PE prev day data for strike {}: {}", 
-						dto.getStrikePrice(), e.getMessage());
-					failureCount++;
-				}
-			}
-		}
-		
-		logger.info("Previous day data fetch complete for {}: Success={}, Failure={}", 
-			strategy.getName(), successCount, failureCount);
+	        List<StraddlePremiumDto> strikeList,
+	        SmartConnect smartConnect,
+	        Strategy strategy) {
+
+	    logger.info("=== FETCHING PREVIOUS DAY HIGH/LOW (ONE-TIME FOR {}) ===", strategy.getName());
+
+	    prevHighMap.putIfAbsent(strategy.getName(), new HashMap<>());
+	    prevLowMap.putIfAbsent(strategy.getName(), new HashMap<>());
+
+	    Map<String, BigDecimal> strategyHighCache = prevHighMap.get(strategy.getName());
+	    Map<String, BigDecimal> strategyLowCache  = prevLowMap.get(strategy.getName());
+
+	    // ── Date range ──────────────────────────────────────────
+	    LocalDate today           = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	    LocalDate tradingDate     = NSEWorkingDays.isNSEWorkingDay(today)
+	                                ? today : NSEWorkingDays.getLastWorkingDay(today);
+	    LocalDate previousWD      = NSEWorkingDays.getLastWorkingDay(tradingDate);
+	    LocalDate dayBeforePrevWD = NSEWorkingDays.getLastWorkingDay(previousWD);
+
+	    String fromDate = dayBeforePrevWD + " 15:30";
+	    String toDate   = previousWD      + " 15:30";
+
+	    logger.info("Date range → from={} to={}", fromDate, toDate);
+
+	    int successCount = 0;
+	    int failureCount = 0;
+
+	    for (StraddlePremiumDto dto : strikeList) {
+
+	        // ── CE ──
+	        if (dto.getCeToken() != null) {
+	            boolean ok = fetchAndCachePrevDayHL(
+	                    smartConnect, strategy, dto.getCeToken().getToken(),
+	                    fromDate, toDate, strategyHighCache, strategyLowCache,
+	                    high -> dto.setCePrevHigh(high),
+	                    low  -> dto.setCePrevLow(low),
+	                    "CE", dto.getStrikePrice());
+	            if (ok) successCount++; else failureCount++;
+	        }
+
+	        // ── PE ──
+	        if (dto.getPeToken() != null) {
+	            boolean ok = fetchAndCachePrevDayHL(
+	                    smartConnect, strategy, dto.getPeToken().getToken(),
+	                    fromDate, toDate, strategyHighCache, strategyLowCache,
+	                    high -> dto.setPePrevHigh(high),
+	                    low  -> dto.setPePrevLow(low),
+	                    "PE", dto.getStrikePrice());
+	            if (ok) successCount++; else failureCount++;
+	        }
+	    }
+
+	    logger.info("Prev day fetch complete for {}: Success={}, Failure={}",
+	            strategy.getName(), successCount, failureCount);
+	}
+
+	// ── Extracted helper — handles one token (CE or PE) ──────────────────────────
+	private boolean fetchAndCachePrevDayHL(
+	        SmartConnect smartConnect,
+	        Strategy strategy,
+	        String token,
+	        String fromDate,
+	        String toDate,
+	        Map<String, BigDecimal> highCache,
+	        Map<String, BigDecimal> lowCache,
+	        java.util.function.Consumer<BigDecimal> highSetter,
+	        java.util.function.Consumer<BigDecimal> lowSetter,
+	        String optionType,
+	        BigDecimal strikePrice) {
+
+	    try {
+	        JSONObject req = new JSONObject();
+	        req.put("exchange",    strategy.getExchange());
+	        req.put("symboltoken", token);
+	        req.put("interval",    "ONE_DAY");
+	        req.put("fromdate",    fromDate);
+	        req.put("todate",      toDate);
+
+	        // ✅ Actual delay — avoid rate limiting
+	        sleepQuietly(350);
+
+	        JSONArray candles = fetchCandleWithRetry(smartConnect, req, token);
+
+	        if (candles != null && candles.length() > 0) {
+	            JSONArray lastCandle = candles.getJSONArray(candles.length() - 1);
+	            BigDecimal high = lastCandle.getBigDecimal(2);
+	            BigDecimal low  = lastCandle.getBigDecimal(3);
+
+	            highCache.put(token, high);
+	            lowCache.put(token,  low);
+	            highSetter.accept(high);
+	            lowSetter.accept(low);
+
+	            logger.debug("{} Strike {}: PrevHigh={}, PrevLow={}", optionType, strikePrice, high, low);
+	            return true;
+
+	        } else {
+	            logger.warn("No candle data for {} token: {} (from={} to={})",
+	                    optionType, token, fromDate, toDate);
+	            return false;
+	        }
+
+	    } catch (Exception e) {
+	        logger.error("Failed to fetch {} prev day data for strike {}: {}",
+	                optionType, strikePrice, e.getMessage());
+	        return false;
+	    }
+	}
+
+	private void sleepQuietly(long ms) {
+	    try { Thread.sleep(ms); }
+	    catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
 	}
 
 	// =====================================================
 	// POPULATE PREV DAY DATA FROM CACHE (SUBSEQUENT CALLS)
 	// =====================================================
-	private void populatePrevDayDataFromCache(List<StraddlePremiumDto> strikeList, String strategyName) {
-		
-		Map<String, BigDecimal> strategyHighCache = prevHighMap.get(strategyName);
-		Map<String, BigDecimal> strategyLowCache = prevLowMap.get(strategyName);
-		
-		if (strategyHighCache == null || strategyLowCache == null) {
-			logger.warn("Cache not found for strategy: {}", strategyName);
-			return;
-		}
-		
-		for (StraddlePremiumDto dto : strikeList) {
-			
-			// Populate CE from cache
-			if (dto.getCeToken() != null) {
-				String ceToken = dto.getCeToken().getToken();
-				dto.setCePrevHigh(strategyHighCache.get(ceToken));
-				dto.setCePrevLow(strategyLowCache.get(ceToken));
-			}
-			
-			// Populate PE from cache
-			if (dto.getPeToken() != null) {
-				String peToken = dto.getPeToken().getToken();
-				dto.setPePrevHigh(strategyHighCache.get(peToken));
-				dto.setPePrevLow(strategyLowCache.get(peToken));
-			}
-		}
+	private void populatePrevDayDataFromCache(
+	        List<StraddlePremiumDto> strikeList, String strategyName) {
+
+	    Map<String, BigDecimal> highCache  = prevHighMap.get(strategyName);
+	    Map<String, BigDecimal> lowCache   = prevLowMap.get(strategyName);
+	    Map<String, BigDecimal> closeCache = prevCloseMap.get(strategyName);
+
+	    if (highCache == null || lowCache == null || closeCache == null) {
+	        logger.warn("Cache not found for strategy: {}", strategyName);
+	        return;
+	    }
+
+	    for (StraddlePremiumDto dto : strikeList) {
+
+	        if (dto.getCeToken() != null) {
+	            String t = dto.getCeToken().getToken();
+	            dto.setCePrevHigh(highCache.get(t));
+	            dto.setCePrevLow(lowCache.get(t));
+	            dto.setCePrevClose(closeCache.get(t));
+	        }
+
+	        if (dto.getPeToken() != null) {
+	            String t = dto.getPeToken().getToken();
+	            dto.setPePrevHigh(highCache.get(t));
+	            dto.setPePrevLow(lowCache.get(t));
+	            dto.setPePrevClose(closeCache.get(t));
+	        }
+
+	        // Combined — SUM (consistent with fetch)
+	        if (dto.getCePrevClose() != null && dto.getPePrevClose() != null) {
+	            dto.setCombinedPrevClose(
+	                dto.getCePrevClose().add(dto.getPePrevClose())
+	            );
+	        }
+	    }
 	}
 
 	// =====================================================
@@ -2393,5 +2348,138 @@ public class StraddleIntradayService {
 	    
 	    Collections.reverse(records);
 	    return records;
+	}
+	// =====================================================
+	// FETCH PREVIOUS DAY HIGH + LOW + CLOSE — ONE CALL PER TOKEN
+	// Replaces: fetchPreviousDayHighLowForAllStrikes()
+//	         + fetchPreviousDayCloseForAllStrikes()
+	// =====================================================
+	private void fetchPreviousDayDataForAllStrikes(
+	        List<StraddlePremiumDto> strikeList,
+	        SmartConnect smartConnect,
+	        Strategy strategy) {
+
+	    logger.info("=== FETCHING PREVIOUS DAY OHLC (ONE-TIME FOR {}) ===", strategy.getName());
+
+	    prevHighMap.putIfAbsent(strategy.getName(),  new HashMap<>());
+	    prevLowMap.putIfAbsent(strategy.getName(),   new HashMap<>());
+	    prevCloseMap.putIfAbsent(strategy.getName(), new HashMap<>());
+
+	    Map<String, BigDecimal> highCache  = prevHighMap.get(strategy.getName());
+	    Map<String, BigDecimal> lowCache   = prevLowMap.get(strategy.getName());
+	    Map<String, BigDecimal> closeCache = prevCloseMap.get(strategy.getName());
+
+	    // ── Date range ──────────────────────────────────────────
+	    LocalDate today       = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	    LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(today)
+	                            ? today : NSEWorkingDays.getLastWorkingDay(today);
+	    LocalDate previousWD  = NSEWorkingDays.getLastWorkingDay(tradingDate);
+
+	    String fromDate = previousWD  + " 15:30";
+	    String toDate   = tradingDate + " 15:30";
+
+	    logger.info("Prev day date range → from={} to={}", fromDate, toDate);
+
+	    int successCount = 0;
+	    int failureCount = 0;
+
+	    for (StraddlePremiumDto dto : strikeList) {
+
+	        // ── CE ──
+	        if (dto.getCeToken() != null) {
+	            boolean ok = fetchAndCacheOHLC(
+	                    smartConnect, strategy, dto.getCeToken().getToken(),
+	                    fromDate, toDate,
+	                    highCache, lowCache, closeCache,
+	                    high  -> dto.setCePrevHigh(high),
+	                    low   -> dto.setCePrevLow(low),
+	                    close -> dto.setCePrevClose(close),
+	                    "CE", dto.getStrikePrice());
+	            if (ok) successCount++; else failureCount++;
+	        }
+
+	        // ── PE ──
+	        if (dto.getPeToken() != null) {
+	            boolean ok = fetchAndCacheOHLC(
+	                    smartConnect, strategy, dto.getPeToken().getToken(),
+	                    fromDate, toDate,
+	                    highCache, lowCache, closeCache,
+	                    high  -> dto.setPePrevHigh(high),
+	                    low   -> dto.setPePrevLow(low),
+	                    close -> dto.setPePrevClose(close),
+	                    "PE", dto.getStrikePrice());
+	            if (ok) successCount++; else failureCount++;
+	        }
+
+	        // ── Combined prev close — SUM ──
+	        if (dto.getCePrevClose() != null && dto.getPePrevClose() != null) {
+	            dto.setCombinedPrevClose(
+	                dto.getCePrevClose().add(dto.getPePrevClose())
+	            );
+	        }
+	    }
+
+	    logger.info("Prev day OHLC fetch complete for {}: Success={}, Failure={}",
+	            strategy.getName(), successCount, failureCount);
+	}
+
+	// ── Single token — extracts High + Low + Close in ONE candleData() call ──────
+	private boolean fetchAndCacheOHLC(
+	        SmartConnect smartConnect,
+	        Strategy strategy,
+	        String token,
+	        String fromDate, String toDate,
+	        Map<String, BigDecimal> highCache,
+	        Map<String, BigDecimal> lowCache,
+	        Map<String, BigDecimal> closeCache,
+	        java.util.function.Consumer<BigDecimal> highSetter,
+	        java.util.function.Consumer<BigDecimal> lowSetter,
+	        java.util.function.Consumer<BigDecimal> closeSetter,
+	        String optionType,
+	        BigDecimal strikePrice) {
+
+	    try {
+	        JSONObject req = new JSONObject();
+	        req.put("exchange",    strategy.getExchange());
+	        req.put("symboltoken", token);
+	        req.put("interval",    "ONE_DAY");
+	        req.put("fromdate",    fromDate);
+	        req.put("todate",      toDate);
+
+	        sleepQuietly(350); // rate limit delay
+
+	        JSONArray candles = fetchCandleWithRetry(smartConnect, req, token);
+
+	        if (candles != null && candles.length() > 0) {
+	            JSONArray last = candles.getJSONArray(candles.length() - 1);
+
+	            // ONE call — extract all three
+	            BigDecimal high  = last.getBigDecimal(2);
+	            BigDecimal low   = last.getBigDecimal(3);
+	            BigDecimal close = last.getBigDecimal(4);
+
+	            highCache.put(token,  high);
+	            lowCache.put(token,   low);
+	            closeCache.put(token, close);
+
+	            highSetter.accept(high);
+	            lowSetter.accept(low);
+	            closeSetter.accept(close);
+
+	            logger.debug("{} Strike {}: PrevHigh={} PrevLow={} PrevClose={}",
+	                    optionType, strikePrice, high, low, close);
+	            return true;
+
+	        } else {
+	            logger.warn("No candle data for {} token: {} (from={} to={})",
+	                    optionType, token, fromDate, toDate);
+	            return false;
+	        }
+
+	    } catch (Exception e) {
+	        logger.error("Failed to fetch {} prev day OHLC for strike {}: {}",
+	                optionType, strikePrice, e.getMessage());
+	        return false;
+	    }
 	}
 }

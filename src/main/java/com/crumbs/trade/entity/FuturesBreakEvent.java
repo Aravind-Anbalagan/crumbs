@@ -45,6 +45,9 @@ public class FuturesBreakEvent {
     @Column(name = "break_date", nullable = false)
     private LocalDate breakDate;
     
+    @Column(name = "lastExpiry_date", nullable = false)
+    private LocalDate lastExpiryDate;
+    
     @Column(name = "break_time")
     private LocalDateTime breakTime;
     
