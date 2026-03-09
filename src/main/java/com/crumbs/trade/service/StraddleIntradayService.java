@@ -1173,49 +1173,56 @@ public class StraddleIntradayService {
 	}
 
 	private JSONArray fetchCandleWithRetry(
-		    SmartConnect smartConnect,
-		    JSONObject request,
-		    String token
-		) {
-		    int maxAttempts = 5;        // ✅ increased from 3
-		    long delay = 3000;          // ✅ increased from 2000ms
+	        SmartConnect smartConnect,
+	        JSONObject request,
+	        String token) {
 
-		    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+	    int maxAttempts = 5;
+	    long delay = 3000;
 
-		        try {
-		            JSONArray candles = smartConnect.candleData(request);
+	    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+	        try {
+	            JSONArray candles = smartConnect.candleData(request);
 
-		            if (candles != null && candles.length() > 0) {
-		                if (attempt > 1) {
-		                    logger.info("✅ Retry success for token {} on attempt {}/{}", 
-		                        token, attempt, maxAttempts);
-		                }
-		                return candles;
-		            }
+	            // ✅ Valid data — return immediately
+	            if (candles != null && candles.length() > 0) {
+	                if (attempt > 1) {
+	                    logger.info("✅ Retry success for token {} on attempt {}/{}",
+	                            token, attempt, maxAttempts);
+	                }
+	                return candles;
+	            }
 
-		            logger.warn("Empty candle response for token {} attempt {}/{}", 
-		                token, attempt, maxAttempts);
+	            // ✅ Empty = illiquid strike, data doesn't exist — skip retries
+	            if (candles != null && candles.length() == 0) {
+	                logger.debug("No candle data for token {} — illiquid strike, skipping", token);
+	                return null;  // ← return immediately, no retry
+	            }
 
-		        } catch (Exception e) {
-		            logger.warn("Attempt {}/{} failed for token {}: {}", 
-		                attempt, maxAttempts, token, e.getMessage());
-		        }
+	            // ✅ null only = API/network issue — worth retrying
+	            logger.warn("NULL candle response for token {} attempt {}/{}",
+	                    token, attempt, maxAttempts);
 
-		        if (attempt < maxAttempts) {
-		            try {
-		                logger.info("Retrying token {} after {}ms...", token, delay);
-		                Thread.sleep(delay);
-		            } catch (InterruptedException ie) {
-		                Thread.currentThread().interrupt();
-		                return null;
-		            }
-		            delay *= 2; // 3s → 6s → 12s → 24s
-		        }
-		    }
+	        } catch (Exception e) {
+	            logger.warn("Attempt {}/{} failed for token {}: {}",
+	                    attempt, maxAttempts, token, e.getMessage());
+	        }
 
-		    logger.error("❌ All {} attempts exhausted for token {}", maxAttempts, token);
-		    return null;
-		}
+	        if (attempt < maxAttempts) {
+	            try {
+	                logger.info("Retrying token {} after {}ms...", token, delay);
+	                Thread.sleep(delay);
+	            } catch (InterruptedException ie) {
+	                Thread.currentThread().interrupt();
+	                return null;
+	            }
+	            delay *= 2;
+	        }
+	    }
+
+	    logger.error("❌ All {} attempts exhausted for token {}", maxAttempts, token);
+	    return null;
+	}
 	
 	// =====================================================
 	// NEW METHOD: populatePrevCloseFromCache
