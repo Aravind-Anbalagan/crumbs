@@ -3,1083 +3,699 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stock Indicators Table</title>
-<script>
+  <title>Stock Indicators Dashboard</title>
+  <script>
     (function () {
-        // If this is the top window and not authenticated, go to login
-        const isTop = window.self === window.top;
-        const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
-
-        if (isTop && !isLoggedIn) {
-            window.location.href = '/';
-        }
-        // If inside iframe and not logged in, just show nothing or a message, but don't redirect parent.
+      const isTop = window.self === window.top;
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+      if (isTop && !isLoggedIn) window.location.href = '/';
     })();
-</script>
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:        #f5f4f0;
+      --surface:   #ffffff;
+      --surface2:  #f0efe9;
+      --border:    #e4e2db;
+      --border2:   #ccc9c0;
+      --text:      #1c1a17;
+      --text2:     #68655c;
+      --text3:     #a09d94;
+      --accent:    #1a6b3a;
+      --accent-bg: #eaf5ef;
+      --red:       #b83224;
+      --red-bg:    #fdf0ee;
+      --amber:     #8a5c08;
+      --amber-bg:  #fef8e8;
+      --blue:      #1a4fa0;
+      --blue-bg:   #edf2fc;
+      --primary:   #2d4a7a;
+      --primary-hover: #1e3560;
+      --radius:    10px;
+      --shadow:    0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    }
+    body.dark {
+      --bg:        #141210;
+      --surface:   #1e1c19;
+      --surface2:  #272420;
+      --border:    #302d28;
+      --border2:   #403c36;
+      --text:      #eeebe5;
+      --text2:     #9e9990;
+      --text3:     #5a5650;
+      --accent:    #4db870;
+      --accent-bg: #0f2218;
+      --red:       #df7060;
+      --red-bg:    #200f0c;
+      --amber:     #d4a545;
+      --amber-bg:  #1e1608;
+      --blue:      #6090e0;
+      --blue-bg:   #0c1728;
+      --primary:   #5a80c0;
+      --primary-hover: #7098d8;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+      transition: background 0.25s, color 0.25s;
+    }
+    .page { max-width: 1500px; margin: 0 auto; padding: 26px 20px 60px; }
 
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-  
-  :root {
-    /* Base colors - Minimal professional theme */
-    --primary-color: #6366f1;       /* Soft indigo */
-    --primary-hover: #4f46e5;       /* Darker indigo */
-    --success-color: #22c55e;       /* Soft green */
-    --warning-color: #eab308;       /* Soft yellow */
-    --danger-color: #ef4444;        /* Soft red */
-    --info-color: #06b6d4;          /* Soft cyan */
-    /* Background colors */
-    --bg-primary: #ffffff;          
-    --bg-secondary: #fafafa;        
-    --bg-tertiary: #f5f5f5;         
-    --bg-hover: #f0f0f0;            
-    /* Text colors */
-    --text-primary: #171717;        
-    --text-secondary: #525252;      
-    --text-muted: #a3a3a3;          
-    /* Borders and shadows */
-    --border-primary: #e5e5e5;      
-    --border-secondary: #d4d4d4;    
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-    /* Column backgrounds - soft pastels */
-    --bg-col-name: #fafafa;
-    --bg-col-price: #fef3c7;
-    --bg-col-dailysr: #dbeafe;
-    --bg-col-sr: #e0e7ff;
-    --bg-col-fibo: #fce7f3;
-    --bg-col-ma: #d1fae5;
-    --bg-col-ai: #fed7aa;
-    --bg-col-combine: #cffafe;
-  }
-  body.dark-mode {
-    /* Dark mode - soft, easy on eyes */
-    --bg-primary: #18181b;          
-    --bg-secondary: #27272a;        
-    --bg-tertiary: #3f3f46;         
-    --bg-hover: #52525b;            
-    /* Text */
-    --text-primary: #fafafa;        
-    --text-secondary: #d4d4d8;      
-    --text-muted: #71717a;          
-    /* Borders */
-    --border-primary: #3f3f46;
-    --border-secondary: #52525b;
-    /* Column backgrounds - muted dark colors */
-    --bg-col-name: #27272a;
-    --bg-col-price: #422006;
-    --bg-col-dailysr: #1e3a8a;
-    --bg-col-sr: #4c1d95;
-    --bg-col-fibo: #831843;
-    --bg-col-ma: #064e3b;
-    --bg-col-ai: #7c2d12;
-    --bg-col-combine: #164e63;
-  }
-  
-  * {
-    box-sizing: border-box;
-  }
-  
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    padding: 32px 16px;
-    margin: 0;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    line-height: 1.6;
-    transition: background 0.3s ease, color 0.3s ease;
-    font-size: 14px;
-    min-height: 100vh;
-  }
-  
-  .toolbar {
-    background: var(--bg-primary);
-    border: 1px solid var(--border-primary);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.2s ease;
-    max-width: 100%;
-  }
-  
-  .toolbar:hover {
-    box-shadow: var(--shadow-md);
-  }
-  
-  .toolbar-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 16px;
-    width: 100%;
-  }
-  
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 16px;
-    flex: 1;
-  }
-  
-  .control-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: fit-content;
-  }
-  
-  .control-group label {
-    font-weight: 500;
-    color: var(--text-secondary);
-    font-size: 13px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  
-  .radio-group {
-    display: flex;
-    gap: 8px;
-    background: var(--bg-tertiary);
-    padding: 4px;
-    border-radius: 12px;
-    border: 1px solid var(--border-primary);
-    flex-wrap: nowrap;
-  }
-  
-  .radio-group label {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-weight: 500;
-    font-size: 12px;
-    justify-content: center;
-    white-space: nowrap;
-  }
-  
-  .radio-group input[type="radio"] {
-    margin: 0;
-    accent-color: var(--primary-color);
-  }
-  
-  .radio-group label:hover {
-    background: var(--bg-primary);
-  }
-  
-  .btn {
-    padding: 10px 16px;
-    border: 1px solid var(--border-primary);
-    background: var(--bg-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 13px;
-    color: var(--text-primary);
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-  }
-  
-  .btn:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-  }
-  
-  .btn:active {
-    transform: scale(0.98);
-  }
-  
-  .btn-primary {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-  }
-  
-  .btn-primary:hover {
-    background: var(--primary-hover);
-    border-color: var(--primary-hover);
-    color: white;
-  }
-  
-  input[type="text"],
-  select {
-    padding: 10px 12px;
-    min-width: 140px;
-    border-radius: 8px;
-    border: 1px solid var(--border-primary);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-  }
-  
-  input[type="text"]:focus,
-  select:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-  }
-  
-  .toolbar-actions {
-    margin-left: auto;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    align-items: center;
-    justify-content: flex-end;
-    flex: 0 0 auto;
-  }
-  
-  .theme-toggle {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-primary);
-    padding: 10px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 44px;
-  }
-  
-  .theme-toggle:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
-    transform: scale(1.05);
-  }
-  
-  .table-container {
-    width: 100%;
-    max-width: 100vw;
-    padding: 0 8px;
-    overflow-x: auto;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-primary);
-    border-radius: 12px;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.2s ease;
-  }
-  
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto;
-  }
-  
-  th,
-  td {
-    border: none;
-    border-bottom: 1px solid var(--border-primary);
-    padding: 8px 12px;
-    text-align: left;
-    font-size: 14px;
-    word-break: break-word;
-    white-space: normal;
-    transition: all 0.2s ease;
-  }
-  
-  thead th {
-    position: sticky;
-    top: 0;
-    background: var(--bg-tertiary);
-    z-index: 2;
-    vertical-align: bottom;
-    font-weight: 600;
-    color: var(--text-primary);
-    border-bottom: 2px solid var(--border-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-size: 11px;
-  }
-  
-  th {
-    cursor: pointer;
-    position: relative;
-    padding-right: 32px;
-    user-select: none;
-    transition: background 0.2s ease;
-  }
-  
-  th:hover {
-    background: var(--bg-hover);
-  }
-  
-  th.sort-asc::after {
-    content: " ↑";
-    color: var(--primary-color);
-    font-weight: bold;
-  }
-  
-  th.sort-desc::after {
-    content: " ↓";
-    color: var(--primary-color);
-    font-weight: bold;
-  }
-  
-  tbody tr {
-    transition: background 0.2s ease;
-  }
-  
-  tbody tr:hover {
-    background: var(--bg-hover);
-  }
-  
-  tbody tr:nth-child(even) {
-    background: var(--bg-secondary);
-  }
-  
-  tbody tr:nth-child(even):hover {
-    background: var(--bg-hover);
-  }
-  
-  td.col-name, th.col-name {
-    max-width: 180px;
-    white-space: normal;
-    overflow-wrap: break-word;
-  }
-  
-  th.col-price,
-  td.col-price {
-    background: var(--bg-col-price) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  th.col-dailysr,
-  td.col-dailysr {
-    background: var(--bg-col-dailysr) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  th.sr,
-  td.sr {
-    background: var(--bg-col-sr) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  th.fibo,
-  td.fibo {
-    background: var(--bg-col-fibo) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  th.ma,
-  td.ma {
-    background: var(--bg-col-ma) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  th.ai,
-  td.ai {
-    background: var(--bg-col-ai) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  th.combine,
-  td.combine {
-    background: var(--bg-col-combine) !important;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  
-  #pagination {
-    margin-top: 16px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-    align-items: center;
-  }
-  
-  .page-link {
-    cursor: pointer;
-    padding: 8px 14px;
-    border: 1px solid var(--border-primary);
-    background: var(--bg-primary);
-    border-radius: 8px;
-    user-select: none;
-    font-weight: 500;
-    color: var(--text-primary);
-    transition: all 0.2s ease;
-    min-width: 44px;
-    text-align: center;
-    font-size: 13px;
-  }
-  
-  .page-link:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-  }
-  
-  .page-link.active {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-  }
-  
-  #loader {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    font-size: 16px;
-    color: white;
-    font-weight: 500;
-  }
-  
-  .spinner {
-    width: 48px;
-    height: 48px;
-    border: 4px solid rgba(255, 255, 255, 0.2);
-    border-top: 4px solid var(--primary-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 16px;
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  
-  #errorMessage {
-    color: white;
-    background: var(--danger-color);
-    border: none;
-    padding: 12px 16px;
-    margin-bottom: 20px;
-    display: none;
-    border-radius: 8px;
-    font-weight: 500;
-    box-shadow: var(--shadow-sm);
-  }
-  
-  h1, h2 {
-    margin: 0 0 20px 0;
-    font-weight: 700;
-    color: var(--text-primary);
-    text-align: center;
-  }
-  
-  h1 {
-    font-size: 2rem;
-    letter-spacing: -0.5px;
-  }
+    /* Header */
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .page-title { font-size: 21px; font-weight: 600; letter-spacing: -0.4px; }
+    .page-title em {
+      color: var(--text3); font-style: normal; font-weight: 400;
+      font-size: 13px; margin-left: 10px;
+    }
 
-  /* Mobile / narrow windows: stack toolbar better */
-  @media (max-width: 900px) {
-    .toolbar-row {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 16px;
-    }
-    .controls {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 16px;
-    }
-    .control-group {
-      flex-direction: row;
-      justify-content: space-between;
-      max-width: 100%;
-      min-width: 0;
-    }
-    .control-group label {
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .toolbar-actions {
-      justify-content: flex-start;
-      margin-left: 0;
-      gap: 16px;
-    }
-  }
-
-  /* Existing table mobile behaviour */
-  @media (max-width: 700px) {
+    /* Toolbar */
     .toolbar {
-      padding: 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 16px;
+      margin-bottom: 14px; box-shadow: var(--shadow);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    }
+    .spacer { flex: 1; }
+    .divider { width: 1px; height: 26px; background: var(--border); flex-shrink: 0; }
+
+    /* Segment */
+    .seg {
+      display: flex; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 3px; gap: 2px;
+    }
+    .seg label {
+      padding: 5px 13px; border-radius: 6px; cursor: pointer;
+      font-size: 12.5px; font-weight: 500; color: var(--text2);
+      transition: all 0.15s; user-select: none; white-space: nowrap;
+    }
+    .seg label:hover { color: var(--text); }
+    .seg label.checked {
+      background: var(--surface); color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
-    .table-container {
-      padding: 0;
+    /* Select */
+    select {
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      padding: 6px 30px 6px 10px; background: var(--surface);
+      border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+      cursor: pointer; outline: none; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center;
+      transition: border-color 0.15s;
     }
-    
-    table, thead, tbody, th, td, tr {
-      display: block;
-      width: 100%;
-    }
-    
-    thead {
-      display: none;
-    }
-    
-    tr {
-      margin-bottom: 16px;
-      border: 1px solid var(--border-primary);
-      border-radius: 12px;
-      padding: 16px;
-      background: var(--bg-primary);
-      box-shadow: var(--shadow-sm);
-      min-width: 0;
-    }
-    
-    td {
-      padding-left: 50%;
-      position: relative;
-      border: none;
-      border-bottom: 1px solid var(--border-primary);
-      padding-top: 12px;
-      padding-bottom: 12px;
-      font-size: 15px;
-      white-space: normal;
-      word-break: break-word;
-      min-width: 0;
-    }
-    
-    td:last-child {
-      border-bottom: none;
-    }
-    
-    td::before {
-      position: absolute;
-      top: 12px;
-      left: 16px;
-      width: 45%;
-      font-weight: 600;
-      white-space: nowrap;
-      content: attr(data-label);
-      color: var(--text-secondary);
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      text-align: left;
-      pointer-events: none;
-      line-height: 1.3;
-    }
+    select:focus { border-color: var(--primary); }
 
+    /* Search */
+    .search-wrap { position: relative; }
+    .search-wrap svg {
+      position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+      color: var(--text3); pointer-events: none;
+    }
+    .search-wrap input {
+      font-family: 'DM Sans', sans-serif; font-size: 13px;
+      padding: 6px 10px 6px 32px; background: var(--surface);
+      border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+      outline: none; width: 190px; transition: border-color 0.15s, width 0.2s;
+    }
+    .search-wrap input::placeholder { color: var(--text3); }
+    .search-wrap input:focus { border-color: var(--primary); width: 220px; }
+
+    /* Buttons */
     .btn {
-      font-size: 14px;
-      width: 100%;
-      box-sizing: border-box;
-      justify-content: flex-start;
-    }
-    #resultBtn {
-      flex: 0 0 auto !important;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      padding: 6px 13px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text2); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s;
       white-space: nowrap;
     }
-    
-    #pagination {
-      gap: 4px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    
-    .page-link {
-      padding: 10px 0;
-      width: 44px;
-      font-size: 14px;
-    }
-  }
-  
-  /* Scrollbar Styling */
-  .table-container::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-  }
-  
-  .table-container::-webkit-scrollbar-track {
-    background: var(--bg-tertiary);
-    border-radius: 4px;
-  }
-  
-  .table-container::-webkit-scrollbar-thumb {
-    background: var(--border-secondary);
-    border-radius: 4px;
-  }
-  
-  .table-container::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted);
-  }
-</style>
+    .btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: #fff; }
 
+    /* Stats */
+    .stats { display: flex; gap: 10px; margin-bottom: 14px; }
+    .stat-card {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 11px 15px; box-shadow: var(--shadow);
+    }
+    .stat-label {
+      font-size: 10.5px; font-weight: 600; letter-spacing: 0.7px;
+      text-transform: uppercase; color: var(--text3); margin-bottom: 3px;
+    }
+    .stat-val {
+      font-size: 21px; font-weight: 600; font-family: 'DM Mono', monospace;
+      color: var(--text);
+    }
+    .stat-val.g { color: var(--accent); }
+    .stat-val.r { color: var(--red); }
+    .stat-val.a { color: var(--amber); }
+
+    /* Error */
+    #errorMessage {
+      display: none; background: var(--red-bg); color: var(--red);
+      border: 1px solid rgba(184,50,36,0.18); border-radius: var(--radius);
+      padding: 11px 15px; margin-bottom: 14px; font-size: 13px; font-weight: 500;
+    }
+
+    /* Table */
+    .table-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: var(--surface2); padding: 9px 14px; text-align: left;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--text3); border-bottom: 1px solid var(--border);
+      cursor: pointer; user-select: none; white-space: nowrap; transition: color 0.15s;
+    }
+    thead th:hover { color: var(--text2); }
+    thead th.sort-asc::after { content: " ↑"; color: var(--primary); }
+    thead th.sort-desc::after { content: " ↓"; color: var(--primary); }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    td { padding: 10px 14px; font-size: 13px; color: var(--text); white-space: nowrap; }
+
+    /* Cell types */
+    .c-name { font-weight: 600; font-size: 13px; }
+    .c-sub   { font-size: 10.5px; color: var(--text3); font-family: 'DM Mono', monospace; margin-top: 1px; }
+    .c-price { font-family: 'DM Mono', monospace; font-weight: 500; font-size: 13px; }
+    .c-rsi   { font-family: 'DM Mono', monospace; font-weight: 500; font-size: 13px; }
+    .c-rsi.hot  { color: var(--red); }
+    .c-rsi.warm { color: var(--amber); }
+    .c-rsi.ok   { color: var(--accent); }
+    .c-rsi.cold { color: var(--blue); }
+    .c-sector   { font-size: 11.5px; color: var(--text2); }
+    .c-dt       { font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--text2); }
+    .c-num      { font-family: 'DM Mono', monospace; font-size: 13px; }
+
+    /* Badges */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 20px;
+      font-size: 11.5px; font-weight: 600; white-space: nowrap;
+    }
+    .badge .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .badge.buy  { background: var(--accent-bg); color: var(--accent); }
+    .badge.buy .dot  { background: var(--accent); }
+    .badge.sell { background: var(--red-bg);    color: var(--red); }
+    .badge.sell .dot { background: var(--red); }
+    .badge.hold { background: var(--amber-bg);  color: var(--amber); }
+    .badge.hold .dot { background: var(--amber); }
+    .badge.info { background: var(--blue-bg);   color: var(--blue); }
+    .badge.info .dot { background: var(--blue); }
+    .badge.na   { background: var(--surface2);  color: var(--text3); font-weight: 400; }
+
+    /* Pagination */
+    .pager {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-top: 1px solid var(--border);
+      background: var(--surface2); font-size: 12px; color: var(--text3);
+    }
+    .pg-btns { display: flex; gap: 3px; }
+    .pg-btn {
+      font-family: 'DM Sans', sans-serif; font-size: 12.5px; font-weight: 500;
+      padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface); color: var(--text2); cursor: pointer;
+      transition: all 0.14s; min-width: 32px; text-align: center;
+    }
+    .pg-btn:hover { border-color: var(--border2); color: var(--text); }
+    .pg-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* Empty */
+    .empty { text-align: center; padding: 56px 20px; color: var(--text3); }
+    .empty svg { opacity: 0.4; margin-bottom: 10px; }
+    .empty p { font-size: 13px; margin-top: 4px; }
+
+    /* Loader */
+    #loader {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(245,244,240,0.8); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+    }
+    body.dark #loader { background: rgba(20,18,16,0.85); }
+    .spinner {
+      width: 34px; height: 34px; border: 3px solid var(--border2);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loader p { font-size: 13px; color: var(--text2); font-weight: 500; }
+    @keyframes rowIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+
+    /* Responsive */
+    @media (max-width: 800px) { .stats { display: none; } }
+    @media (max-width: 600px) {
+      .page { padding: 14px 12px 40px; }
+      .page-title em { display: none; }
+      .divider { display: none; }
+      .search-wrap input { width: 140px; }
+    }
+    .table-wrap::-webkit-scrollbar { height: 6px; }
+    .table-wrap::-webkit-scrollbar-track { background: var(--surface2); }
+    .table-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  </style>
 </head>
 <body>
-  <h1>📊 Stock Indicators Dashboard</h1>
-  
-  <div class="toolbar">
-    <div class="toolbar-row">
-      <div class="controls">
-        <button id="resultBtn" class="btn btn-primary">📊 Results</button>
-        <div class="control-group">
-          <label>Filter:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="optionFilter" value="ALL" checked /> Nifty 500</label>
-            <label><input type="radio" name="optionFilter" value="OPTIONS" /> Options</label>
-          </div>
-        </div>
-        
-        <div class="control-group">
-          <label for="timeframe">Timeframe:</label>
-          <select id="timeframe" onchange="updateSecondaryFilter(); loadTable()">
-            <option value="DAILY">Daily</option>
-            <option value="WEEKLY">Weekly</option>
-            <option value="COMBINE">Combine</option>
-            <option value="INTRADAY" selected>Intraday</option>
-          </select>
-        </div>
-        
-        <div class="control-group" id="intradayTypeGroup" style="display:none;">
-          <label>Intraday Type:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="intradayType" value="HOURLY"> Hourly</label>
-            <label><input type="radio" name="intradayType" value="DAILY"> Daily</label>
-          </div>
-        </div>
-        
-        <div class="control-group">
-          <label id="secondaryFilterLabel" for="secondaryFilter">Heikin/Psar:</label>
-          <select id="secondaryFilter" onchange="loadTable()">
-            <option value="ALL">All</option>
-            <option value="FIRST BUY">First Buy</option>
-            <option value="FIRST SELL">First Sell</option>
-          </select>
-        </div>
-        
-        <div class="control-group">
-          <button class="btn" onclick="resetTable()">🧹 Reset</button>
-        </div>
-        
-        <div class="control-group">
-          <label for="search">Search:</label>
-          <input
-            type="text"
-            id="search"
-            placeholder="Filter stocks..."
-            onkeyup="filterTable()"
-            autocomplete="off"
-          />
-        </div>
-      </div>
-      
-      <div class="toolbar-actions">
-        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
-      </div>
+
+<div class="page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="page-title">
+      Stock Indicators
+      <em id="headerSub">Daily · All</em>
     </div>
+    <button class="btn btn-primary" onclick="window.location.href='result.html'">📊 Results</button>
   </div>
-  
-  <div id="errorMessage" role="alert"></div>
-  
-  <div class="table-container">
-    <table id="stocksTable">
-      <thead>
-        <tr id="tableHead"></tr>
-      </thead>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <!-- Timeframe -->
+    <div class="seg" id="timeframeSeg">
+      <label class="checked" data-val="DAILY">Daily</label>
+      <label data-val="WEEKLY">Weekly</label>
+      <label data-val="COMBINE">Combine</label>
+      <label data-val="INTRADAY">Intraday</label>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Signal filter -->
+    <select id="secondaryFilter"></select>
+
+    <!-- Intraday sub-type -->
+    <div class="seg" id="intradaySeg" style="display:none">
+      <label class="checked" data-val="HOURLY">Hourly</label>
+      <label data-val="DAILY">Daily</label>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Universe -->
+    <div class="seg" id="optionSeg">
+      <label class="checked" data-val="ALL">Nifty 500</label>
+      <label data-val="OPTIONS">Options</label>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search" placeholder="Search stocks…" oninput="filterTable()" autocomplete="off"/>
+    </div>
+
+    <button class="btn" onclick="resetTable()">↺ Reset</button>
+    <button class="btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+  </div>
+
+  <!-- Error -->
+  <div id="errorMessage"></div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">Stocks</div><div class="stat-val" id="sTotal">—</div></div>
+    <div class="stat-card"><div class="stat-label">Buy Signals</div><div class="stat-val g" id="sBuy">—</div></div>
+    <div class="stat-card"><div class="stat-label">Sell Signals</div><div class="stat-val r" id="sSell">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg RSI</div><div class="stat-val a" id="sRsi">—</div></div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead><tr id="tableHead"></tr></thead>
       <tbody id="tableBody"></tbody>
     </table>
+    <div class="pager">
+      <span id="pageInfo" style="font-size:12px;color:var(--text3)">—</span>
+      <div class="pg-btns" id="pagination"></div>
+    </div>
   </div>
-  
-  <div id="pagination"></div>
-  
-  <div id="loader">
-    <div class="spinner"></div>
-    <div>Loading stock data...</div>
-  </div>
-  
-  <script>
-    // ====== State ======
-    let tableData = [],
-      filteredData = [],
-      visibleKeys = [];
-    let sortState = { column: null, order: null };
-    let currentPage = 1;
-    const rowsPerPage = 10;
 
-    // Persisted intraday type (HOURLY/DAILY)
-    let intradayType = localStorage.getItem("intradayType") || "HOURLY";
-    
-    function updateSecondaryFilter() {
-      const tf = document.getElementById("timeframe").value;
-      const label = document.getElementById("secondaryFilterLabel");
-      const select = document.getElementById("secondaryFilter");
-      select.innerHTML = "";
-      
-      if (tf === "INTRADAY") {
-        label.textContent = "Trend:";
-        ["ALL", "UP", "DOWN"].forEach((val) => {
-          const opt = document.createElement("option");
-          opt.value = val;
-          opt.textContent = val.charAt(0) + val.slice(1).toLowerCase();
-          select.appendChild(opt);
-        });
-      } else {
-        label.textContent = "Heikin/Psar:";
-        ["ALL", "FIRST BUY", "FIRST SELL"].forEach((val) => {
-          const opt = document.createElement("option");
-          opt.value = val;
-          opt.textContent = val
-            .split(" ")
-            .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
-            .join(" ");
-          select.appendChild(opt);
-        });
-      }
+</div>
 
-      const typeGroup = document.getElementById("intradayTypeGroup");
-      if (tf === "INTRADAY") {
-        typeGroup.style.display = "flex";
-        const radios = document.querySelectorAll('input[name="intradayType"]');
-        radios.forEach(r => r.checked = (r.value === intradayType));
-      } else {
-        typeGroup.style.display = "none";
-      }
-    }
-    
-    async function loadTable() {
-      const timeframe = document.getElementById("timeframe").value;
-      const filter = document.getElementById("secondaryFilter").value;
-      const selected = document.querySelector(
-        'input[name="optionFilter"]:checked'
-      ).value;
-      const optionFlag = selected === "OPTIONS";
-      
-      const loader = document.getElementById("loader");
-      const errorDiv = document.getElementById("errorMessage");
-      
-      errorDiv.style.display = "none";
-      loader.style.display = "flex";
-      
-      try {
-        let url;
-        if (timeframe === "INTRADAY") {
-          url = `/api/indicators/flagged?flag=${timeframe}&trendFilter=${encodeURIComponent(
-            filter
-          )}&optionFlag=${optionFlag}`;
-        } else {
-          url = `/api/indicators/flagged?flag=${timeframe}&heikinPsarFilter=${encodeURIComponent(
-            filter
-          )}&optionFlag=${optionFlag}`;
-        }
-        
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(await res.text());
-        
-        let data = await res.json();
+<!-- Loader -->
+<div id="loader"><div class="spinner"></div><p>Loading…</p></div>
 
-        if (timeframe === "INTRADAY") {
-          data = data.filter(row => {
-            try {
-              const t = row.headers?.TYPE?.[0];
-              return t === intradayType;
-            } catch (e) {
-              return false;
-            }
-          });
-        }
+<script>
+let tableData=[], filteredData=[], visibleKeys=[];
+let sortState={column:null,order:null};
+let currentPage=1, currentTF='DAILY';
+const PAGE=15;
+let intradayType=localStorage.getItem('intradayType')||'HOURLY';
 
-        if (!data.length)
-          throw new Error("No stock data found for the selected filters.");
-          
-        visibleKeys = Object.entries(data[0].headers)
-          .filter(([_, val]) => val[1])
-          .map(([key]) => key);
-        
-        tableData = data.map((row) => {
-          const base = Object.fromEntries(
-            visibleKeys.map((k) => [k, row.headers[k] ? row.headers[k][0] : ""])
-          );
-          if ("exchange" in row.headers) base["exchange"] = row.headers["exchange"][0];
-          if ("symbol" in row.headers) base["symbol"] = row.headers["symbol"][0];
-          return base;
-        });
-        
-        filteredData = [...tableData];
-        currentPage = 1;
-        renderTable();
-      } catch (err) {
-        showError(err.message || "Could not load data.");
-        tableData = filteredData = [];
-        renderTable();
-      } finally {
-        loader.style.display = "none";
-      }
-    }
-    
-    function getColumnClass(key) {
-      const lowerKey = key.toLowerCase();
-      if (lowerKey === "name") return "col-name";
-      if (lowerKey === "price") return "col-price";
-      if (["daily s/r", "daily_sr", "dailysr"].includes(lowerKey)) return "col-dailysr";
-      if (lowerKey.includes("sr")) return "sr";
-      if (lowerKey.includes("fibo")) return "fibo";
-      if (lowerKey.includes("ma") || lowerKey.includes("rsi")) return "ma";
-      if (lowerKey.includes("ai")) return "ai";
-      if (lowerKey.includes("combine")) return "combine";
-      return "";
-    }
-    
-    function filterTable() {
-      const keyword = document.getElementById("search").value.toLowerCase();
-      filteredData = tableData.filter((row) =>
-        visibleKeys.some((k) => (row[k] + "").toLowerCase().includes(keyword))
-      );
-      currentPage = 1;
-      renderTable();
-    }
-    
-    function resetTable() {
-      document.getElementById("timeframe").value = "DAILY";
-      document.getElementById("secondaryFilter").value = "ALL";
-      document.getElementById("search").value = "";
-      document.getElementById("errorMessage").style.display = "none";
-      currentPage = 1;
-      loadTable();
-    }
-    
-    function showError(msg) {
-      const errDiv = document.getElementById("errorMessage");
-      errDiv.innerText = msg;
-      errDiv.style.display = "block";
-    }
-    
-    function formatHeader(key) {
-      return key.replace(/[_\s]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-    }
-    
-    document.getElementById("resultBtn").addEventListener("click", () => {
-      window.location.href = "result.html";
+// ── Segment utility ──
+function initSeg(id, cb) {
+  document.getElementById(id).querySelectorAll('label').forEach(l => {
+    l.addEventListener('click', () => {
+      document.getElementById(id).querySelectorAll('label').forEach(x=>x.classList.remove('checked'));
+      l.classList.add('checked'); cb(l.dataset.val);
     });
-    
-    function toggleTheme() {
-      document.body.classList.toggle("dark-mode");
-      localStorage.setItem(
-        "theme",
-        document.body.classList.contains("dark-mode") ? "dark" : "light"
-      );
-    }
-    
-    function renderTable() {
-      const head = document.getElementById("tableHead");
-      const body = document.getElementById("tableBody");
-      head.innerHTML = body.innerHTML = "";
-      
-      visibleKeys.forEach((key) => {
-        const th = document.createElement("th");
-        const headerText = document.createElement("div");
-        headerText.textContent = formatHeader(key);
-        headerText.style.cursor = "pointer";
-        headerText.onclick = () => sortTableByColumn(key);
-        
-        if (sortState.column === key) {
-          th.classList.add(sortState.order === "asc" ? "sort-asc" : "sort-desc");
-        }
-        
-        const className = getColumnClass(key);
-        if (className) th.classList.add(className);
-        
-        th.appendChild(headerText);
-        head.appendChild(th);
+  });
+}
+function getSegVal(id) {
+  const c = document.getElementById(id).querySelector('label.checked');
+  return c ? c.dataset.val : null;
+}
+
+// ── Build secondary filter options ──
+function buildSecondaryFilter(tf) {
+  const sf = document.getElementById('secondaryFilter');
+  sf.innerHTML = tf==='INTRADAY'
+    ? `<option value="ALL">All Trends</option><option value="UP">↑ Uptrend</option><option value="DOWN">↓ Downtrend</option>`
+    : `<option value="ALL">All Signals</option><option value="FIRST BUY">↑ First Buy</option><option value="FIRST SELL">↓ First Sell</option>`;
+}
+
+// ── Intraday stats labels ──
+function setStatLabels(tf) {
+  if (tf === 'INTRADAY') {
+    document.querySelector('#sTotal').closest('.stat-card').querySelector('.stat-label').textContent = 'Stocks';
+    document.querySelector('#sBuy').closest('.stat-card').querySelector('.stat-label').textContent  = 'Uptrend';
+    document.querySelector('#sSell').closest('.stat-card').querySelector('.stat-label').textContent = 'Downtrend';
+    document.querySelector('#sRsi').closest('.stat-card').querySelector('.stat-label').textContent  = 'Win / Loss';
+  } else {
+    document.querySelector('#sTotal').closest('.stat-card').querySelector('.stat-label').textContent = 'Stocks';
+    document.querySelector('#sBuy').closest('.stat-card').querySelector('.stat-label').textContent  = 'Buy Signals';
+    document.querySelector('#sSell').closest('.stat-card').querySelector('.stat-label').textContent = 'Sell Signals';
+    document.querySelector('#sRsi').closest('.stat-card').querySelector('.stat-label').textContent  = 'Avg RSI';
+  }
+}
+
+// ── Init ──
+initSeg('timeframeSeg', val => {
+  currentTF = val;
+  buildSecondaryFilter(val);
+  setStatLabels(val);
+  document.getElementById('intradaySeg').style.display = val==='INTRADAY' ? 'flex' : 'none';
+  updateSub(); currentPage=1; loadTable();
+});
+initSeg('intradaySeg', val => {
+  intradayType=val; localStorage.setItem('intradayType',val); currentPage=1; loadTable();
+});
+initSeg('optionSeg', ()=>{ currentPage=1; loadTable(); });
+document.getElementById('secondaryFilter').addEventListener('change', ()=>{ updateSub(); currentPage=1; loadTable(); });
+
+function updateSub() {
+  const sf = document.getElementById('secondaryFilter');
+  const t = currentTF.charAt(0)+currentTF.slice(1).toLowerCase();
+  document.getElementById('headerSub').textContent = `${t} · ${sf.options[sf.selectedIndex]?.text||'All'}`;
+}
+
+// ── Load ──
+async function loadTable() {
+  const sf = document.getElementById('secondaryFilter').value;
+  const optionFlag = getSegVal('optionSeg')==='OPTIONS';
+  const loader = document.getElementById('loader');
+  const err = document.getElementById('errorMessage');
+  err.style.display='none'; loader.style.display='flex';
+  // Reset immediately so stale stats/table never linger during fetch
+  tableData=filteredData=[]; updateStats(); renderTable();
+  try {
+    // Always use heikinPsarFilter — backend uses it for both INTRADAY (UP/DOWN) and others (FIRST BUY/SELL)
+    const url = `/api/indicators/flagged?flag=${currentTF}&heikinPsarFilter=${encodeURIComponent(sf)}&optionFlag=${optionFlag}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    let data = await res.json();
+
+    // Client-side filter by TYPE (HOURLY / DAILY) for intraday
+    if (currentTF==='INTRADAY') {
+      data = data.filter(r => {
+        const type = r.headers?.TYPE?.[0] || '';
+        return type.toUpperCase() === intradayType.toUpperCase();
       });
-      
-      if (!filteredData.length) {
-        const tr = document.createElement("tr");
-        const td = document.createElement("td");
-        td.colSpan = visibleKeys.length || 1;
-        td.textContent = "No records found.";
-        td.style.textAlign = "center";
-        td.style.padding = "40px";
-        td.style.color = "var(--text-muted)";
-        td.style.fontStyle = "italic";
-        tr.appendChild(td);
-        body.appendChild(tr);
-        return;
-      }
-      
-      const start = (currentPage - 1) * rowsPerPage;
-      const end = currentPage * rowsPerPage;
-      
-      filteredData.slice(start, end).forEach((row) => {
-        const tr = document.createElement("tr");
-        
-        visibleKeys.forEach((key) => {
-          const td = document.createElement("td");
-          td.setAttribute("data-label", formatHeader(key));
-          
-          const className = getColumnClass(key);
-          if (className) td.classList.add(className);
-          
-          td.textContent = row[key];
-          
-          tr.appendChild(td);
-        });
-        
-        body.appendChild(tr);
-      });
-      
-      renderPagination();
-    }
-    
-    function renderPagination() {
-      const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-      const container = document.getElementById("pagination");
-      container.innerHTML = "";
-      
-      if (totalPages <= 1) return;
-      
-      const createLink = (label, page, active = false) => {
-        const btn = document.createElement("button");
-        btn.textContent = label;
-        btn.className = "page-link" + (active ? " active" : "");
-        btn.onclick = () => {
-          currentPage = page;
-          renderTable();
-          document.querySelector('.table-container').scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start' 
-          });
-        };
-        return btn;
-      };
-      
-      if (currentPage > 1) {
-        container.append(createLink("« First", 1), createLink("‹ Prev", currentPage - 1));
-      }
-      
-      let start = Math.max(1, currentPage - 2);
-      let end = Math.min(totalPages, currentPage + 2);
-      
-      if (currentPage <= 3) end = Math.min(5, totalPages);
-      if (currentPage >= totalPages - 2) start = Math.max(totalPages - 4, 1);
-      
-      if (start > 1) {
-        container.append(createLink("1", 1));
-        if (start > 2) {
-          const span = document.createElement("span");
-          span.textContent = "...";
-          span.style.margin = "0 8px";
-          span.style.color = "var(--text-muted)";
-          container.appendChild(span);
-        }
-      }
-      
-      for (let i = start; i <= end; i++) {
-        container.append(createLink(i, i, i === currentPage));
-      }
-      
-      if (end < totalPages) {
-        if (end < totalPages - 1) {
-          const span = document.createElement("span");
-          span.textContent = "...";
-          span.style.margin = "0 8px";
-          span.style.color = "var(--text-muted)";
-          container.appendChild(span);
-        }
-        container.append(createLink(totalPages, totalPages));
-      }
-      
-      if (currentPage < totalPages) {
-        container.append(createLink("Next ›", currentPage + 1), createLink("Last »", totalPages));
-      }
-    }
-    
-    function sortTableByColumn(col) {
-      const isAsc = sortState.column === col && sortState.order === "asc";
-      sortState = { column: col, order: isAsc ? "desc" : "asc" };
-      
-      filteredData.sort((a, b) => {
-        let valA = a[col] != null ? a[col].toString().trim() : "";
-        let valB = b[col] != null ? b[col].toString().trim() : "";
-        
-        // Handle datetime sorting for "UPDATED AT" and similar columns
-        if (col.toUpperCase().includes("UPDATED") || col.toUpperCase().includes("TIME")) {
-          const timeA = parseDateTime(valA);
-          const timeB = parseDateTime(valB);
-          return isAsc ? timeA - timeB : timeB - timeA;
-        }
-        
-        // Handle numeric sorting
-        const numA = parseFloat(valA.replace(/[^0-9.\-]/g, ""));
-        const numB = parseFloat(valB.replace(/[^0-9.\-]/g, ""));
-        
-        return !isNaN(numA) && !isNaN(numB)
-          ? isAsc ? numA - numB : numB - numA
-          : isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      });
-      
-      currentPage = 1;
-      renderTable();
     }
 
-    // Helper function for parsing date/time
-    function parseDateTime(dateStr) {
-      if (!dateStr || dateStr === "") return Infinity;
-      
-      // Handle DD-MM-YYYY HH:MM:SS format (like 04-12-2025 17:24:44)
-      const dateTimeMatch = dateStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
-      if (dateTimeMatch) {
-        const [, day, month, year, hour, minute, second] = dateTimeMatch;
-        const date = new Date(year, month - 1, day, hour, minute, second);
-        return isNaN(date) ? Infinity : date.getTime();
-      }
-      
-      // Fallback to standard Date parsing
-      const date = new Date(dateStr);
-      return isNaN(date) ? Infinity : date.getTime();
-    }
-    
-    document.addEventListener("DOMContentLoaded", () => {
-      const theme = localStorage.getItem("theme");
-      if (theme === "dark") document.body.classList.add("dark-mode");
-      
-      document.querySelectorAll('input[name="optionFilter"]').forEach((radio) => {
-        radio.addEventListener("change", () => {
-          currentPage = 1;
-          loadTable();
-        });
-      });
+    if (!data.length) throw new Error('No stocks matched your filters.');
 
-      document.querySelectorAll('input[name="intradayType"]').forEach(radio => {
-        if (radio.value === intradayType) radio.checked = true;
-
-        radio.addEventListener('change', () => {
-          intradayType = radio.value;
-          localStorage.setItem('intradayType', intradayType);
-          currentPage = 1;
-          loadTable();
-        });
-      });
-      
-      updateSecondaryFilter();
-      loadTable();
+    visibleKeys = Object.entries(data[0].headers).filter(([,v])=>v[1]).map(([k])=>k);
+    tableData = data.map(row=>{
+      const b = Object.fromEntries(visibleKeys.map(k=>[k,row.headers[k]?.[0]??'']));
+      if ('exchange' in row.headers) b['exchange']=row.headers['exchange'][0];
+      if ('symbol'   in row.headers) b['symbol']=row.headers['symbol'][0];
+      return b;
     });
-  </script>
+    filteredData=[...tableData]; currentPage=1; updateStats(); renderTable();
+  } catch(e) {
+    err.textContent=e.message||'Could not load data.'; err.style.display='block';
+    tableData=filteredData=[]; updateStats(); renderTable();
+  } finally { loader.style.display='none'; }
+}
+
+// ── Stats ──
+function updateStats() {
+  if (!filteredData.length) {
+    ['sTotal','sBuy','sSell','sRsi'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  if (currentTF === 'INTRADAY') {
+    // Intraday: show UP / DOWN / Win-Loss ratio
+    let up=0, down=0, win=0, loss=0;
+    filteredData.forEach(r => {
+      const intra = (r['INTRADAY']||'').toUpperCase();
+      const result = (r['RESULT']||'').toUpperCase();
+      if (intra==='UP')   up++;
+      if (intra==='DOWN') down++;
+      if (result==='WIN'||result==='W')  win++;
+      if (result==='LOSS'||result==='L') loss++;
+    });
+    document.getElementById('sTotal').textContent = filteredData.length;
+    document.getElementById('sBuy').textContent   = up;
+    document.getElementById('sSell').textContent  = down;
+    document.getElementById('sRsi').textContent   = (win||loss) ? `${win} / ${loss}` : '—';
+    // Color the RSI stat value naturally
+    document.getElementById('sRsi').className = 'stat-val';
+  } else {
+    let buy=0,sell=0,rs=0,rc=0;
+    filteredData.forEach(r=>{
+      const st=(r['SUPERTREND']||r['D_SUPERTREND']||'').toUpperCase();
+      if(st.includes('BUY')) buy++;
+      if(st.includes('SELL')) sell++;
+      const n=parseFloat(r['RSI']); if(!isNaN(n)){rs+=n;rc++;}
+    });
+    document.getElementById('sTotal').textContent = filteredData.length;
+    document.getElementById('sBuy').textContent   = buy;
+    document.getElementById('sSell').textContent  = sell;
+    document.getElementById('sRsi').textContent   = rc?(rs/rc).toFixed(1):'—';
+    document.getElementById('sRsi').className     = 'stat-val a';
+  }
+}
+
+// ── Filter ──
+function filterTable() {
+  const q=document.getElementById('search').value.toLowerCase();
+  filteredData=q?tableData.filter(r=>visibleKeys.some(k=>(r[k]+'').toLowerCase().includes(q))):[...tableData];
+  currentPage=1; updateStats(); renderTable();
+}
+
+// ── Reset ──
+function resetTable() {
+  document.getElementById('search').value='';
+  document.getElementById('errorMessage').style.display='none';
+  ['timeframeSeg','optionSeg','intradaySeg'].forEach(id=>{
+    const seg=document.getElementById(id);
+    seg.querySelectorAll('label').forEach((l,i)=>l.classList.toggle('checked',i===0));
+  });
+  currentTF='DAILY';
+  document.getElementById('intradaySeg').style.display='none';
+  buildSecondaryFilter('DAILY');
+  setStatLabels('DAILY');
+  currentPage=1; updateSub(); loadTable();
+}
+
+// ── Theme ──
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+  const d=document.body.classList.contains('dark');
+  localStorage.setItem('theme',d?'dark':'light');
+  document.getElementById('themeBtn').textContent=d?'☀️':'🌙';
+}
+
+// ── Render ──
+function renderTable() { buildHead(); buildBody(); buildPager(); }
+
+function fmtKey(k) { return k.replace(/_+/g,' ').replace(/\b\w/g,l=>l.toUpperCase()); }
+
+function buildHead() {
+  document.getElementById('tableHead').innerHTML = visibleKeys.map(k=>{
+    const cls=sortState.column===k?(sortState.order==='asc'?'sort-asc':'sort-desc'):'';
+    return `<th class="${cls}" onclick="sortBy('${k}')">${fmtKey(k)}</th>`;
+  }).join('');
+}
+
+const SIG = new Set(['SUPERTREND','VWAP','SR','FIBO','AI','INTRADAY','VOLUME',
+  'D_HEIKIN','D_PSAR','D_SUPERTREND','D_VWAP','W_HEIKIN','W_PSAR','W_SUPERTREND','W_VWAP',
+  'COMBINE_SIGNAL','VOLUMEFLAG','WEEKLYVOLUMEFLLAG','HEIKINASHIDAY','HEIKINASHIWEEKLY','HEIKINASHIHOURLY']);
+
+function cellHTML(k, val, row) {
+  if (val===null||val===undefined||val==='')
+    return `<span style="color:var(--text3)">—</span>`;
+  const K=k.toUpperCase();
+
+  if (K==='NAME') {
+    const sym=row['symbol']||'', exc=row['exchange']||'';
+    return `<div class="c-name">${val}</div><div class="c-sub">${sym}${exc?' · '+exc:''}</div>`;
+  }
+  if (K==='SYMBOL'||K==='EXCHANGE') return '';
+
+  if (K==='PRICE') {
+    const n=parseFloat(val);
+    return `<span class="c-price">₹${isNaN(n)?val:n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+  }
+
+  if (K==='RSI') {
+    const n=parseFloat(val);
+    const c=n>=70?'hot':n>=55?'warm':n<=30?'cold':'ok';
+    return `<span class="c-rsi ${c}">${isNaN(n)?val:n.toFixed(1)}</span>`;
+  }
+
+  if (K==='SECTOR') return `<span class="c-sector">${val}</span>`;
+
+  // ── INTRADAY specific ──
+
+  // OPTION: Y → "Options" green chip, N → plain grey
+  if (K==='OPTION') {
+    const v=val.toString().toUpperCase();
+    return v==='Y'
+      ? `<span class="badge buy" style="font-size:11px">Options</span>`
+      : `<span class="badge na" style="font-size:11px">—</span>`;
+  }
+
+  // TYPE: show as a neutral chip (HOURLY / DAILY)
+  if (K==='TYPE') {
+    return `<span class="badge info" style="font-size:10.5px;letter-spacing:0.4px">${val}</span>`;
+  }
+
+  // RESULT: WIN = green, LOSS = red, open/pending = amber
+  if (K==='RESULT') {
+    const v=val.toString().toUpperCase();
+    if (v==='WIN'||v==='W') return `<span class="badge buy"><span class="dot"></span>WIN</span>`;
+    if (v==='LOSS'||v==='L') return `<span class="badge sell"><span class="dot"></span>LOSS</span>`;
+    // open trade (null handled above; non-null means pending/open)
+    return `<span class="badge hold"><span class="dot"></span>${val}</span>`;
+  }
+
+  // Timestamps
+  if (K==='EXECUTED_AT'||K==='UPDATED_AT'||K.includes('DATE')||K.includes('TIME')) {
+    return `<span class="c-dt">${val}</span>`;
+  }
+
+  if (SIG.has(K)||K.endsWith('SIGNAL')||K.endsWith('FLAG')) return mkBadge(val);
+
+  const n=parseFloat(val);
+  if (!isNaN(n)&&val.toString().trim()!=='')
+    return `<span class="c-num">${n.toLocaleString('en-IN')}</span>`;
+  return `<span>${val}</span>`;
+}
+
+function mkBadge(val) {
+  const v=(val||'').toString().toUpperCase();
+  if (v.includes('BUY')||v==='UP'||v==='BULLISH'||v==='WIN'||v==='Y')
+    return `<span class="badge buy"><span class="dot"></span>${val}</span>`;
+  if (v.includes('SELL')||v==='DOWN'||v==='BEARISH'||v==='LOSS')
+    return `<span class="badge sell"><span class="dot"></span>${val}</span>`;
+  if (v==='HOLD'||v==='NEUTRAL')
+    return `<span class="badge hold"><span class="dot"></span>${val}</span>`;
+  if (v==='N'||v==='NO') return `<span class="badge na">${val}</span>`;
+  return `<span class="badge info"><span class="dot"></span>${val}</span>`;
+}
+
+function buildBody() {
+  const body=document.getElementById('tableBody');
+  if (!filteredData.length) {
+    body.innerHTML=`<tr><td colspan="${visibleKeys.length||1}">
+      <div class="empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+          <path stroke-linecap="round" d="M3 13.5l4.5-4.5 4.5 4.5 4.5-4.5 4.5 4.5M3 6h18"/>
+        </svg>
+        <p>No stocks found for your filters</p>
+      </div>
+    </td></tr>`;
+    return;
+  }
+  let sorted=[...filteredData];
+  if (sortState.column) {
+    const col=sortState.column, dir=sortState.order==='asc'?1:-1;
+    sorted.sort((a,b)=>{
+      let av=a[col]??'', bv=b[col]??'';
+      const K=col.toUpperCase();
+      if (K.includes('AT')||K.includes('DATE')||K.includes('TIME'))
+        return (parseDT(av)-parseDT(bv))*dir;
+      const na=parseFloat(av),nb=parseFloat(bv);
+      if (!isNaN(na)&&!isNaN(nb)) return (na-nb)*dir;
+      return av.toString().localeCompare(bv.toString())*dir;
+    });
+  }
+  const start=(currentPage-1)*PAGE;
+  body.innerHTML = sorted.slice(start,start+PAGE).map((row,ri)=>
+    `<tr style="animation:rowIn 0.2s ease ${ri*0.025}s both">
+      ${visibleKeys.map(k=>`<td data-label="${fmtKey(k)}">${cellHTML(k,row[k],row)}</td>`).join('')}
+    </tr>`
+  ).join('');
+}
+
+function buildPager() {
+  const total=filteredData.length, pages=Math.ceil(total/PAGE);
+  const s=(currentPage-1)*PAGE+1, e=Math.min(currentPage*PAGE,total);
+  document.getElementById('pageInfo').textContent = total?`${s}–${e} of ${total}`:'No results';
+  const c=document.getElementById('pagination'); c.innerHTML='';
+  if (pages<=1) return;
+  const mk=(lbl,pg,act=false)=>{
+    const b=document.createElement('button');
+    b.className='pg-btn'+(act?' active':''); b.textContent=lbl;
+    b.onclick=()=>{ currentPage=pg; renderTable(); window.scrollTo({top:0,behavior:'smooth'}); };
+    return b;
+  };
+  if (currentPage>1) c.append(mk('‹',currentPage-1));
+  let s2=Math.max(1,currentPage-2), e2=Math.min(pages,currentPage+2);
+  if (currentPage<=3) e2=Math.min(5,pages);
+  if (currentPage>=pages-2) s2=Math.max(pages-4,1);
+  for (let i=s2;i<=e2;i++) c.append(mk(i,i,i===currentPage));
+  if (currentPage<pages) c.append(mk('›',currentPage+1));
+}
+
+function sortBy(col) {
+  const asc=sortState.column===col&&sortState.order==='asc';
+  sortState={column:col,order:asc?'desc':'asc'};
+  renderTable();
+}
+
+function parseDT(str) {
+  if (!str) return Infinity;
+  const m=str.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (m) return new Date(m[3],m[2]-1,m[1],m[4],m[5],m[6]).getTime();
+  const d=new Date(str); return isNaN(d)?Infinity:d.getTime();
+}
+
+// ── Boot ──
+document.addEventListener('DOMContentLoaded', ()=>{
+  if (localStorage.getItem('theme')==='dark') {
+    document.body.classList.add('dark');
+    document.getElementById('themeBtn').textContent='☀️';
+  }
+  // Set intraday seg value
+  document.getElementById('intradaySeg').querySelectorAll('label').forEach(l=>
+    l.classList.toggle('checked', l.dataset.val===intradayType));
+  buildSecondaryFilter(currentTF);
+  setStatLabels(currentTF);
+  updateSub();
+  loadTable();
+});
+</script>
 </body>
 </html>
