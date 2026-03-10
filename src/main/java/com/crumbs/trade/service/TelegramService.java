@@ -19,31 +19,28 @@ import java.util.Map;
 public class TelegramService {
     static Logger logger = LoggerFactory.getLogger(TelegramService.class);
     private final RestTemplate restTemplate = new RestTemplate();
-    
+
     @Value("${telegram.bot-token}")
     private String botToken;
-    
+
     @Value("${telegram.base-url}")
     private String baseUrl;
-    
-    @Value("${telegram.chat-id:}") // Optional: can be hardcoded in properties
+
+    @Value("${telegram.chat-id:}")
     private String configuredChatId;
-    
+
     private String cachedChatId;
     private Long updateOffset = 0L;
-    
+
     @Autowired TelegramUserRepo telegramUserRepo;
-    
+
     @PostConstruct
     public void initializeChatId() {
-        // Use configured chat_id if provided
         if (configuredChatId != null && !configuredChatId.isEmpty()) {
             cachedChatId = configuredChatId;
             logger.info("✅ Using configured chat_id: " + cachedChatId);
             return;
         }
-        
-        // Otherwise, try to fetch from Telegram
         try {
             fetchAndCacheChatId();
         } catch (Exception e) {
@@ -51,22 +48,17 @@ public class TelegramService {
             logger.error("💡 Send a message to your bot or configure telegram.chat-id in properties");
         }
     }
-    
+
     private void fetchAndCacheChatId() {
         String url = String.format("%s/bot%s/getUpdates?offset=%d", baseUrl, botToken, updateOffset);
-        
         try {
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 List<Map<String, Object>> result = (List<Map<String, Object>>) response.getBody().get("result");
-                
                 if (result != null && !result.isEmpty()) {
-                    // Process ALL updates to find the most recent chat_id
                     for (Map<String, Object> update : result) {
                         Long currentUpdateId = ((Number) update.get("update_id")).longValue();
                         updateOffset = Math.max(updateOffset, currentUpdateId + 1);
-                        
                         Map<String, Object> message = (Map<String, Object>) update.get("message");
                         if (message != null) {
                             Map<String, Object> chat = (Map<String, Object>) message.get("chat");
@@ -75,7 +67,6 @@ public class TelegramService {
                             }
                         }
                     }
-                    
                     if (cachedChatId != null) {
                         logger.info("✅ Chat ID fetched and cached: " + cachedChatId);
                         logger.info("💡 Add this to application.properties: telegram.chat-id=" + cachedChatId);
@@ -83,38 +74,32 @@ public class TelegramService {
                     }
                 }
             }
-            
             throw new RuntimeException("No updates found");
-            
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch chat_id from Telegram: " + e.getMessage());
         }
     }
-    
+
     public String getChatId() {
         if (cachedChatId == null || cachedChatId.isEmpty()) {
             fetchAndCacheChatId();
         }
         return cachedChatId;
     }
-    
+
     public boolean sendMessage(String text) {
         try {
             String chatId = getChatId();
             String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
-            
             Map<String, Object> body = Map.of(
                 "chat_id", chatId,
                 "text", text,
-                "parse_mode", "HTML" // Optional: enables HTML formatting
+                "parse_mode", "HTML"
             );
-            
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-            
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-            
             if (response.getStatusCode().is2xxSuccessful()) {
                 logger.info("✅ Message sent successfully: " + text.substring(0, Math.min(50, text.length())));
                 return true;
@@ -122,55 +107,98 @@ public class TelegramService {
                 logger.error("❌ Failed to send message. Status: " + response.getStatusCode());
                 return false;
             }
-            
         } catch (Exception e) {
             logger.error("❌ Failed to send message: " + e.getMessage());
             e.printStackTrace();
             return false;
         }
     }
-    
+
     public void refreshChatId() {
         cachedChatId = null;
         fetchAndCacheChatId();
     }
-    
- // 🔥 Broadcast logic
-    public int sendBroadcast(String text) {
 
+    // ─── Stock Notification Methods ──────────────────────────────────────────
+
+    /**
+     * Equivalent to sendEmail() — entry point for stock alerts
+     */
+    public void sendStockAlert(List<String[]> rows) {
+        try {
+            //rows.add(0, new String[]{"Stock Name", "Price", "Option", "Signal", "Type"});
+            String message = buildStockTable(rows);
+            boolean sent = sendMessage(message);
+            logger.info("📨 Stock alert sent to {} users", sent);
+        } catch (Exception e) {
+            logger.error("❌ Error while sending stock alert: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Equivalent to buildHtmlTable() — builds a Telegram-friendly table
+     */
+    public String buildStockTable(List<String[]> rows) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("📊 <b>Stock Details</b>\n\n");
+        sb.append("<pre>");
+
+        int[] colWidths = {12, 8, 8, 8, 6}; // StockName, Price, Option, Signal, Type
+
+        for (int i = 0; i < rows.size(); i++) {
+            String[] row = rows.get(i);
+            for (int j = 0; j < row.length; j++) {
+                // Replace null or "null" string with "-"
+                String cell = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
+                int width = (j < colWidths.length) ? colWidths[j] : 10;
+                sb.append(String.format("%-" + width + "s", cell));
+            }
+            sb.append("\n");
+
+            // Separator line after header
+            if (i == 0) {
+                int totalWidth = 0;
+                for (int w : colWidths) totalWidth += w;
+                sb.append("-".repeat(totalWidth)).append("\n");
+            }
+        }
+
+        sb.append("</pre>");
+        return sb.toString();
+    }
+
+    // ─── Broadcast & User Management (unchanged) ─────────────────────────────
+
+    public int sendBroadcast(String text) {
         List<TelegramUser> users = telegramUserRepo.findByActiveTrue();
         int sent = 0;
-
         for (TelegramUser user : users) {
             try {
                 sendToChat(user.getChatId(), text);
                 sent++;
-                Thread.sleep(60); // Telegram rate limit
+                Thread.sleep(60);
             } catch (Exception e) {
                 logger.error("Failed to send to {}", user.getChatId(), e);
             }
         }
         return sent;
     }
+
     public void sendToChat(Long chatId, String text) {
-
         String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
-
         Map<String, Object> body = Map.of(
-            "chat_id", chatId,   // Long is perfectly valid
+            "chat_id", chatId,
             "text", text,
             "parse_mode", "HTML"
         );
-
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
         restTemplate.postForEntity(url, entity, String.class);
     }
-    public void saveUser(Long chatId, String username) {
 
-        // If user already exists, just mark active
+    public void saveUser(Long chatId, String username) {
         telegramUserRepo.findById(chatId).ifPresentOrElse(
             user -> {
                 if (Boolean.FALSE.equals(user.getActive())) {
@@ -184,10 +212,8 @@ public class TelegramService {
                         .username(username)
                         .active(true)
                         .build();
-
                 telegramUserRepo.save(user);
             }
         );
     }
-
 }

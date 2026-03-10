@@ -240,6 +240,9 @@ public class TaskService {
 	
 	@Autowired
 	IndicatorService indicatorService;
+	
+	@Autowired
+	TelegramService telegramService;
 
 	public void getSupportAndResistance(String indexName, String symbol, long timeId)
 			throws IOException, SmartAPIException, ParseException {
@@ -2521,7 +2524,7 @@ public class TaskService {
 	        Thread.currentThread().interrupt();
 	    }
 
-	    sendEmail();
+	    sendMsg();
 	}
 	
 	private BigDecimal fetchLtp(
@@ -2712,14 +2715,14 @@ public class TaskService {
 		return openPrice;
 	}
 
-	public void sendEmail() {
+	public void sendMsg() {
 		List<String[]> rows = getEmailData();
 		// rows.add(new String[] { "Stock Name", "price", "Signal" });
 		// rows.add(new String[] { "Aravind", "aravind@example.com", "Admin" });
 		// rows.add(new String[] { "John", "john@example.com", "User" });
 		try {
-			emailService.getEmailData(rows);
-		} catch (MessagingException e) {
+			 telegramService.sendStockAlert(rows);
+		} catch (Exception e) {
 			logger.error("Error while sending email : " + e.getMessage());
 			e.printStackTrace();
 		}
