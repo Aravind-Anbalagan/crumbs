@@ -2377,13 +2377,14 @@ public class StraddleIntradayService {
 	    Map<String, BigDecimal> closeCache = prevCloseMap.get(strategy.getName());
 
 	    // ── Date range ──────────────────────────────────────────
-	    LocalDate today       = LocalDate.now(ZoneId.of("Asia/Kolkata"));
-	    LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(today)
-	                            ? today : NSEWorkingDays.getLastWorkingDay(today);
-	    LocalDate previousWD  = NSEWorkingDays.getLastWorkingDay(tradingDate);
+	    LocalDate today        = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	    LocalDate tradingDate  = NSEWorkingDays.isNSEWorkingDay(today)
+	                             ? today : NSEWorkingDays.getLastWorkingDay(today);
+	    LocalDate previousWD   = NSEWorkingDays.getLastWorkingDay(tradingDate);
+	    LocalDate dayBeforePrevWD = NSEWorkingDays.getLastWorkingDay(previousWD); // ← ADD THIS
 
-	    String fromDate = previousWD  + " 15:30";
-	    String toDate   = tradingDate + " 15:30";
+	    String fromDate = dayBeforePrevWD + " 15:30";  // Mar 06 15:30 ✅
+	    String toDate   = previousWD      + " 15:30";  // Mar 09 15:30 ✅
 
 	    logger.info("Prev day date range → from={} to={}", fromDate, toDate);
 
