@@ -9,8 +9,11 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
+@Getter
+@Setter
 @Entity
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "indicator", indexes = {
@@ -171,11 +174,9 @@ public class Indicator {
 	@Column(name = "pivotFlag")
 	String pivotFlag;
 	// Daily
-	@Lob
-	@Column(name = "dailyPriceActionSupport")
+	@Column(columnDefinition = "dailyPriceActionSupport")
 	String dailyPriceActionSupport;
-	@Lob
-	@Column(name = "dailyPriceActionResistance")
+	@Column(columnDefinition = "dailyPriceActionResistance")
 	String dailyPriceActionResistance;
 	@Column(name = "dailyPriceActionFlag")
 	boolean dailyPriceActionFlag;
@@ -203,19 +204,16 @@ public class Indicator {
 	String daily_fibo_reason;
 	@Column(name = "daily_aiSignal")
 	String daily_aiSignal;
-	@Lob
-	@Column(name = "daily_aiReason")
+	@Column(columnDefinition = "daily_aiReason")
 	String daily_aiReason;
 	@Column(name = "daily_aiConfidence")
 	String daily_aiConfidence;
 
 	// weekly
 	// Daily
-	@Lob
-	@Column(name = "weeklyPriceActionSupport")
+	@Column(columnDefinition = "weeklyPriceActionSupport")
 	String weeklyPriceActionSupport;
-	@Lob
-	@Column(name = "weeklyPriceActionResistance")
+	@Column(columnDefinition = "weeklyPriceActionResistance")
 	String weeklyPriceActionResistance;
 	@Column(name = "weeklyPriceActionFlag")
 	boolean weeklyPriceActionFlag;
@@ -243,8 +241,7 @@ public class Indicator {
 	String weekly_fibo_reason;
 	@Column(name = "weekly_aiSignal")
 	String weekly_aiSignal;
-	@Lob
-	@Column(name = "weekly_aiReason")
+	@Column(columnDefinition = "weekly_aiReason")
 	String weekly_aiReason;
 	@Column(name = "weekly_aiConfidence")
 	String weekly_aiConfidence;

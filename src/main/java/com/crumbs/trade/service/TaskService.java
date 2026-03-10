@@ -2471,7 +2471,7 @@ public class TaskService {
 	}
 
 	
-
+	@Transactional
 	public void findBullishStocks() throws SmartAPIException {
 	    SmartConnect smartConnect = angelOne.signIn();
 
