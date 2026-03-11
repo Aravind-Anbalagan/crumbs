@@ -1173,7 +1173,7 @@ public class StraddleIntradayService {
 	        strategy.getName(), successCount, failureCount);
 	}
 
-	private JSONArray fetchCandleWithRetry(
+	public JSONArray fetchCandleWithRetry(
 	        SmartConnect smartConnect,
 	        JSONObject request,
 	        String token) {

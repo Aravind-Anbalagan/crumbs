@@ -81,6 +81,7 @@ public class StrategyService {
     @Autowired CPRRepo         cprRepo;
     @Autowired OrderService    orderService;
     @Autowired PriceUtilService priceUtilService;
+    @Autowired StraddleIntradayService straddleIntradayService;
     // =========================================================================
     // STEP 1 — Fetch CPR + First 5-min candle  (called at 09:20)
     // =========================================================================
@@ -442,8 +443,15 @@ public class StrategyService {
         String fromDate = previousWorkingDay.atTime(9, 15).format(formatter);
         String toDate   = lastWorkingDay.atTime(9, 15).format(formatter);
 
-        JSONArray candles = getCandleDataByChoice(smartconnect, strategy, dto,
-                                                  "ONE_DAY", fromDate, toDate);
+        JSONObject req = new JSONObject();
+        req.put("exchange",    strategy.getExchange());
+        req.put("symboltoken", strategy.getToken());
+        req.put("interval",    "ONE_DAY");
+        req.put("fromdate",    fromDate);
+        req.put("todate",      toDate);
+        
+        JSONArray candles = straddleIntradayService.fetchCandleWithRetry(smartconnect, req, strategy.getToken());
+       
         if (candles == null || candles.isEmpty()) {
             logger.warn("No ONE_DAY candles returned for CPR");
             return dto;
@@ -499,18 +507,24 @@ public class StrategyService {
         LocalDate today    = LocalDate.now();
         String    fromDate = today + " 09:15";
         String    toDate   = today + " 09:20";
-
-        JSONArray ohlc = getCandleDataByChoice(smartConnect, strategy, dto,
-                                               "FIVE_MINUTE", fromDate, toDate);
-
-        if (ohlc == null || ohlc.length() < 4) {
-            logger.warn("FIRST 5-min candle not available");
-            return null;
+        JSONObject req = new JSONObject();
+        req.put("exchange",    strategy.getExchange());
+        req.put("symboltoken", strategy.getToken());
+        req.put("interval",    "FIVE_MINUTE");
+        req.put("fromdate",    fromDate);
+        req.put("todate",      toDate);
+        JSONArray ohlc = straddleIntradayService.fetchCandleWithRetry(smartConnect, req, strategy.getToken());
+        
+        if (ohlc == null) {
+        	return null;
         }
 
         // FIVE_MINUTE format → [time, open, high, low, close, volume]
-        BigDecimal high   = BigDecimal.valueOf(ohlc.getDouble(2));
-        BigDecimal low    = BigDecimal.valueOf(ohlc.getDouble(3));
+        JSONArray firstCandle = ohlc.getJSONArray(0);
+
+        // FIVE_MINUTE format → [time, open, high, low, close, volume]
+        BigDecimal high   = BigDecimal.valueOf(firstCandle.getDouble(2));
+        BigDecimal low    = BigDecimal.valueOf(firstCandle.getDouble(3));
         BigDecimal buffer = BigDecimal.valueOf(FIRST_CANDLE_BUFFER);
 
         dto.setFirstFiveMinHigh(high.add(buffer));
