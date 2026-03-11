@@ -42,445 +42,320 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class OIService {
-	Logger logger = LoggerFactory.getLogger(OIService.class);
 
-	@Autowired
-	AngelOne angelOne;
+    Logger logger = LoggerFactory.getLogger(OIService.class);
 
-	@Autowired
-	StrategyRepo strategyRepo;
+    @Autowired AngelOne angelOne;
+    @Autowired StrategyRepo strategyRepo;
+    @Autowired OIRepo oiRepo;
+    @Autowired OISignalGenerator oiSignalGenerator;
+    @Autowired TradingSignalService tradingSignalService;
 
-	@Autowired
-	TaskService taskService;
+    // ✅ Replaced: taskService.convertStrategyToDto() + taskService.getChart()
+    @Autowired StrategyHelperService strategyHelperService;
 
-	@Autowired
-	OIRepo oiRepo;
+    /*
+     * Get the option Chain of the given index/stock
+     */
+    public void getOptionChain(String name) throws IOException, SmartAPIException {
+        // ✅ was: taskService.convertStrategyToDto(strategyRepo.findByName(name))
+        StrategyDTO strategy = strategyHelperService.convertStrategyToDto(strategyRepo.findByName(name));
+        List<OIDto> optionChainList = new ArrayList<>();
 
-	@Autowired
-	OISignalGenerator oiSignalGenerator;
-    
-	@Autowired
-	TradingSignalService tradingSignalService;
-	
-	/*
-	 * Get the option Chain of the given index/stock
-	 */
-	public void getOptionChain(String name) throws IOException, SmartAPIException {
-	
-		BigDecimal currentPrice;
-		StrategyDTO strategy = taskService.convertStrategyToDto(strategyRepo.findByName(name));
-		List<OIDto> optionChainList = new ArrayList<>();
+        if (strategy != null) {
+            BigDecimal currentPrice = getCurrentAdjustedPrice(strategy);
+            if (currentPrice != null) {
+                optionChainList = prepareOIStrikeData(currentPrice, strategy, name);
+                if (optionChainList != null && !optionChainList.isEmpty()) {
+                    saveOIData(optionChainList, name);
+                }
+            }
+        }
+    }
 
-		if (strategy != null) {
-			currentPrice = getCurrentAdjustedPrice(strategy);
-			if (currentPrice != null) {
-				optionChainList = prepareOIStrikeData(currentPrice, strategy, name);
+    @Transactional
+    public void saveOIData(List<OIDto> optionChainList, String name) {
+        if (name.contains("NIFTY")) name = "NIFTY";
+        if (name != null) {
+            List<OI> oiList = oiRepo.findByName(name);
+            if (oiList != null && !oiList.isEmpty()) updateOI(optionChainList);
+            else                                      saveOI(optionChainList);
+        }
+    }
 
-				if (optionChainList != null && !optionChainList.isEmpty()) {
-					saveOIData(optionChainList, name);
-				}
-			}
+    public String setNewValue(String newValue) {
+        return Arrays.asList(newValue).toString();
+    }
 
-		}
+    @Transactional
+    public void saveOI(List<OIDto> optionChainList) {
+        optionChainList.forEach(t -> {
+            OI oi = new OI();
+            oi.setStrikePrice(t.getStrikePrice());
+            oi.setName(t.getName());
+            oi.setCallLTP(setNewValue(t.getCallLtp()));
+            oi.setCallOI(setNewValue(t.getCallOi()));
+            oi.setCallVolume(setNewValue(t.getCallVolume()));
+            oi.setCallOIChange(setNewValue(t.getCallOiChange()));
+            oi.setPutLTP(setNewValue(t.getPutLtp()));
+            oi.setPutOI(setNewValue(t.getPutOi()));
+            oi.setPutVolume(setNewValue(t.getPutVolume()));
+            oi.setPutOIChange(setNewValue(t.getPutOiChange()));
+            oi.setExpiry(t.getExpiry());
+            oi.setCallSignal("BASE");
+            oi.setPutSignal("BASE");
+            if (t.getSpot() != null) {
+                updateSpot(t.getName());
+                oi.setSpot(t.getSpot());
+            }
+            oiRepo.save(oi);
+        });
+    }
 
-	}
+    @Transactional
+    public void updateSpot(String name) {
+        OI oi = oiRepo.findBySpotAndName("Y", name);
+        if (oi != null) {
+            oi.setSpot(null);
+            oiRepo.save(oi);
+        }
+    }
 
-	@Transactional
-	public void saveOIData(List<OIDto> optionChainList, String name) {
-		if (name.contains("NIFTY")) {
-			name = "NIFTY";
-		}
-		if (name != null) {
-			List<OI> oiList = oiRepo.findByName(name);
+    @Transactional
+    public void updateOI(List<OIDto> optionChainList) {
+        optionChainList.forEach(t -> {
+            if (t.getStrikePrice() != null && t.getName() != null) {
+                OI oi = oiRepo.findByStrikePriceAndName(t.getStrikePrice(), t.getName());
+                if (oi == null) oi = new OI();
 
-			if (oiList != null && !oiList.isEmpty()) {
-				// Update
-				updateOI(optionChainList);
+                oi.setCallLTP(getExistingValue(oi.getCallLTP(), t.getCallLtp()));
+                oi.setCallOI(getExistingValue(oi.getCallOI(), t.getCallOi()));
+                oi.setCallOIChange(getExistingValue(oi.getCallOIChange(), t.getCallOiChange()));
+                oi.setPutLTP(getExistingValue(oi.getPutLTP(), t.getPutLtp()));
+                oi.setPutOI(getExistingValue(oi.getPutOI(), t.getPutOi()));
+                oi.setPutOIChange(getExistingValue(oi.getPutOIChange(), t.getPutOiChange()));
+                oi.setStrikePrice(t.getStrikePrice());
+                oi.setName(t.getName());
 
-			} else {
-				// Create
-				saveOI(optionChainList);
-			}
-		}
+                oi.setPutSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(
+                        oi.getPutLTP(), oi.getPutOI(), oi.getPutVolume()));
+                oi.setCallSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(
+                        oi.getCallLTP(), oi.getCallOI(), oi.getCallVolume()));
 
-	}
+                String formattedTime = LocalDateTime.now()
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                oi.setCallTradingSignal(formattedTime.concat(" - ").concat(
+                        tradingSignalService.generateBestSignal(oi.getCallOI(), oi.getCallLTP(), oi.getCallVolume())));
+                oi.setPutTradingSignal(formattedTime.concat(" - ").concat(
+                        tradingSignalService.generateBestSignal(oi.getPutOI(), oi.getPutLTP(), oi.getPutVolume())));
 
-	public String setNewValue(String newValue) {
-		return Arrays.asList(newValue).toString();
-	}
+                oi.setExpiry(t.getExpiry());
+                oi.setCallVolume(getExistingValue(oi.getCallVolume(), t.getCallVolume()));
+                oi.setPutVolume(getExistingValue(oi.getPutVolume(), t.getPutVolume()));
+                if (t.getSpot() != null) {
+                    updateSpot(t.getName());
+                    oi.setSpot(t.getSpot());
+                }
+                oiRepo.save(oi);
+            }
+        });
+    }
 
-	@Transactional
-	public void saveOI(List<OIDto> optionChainList) {
+    public String getOIList(OI oi, String type, String time) {
+        List<BigDecimal> oiList = "CALL".equalsIgnoreCase(type)
+                ? formatData(oi.getCallOI()) : formatData(oi.getPutOI());
+        return calculateOI(oiList, time);
+    }
 
-		optionChainList.stream().forEach(t -> {
-			OI oi = new OI();
-			oi.setStrikePrice(t.getStrikePrice());
-			oi.setName(t.getName());
-			oi.setCallLTP(setNewValue(t.getCallLtp()));
-			oi.setCallOI(setNewValue(t.getCallOi()));
-			oi.setCallVolume(setNewValue(t.getCallVolume()));
-			oi.setCallOIChange(setNewValue(t.getCallOiChange()));
-			oi.setPutLTP(setNewValue(t.getPutLtp()));
-			oi.setPutOI(setNewValue(t.getPutOi()));
-			oi.setPutVolume(setNewValue(t.getPutVolume()));
-			oi.setPutOIChange(setNewValue(t.getPutOiChange()));
-			oi.setExpiry(t.getExpiry());
-			oi.setCallSignal("BASE");
-			oi.setPutSignal("BASE");
-			if (t.getSpot() != null) {
-				updateSpot(t.getName());
-				oi.setSpot(t.getSpot());
-			}
-			oiRepo.save(oi);
-		}
+    public List<BigDecimal> formatData(String value) {
+        List<String> valueList = Arrays.stream(value.replaceAll("\\[|\\]", "").split(","))
+                .map(String::trim).collect(Collectors.toList());
+        if (valueList == null || valueList.isEmpty()) return null;
+        return valueList.stream()
+                .map(item -> item.split(" = "))
+                .filter(parts -> parts.length == 2)
+                .map(parts -> {
+                    try   { return new BigDecimal(parts[1]); }
+                    catch (NumberFormatException e) { System.err.println("Invalid number: " + parts[1]); return null; }
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
 
-		);
-	}
+    public String calculateOI(List<BigDecimal> prices, String time) {
+        List<String> trendAnalysis = analyzePriceTrendsWith3PointConfirmation(prices, time);
+        return trendAnalysis.isEmpty() ? null : trendAnalysis.get(trendAnalysis.size() - 1);
+    }
 
-	@Transactional
-	public void updateSpot(String name) {
-		OI oi = oiRepo.findBySpotAndName("Y", name);
-		if (oi != null) {
-			oi.setSpot(null);
-			oiRepo.save(oi);
-		}
-	}
+    public static List<String> analyzePriceTrendsWith3PointConfirmation(List<BigDecimal> prices, String time) {
+        List<String> analysis = new ArrayList<>();
+        if (prices.isEmpty()) return analysis;
 
-	@Transactional
-	public void updateOI(List<OIDto> optionChainList) {
+        String currentTrend = "N/A";
+        List<BigDecimal> lastThreePrices = new ArrayList<>();
 
-		optionChainList.stream().forEach(t -> {
-			if (t.getStrikePrice() != null && t.getName() != null) {
-				OI oi = oiRepo.findByStrikePriceAndName(t.getStrikePrice(), t.getName());
-				if (oi == null) {
-					oi = new OI();
-				}
-				oi.setCallLTP(getExistingValue(oi.getCallLTP(), t.getCallLtp()));
-				oi.setCallOI(getExistingValue(oi.getCallOI(), t.getCallOi()));
-				oi.setCallOIChange(getExistingValue(oi.getCallOIChange(), t.getCallOiChange()));
-				oi.setPutLTP(getExistingValue(oi.getPutLTP(), t.getPutLtp()));
-				oi.setPutOI(getExistingValue(oi.getPutOI(), t.getPutOi()));
-				oi.setPutOIChange(getExistingValue(oi.getPutOIChange(), t.getPutOiChange()));
-				oi.setStrikePrice(t.getStrikePrice());
-				oi.setName(t.getName());
-				
-				oi.setPutSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(oi.getPutLTP(),oi.getPutOI(),oi.getPutVolume()));
-				oi.setCallSignal(oiSignalGenerator.addTicksFromTimestampedStringsAsJson(oi.getCallLTP(),oi.getCallOI(),oi.getCallVolume()));
-				
-				LocalDateTime now = LocalDateTime.now();
+        for (BigDecimal currentPrice : prices) {
+            lastThreePrices.add(currentPrice);
+            if (lastThreePrices.size() > 3) lastThreePrices.remove(0);
 
-			        // Format the time
-			    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-			    String formattedTime = now.format(formatter);
-				oi.setCallTradingSignal(formattedTime.concat(" - ").concat(tradingSignalService.generateBestSignal(oi.getCallOI(), oi.getCallLTP(),
-						oi.getCallVolume())));
-				oi.setPutTradingSignal(formattedTime.concat(" - ").concat(tradingSignalService.generateBestSignal(oi.getPutOI(), oi.getPutLTP(),
-						oi.getPutVolume())));
-				
-				oi.setExpiry(t.getExpiry());
-				oi.setCallVolume(getExistingValue(oi.getCallVolume(), t.getCallVolume()));
-				oi.setPutVolume(getExistingValue(oi.getPutVolume(), t.getPutVolume()));
-				if (t.getSpot() != null) {
-					updateSpot(t.getName());
-					oi.setSpot(t.getSpot());
-				}
-				oiRepo.save(oi);
-			}
+            if (lastThreePrices.size() == 3) {
+                int upCount = 0, downCount = 0;
+                for (int j = 1; j < lastThreePrices.size(); j++) {
+                    int cmp = lastThreePrices.get(j).compareTo(lastThreePrices.get(j - 1));
+                    if (cmp > 0) upCount++;
+                    else if (cmp < 0) downCount++;
+                }
+                if (upCount >= 2) {
+                    analysis.add(!"Up".equals(currentTrend)
+                            ? time + " = Trend changed to Up" : time + " = Continuing Up");
+                    currentTrend = "Up";
+                } else if (downCount >= 2) {
+                    analysis.add(!"Down".equals(currentTrend)
+                            ? time + " = Trend changed to Down" : time + " = Continuing Down");
+                    currentTrend = "Down";
+                } else {
+                    if ("N/A".equals(currentTrend)) {
+                        currentTrend = "Same";
+                        analysis.add("Trend is Same (Start of comparison)");
+                    } else {
+                        analysis.add(time + " = No significant trend change");
+                    }
+                }
+            } else {
+                if ("N/A".equals(currentTrend)) {
+                    currentTrend = "Same";
+                    analysis.add(time + " = Trend is Same (Start of comparison)");
+                } else {
+                    analysis.add(time + " = No significant trend change");
+                }
+            }
+        }
+        return analysis;
+    }
 
-		}
+    public String getExistingValue(String oldValue, String newValue) {
+        if (oldValue != null && !oldValue.contains("null")) {
+            List<String> valueList = Arrays.stream(oldValue.replaceAll("\\[|\\]", "").split(","))
+                    .map(String::trim).collect(Collectors.toList());
+            valueList.add(newValue);
+            return valueList.toString();
+        }
+        return newValue;
+    }
 
-		);
-	}
+    public BigDecimal getCurrentAdjustedPrice(StrategyDTO strategy) {
+        SmartConnect smartConnect = angelOne.signIn();
+        JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(),
+                strategy.getTradingsymbol(), strategy.getToken());
+        BigDecimal currentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
+        if (currentPrice.intValue() % 100 != 0) {
+            int remainder = 100 - currentPrice.intValue() % 100;
+            currentPrice = remainder <= 50
+                    ? currentPrice.add(new BigDecimal(remainder))
+                    : currentPrice.subtract(new BigDecimal(currentPrice.intValue() % 100));
+        }
+        return currentPrice;
+    }
 
-	public String getOIList(OI oi, String type, String time) {
-		List<BigDecimal> oiList = new ArrayList<>();
-		if (type.equalsIgnoreCase("CALL")) {
-			oiList = formatData(oi.getCallOI());
-		} else {
-			oiList = formatData(oi.getPutOI());
-		}
+    public List<OIDto> prepareOIStrikeData(BigDecimal currentPrice, StrategyDTO strategy, String name)
+            throws IOException, SmartAPIException {
+        List<OIDto> optionChainList = new ArrayList<>();
+        if (name.equalsIgnoreCase("NIFTY_OI")) name = "NIFTY";
+        try {
+            for (int i = 10; i >= 1; i--) {
+                TimeUnit.SECONDS.sleep(1);
+                OIDto oiDto = new OIDto();
+                oiDto.setStrikePrice(new BigDecimal(currentPrice.intValue() - (50 * i)));
+                oiDto.setExpiry(strategy.getExpiry());
+                prepareOIData(oiDto, strategy, name);
+                if (oiDto.getStrikePrice() != null && oiDto.getName() != null) optionChainList.add(oiDto);
+            }
+            OIDto spotDto = new OIDto();
+            spotDto.setStrikePrice(new BigDecimal(currentPrice.intValue()));
+            spotDto.setSpot("Y");
+            spotDto.setExpiry(strategy.getExpiry());
+            prepareOIData(spotDto, strategy, name);
+            if (spotDto.getStrikePrice() != null && spotDto.getName() != null) optionChainList.add(spotDto);
 
-		return calculateOI(oiList, time);
-	}
+            for (int i = 1; i <= 10; i++) {
+                TimeUnit.SECONDS.sleep(1);
+                OIDto oiDto = new OIDto();
+                oiDto.setStrikePrice(new BigDecimal(currentPrice.intValue() + (50 * i)));
+                oiDto.setExpiry(strategy.getExpiry());
+                prepareOIData(oiDto, strategy, name);
+                if (oiDto.getStrikePrice() != null && oiDto.getName() != null) optionChainList.add(oiDto);
+            }
+        } catch (Exception e) {
+            logger.error("Error during reading option chain: {}", e.getMessage());
+        }
+        return optionChainList;
+    }
 
-	public List<BigDecimal> formatData(String value) {
-		List<BigDecimal> oiList = new ArrayList<>();
-		List<String> valueList = Arrays.stream(value.replaceAll("\\[|\\]", "").split(",")).map(String::trim)
-				.map(String::new).collect(Collectors.toList());
-		if (valueList != null && !valueList.isEmpty()) {
-			List<BigDecimal> bigDecimalList = valueList.stream().map(item -> item.split(" = ")) // Split each string at
-																								// " = "
-					.filter(parts -> parts.length == 2) // Ensure there are exactly two parts: timestamp and number
-					.map(parts -> {
-						try {
-							// Try to parse the number part into BigDecimal
-							return new BigDecimal(parts[1]);
-						} catch (NumberFormatException e) {
-							// Handle invalid number format by skipping this entry
-							System.err.println("Invalid number format for value: " + parts[1]);
-							return null; // Return null for invalid entries
-						}
-					}).filter(Objects::nonNull) // Remove any null values (invalid number format)
-					.collect(Collectors.toList()); // Collect into a list of BigDecimal
+    public OIDto prepareOIData(OIDto oiDto, StrategyDTO strategy, String name)
+            throws IOException, SmartAPIException {
+        String CEType = strategy.getSymbol() + strategy.getSymbol1()
+                + oiDto.getStrikePrice().intValue() + "CE";
+        String PEType = strategy.getSymbol() + strategy.getSymbol1()
+                + oiDto.getStrikePrice().intValue() + "PE";
 
-			// Print the BigDecimal list
-			// System.out.println(bigDecimalList);
+        // ✅ was: taskService.getChart(name, CEType, "N")
+        Strategy strategyNifty = strategyHelperService.getChart(name, CEType, "N");
+        oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "CE");
+        // ✅ was: taskService.getChart(name, PEType, "N")
+        strategyNifty = strategyHelperService.getChart(name, PEType, "N");
+        oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "PE");
+        return oiDto;
+    }
 
-			return bigDecimalList;
-		}
-		return null;
-	}
+    public OIDto getMarketData(String name, String token, OIDto oiDto, String type)
+            throws SmartAPIException, IOException {
+        String exchange = name.contains("NIFTY") ? "NFO" : "MCX";
+        SmartConnect smartConnect = angelOne.signIn();
+        JSONObject payload = new JSONObject();
+        payload.put("mode", "FULL");
+        JSONObject exchangeTokens = new JSONObject();
+        JSONArray nseTokens = new JSONArray();
+        nseTokens.put(token);
+        exchangeTokens.put(exchange, nseTokens);
+        payload.put("exchangeTokens", exchangeTokens);
+        JSONObject response = smartConnect.marketData(payload);
+        if (response.get("fetched") != null) {
+            JSONArray jsonArray = (JSONArray) response.get("fetched");
+            JSONObject item = jsonArray.getJSONObject(0);
+            String tradeTime = item.get("exchTradeTime").toString();
+            if (type.equalsIgnoreCase("CE")) {
+                oiDto.setCallOi(getFormatedInput(tradeTime, item.get("opnInterest").toString()));
+                oiDto.setCallLtp(getFormatedInput(tradeTime, item.get("ltp").toString()));
+                oiDto.setCallVolume(getFormatedInput(tradeTime, item.get("tradeVolume").toString()));
+            } else {
+                oiDto.setPutOi(getFormatedInput(tradeTime, item.get("opnInterest").toString()));
+                oiDto.setPutLtp(getFormatedInput(tradeTime, item.get("ltp").toString()));
+                oiDto.setPutVolume(getFormatedInput(tradeTime, item.get("tradeVolume").toString()));
+            }
+            oiDto.setName(name);
+        }
+        return oiDto;
+    }
 
-	public String calculateOI(List<BigDecimal> prices, String time) {
+    public String getFormatedInput(String key, String value) {
+        return key.concat(" = ").concat(value);
+    }
 
-		// Analyze the price trends with a confirmation of 3 consecutive points
-		List<String> trendAnalysis = analyzePriceTrendsWith3PointConfirmation(prices, time);
-
-		// Print out the prices along with their trend movements
-
-		if (trendAnalysis.size() != 0) {
-			return trendAnalysis.get(trendAnalysis.size() - 1);
-		}
-		return null;
-	}
-
-	public static List<String> analyzePriceTrendsWith3PointConfirmation(List<BigDecimal> prices, String time) {
-		List<String> analysis = new ArrayList<>();
-
-		if (prices.isEmpty()) {
-			return analysis;
-		}
-
-		// Variables to track the trend and last 3 prices
-		String currentTrend = "N/A"; // Initially, there's no trend
-		List<BigDecimal> lastThreePrices = new ArrayList<>();
-
-		for (int i = 0; i < prices.size(); i++) {
-			BigDecimal currentPrice = prices.get(i);
-
-			// Keep the last 3 prices in the list
-			lastThreePrices.add(currentPrice);
-			if (lastThreePrices.size() > 3) {
-				lastThreePrices.remove(0); // Remove the oldest price to maintain the size of 3
-			}
-
-			// Once we have 3 prices, we can analyze the trend
-			if (lastThreePrices.size() == 3) {
-				// Calculate the trend direction of the last 3 prices
-				int upCount = 0, downCount = 0;
-
-				for (int j = 1; j < lastThreePrices.size(); j++) {
-					if (lastThreePrices.get(j).compareTo(lastThreePrices.get(j - 1)) > 0) {
-						upCount++; // Price went up
-					} else if (lastThreePrices.get(j).compareTo(lastThreePrices.get(j - 1)) < 0) {
-						downCount++; // Price went down
-					}
-				}
-
-				// Decide the trend based on the last 3 points
-				if (upCount >= 2) {
-					if (!"Up".equals(currentTrend)) {
-						currentTrend = "Up"; // Trend changed to Up
-						analysis.add(time + " = Trend changed to Up");
-					} else {
-						analysis.add(time + " = Continuing Up");
-					}
-				} else if (downCount >= 2) {
-					if (!"Down".equals(currentTrend)) {
-						currentTrend = "Down"; // Trend changed to Down
-						analysis.add(time + " = Trend changed to Down");
-					} else {
-						analysis.add(time + " = Continuing Down");
-					}
-				} else {
-					// If the trend is mixed, consider it as No change
-					if ("N/A".equals(currentTrend)) {
-						currentTrend = "Same"; // First entry to start the trend tracking
-						analysis.add("Trend is Same (Start of comparison)");
-					} else {
-						analysis.add(time + " = No significant trend change");
-					}
-				}
-			} else {
-				// For the first 2 points, we can't determine a trend yet
-				if ("N/A".equals(currentTrend)) {
-					currentTrend = "Same"; // First entry to start the trend tracking
-					analysis.add(time + " = Trend is Same (Start of comparison)");
-				} else {
-					analysis.add(time + " = No significant trend change");
-				}
-			}
-		}
-
-		return analysis;
-	}
-
-	public String getExistingValue(String oldValue, String newValue) {
-		if (oldValue != null && !oldValue.contains("null")) {
-			List<String> valueList = Arrays.stream(oldValue.replaceAll("\\[|\\]", "").split(",")).map(String::trim)
-					.map(String::new).collect(Collectors.toList());
-			valueList.add(newValue);
-			return valueList.toString();
-		}
-		return newValue;
-	}
-
-	public BigDecimal getCurrentAdjustedPrice(StrategyDTO strategy) {
-		SmartConnect smartConnect = angelOne.signIn();
-		JSONObject jsonObject = smartConnect.getLTP(strategy.getExchange(), strategy.getTradingsymbol(),
-				strategy.getToken());
-		BigDecimal currentPrice = new BigDecimal(String.valueOf(jsonObject.get("ltp")));
-		if (currentPrice.intValue() % 100 != 0) {
-			int remainder = 100 - currentPrice.intValue() % 100;
-			if (remainder <= 50) {
-				currentPrice = currentPrice.add(new BigDecimal(remainder));
-			} else {
-				currentPrice = currentPrice.subtract(new BigDecimal(currentPrice.intValue() % 100));
-			}
-		}
-		return currentPrice;
-
-	}
-
-	public List<OIDto> prepareOIStrikeData(BigDecimal currentPrice, StrategyDTO strategy, String name)
-			throws IOException, SmartAPIException {
-		List<OIDto> optionChainList = new ArrayList<>();
-		OIDto oiDto = new OIDto();
-		if (name.equalsIgnoreCase("NIFTY_OI")) {
-			name = "NIFTY";
-		}
-		try {
-
-			// Add upper part
-			for (int i = 10; i >= 1; i--) {
-				TimeUnit.SECONDS.sleep(1);
-				oiDto = new OIDto();
-				oiDto.setStrikePrice(new BigDecimal(currentPrice.intValue() - (50 * i)));
-				oiDto.setExpiry(strategy.getExpiry());
-				prepareOIData(oiDto, strategy, name);
-				if (oiDto.getStrikePrice() != null && oiDto.getName() != null) {
-					optionChainList.add(oiDto);
-				}
-
-			}
-			oiDto = new OIDto();
-			oiDto.setStrikePrice(new BigDecimal(currentPrice.intValue()));
-			oiDto.setSpot("Y");
-			oiDto.setExpiry(strategy.getExpiry());
-			prepareOIData(oiDto, strategy, name);
-			if (oiDto.getStrikePrice() != null && oiDto.getName() != null) {
-				optionChainList.add(oiDto);
-			}
-			// Lower Part
-			for (int i = 1; i <= 10; i++) {
-				TimeUnit.SECONDS.sleep(1);
-				oiDto = new OIDto();
-				oiDto.setStrikePrice(new BigDecimal(currentPrice.intValue() + (50 * i)));
-				oiDto.setExpiry(strategy.getExpiry());
-				prepareOIData(oiDto, strategy, name);
-				if (oiDto.getStrikePrice() != null && oiDto.getName() != null) {
-					optionChainList.add(oiDto);
-				}
-			}
-		} catch (Exception e) {
-			logger.error("Error during reading option chain " + e.getMessage());
-		}
-
-		return optionChainList;
-
-	}
-
-	public OIDto prepareOIData(OIDto oiDto, StrategyDTO strategy, String name) throws IOException, SmartAPIException {
-		String CEType = null;
-		String PEType = null;
-		String expiry = null;
-
-		CEType = strategy.getSymbol() + strategy.getSymbol1() + oiDto.getStrikePrice().intValue() + "CE";
-		PEType = strategy.getSymbol() + strategy.getSymbol1() + oiDto.getStrikePrice().intValue() + "PE";
-		expiry = (new SimpleDateFormat("yyyy")).format(new Date()) + strategy.getExpiry().substring(0, 2);
-		Strategy strategyNifty = taskService.getChart(name, CEType,"N");
-		oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "CE");
-		strategyNifty = taskService.getChart(name, PEType,"N");
-		oiDto = getMarketData(strategyNifty.getName(), strategyNifty.getToken(), oiDto, "PE");
-		return oiDto;
-	}
-
-	// Get OI Data for given name
-	public OIDto getMarketData(String name, String token, OIDto oiDto, String type)
-			throws SmartAPIException, IOException {
-		String exchange = null;
-		if (name.contains("NIFTY")) {
-			exchange = "NFO";
-		} else {
-			exchange = "MCX";
-		}
-		SmartConnect smartConnect = angelOne.signIn();
-		JSONObject payload = new JSONObject();
-		payload.put("mode", "FULL"); // You can change the mode as needed
-		JSONObject exchangeTokens = new JSONObject();
-		JSONArray nseTokens = new JSONArray();
-		nseTokens.put(token);
-		exchangeTokens.put(exchange, nseTokens);
-		payload.put("exchangeTokens", exchangeTokens);
-		JSONObject response = smartConnect.marketData(payload);
-		if (response.get("fetched") != null) {
-			JSONArray jsonArray = (JSONArray) response.get("fetched");
-			JSONObject item = jsonArray.getJSONObject(0);
-			if (type.equalsIgnoreCase("CE")) {
-				oiDto.setCallOi(
-						getFormatedInput(item.get("exchTradeTime").toString(), item.get("opnInterest").toString()));
-				oiDto.setCallLtp(getFormatedInput(item.get("exchTradeTime").toString(), item.get("ltp").toString()));
-				oiDto.setCallVolume(getFormatedInput(item.get("exchTradeTime").toString(), item.get("tradeVolume").toString()));
-			} else {
-				oiDto.setPutOi(
-						getFormatedInput(item.get("exchTradeTime").toString(), item.get("opnInterest").toString()));
-				oiDto.setPutLtp(getFormatedInput(item.get("exchTradeTime").toString(), item.get("ltp").toString()));
-				oiDto.setPutVolume(getFormatedInput(item.get("exchTradeTime").toString(), item.get("tradeVolume").toString()));
-			}
-			
-			oiDto.setName(name);
-		}
-		return oiDto;
-	}
-
-	public String getFormatedInput(String key, String value) {
-		return key.concat(" = ").concat(value);
-	}
-
-	public List<OIUIDto> getOIDataDetails() {
-	    List<OI> entities = oiRepo.findAll();
-	    List<OIUIDto> dtoList = new ArrayList<>();
-
-	    for (OI entity : entities) {
-	        OIUIDto dto = new OIUIDto();
-	        //dto.setId(entity.getId());
-	        dto.setName(entity.getName());
-	        dto.setStrikePrice(entity.getStrikePrice());
-	        dto.setExpiry(entity.getExpiry());
-	        dto.setSpot(entity.getSpot());
-
-	        // Call side
-	        //dto.setCallLTP(OIParsingUtil.parseTimeValueString(entity.getCallLTP()));
-	        //dto.setCallOI(OIParsingUtil.parseTimeValueString(entity.getCallOI()));
-	        //dto.setCallOIChange(OIParsingUtil.parseTimeValueString(entity.getCallOIChange()));
-	        dto.setCallSignal(entity.getCallSignal());
-	        dto.setCallTradingSignal(entity.getCallTradingSignal());
-	        //dto.setCallVolume(OIParsingUtil.parseTimeValueString(entity.getCallVolume())); // if you store call volume
-
-	        // Put side
-	        //dto.setPutLTP(OIParsingUtil.parseTimeValueString(entity.getPutLTP()));
-	        //dto.setPutOI(OIParsingUtil.parseTimeValueString(entity.getPutOI()));
-	        //dto.setPutOIChange(OIParsingUtil.parseTimeValueString(entity.getPutOIChange()));
-	         dto.setPutSignal(entity.getPutSignal());
-	         dto.setPutTradingSignal(entity.getPutTradingSignal());
-	        //dto.setPutVolume(OIParsingUtil.parseTimeValueString(entity.getPutVolume())); // if you store put volume
-
-	       
-
-	        dtoList.add(dto);
-	    }
-
-	    return dtoList;
-	}
-
+    public List<OIUIDto> getOIDataDetails() {
+        List<OI> entities = oiRepo.findAll();
+        List<OIUIDto> dtoList = new ArrayList<>();
+        for (OI entity : entities) {
+            OIUIDto dto = new OIUIDto();
+            dto.setName(entity.getName());
+            dto.setStrikePrice(entity.getStrikePrice());
+            dto.setExpiry(entity.getExpiry());
+            dto.setSpot(entity.getSpot());
+            dto.setCallSignal(entity.getCallSignal());
+            dto.setCallTradingSignal(entity.getCallTradingSignal());
+            dto.setPutSignal(entity.getPutSignal());
+            dto.setPutTradingSignal(entity.getPutTradingSignal());
+            dtoList.add(dto);
+        }
+        return dtoList;
+    }
 }

@@ -1,5 +1,7 @@
 package com.crumbs.trade.repo;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -10,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.crumbs.trade.entity.Indicator;
+
+import jakarta.transaction.Transactional;
 
 @Repository
 public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
@@ -129,5 +133,41 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 			String option);
 	
 	List<Indicator> findByTradetypeAndOptions(String type,String option);
+	
+	// IndicatorRepo.java
+	@Modifying
+	@Transactional
+	@Query("UPDATE Indicator i SET " +
+	       "i.currentPrice = :currentPrice, " +
+	       "i.modifiedDate = :modifiedDate, " +
+	       "i.first3FiveMinsCandle = :first3FiveMinsCandle, " +
+	       "i.prevdayclosepriceflag = :prevdayclosepriceflag, " +
+	       "i.last3daycandleflag = :last3daycandleflag, " +
+	       "i.cprflag = :cprflag, " +
+	       "i.pivotFlag = :pivotFlag, " +
+	       "i.openPrice = :openPrice " +
+	       "WHERE i.id = :id")
+	void updateStockProcessingFields(
+	    @Param("id") Long id,
+	    @Param("currentPrice") BigDecimal currentPrice,
+	    @Param("modifiedDate") LocalDateTime modifiedDate,
+	    @Param("first3FiveMinsCandle") String first3FiveMinsCandle,
+	    @Param("prevdayclosepriceflag") String prevdayclosepriceflag,
+	    @Param("last3daycandleflag") String last3daycandleflag,
+	    @Param("cprflag") String cprflag,
+	    @Param("pivotFlag") String pivotFlag,
+	    @Param("openPrice") BigDecimal openPrice
+	);
+	
+	@Modifying
+	@Transactional
+	@Query("UPDATE Indicator i SET i.intraday = :intraday, i.tradetype = :tradetype, i.executedDate = :executedDate WHERE i.id = :id")
+	void updateIntradayFields(@Param("id") Long id, @Param("intraday") String intraday, 
+	                          @Param("tradetype") String tradetype, @Param("executedDate") LocalDateTime executedDate);
 
+	// IndicatorRepo
+	@Modifying
+	@Transactional
+	@Query("UPDATE Indicator i SET i.result = :result WHERE i.id = :id")
+	void updateResult(@Param("id") Long id, @Param("result") String result);
 }

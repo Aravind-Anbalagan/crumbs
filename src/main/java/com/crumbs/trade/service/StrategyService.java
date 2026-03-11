@@ -80,7 +80,7 @@ public class StrategyService {
     @Autowired ChartService    chartService;
     @Autowired CPRRepo         cprRepo;
     @Autowired OrderService    orderService;
-
+    @Autowired PriceUtilService priceUtilService;
     // =========================================================================
     // STEP 1 — Fetch CPR + First 5-min candle  (called at 09:20)
     // =========================================================================
@@ -465,7 +465,7 @@ public class StrategyService {
         logger.info("ONE_DAY OHLC → O={} H={} L={} C={}",
                 dto.getOpen(), dto.getHigh(), dto.getLow(), dto.getClose());
 
-        CPR cpr = taskService.calculateCpr(dto.getHigh(), dto.getLow(), dto.getClose());
+        CPR cpr = priceUtilService.calculateCpr(dto.getHigh(), dto.getLow(), dto.getClose());
         if (cpr != null) {
             dto.setBottom_pivot(cpr.getBottom_pivot());
             dto.setPivot(cpr.getPivot());

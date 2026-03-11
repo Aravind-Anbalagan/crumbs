@@ -89,6 +89,7 @@ public class StraddleIntradayService {
 	TelegramService telegramService;
 	@Autowired
 	Samco samco;
+	@Autowired PriceUtilService priceUtilService;
 	
 	// ================= VWAP STATE =================
 	private final Map<String, BigDecimal> tpvMap = new HashMap<>();
@@ -1558,10 +1559,10 @@ public class StraddleIntradayService {
 		LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
 
 		if (timeline.equalsIgnoreCase("FROM")) {
-			return lastWorkingDay.toString().concat(taskService.getHourAndMinutes(timeline, 5, type));
+			return lastWorkingDay.toString().concat(priceUtilService.getHourAndMinutes(timeline, 5, type));
 		} else {
 			return new SimpleDateFormat("yyyy-MM-dd").format(new Date())
-					.concat(taskService.getHourAndMinutes(timeline, 5, type));
+					.concat(priceUtilService.getHourAndMinutes(timeline, 5, type));
 		}
 	}
 	
