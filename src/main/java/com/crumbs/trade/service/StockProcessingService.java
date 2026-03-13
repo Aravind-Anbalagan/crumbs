@@ -85,9 +85,49 @@ public class StockProcessingService {
             if (!latch.await(2, TimeUnit.HOURS)) logger.warn("Timeout waiting for stock processing");
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
-        sendMsg();
+        sendMsg();   //Heikin-Psar Signals
+        sendMAHierarchyAlert();   // ← new: MA hierarchy BUY/SELL stack stocks
     }
 
+    /**
+     * Sends a Telegram alert for all stocks in full bull or bear MA stack.
+     * Call this after getSupportAndResistance() completes.
+     */
+    public void sendMAHierarchyAlert() {
+        List<Indicator> buyList  = indicatorRepo.findByMaHierarchyFlag("BUY");
+        List<Indicator> sellList = indicatorRepo.findByMaHierarchyFlag("SELL");
+
+        logger.info("MA Hierarchy Alert → BUY: {}, SELL: {}", buyList.size(), sellList.size());
+
+        if (buyList.isEmpty() && sellList.isEmpty()) {
+            logger.info("No MA hierarchy stocks to alert");
+            return;
+        }
+
+        // Build rows: header + BUY section + SELL section
+        List<String[]> rows = new ArrayList<>();
+        rows.add(new String[]{ "Symbol", "Sector", "Price", "Signal" });
+
+        buyList.forEach(i -> rows.add(new String[]{
+            i.getTradingSymbol(),
+            i.getSector()       != null ? i.getSector()                       : "Unknown",
+            i.getCurrentPrice() != null ? i.getCurrentPrice().toPlainString() : "0",
+            "BUY"
+        }));
+
+        sellList.forEach(i -> rows.add(new String[]{
+            i.getTradingSymbol(),
+            i.getSector()       != null ? i.getSector()                       : "Unknown",
+            i.getCurrentPrice() != null ? i.getCurrentPrice().toPlainString() : "0",
+            "SELL"
+        }));
+
+        try {
+            telegramService.sendMAHierarchyAlert(rows, buyList.size(), sellList.size());
+        } catch (Exception e) {
+            logger.error("Error sending MA hierarchy alert: {}", e.getMessage());
+        }
+    }
     // =========================================================
     // Per-stock processing
     // =========================================================
@@ -374,5 +414,71 @@ public class StockProcessingService {
 
     private void sleep(long ms) {
         try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+    
+    /**
+     * Returns a grouped summary of all stocks bucketed by their MA hierarchy signal.
+     * Safe to call after getSupportAndResistance() — maHierarchyFlag is already persisted.
+     *
+     * Result map keys : "BUY", "SELL", "NEUTRAL"
+     * Each row        : [tradingSymbol, sector, currentPrice, maHierarchyFlag]
+     */
+    public Map<String, List<String[]>> getMAHierarchyReport() {
+
+        Map<String, List<String[]>> report = new LinkedHashMap<>();
+        report.put("BUY",     new ArrayList<>());
+        report.put("SELL",    new ArrayList<>());
+        report.put("NEUTRAL", new ArrayList<>());
+
+        indicatorRepo.findByMaHierarchyFlag("BUY")    .forEach(i -> report.get("BUY")    .add(toMARow(i)));
+        indicatorRepo.findByMaHierarchyFlag("SELL")   .forEach(i -> report.get("SELL")   .add(toMARow(i)));
+        indicatorRepo.findByMaHierarchyFlag("NEUTRAL").forEach(i -> report.get("NEUTRAL").add(toMARow(i)));
+
+        logger.info("MA Hierarchy Report → BUY: {}, SELL: {}, NEUTRAL: {}",
+                report.get("BUY").size(),
+                report.get("SELL").size(),
+                report.get("NEUTRAL").size());
+
+        return report;
+    }
+
+    /**
+     * Highest-conviction LONG candidates.
+     * MA hierarchy BUY  +  Heikin-Ashi BUY  +  PSAR BUY — all three aligned.
+     */
+    public List<Indicator> getTripleConfirmedBuys() {
+        List<Indicator> result = indicatorRepo
+                .findByMaHierarchyFlagAndHeikinAshiDayAndPsarFlagDay("BUY", "BUY", "BUY");
+        logger.info("Triple-confirmed BUY stocks: {}", result.size());
+        return result;
+    }
+
+    /**
+     * Highest-conviction SHORT candidates.
+     * MA hierarchy SELL  +  Heikin-Ashi SELL  +  PSAR SELL — all three aligned.
+     */
+    public List<Indicator> getTripleConfirmedSells() {
+        List<Indicator> result = indicatorRepo
+                .findByMaHierarchyFlagAndHeikinAshiDayAndPsarFlagDay("SELL", "SELL", "SELL");
+        logger.info("Triple-confirmed SELL stocks: {}", result.size());
+        return result;
+    }
+
+    /**
+     * F&O-eligible BUY stocks in full bull stack — ready for options trading.
+     */
+    public List<Indicator> getFnOBullStackStocks() {
+        return indicatorRepo.findByMaHierarchyFlagAndOptions("BUY", "Y");
+    }
+
+    // ── private helper ────────────────────────────────────────────────────────
+
+    private String[] toMARow(Indicator i) {
+        return new String[]{
+            i.getTradingSymbol(),
+            i.getSector()       != null ? i.getSector()                    : "Unknown",
+            i.getCurrentPrice() != null ? i.getCurrentPrice().toPlainString() : "0",
+            i.getMaHierarchyFlag()
+        };
     }
 }

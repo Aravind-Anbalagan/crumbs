@@ -63,6 +63,8 @@ public class VolumeAnalysisService {
     @Autowired PriceUtilService priceUtilService;
     @Autowired StrategyHelperService strategyHelperService;
     @Autowired ChartService chartService;
+    @Autowired EMACalculator            emaCalculator;
+    @Autowired MAHierarchySignalService maHierarchySignalService;
 
     // =========================================================
     // Hourly Volume
@@ -184,20 +186,58 @@ public class VolumeAnalysisService {
 
         // Moving Averages
         if (allData.size() >= 20) {
+
+            // MA200 — needs at least 200 candles
             if (allData.size() >= 200) {
                 indicator.setMovingavg200(movingAverageCalculator.getMovingAverage(allData, 200));
-                if (indicator.getMovingavg200() != null) indicator.setMovingavg200Flag(index_CurrentPrice.subtract(indicator.getMovingavg200()));
-            } else { indicator.setMovingavg200(null); }
+                if (indicator.getMovingavg200() != null)
+                    indicator.setMovingavg200Flag(index_CurrentPrice.subtract(indicator.getMovingavg200()));
+            } else {
+                indicator.setMovingavg200(null);
+                indicator.setMovingavg200Flag(null);
+            }
 
+            // MA50 — needs at least 50 candles
             if (allData.size() >= 50) {
                 indicator.setMovingavg50(movingAverageCalculator.getMovingAverage(allData.subList(0, 50), 50));
-                if (indicator.getMovingavg50() != null) indicator.setMovingavg50Flag(index_CurrentPrice.subtract(indicator.getMovingavg50()));
-            } else { indicator.setMovingavg50(null); }
+                if (indicator.getMovingavg50() != null)
+                    indicator.setMovingavg50Flag(index_CurrentPrice.subtract(indicator.getMovingavg50()));
+            } else {
+                indicator.setMovingavg50(null);
+                indicator.setMovingavg50Flag(null);
+            }
 
+            // MA20 — guaranteed by outer guard
             indicator.setMovingavg20(movingAverageCalculator.getMovingAverage(allData.subList(0, 20), 20));
-            if (indicator.getMovingavg20() != null) indicator.setMovingavg20Flag(index_CurrentPrice.subtract(indicator.getMovingavg20()));
+            if (indicator.getMovingavg20() != null)
+                indicator.setMovingavg20Flag(index_CurrentPrice.subtract(indicator.getMovingavg20()));
+
+            // EMA9 / EMA21 — allData is newest-first, EMACalculator reverses internally
+            emaCalculator.setEMAFields(indicator, allData);
+
+            // MA Hierarchy Signal — evaluate full bull/bear stack
+            // Returns "BUY" / "SELL" / "NEUTRAL" / null (null = any level has insufficient history)
+            indicator.setMaHierarchyFlag(
+                maHierarchySignalService.evaluate(
+                    index_CurrentPrice,
+                    indicator.getMovingavg9(),
+                    indicator.getMovingavg21(),
+                    indicator.getMovingavg50(),
+                    indicator.getMovingavg200()
+                )
+            );
+
         } else {
-            indicator.setDailyPriceActionSupport(null); indicator.setDailyPriceActionResistance(null); indicator.setDailyPriceActionFlag(false);
+            // Insufficient candles — clear all MA-derived fields
+            indicator.setMovingavg200(null);     indicator.setMovingavg200Flag(null);
+            indicator.setMovingavg50(null);      indicator.setMovingavg50Flag(null);
+            indicator.setMovingavg20(null);      indicator.setMovingavg20Flag(null);
+            indicator.setMovingavg9(null);
+            indicator.setMovingavg21(null);
+            indicator.setMaHierarchyFlag(null);
+            indicator.setDailyPriceActionSupport(null);
+            indicator.setDailyPriceActionResistance(null);
+            indicator.setDailyPriceActionFlag(false);
         }
 
         // Bollinger Bands

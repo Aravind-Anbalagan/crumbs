@@ -170,4 +170,20 @@ public interface IndicatorRepo extends JpaRepository<Indicator, Long> {
 	@Transactional
 	@Query("UPDATE Indicator i SET i.result = :result WHERE i.id = :id")
 	void updateResult(@Param("id") Long id, @Param("result") String result);
+	
+	// All stocks in full bull stack
+	List<Indicator> findByMaHierarchyFlag(String maHierarchyFlag);
+
+	// BUY stocks that are also F&O eligible
+	List<Indicator> findByMaHierarchyFlagAndOptions(String maHierarchyFlag, String options);
+
+	// BUY/SELL stocks grouped by sector
+	List<Indicator> findByMaHierarchyFlagAndSector(String maHierarchyFlag, String sector);
+
+	// Combined with existing Heikin-Ashi for stronger confluence
+	List<Indicator> findByMaHierarchyFlagAndHeikinAshiDay(String maHierarchyFlag, String heikinAshiDay);
+
+	// Combined with PSAR for triple confirmation
+	List<Indicator> findByMaHierarchyFlagAndHeikinAshiDayAndPsarFlagDay(
+	    String maHierarchyFlag, String heikinAshiDay, String psarFlagDay);
 }

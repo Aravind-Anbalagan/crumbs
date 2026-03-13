@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.TaskScheduler;
@@ -21,7 +22,7 @@ import org.slf4j.LoggerFactory;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 
-@EnableScheduling
+
 @EnableJpaAuditing
 @EntityScan("com.crumbs.trade.entity")
 @SpringBootApplication
@@ -32,7 +33,7 @@ public class CrumbsNewApplication {
     @Autowired
     private AngelOne angelOne;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
         SpringApplication.run(CrumbsNewApplication.class, args);
     }

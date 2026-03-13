@@ -128,6 +128,12 @@ public class Indicator {
 	BigDecimal movingavg20;
 	@Column(name = "movingavg20Flag")
 	BigDecimal movingavg20Flag;
+	@Column(name = "movingavg21")
+	BigDecimal movingavg21;
+	@Column(name = "movingavg9")
+	BigDecimal movingavg9;
+	@Column(name = "maHierarchyFlag")
+	String maHierarchyFlag;
 	@Column(name = "bollingerband")
 	String bollingerband;
 	@Column(name = "bollingerflag")
