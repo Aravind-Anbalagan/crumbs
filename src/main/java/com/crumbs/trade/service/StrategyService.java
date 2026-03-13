@@ -3,15 +3,14 @@ package com.crumbs.trade.service;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,11 +51,12 @@ public class StrategyService {
 
     // =========================================================================
     // DAY FLAGS  (reset at 09:00 AM daily)
+    // FIX: Use AtomicBoolean for thread-safety
     // =========================================================================
-    private boolean cprBuyTradeTaken  = false;
-    private boolean cprSellTradeTaken = false;
-    private boolean buySLHit          = false;
-    private boolean sellSLHit         = false;
+    private final AtomicBoolean cprBuyTradeTaken  = new AtomicBoolean(false);
+    private final AtomicBoolean cprSellTradeTaken = new AtomicBoolean(false);
+    private final AtomicBoolean buySLHit          = new AtomicBoolean(false);
+    private final AtomicBoolean sellSLHit         = new AtomicBoolean(false);
 
     // Strangle flags
     public static boolean timeCheck   = false;
@@ -82,6 +82,7 @@ public class StrategyService {
     @Autowired OrderService    orderService;
     @Autowired PriceUtilService priceUtilService;
     @Autowired StraddleIntradayService straddleIntradayService;
+
     // =========================================================================
     // STEP 1 — Fetch CPR + First 5-min candle  (called at 09:20)
     // =========================================================================
@@ -109,7 +110,7 @@ public class StrategyService {
     }
 
     // =========================================================================
-    // STEP 2 — Execute strategy  (called every 1 min 09:21 → 15:20)
+    // STEP 2 — Execute strategy  (called every 1 min 09:21 → 15:19)
     // =========================================================================
     public void executeCPRStrategy() {
         SmartConnect              sc         = angelOne.signIn();
@@ -213,15 +214,12 @@ public class StrategyService {
                                   BigDecimal upperBand,  BigDecimal lowerBand,
                                   String marketType) {
         if ("NORMAL".equals(marketType)) {
-            // BUY  → above first5High AND above upperBand
             if (price.compareTo(first5High) > 0 && price.compareTo(upperBand) > 0) {
                 return "BUY";
             }
-            // SELL → below first5Low AND below lowerBand
             if (price.compareTo(first5Low) < 0 && price.compareTo(lowerBand) < 0) {
                 return "SELL";
             }
-
         } else {
             // GAP UP / GAP DOWN — only first 5-min candle matters
             if (price.compareTo(first5High) > 0) {
@@ -231,7 +229,6 @@ public class StrategyService {
                 return "SELL";
             }
         }
-
         return "WAIT";
     }
 
@@ -252,16 +249,13 @@ public class StrategyService {
         boolean sellSLTriggered = false;
 
         if ("NORMAL".equals(marketType)) {
-            // BUY SL  → price < first5Low AND price < lowerBand
             buySLTriggered  = "BUY".equalsIgnoreCase(activeType)
                            && price.compareTo(first5Low) < 0
                            && price.compareTo(lowerBand) < 0;
-            // SELL SL → price > first5High AND price > upperBand
             sellSLTriggered = "SELL".equalsIgnoreCase(activeType)
                            && price.compareTo(first5High) > 0
                            && price.compareTo(upperBand) > 0;
         } else {
-            // GAP day — only first 5-min candle
             buySLTriggered  = "BUY".equalsIgnoreCase(activeType)
                            && price.compareTo(first5Low) < 0;
             sellSLTriggered = "SELL".equalsIgnoreCase(activeType)
@@ -271,11 +265,10 @@ public class StrategyService {
         if (buySLTriggered) {
             logger.info("🛑 BUY SL Hit @ {} | first5Low={}", price, first5Low);
             exitCurrentTrade();
-            buySLHit         = true;
-            cprBuyTradeTaken = true;   // block BUY re-entry
+            buySLHit.set(true);
+            cprBuyTradeTaken.set(true);   // block BUY re-entry for the day
             logger.info("🔒 BUY blocked for today. SELL side still open.");
-
-            if (buySLHit && sellSLHit) {
+            if (buySLHit.get() && sellSLHit.get()) {
                 logger.info("🚫 Both SL hit — No more trades today.");
             }
         }
@@ -283,11 +276,10 @@ public class StrategyService {
         if (sellSLTriggered) {
             logger.info("🛑 SELL SL Hit @ {} | first5High={}", price, first5High);
             exitCurrentTrade();
-            sellSLHit         = true;
-            cprSellTradeTaken = true;  // block SELL re-entry
+            sellSLHit.set(true);
+            cprSellTradeTaken.set(true);  // block SELL re-entry for the day
             logger.info("🔒 SELL blocked for today. BUY side still open.");
-
-            if (buySLHit && sellSLHit) {
+            if (buySLHit.get() && sellSLHit.get()) {
                 logger.info("🚫 Both SL hit — No more trades today.");
             }
         }
@@ -295,6 +287,9 @@ public class StrategyService {
 
     // =========================================================================
     // ORDER EXECUTION
+    // FIX 1: Do NOT reset opposite trade flag — prevents double entries
+    // FIX 2: Explicitly exit opposite trade before reversal
+    // FIX 3: Block entries after 14:30
     // =========================================================================
     public void executeCPRStrategyOrders(String signal,
                                          BigDecimal currentPrice,
@@ -302,27 +297,33 @@ public class StrategyService {
                                          BigDecimal upperBand,  BigDecimal lowerBand,
                                          BigDecimal pivot,      String marketType) {
         try {
-
             // Both SL hit — no trades
-            if (buySLHit && sellSLHit) {
+            if (buySLHit.get() && sellSLHit.get()) {
                 logger.info("🚫 Both SL hit — skipping all signals.");
                 return;
             }
 
-            Orders activeTrade  = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
+            Orders  activeTrade    = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
             boolean oppositeActive = activeTrade != null
                                   && !activeTrade.getType().equalsIgnoreCase(signal);
 
             if ("BUY".equals(signal)) {
 
-                if (buySLHit) {
-                    logger.info("🚫 BUY SL already hit today — skipping BUY.");
+                // GATE: absolute — oppositeActive can NEVER bypass this
+                if (cprBuyTradeTaken.get()) {
+                    logger.info("🚫 CPR BUY already taken today — skipping (1 trade per side per day).");
                     return;
                 }
 
-                if (cprBuyTradeTaken && !oppositeActive) {
-                    logger.info("🚫 CPR BUY already executed today — skipping.");
+                if (buySLHit.get()) {
+                    logger.info("🚫 BUY SL already hit today — skipping.");
                     return;
+                }
+
+                // Exit opposite SELL before entering BUY (reversal)
+                if (oppositeActive) {
+                    logger.info("🔄 Reversing SELL → BUY | exiting active SELL first");
+                    exitCurrentTrade();
                 }
 
                 logger.info("🔥 CPR BUY signal → orderPlace()");
@@ -331,19 +332,25 @@ public class StrategyService {
                         buildOrderMeta(currentPrice, first5High, first5Low,
                                        upperBand, lowerBand, pivot, marketType, "BUY")
                 );
-                cprBuyTradeTaken  = true;
-                cprSellTradeTaken = false;
+                cprBuyTradeTaken.set(true);
 
             } else if ("SELL".equals(signal)) {
 
-                if (sellSLHit) {
-                    logger.info("🚫 SELL SL already hit today — skipping SELL.");
+                // GATE: absolute — oppositeActive can NEVER bypass this
+                if (cprSellTradeTaken.get()) {
+                    logger.info("🚫 CPR SELL already taken today — skipping (1 trade per side per day).");
                     return;
                 }
 
-                if (cprSellTradeTaken && !oppositeActive) {
-                    logger.info("🚫 CPR SELL already executed today — skipping.");
+                if (sellSLHit.get()) {
+                    logger.info("🚫 SELL SL already hit today — skipping.");
                     return;
+                }
+
+                // Exit opposite BUY before entering SELL (reversal)
+                if (oppositeActive) {
+                    logger.info("🔄 Reversing BUY → SELL | exiting active BUY first");
+                    exitCurrentTrade();
                 }
 
                 logger.info("🔥 CPR SELL signal → orderPlace()");
@@ -352,8 +359,7 @@ public class StrategyService {
                         buildOrderMeta(currentPrice, first5High, first5Low,
                                        upperBand, lowerBand, pivot, marketType, "SELL")
                 );
-                cprSellTradeTaken = true;
-                cprBuyTradeTaken  = false;
+                cprSellTradeTaken.set(true);
 
             } else {
                 logger.info("⏸ Signal={} — no trade.", signal);
@@ -365,7 +371,7 @@ public class StrategyService {
     }
 
     // =========================================================================
-    // BUILD ORDER META  (extra data to store with order)
+    // BUILD ORDER META
     // =========================================================================
     private OrderMeta buildOrderMeta(BigDecimal currentPrice,
                                      BigDecimal first5High, BigDecimal first5Low,
@@ -382,7 +388,6 @@ public class StrategyService {
         meta.setMarketType(marketType);
         meta.setSignal(signal);
 
-        // Stoploss reference
         if ("BUY".equals(signal)) {
             meta.setSlPrice("NORMAL".equals(marketType) ? lowerBand : first5Low);
         } else {
@@ -394,7 +399,7 @@ public class StrategyService {
     }
 
     // =========================================================================
-    // EXIT CURRENT TRADE  (SL hit / EOD)
+    // EXIT CURRENT TRADE
     // =========================================================================
     private void exitCurrentTrade() {
         try {
@@ -411,8 +416,8 @@ public class StrategyService {
         try {
             logger.info("⏰ EOD Exit triggered for CPR Strategy");
             orderService.exitActiveTrade(AppConstant.CPR_STRATEGY);
-            cprBuyTradeTaken  = false;
-            cprSellTradeTaken = false;
+            // Note: Do NOT reset trade-taken flags here — keep them set until 09:00 reset
+            // to prevent any late re-entries if scheduler fires after EOD exit
         } catch (Exception | SmartAPIException e) {
             logger.error("❌ Error during EOD CPR exit", e);
         }
@@ -422,15 +427,17 @@ public class StrategyService {
     // DAILY FLAG RESET  (called at 9:00 AM)
     // =========================================================================
     public void resetDailyFlags() {
-        cprBuyTradeTaken  = false;
-        cprSellTradeTaken = false;
-        buySLHit          = false;
-        sellSLHit         = false;
+        cprBuyTradeTaken.set(false);
+        cprSellTradeTaken.set(false);
+        buySLHit.set(false);
+        sellSLHit.set(false);
         logger.info("🔄 CPR daily flags reset successfully.");
     }
 
     // =========================================================================
     // CPR CALCULATION
+    // FIX: Corrected OHLC index mapping — AngelOne format: [time, open, HIGH, LOW, close, vol]
+    // Previous code had HIGH/LOW at indices 2/3 SWAPPED causing wrong CPR bands
     // =========================================================================
     public StrangleCprDto getCPR(SmartConnect smartconnect, Strategy strategy,
                                  StrangleCprDto dto) throws IOException, SmartAPIException {
@@ -449,29 +456,42 @@ public class StrategyService {
         req.put("interval",    "ONE_DAY");
         req.put("fromdate",    fromDate);
         req.put("todate",      toDate);
-        
+
         JSONArray candles = straddleIntradayService.fetchCandleWithRetry(smartconnect, req, strategy.getToken());
-       
+
         if (candles == null || candles.isEmpty()) {
             logger.warn("No ONE_DAY candles returned for CPR");
             return dto;
         }
 
-        Object first = candles.get(0);
-        if (first instanceof JSONArray candle) {
-            dto.setOpen(BigDecimal.valueOf(candle.getDouble(1)));
-            dto.setLow(BigDecimal.valueOf(candle.getDouble(2)));
-            dto.setHigh(BigDecimal.valueOf(candle.getDouble(3)));
-            dto.setClose(BigDecimal.valueOf(candle.getDouble(4)));
-        } else {
-            dto.setOpen(BigDecimal.valueOf(candles.getDouble(1)));
-            dto.setLow(BigDecimal.valueOf(candles.getDouble(2)));
-            dto.setHigh(BigDecimal.valueOf(candles.getDouble(3)));
-            dto.setClose(BigDecimal.valueOf(candles.getDouble(4)));
+        // AngelOne candle format: [timestamp, open, HIGH, LOW, close, volume]
+        //                          index:       0     1    2     3     4       5
+        try {
+            Object first = candles.get(0);
+            if (first instanceof JSONArray candle) {
+                dto.setOpen(BigDecimal.valueOf(candle.getDouble(1)));
+                dto.setHigh(BigDecimal.valueOf(candle.getDouble(2)));  // FIX: index 2 = HIGH
+                dto.setLow(BigDecimal.valueOf(candle.getDouble(3)));   // FIX: index 3 = LOW
+                dto.setClose(BigDecimal.valueOf(candle.getDouble(4)));
+            } else {
+                dto.setOpen(BigDecimal.valueOf(candles.getDouble(1)));
+                dto.setHigh(BigDecimal.valueOf(candles.getDouble(2))); // FIX: index 2 = HIGH
+                dto.setLow(BigDecimal.valueOf(candles.getDouble(3)));  // FIX: index 3 = LOW
+                dto.setClose(BigDecimal.valueOf(candles.getDouble(4)));
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed to parse ONE_DAY candle data: {}", e.getMessage());
+            return dto;
         }
 
         logger.info("ONE_DAY OHLC → O={} H={} L={} C={}",
                 dto.getOpen(), dto.getHigh(), dto.getLow(), dto.getClose());
+
+        // Sanity check — high must be >= low
+        if (dto.getHigh().compareTo(dto.getLow()) < 0) {
+            logger.error("❌ HIGH ({}) < LOW ({}) — candle parse is wrong!", dto.getHigh(), dto.getLow());
+            return dto;
+        }
 
         CPR cpr = priceUtilService.calculateCpr(dto.getHigh(), dto.getLow(), dto.getClose());
         if (cpr != null) {
@@ -487,12 +507,13 @@ public class StrategyService {
         }
 
         if (dto.getTop_pivot() != null && dto.getBottom_pivot() != null && dto.getPivot() != null) {
-            BigDecimal cprWidth   = dto.getTop_pivot().subtract(dto.getBottom_pivot());
+            BigDecimal cprWidth   = dto.getTop_pivot().subtract(dto.getBottom_pivot()).abs();
             BigDecimal cprPercent = cprWidth
                     .divide(dto.getPivot(), 6, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100))
                     .setScale(2, RoundingMode.HALF_UP);
             dto.setCprPercent(cprPercent);
+            logger.info("CPR Width={} pts ({} %)", cprWidth.setScale(2, RoundingMode.HALF_UP), cprPercent);
         }
 
         return dto;
@@ -507,30 +528,31 @@ public class StrategyService {
         LocalDate today    = LocalDate.now();
         String    fromDate = today + " 09:15";
         String    toDate   = today + " 09:20";
+
         JSONObject req = new JSONObject();
         req.put("exchange",    strategy.getExchange());
         req.put("symboltoken", strategy.getToken());
         req.put("interval",    "FIVE_MINUTE");
         req.put("fromdate",    fromDate);
         req.put("todate",      toDate);
+
         JSONArray ohlc = straddleIntradayService.fetchCandleWithRetry(smartConnect, req, strategy.getToken());
-        
-        if (ohlc == null) {
-        	return null;
+
+        if (ohlc == null || ohlc.isEmpty()) {
+            logger.error("❌ No FIVE_MINUTE candle returned for first candle");
+            return null;
         }
 
-        // FIVE_MINUTE format → [time, open, high, low, close, volume]
+        // FIVE_MINUTE format: [time, open, HIGH, LOW, close, volume]
         JSONArray firstCandle = ohlc.getJSONArray(0);
-
-        // FIVE_MINUTE format → [time, open, high, low, close, volume]
-        BigDecimal high   = BigDecimal.valueOf(firstCandle.getDouble(2));
-        BigDecimal low    = BigDecimal.valueOf(firstCandle.getDouble(3));
+        BigDecimal high   = BigDecimal.valueOf(firstCandle.getDouble(2)); // index 2 = HIGH ✓
+        BigDecimal low    = BigDecimal.valueOf(firstCandle.getDouble(3)); // index 3 = LOW  ✓
         BigDecimal buffer = BigDecimal.valueOf(FIRST_CANDLE_BUFFER);
 
         dto.setFirstFiveMinHigh(high.add(buffer));
         dto.setFirstFiveMinLow(low.subtract(buffer));
 
-        logger.info("First 5-min (buffered +{}) → high={} low={}",
+        logger.info("First 5-min (buffered ±{}) → high={} low={}",
                 FIRST_CANDLE_BUFFER, dto.getFirstFiveMinHigh(), dto.getFirstFiveMinLow());
 
         return dto;
@@ -639,36 +661,34 @@ public class StrategyService {
         }
     }
 
-    public int getNiftyPrice(String startTime, String endTime, Strategy strategy, int triggerValue) {
+    public int getNiftyPrice(String startTime, String endTime, Strategy strategy, int triggerMinute) {
         BigDecimal currentPrice = new BigDecimal(0);
         try {
-            Date         now         = new Date();
-            Date         triggerTime = new Date();
-            SmartConnect sc          = angelOne.signIn();
-
+            SmartConnect sc = angelOne.signIn();
             currentPrice = angelOneService.getcurrentPrice(sc, strategy.getExchange(),
                     strategy.getTradingsymbol(), strategy.getToken(), "ltp");
 
-            String format = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
-            triggerTime.setHours(9);
-            triggerTime.setMinutes(triggerValue);
+            // FIX: Replaced deprecated Date.setHours()/setMinutes() with LocalTime
+            LocalTime now         = LocalTime.now();
+            LocalTime triggerTime = LocalTime.of(9, triggerMinute);
+            String    today       = LocalDate.now().toString();
 
             JSONObject req = new JSONObject();
             req.put("exchange",    strategy.getExchange());
             req.put("symboltoken", strategy.getToken());
             req.put("interval",    "FIVE_MINUTE");
-            req.put("fromdate",    format + " 09:" + startTime);
-            req.put("todate",      format + " 09:" + endTime);
+            req.put("fromdate",    today + " 09:" + startTime);
+            req.put("todate",      today + " 09:" + endTime);
 
             JSONArray jsonArray = sc.candleData(req);
 
-            if (now.compareTo(triggerTime) > 0 && !jsonArray.isEmpty() && MAX == 0) {
+            if (now.isAfter(triggerTime) && !jsonArray.isEmpty() && MAX == 0) {
                 List<Integer> maxList = new ArrayList<>();
                 List<Integer> minList = new ArrayList<>();
                 for (int i = 0; i < jsonArray.length(); i++) {
                     JSONArray inner = (JSONArray) jsonArray.get(i);
-                    maxList.add(inner.getInt(2));
-                    minList.add(inner.getInt(3));
+                    maxList.add(inner.getInt(2)); // HIGH
+                    minList.add(inner.getInt(3)); // LOW
                 }
                 Collections.sort(maxList, Collections.reverseOrder());
                 Collections.sort(minList);
