@@ -1614,6 +1614,12 @@
           item.indexType === window.breakoutCurrentIndex && item.status === 'ACTIVE'
         );
         window.breakoutCurrentPage = 1;
+        // Default sort: latest breakDate (createdAt) first
+window.breakoutSortColumn = 'breakDate';
+window.breakoutSortDirection = 'desc';
+window.breakoutFilteredData.sort((a, b) =>
+  String(b['createdAt'] || '').localeCompare(String(a['createdAt'] || ''))
+);
         renderBreakoutTable();
         document.getElementById('boPaginationContainer').style.display = 'block';
 
@@ -1659,42 +1665,67 @@
 
       window.breakoutFilteredData = filtered;
       window.breakoutCurrentPage = 1;
+      // Re-apply current sort (default: latest breakDate first)
+const sortCol = window.breakoutSortColumn || 'breakDate';
+const sortDir = window.breakoutSortDirection || 'desc';
+window.breakoutFilteredData.sort((a, b) => {
+  let valA = sortCol === 'breakDate' ? (a['createdAt'] || '') : (a[sortCol] ?? '');
+  let valB = sortCol === 'breakDate' ? (b['createdAt'] || '') : (b[sortCol] ?? '');
+  if (!valA) return 1;
+  if (!valB) return -1;
+  const numA = parseFloat(valA), numB = parseFloat(valB);
+  if (!isNaN(numA) && !isNaN(numB)) return sortDir === 'asc' ? numA - numB : numB - numA;
+  return sortDir === 'asc'
+    ? String(valA).localeCompare(String(valB))
+    : String(valB).localeCompare(String(valA));
+});
       renderBreakoutTable();
       updateBreakoutStats();
     }
 
     function sortBreakoutTable(column) {
-      if (window.breakoutSortColumn === column) {
-        window.breakoutSortDirection = window.breakoutSortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
-        window.breakoutSortColumn = column;
-        window.breakoutSortDirection = 'asc';
-      }
+  if (window.breakoutSortColumn === column) {
+    window.breakoutSortDirection = window.breakoutSortDirection === 'asc' ? 'desc' : 'asc';
+  } else {
+    window.breakoutSortColumn = column;
+    window.breakoutSortDirection = 'desc';
+  }
 
-      window.breakoutFilteredData.sort((a, b) => {
-        let valA = a[column];
-        let valB = b[column];
+  window.breakoutFilteredData.sort((a, b) => {
+    // breakDate uses createdAt as the real value
+    let valA = column === 'breakDate' ? a['createdAt'] : a[column];
+    let valB = column === 'breakDate' ? b['createdAt'] : b[column];
 
-        if (valA === null) return 1;
-        if (valB === null) return -1;
+    // Nulls always go last
+    if (!valA && !valB) return 0;
+    if (!valA) return 1;
+    if (!valB) return -1;
 
-        const numA = parseFloat(valA);
-        const numB = parseFloat(valB);
+    // Date columns
+    // Date columns — normalize space separator to T for reliable parsing
+if (column === 'breakDate' || column === 'lastExpiryDate') {
+  const dateA = new Date(String(valA).replace(' ', 'T'));
+  const dateB = new Date(String(valB).replace(' ', 'T'));
+  return window.breakoutSortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+}
 
-        if (!isNaN(numA) && !isNaN(numB)) {
-          return window.breakoutSortDirection === 'asc' ? numA - numB : numB - numA;
-        }
-
-        const strA = String(valA).toLowerCase();
-        const strB = String(valB).toLowerCase();
-
-        return window.breakoutSortDirection === 'asc' ?
-          strA.localeCompare(strB) :
-          strB.localeCompare(strA);
-      });
-
-      renderBreakoutTable();
+    // Numeric columns
+    const numA = parseFloat(valA);
+    const numB = parseFloat(valB);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return window.breakoutSortDirection === 'asc' ? numA - numB : numB - numA;
     }
+
+    // String columns
+    const strA = String(valA).toLowerCase();
+    const strB = String(valB).toLowerCase();
+    return window.breakoutSortDirection === 'asc'
+      ? strA.localeCompare(strB)
+      : strB.localeCompare(strA);
+  });
+
+  renderBreakoutTable();
+}
 
     function changeBreakoutPageSize() {
       window.breakoutPageSize = parseInt(document.getElementById('boPageSize').value);

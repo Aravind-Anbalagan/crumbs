@@ -56,7 +56,7 @@ public class SRService {
     @Autowired IndexesRepo indexesRepo;
     @Autowired AngelOneService angelOneService;
     @Autowired AngelOne angelOne;
-    @Autowired PriceActionService priceActionService;  // ✅ Unified service only
+    @Autowired PriceActionService priceActionService;
     @Autowired TaskService taskService;
     @Autowired SignalsRepo signalRepo;
     @Autowired ChartRepo chartRepo;
@@ -65,9 +65,14 @@ public class SRService {
     @Autowired LevelBuilder levelBuilder;
     @Autowired CandleCache candleCache;
 
-    private static final Map<String, CandleDTO> previousDayCache = new ConcurrentHashMap<>();
-    private static final ZoneId NSE_ZONE = ZoneId.of("Asia/Kolkata");
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    // ── Previous-day OHLC cache ───────────────────────────────────────────────
+    // FIX 1: Store the date alongside the value so the entry is evicted on the
+    //         next calendar day rather than living forever in the JVM.
+    private static final Map<String, CandleDTO>   previousDayCache     = new ConcurrentHashMap<>();
+    private static final Map<String, LocalDate>   previousDayCacheDate = new ConcurrentHashMap<>();
+
+    private static final ZoneId             NSE_ZONE  = ZoneId.of("Asia/Kolkata");
+    private static final DateTimeFormatter  FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     Logger logger = LoggerFactory.getLogger(SRService.class);
 
@@ -87,9 +92,9 @@ public class SRService {
         private final int mcxBestDays;
 
         TimeFrame(int nseBestDays, int candleMinutes, int mcxBestDays) {
-            this.nseBestDays = nseBestDays;
+            this.nseBestDays   = nseBestDays;
             this.candleMinutes = candleMinutes;
-            this.mcxBestDays = mcxBestDays;
+            this.mcxBestDays   = mcxBestDays;
         }
 
         public int getCandleMinutes() { return candleMinutes; }
@@ -134,51 +139,49 @@ public class SRService {
         if (market == TimeFrame.Market.NSE) {
             return getLastValidCandleClose(tf);
         }
-        // MCX logic
-        LocalDateTime now = LocalDateTime.now(NSE_ZONE);
-        LocalTime marketOpen = LocalTime.of(9, 0);
-        LocalTime marketClose = LocalTime.of(23, 30);
+        LocalDateTime now         = LocalDateTime.now(NSE_ZONE);
+        LocalTime     marketOpen  = LocalTime.of(9, 0);
+        LocalTime     marketClose = LocalTime.of(23, 30);
 
         if (tf == TimeFrame.ONE_DAY) {
             return now.toLocalTime().isBefore(marketClose)
                 ? LocalDate.now(NSE_ZONE).minusDays(1).atTime(marketClose)
                 : LocalDate.now(NSE_ZONE).atTime(marketClose);
         }
-        if (now.toLocalTime().isBefore(marketOpen)) return LocalDate.now(NSE_ZONE).minusDays(1).atTime(marketClose);
-        if (now.toLocalTime().isAfter(marketClose)) return LocalDate.now(NSE_ZONE).atTime(marketClose);
+        if (now.toLocalTime().isBefore(marketOpen))  return LocalDate.now(NSE_ZONE).minusDays(1).atTime(marketClose);
+        if (now.toLocalTime().isAfter(marketClose))  return LocalDate.now(NSE_ZONE).atTime(marketClose);
 
-        int interval = tf.getCandleMinutes();
+        int           interval    = tf.getCandleMinutes();
         LocalDateTime marketStart = LocalDate.now(NSE_ZONE).atTime(marketOpen);
-        long completed = (ChronoUnit.MINUTES.between(marketStart, now) / interval) * interval;
+        long          completed   = (ChronoUnit.MINUTES.between(marketStart, now) / interval) * interval;
         return marketStart.plusMinutes(completed);
     }
 
     private static LocalDateTime getLastValidCandleClose(TimeFrame tf) {
-        LocalDateTime now = LocalDateTime.now(NSE_ZONE);
+        LocalDateTime now         = LocalDateTime.now(NSE_ZONE);
+        LocalTime     marketOpen  = LocalTime.of(9, 15);
+        LocalTime     marketClose = LocalTime.of(15, 30);
+
         if (tf == TimeFrame.ONE_DAY) {
-            return now.toLocalTime().isBefore(LocalTime.of(15, 30))
+            return now.toLocalTime().isBefore(marketClose)
                 ? LocalDate.now(NSE_ZONE).minusDays(1).atTime(15, 30)
                 : LocalDate.now(NSE_ZONE).atTime(15, 30);
         }
+        if (now.toLocalTime().isBefore(marketOpen))  return LocalDate.now(NSE_ZONE).minusDays(1).atTime(15, 30);
+        if (now.toLocalTime().isAfter(marketClose))  return LocalDate.now(NSE_ZONE).atTime(15, 30);
 
-        LocalTime marketOpen = LocalTime.of(9, 15);
-        LocalTime marketClose = LocalTime.of(15, 30);
-
-        if (now.toLocalTime().isBefore(marketOpen)) return LocalDate.now(NSE_ZONE).minusDays(1).atTime(15, 30);
-        if (now.toLocalTime().isAfter(marketClose)) return LocalDate.now(NSE_ZONE).atTime(15, 30);
-
-        int interval = tf.getCandleMinutes();
+        int           interval    = tf.getCandleMinutes();
         LocalDateTime marketStart = LocalDate.now(NSE_ZONE).atTime(marketOpen);
-        long completed = (ChronoUnit.MINUTES.between(marketStart, now) / interval) * interval;
+        long          completed   = (ChronoUnit.MINUTES.between(marketStart, now) / interval) * interval;
         return marketStart.plusMinutes(completed);
     }
 
     public CandleRequestDto getCandleTiming(String timeFrame, String exchange) {
-        CandleRequestDto candle = new CandleRequestDto();
-        TimeFrame selected = TimeFrame.valueOf(timeFrame);
-        TimeFrame.Market market = mapExchangeToMarket(exchange);
+        CandleRequestDto candle   = new CandleRequestDto();
+        TimeFrame        selected = TimeFrame.valueOf(timeFrame);
+        TimeFrame.Market market   = mapExchangeToMarket(exchange);
 
-        LocalDateTime toDateTime = getLastValidCandleCloseForMarket(selected, market);
+        LocalDateTime toDateTime   = getLastValidCandleCloseForMarket(selected, market);
         LocalDateTime fromDateTime = toDateTime.minusDays(selected.getBestDays(market));
 
         candle.setFromDate(fromDateTime.format(FORMATTER));
@@ -192,16 +195,17 @@ public class SRService {
         return "MCX".equalsIgnoreCase(exchange) ? TimeFrame.Market.MCX : TimeFrame.Market.NSE;
     }
 
-    // ==================== PRICE ACTION (FIXED) ====================
+    // ==================== PRICE ACTION ====================
 
     public PriceActionResult getPriceAction(String timeFrame, String name, String exchange, String symbol) {
-        CandleRequestDto candle = getCandleTiming(timeFrame, exchange);
+        CandleRequestDto  candle  = getCandleTiming(timeFrame, exchange);
         List<PricesIndex> candles = getCandleData(candle, name, symbol);
 
         if (candles != null && !candles.isEmpty()) {
             BigDecimal currentPrice = getCurrentPriceForIndex(name, symbol);
-            // ✅ Unified service - correct signature
-            return priceActionService.analyze(currentPrice, candles, timeFrame);
+            // Pass lockKey so each instrument+timeframe has its own isolated zone cache
+            String lockKey = name + "|" + timeFrame;
+            return priceActionService.analyze(currentPrice, candles, timeFrame, lockKey);
         }
         logger.error("Unable to get price action for {}", name);
         return emptyPriceActionResult(BigDecimal.ZERO);
@@ -220,41 +224,43 @@ public class SRService {
     @Transactional
     public Signals getSignals(String name, String type) {
         Strategy strategy = getTokenDetails(name, type);
-        Signals signal = new Signals();
+        Signals  signal   = new Signals();
 
         PriceActionResult pr = getPriceAction("FIVE_MINUTE", strategy.getName(),
-            strategy.getExchange(), strategy.getTradingsymbol());
+                strategy.getExchange(), strategy.getTradingsymbol());
 
         if (pr != null && pr.getCurrentPrice() != null) {
             String currentDate = LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
+                    .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
 
             BigDecimal currentPrice = pr.getCurrentPrice();
             BigDecimal buffer = currentPrice.multiply(BigDecimal.valueOf(0.003));
 
             List<BigDecimal> supports = Optional.ofNullable(pr.getSupportLevels())
-                .orElse(Collections.emptyList()).stream()
-                .map(SRLevelDTO::getPrice).collect(Collectors.toList());
+                    .orElse(Collections.emptyList()).stream()
+                    .map(SRLevelDTO::getPrice).collect(Collectors.toList());
 
             List<BigDecimal> resistances = Optional.ofNullable(pr.getResistanceLevels())
-                .orElse(Collections.emptyList()).stream()
-                .map(SRLevelDTO::getPrice).collect(Collectors.toList());
+                    .orElse(Collections.emptyList()).stream()
+                    .map(SRLevelDTO::getPrice).collect(Collectors.toList());
 
             BigDecimal nearestSupport = supports.stream()
-                .filter(s -> s.compareTo(currentPrice) <= 0)
-                .max(Comparator.naturalOrder()).orElse(null);
+                    .filter(s -> s.compareTo(currentPrice) <= 0)
+                    .max(Comparator.naturalOrder()).orElse(null);
 
             BigDecimal nearestResistance = resistances.stream()
-                .filter(r -> r.compareTo(currentPrice) >= 0)
-                .min(Comparator.naturalOrder()).orElse(null);
+                    .filter(r -> r.compareTo(currentPrice) >= 0)
+                    .min(Comparator.naturalOrder()).orElse(null);
 
-            boolean nearSupport = nearestSupport != null && 
-                currentPrice.subtract(nearestSupport).compareTo(buffer) <= 0;
-            boolean nearResistance = nearestResistance != null && 
-                nearestResistance.subtract(currentPrice).compareTo(buffer) <= 0;
+            boolean nearSupport     = nearestSupport != null
+                    && currentPrice.subtract(nearestSupport).compareTo(buffer) <= 0;
+            boolean nearResistance  = nearestResistance != null
+                    && nearestResistance.subtract(currentPrice).compareTo(buffer) <= 0;
 
-            String finalSignal = nearSupport && nearResistance ? "HOLD" :
-                nearSupport ? "BUY" : nearResistance ? "SELL" : "HOLD";
+            String finalSignal = nearSupport && nearResistance ? "HOLD"
+                    : nearSupport    ? "BUY"
+                    : nearResistance ? "SELL"
+                    : "HOLD";
 
             signal.setFinals(finalSignal);
             signal.setName(name);
@@ -265,18 +271,16 @@ public class SRService {
         return signal;
     }
 
-    // ==================== PREVIOUS DAY OHLC (UNCHANGED) ====================
-    // ... [keeping getPreviousOHLC and getPreviousDayCandle exactly as they were]
-
-    // ==================== INTRADAY ANALYSIS (FIXED) ====================
+    // ==================== INTRADAY ANALYSIS ====================
 
     public ChartDataDTO analyzeIntraday(String name, String timeFrame) {
         long total = TimerLog.start();
 
-        long t = TimerLog.start();
+        long     t        = TimerLog.start();
         Strategy strategy = strategyRepo.findByName(name);
-        String symbol = strategy.getTradingsymbol();
-        String exchange = getExchange(name);
+        String   symbol   = strategy.getTradingsymbol();
+        String   exchange = getExchange(name);
+
         CandleRequestDto candle = getCandleTiming(timeFrame, exchange);
         candle.setName(name);
         TimerLog.end(logger, "getCandleTiming", t);
@@ -286,15 +290,15 @@ public class SRService {
         TimerLog.end(logger, "getCandleData", t);
 
         if (candles == null || candles.isEmpty()) {
-            logger.warn("⚠️ No candles available for {}", name);
+            logger.warn("No candles available for {}", name);
             TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
             return null;
         }
 
         t = TimerLog.start();
-        BigDecimal currentPrice = candles.get(candles.size() - 1).getClose();
-        // ✅ Fixed - uses unified priceActionService.analyze()
-        PriceActionResult result = priceActionService.analyze(currentPrice, candles, timeFrame);
+        BigDecimal        currentPrice = candles.get(candles.size() - 1).getClose();
+        String            lockKey      = name + "|" + timeFrame;
+        PriceActionResult result       = priceActionService.analyze(currentPrice, candles, timeFrame, lockKey);
         TimerLog.end(logger, "priceActionService.analyze", t);
 
         ChartDataDTO dto = new ChartDataDTO();
@@ -306,44 +310,20 @@ public class SRService {
         TimerLog.end(logger, "getPreviousDayCandle", t);
 
         dto.setCandles(toCandleList(candles));
-
         TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
         return dto;
     }
 
-    // ==================== REST OF METHODS (UNCHANGED) ====================
-    // ... [keep saveLevels, getTokenDetails, getChartDetails, getExchange, getcandleList exactly as they were]
-
-    private List<CandleDTO> toCandleList(List<PricesIndex> pricesList) {
-        ZoneId istZone = ZoneId.of("Asia/Kolkata");
-        return pricesList.stream().map(p -> {
-            CandleDTO c = new CandleDTO();
-            c.setTime(Instant.parse(p.getTimestamp()).atZone(istZone).toEpochSecond());
-            c.setOpen(p.getOpen());
-            c.setHigh(p.getHigh());
-            c.setLow(p.getLow());
-            c.setClose(p.getClose());
-            c.setVolume(Optional.ofNullable(p.getVolume()).orElse(BigDecimal.ZERO));
-            return c;
-        }).collect(Collectors.toList());
-    }
-    public Strategy getTokenDetails(String name, String exchange) {
-        StrategyDTO strategyModified = taskService.getStrategyDetails(name, exchange);
-        return taskService.getChart(strategyModified.getSymbol(),
-                strategyModified.getTradingsymbol(), strategyModified.getLive());
-    }
-    public String getExchange(String input) {
-        return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "MCX";
-    }
-    
- // ==================== PREVIOUS DAY OHLC ====================
+    // ==================== PREVIOUS DAY OHLC ====================
 
     public CandleDTO getPreviousOHLC(String timeFrame, String name, String exchange, String symbol) {
         LocalDate today          = LocalDate.now();
         LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
-        Strategy strategy = taskService.getChart(name,
-                strategyRepo.findByName(name).getTradingsymbol(),
-                strategyRepo.findByName(name).getLive());
+
+        // FIX 5: was calling strategyRepo.findByName(name) twice — now one call
+        Strategy found    = strategyRepo.findByName(name);
+        Strategy strategy = taskService.getChart(name, found.getTradingsymbol(), found.getLive());
+
         SmartConnect smartConnect = angelOne.signIn();
 
         String fromDate, toDate;
@@ -355,8 +335,8 @@ public class SRService {
             toDate   = lastWorkingDay + " 23:30";
         }
 
-        CandleDTO candleDTO = new CandleDTO();
-        JSONObject requestObject = new JSONObject();
+        CandleDTO   candleDTO     = new CandleDTO();
+        JSONObject  requestObject = new JSONObject();
         requestObject.put("exchange",    strategy.getExchange());
         requestObject.put("symboltoken", strategy.getToken());
         requestObject.put("interval",    timeFrame);
@@ -374,19 +354,51 @@ public class SRService {
         return candleDTO;
     }
 
+    /**
+     * FIX 1: Previous-day cache now tracks the date it was populated.
+     * On a new calendar day the entry is treated as stale and re-fetched,
+     * preventing yesterday's OHLC from being returned indefinitely.
+     */
     public CandleDTO getPreviousDayCandle(String name, String exchange, String symbol) {
-        String key = name + "|" + exchange + "|" + symbol;
+        String    key   = name + "|" + exchange + "|" + symbol;
+        LocalDate today = LocalDate.now(NSE_ZONE);
 
-        // ✅ Return from cache if already loaded today
-        if (previousDayCache.containsKey(key)) {
-            logger.debug("⚡ [CACHE] Previous day candle hit for {}", name);
+        if (previousDayCache.containsKey(key)
+                && today.equals(previousDayCacheDate.get(key))) {
+            logger.debug("⚡ [CACHE HIT] Previous day candle for {}", name);
             return previousDayCache.get(key);
         }
 
-        // Fetch from AngelOne and cache it
         CandleDTO candle = getPreviousOHLC("ONE_DAY", name, exchange, symbol);
         previousDayCache.put(key, candle);
-        logger.info("✅ [CACHE] Previous day candle cached for {}", name);
+        previousDayCacheDate.put(key, today);
+        logger.info("✅ [CACHE SET] Previous day candle cached for {} on {}", name, today);
         return candle;
+    }
+
+    // ==================== HELPERS ====================
+
+    private List<CandleDTO> toCandleList(List<PricesIndex> pricesList) {
+        ZoneId istZone = ZoneId.of("Asia/Kolkata");
+        return pricesList.stream().map(p -> {
+            CandleDTO c = new CandleDTO();
+            c.setTime(Instant.parse(p.getTimestamp()).atZone(istZone).toEpochSecond());
+            c.setOpen(p.getOpen());
+            c.setHigh(p.getHigh());
+            c.setLow(p.getLow());
+            c.setClose(p.getClose());
+            c.setVolume(Optional.ofNullable(p.getVolume()).orElse(BigDecimal.ZERO));
+            return c;
+        }).collect(Collectors.toList());
+    }
+
+    public Strategy getTokenDetails(String name, String exchange) {
+        StrategyDTO strategyModified = taskService.getStrategyDetails(name, exchange);
+        return taskService.getChart(strategyModified.getSymbol(),
+                strategyModified.getTradingsymbol(), strategyModified.getLive());
+    }
+
+    public String getExchange(String input) {
+        return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "MCX";
     }
 }

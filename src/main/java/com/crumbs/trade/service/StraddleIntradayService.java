@@ -13,8 +13,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,9 +20,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import org.apache.logging.log4j.LogManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -32,8 +28,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
@@ -43,7 +37,6 @@ import com.crumbs.trade.dto.CombinedChartPoint;
 import com.crumbs.trade.dto.CombinedChartResponse;
 import com.crumbs.trade.dto.StraddlePremiumDto;
 import com.crumbs.trade.dto.Token;
-import com.crumbs.trade.entity.Candle;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.StraddleIntraday;
 import com.crumbs.trade.entity.Strategy;
@@ -51,11 +44,9 @@ import com.crumbs.trade.repo.CandleRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.StraddleIntradayRepo;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.AlertType;
 import com.crumbs.trade.utility.ConditionalLogger;
 import com.crumbs.trade.utility.NSEWorkingDays;
-
-import in.samco.util.SamcoConstants;
-import jakarta.transaction.Transactional;
 
 @Service
 public class StraddleIntradayService {
@@ -585,15 +576,10 @@ public class StraddleIntradayService {
 				straddleIntradayRepo.save(entity);
 				count++;
 				 // 🔔 Trigger Telegram ONLY if crossover happened
-			    if (Boolean.TRUE.equals(entity.getCeCrossoverAbove()) ||
-			        Boolean.TRUE.equals(entity.getPeCrossoverAbove())) {
-
-			        // 🚫 Prevent duplicate alerts
-			        if (isAlertRequired("STRADDLE_PREMIUM")) {
-
-			        	  sendTelegramAndMark(entity);
-			        }
-			    }
+				// 🔔 CONFIGURABLE MULTI-ALERT SYSTEM
+				if (isAlertRequired("STRADDLE_PREMIUM")) {
+				    checkAndSendAlerts(entity);
+				}
 			} catch (Exception e) {
 				logger.error("Failed to save record for strike {}: {}", 
 					dto.getStrikePrice(), e.getMessage());
@@ -603,62 +589,146 @@ public class StraddleIntradayService {
 		return count;
 	}
 	
-	private void sendTelegramAndMark(StraddleIntraday s) {
-	    try {
-	        String message = buildTelegramMessage(s);
+	private void checkAndSendAlerts(StraddleIntraday entity) {
 
+	    // ── EXISTING: CE–PE Crossover ──────────────────────
+	    if (AlertConditionChecker.isEnabled(AlertType.CE_PE_CROSSOVER)
+	            && AlertConditionChecker.isCeCrossoverAbove(entity)) {
+
+	        sendTelegramAlert(entity, AlertType.CE_PE_CROSSOVER);
+	    }
+
+	    // ── EXISTING: PE–CE Crossover ──────────────────────
+	    if (AlertConditionChecker.isEnabled(AlertType.PE_CE_CROSSOVER)
+	            && AlertConditionChecker.isPeCrossoverAbove(entity)) {
+
+	        sendTelegramAlert(entity, AlertType.PE_CE_CROSSOVER);
+	    }
+
+	    // ── NEW: VWAP Dominance CE ──────────────────────────
+	    if (AlertConditionChecker.isEnabled(AlertType.VWAP_DOMINANCE_CE)
+	            && AlertConditionChecker.isVwapDominanceCe(entity)) {
+
+	        sendTelegramAlert(entity, AlertType.VWAP_DOMINANCE_CE);
+	    }
+
+	    // ── NEW: VWAP Dominance PE ──────────────────────────
+	    if (AlertConditionChecker.isEnabled(AlertType.VWAP_DOMINANCE_PE)
+	            && AlertConditionChecker.isVwapDominancePe(entity)) {
+
+	        sendTelegramAlert(entity, AlertType.VWAP_DOMINANCE_PE);
+	    }
+	}
+	
+	private void sendTelegramAlert(StraddleIntraday entity, AlertType alertType) {
+	    try {
+	        String message = buildTelegramMessage(entity, alertType);
 	        boolean sent = telegramService.sendMessage(message);
 
 	        if (sent) {
-	            logger.info("CE-PE Crossover Notification has sent");
+	            logger.info("✅ Alert sent [{}] for {} strike {}",
+	                alertType, entity.getName(), entity.getStrike());
 	        }
 	    } catch (Exception ex) {
-	        logger.error("Telegram alert failed for {} {}", 
-	            s.getName(), s.getStrike(), ex);
+	        logger.error("Telegram alert failed [{}] for {} {}",
+	            alertType, entity.getName(), entity.getStrike(), ex);
+	    }
+	}
+	
+	private void sendTelegramAndMark(StraddleIntraday s, AlertType alertType) {
+	    try {
+	        String message = buildTelegramMessage(s, alertType); // ← updated
+	        boolean sent = telegramService.sendMessage(message);
+	        if (sent) {
+	            logger.info("✅ Alert sent [{}] for {} strike {}",
+	                alertType, s.getName(), s.getStrike());
+	        }
+	    } catch (Exception ex) {
+	        logger.error("Telegram alert failed [{}] for {} {}",
+	            alertType, s.getName(), s.getStrike(), ex);
 	    }
 	}
 	
 	// =====================================================
     // MESSAGE FORMAT
     // =====================================================
-    private String buildTelegramMessage(StraddleIntraday s) {
+	private String buildTelegramMessage(StraddleIntraday entity, AlertType alertType) {
 
-        String direction;
-        String emoji;
+	    return switch (alertType) {
 
-        if (Boolean.TRUE.equals(s.getCeCrossoverAbove())) {
-            direction = "CE crossed ABOVE PE";
-            emoji = "🟢";
-        } else {
-            direction = "PE crossed ABOVE CE";
-            emoji = "🔴";
-        }
+	        case CE_PE_CROSSOVER -> String.format("""
+	            🚨 CE–PE Crossover Signal 🚨
 
-        return String.format(
-            """
-            🚨 CE–PE Crossover Trade Signal 🚨
+	            📌 Symbol  : %s
+	            📌 Strike  : %s
+	            ⏰ Time    : %s
 
-            📌 Symbol : %s
-            📌 Strike : %s
-            ⏰ Time   : %s
+	            🟢 CE crossed ABOVE PE
+	            💰 CE Price : %.2f
+	            💰 PE Price : %.2f
+	            📊 Combined : %.2f
 
-            %s Signal : %s
-            💰 CE Price : %.2f
-            💰 PE Price : %.2f
-            📊 Combined : %.2f
+	            ⚠️ Event-based crossover (one-time)
+	            """,
+	            entity.getName(), entity.getStrike(), entity.getTimestamp(),
+	            entity.getCePrice(), entity.getPePrice(), entity.getCombinedPremium()
+	        );
 
-            ⚠️ Event-based crossover (one-time)
-            """,
-            s.getName(),
-            s.getStrike(),
-            s.getTimestamp(),
-            emoji,
-            direction,
-            s.getCePrice(),
-            s.getPePrice(),
-            s.getCombinedPremium()
-        );
-    }
+	        case PE_CE_CROSSOVER -> String.format("""
+	            🚨 PE–CE Crossover Signal 🚨
+
+	            📌 Symbol  : %s
+	            📌 Strike  : %s
+	            ⏰ Time    : %s
+
+	            🔴 PE crossed ABOVE CE
+	            💰 CE Price : %.2f
+	            💰 PE Price : %.2f
+	            📊 Combined : %.2f
+
+	            ⚠️ Event-based crossover (one-time)
+	            """,
+	            entity.getName(), entity.getStrike(), entity.getTimestamp(),
+	            entity.getCePrice(), entity.getPePrice(), entity.getCombinedPremium()
+	        );
+
+	        case VWAP_DOMINANCE_CE -> String.format("""
+	            📊 VWAP Dominance Signal 📊
+
+	            📌 Symbol  : %s
+	            📌 Strike  : %s
+	            ⏰ Time    : %s
+
+	            🟢 CE is DOMINANT (CE > CE-VWAP, PE < PE-VWAP)
+	            💰 CE Price : %.2f  |  CE VWAP : %.2f
+	            💰 PE Price : %.2f  |  PE VWAP : %.2f
+	            📊 Combined : %.2f
+	            """,
+	            entity.getName(), entity.getStrike(), entity.getTimestamp(),
+	            entity.getCePrice(), entity.getCeVwap(),
+	            entity.getPePrice(), entity.getPeVwap(),
+	            entity.getCombinedPremium()
+	        );
+
+	        case VWAP_DOMINANCE_PE -> String.format("""
+	            📊 VWAP Dominance Signal 📊
+
+	            📌 Symbol  : %s
+	            📌 Strike  : %s
+	            ⏰ Time    : %s
+
+	            🔴 PE is DOMINANT (PE > PE-VWAP, CE < CE-VWAP)
+	            💰 CE Price : %.2f  |  CE VWAP : %.2f
+	            💰 PE Price : %.2f  |  PE VWAP : %.2f
+	            📊 Combined : %.2f
+	            """,
+	            entity.getName(), entity.getStrike(), entity.getTimestamp(),
+	            entity.getCePrice(), entity.getCeVwap(),
+	            entity.getPePrice(), entity.getPeVwap(),
+	            entity.getCombinedPremium()
+	        );
+	    };
+	}
 
 	// =====================================================
 	// BATCH PRICE FETCH - WITH ERROR HANDLING
