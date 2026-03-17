@@ -275,6 +275,7 @@ public class TelegramService {
 
     /**
      * Builds a Telegram-friendly fixed-width table for stock alerts.
+     * Cell values are HTML-escaped to prevent parse errors on special chars.
      */
     public String buildStockTable(List<String[]> rows) {
         StringBuilder sb = new StringBuilder();
@@ -286,8 +287,9 @@ public class TelegramService {
         for (int i = 0; i < rows.size(); i++) {
             String[] row = rows.get(i);
             for (int j = 0; j < row.length; j++) {
-                String cell = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
-                int width = (j < colWidths.length) ? colWidths[j] : 10;
+                String raw   = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
+                String cell  = escapeHtml(raw);  // ← escape before truncating
+                int    width = (j < colWidths.length) ? colWidths[j] : 10;
                 if (cell.length() > width) cell = cell.substring(0, width - 1) + ".";
                 sb.append(String.format("%-" + width + "s", cell));
             }
@@ -367,14 +369,33 @@ public class TelegramService {
     // Private helpers
     // =========================================================
 
+    /**
+     * Formats a row of cells into a fixed-width string.
+     * Each cell is HTML-escaped before truncation so that
+     * special characters like <, >, & never break Telegram's HTML parser.
+     */
     private String formatRow(String[] row, int[] colWidths) {
         StringBuilder sb = new StringBuilder();
         for (int j = 0; j < row.length; j++) {
-            String cell  = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
+            String raw   = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
+            String cell  = escapeHtml(raw);  // ← escape before truncating
             int    width = (j < colWidths.length) ? colWidths[j] : 10;
             if (cell.length() > width) cell = cell.substring(0, width - 1) + ".";
             sb.append(String.format("%-" + width + "s", cell));
         }
         return sb.toString();
+    }
+
+    /**
+     * Escapes characters that would break Telegram's HTML parser.
+     * Must be applied to all data-driven content before embedding in HTML messages.
+     * Order matters: & must be escaped first to avoid double-escaping.
+     */
+    private String escapeHtml(String text) {
+        if (text == null) return "-";
+        return text
+            .replace("&", "&amp;")   // must be first
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
     }
 }
