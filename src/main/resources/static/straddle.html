@@ -232,8 +232,8 @@
                     <div class="checkout-item"><input type="checkbox" id="spot-check"> <span class="swatch" style="background:#000000"></span> Spot</div>
                     <div class="checkout-item"><input type="checkbox" id="ce-check" checked> <span class="swatch" style="background:#22c55e"></span> CE</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-check" checked> <span class="swatch" style="background:#ef4444"></span> PE</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
-                    <div class="checkout-item"><input type="checkbox" id="avg-check"> <span class="swatch" style="background:#301934"></span> Avg Price</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-premium-check" > <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
+                    <div class="checkout-item"><input type="checkbox" id="avg-check" checked> <span class="swatch" style="background:#301934"></span> Avg Price</div>
                     <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
                     <div class="checkout-item"><input type="checkbox" id="ce-iv-check"> <span class="swatch" style="background:#ec4899"></span> CE IV</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-iv-check"> <span class="swatch" style="background:#6366f1"></span> PE IV</div>
@@ -242,12 +242,12 @@
                     <div class="checkout-item"><input type="checkbox" id="ce-extrinsic-check"> <span class="swatch" style="background:#16a34a"></span> CE Extrinsic</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-extrinsic-check"> <span class="swatch" style="background:#b91c1c"></span> PE Extrinsic</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-open-check" checked> <span class="swatch" style="background:#86efac"></span> CE Open</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-open-check" checked> <span class="swatch" style="background:#fecaca"></span> PE Open</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-open-check" checked> <span class="swatch" style="background:#d6a65a"></span> Combined Open</div>
+                    <div class="checkout-item"><input type="checkbox" id="ce-open-check" > <span class="swatch" style="background:#86efac"></span> CE Open</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-open-check" > <span class="swatch" style="background:#fecaca"></span> PE Open</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-open-check" > <span class="swatch" style="background:#d6a65a"></span> Combined Open</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-vwap-check"> <span class="swatch" style="background:#a78bfa"></span> CE VWAP</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-vwap-check"> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
+                    <div class="checkout-item"><input type="checkbox" id="ce-vwap-check" checked> <span class="swatch" style="background:#a78bfa"></span> CE VWAP</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-vwap-check" checked> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-vwap-check"> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
                     <div class="checkout-item"><input type="checkbox" id="ce-prev-close-check"> <span class="swatch" style="background:#10b981"></span> CE Prev Close</div>
@@ -333,26 +333,26 @@
 
     // Default: CE, PE, Combined, opens ON; others OFF
     let lineVisibility = {
-        spot: false,
-        ce: true,
-        pe: true,
-        combinedPremium: true,
-        avgPrice: false,
-        ceIv: false,
-        peIv: false,
-        combinedIv: false,
-        ceExtrinsic: false,
-        peExtrinsic: false,
-        ceOpen: true,
-        peOpen: true,
-        combinedOpen: true,
-        ceVwap: false,
-        peVwap: false,
-        combinedVwap: false,
-        cePrevClose: false,
-        pePrevClose: false,
-        combinedPrevClose: false
-    };
+    spot: false,
+    ce: true,
+    pe: true,
+    combinedPremium: false,
+    avgPrice: true,
+    ceIv: false,
+    peIv: false,
+    combinedIv: false,
+    ceExtrinsic: false,
+    peExtrinsic: false,
+    ceOpen: false,
+    peOpen: false,
+    combinedOpen: false,
+    ceVwap: true,
+    peVwap: true,
+    combinedVwap: false,
+    cePrevClose: false,
+    pePrevClose: false,
+    combinedPrevClose: false
+};
 
     // Temporary state for pending selections
     let pendingLineVisibility = {...lineVisibility};
