@@ -67,7 +67,7 @@ public class VolumeAnalysisService {
     @Autowired MAHierarchySignalService maHierarchySignalService;
 
     // =========================================================
-    // Hourly Volume
+    // Hourly Volume — unchanged
     // =========================================================
     @Transactional
     public void getHourlyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
@@ -132,9 +132,12 @@ public class VolumeAnalysisService {
 
     // =========================================================
     // Day Volume
+    // FIX 1: Removed @Transactional — get52WeekData() makes an external HTTP
+    //        call to Angel Broking. Holding a DB connection open during a
+    //        network wait exhausts the pool. indicatorRepo.save() at the end
+    //        opens its own short-lived connection only when needed.
     // =========================================================
 
-    @Transactional
     public void getDayVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
             SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice,
             List<String> optionNameList, Map<String, String> sectorMap, List<PricesIndex> pricesList)
@@ -177,7 +180,7 @@ public class VolumeAnalysisService {
         indicator.setLast3daycandleflag(indicatorComputeService.get3DaysHighAndLow(indicator));
         indicator.setCpr(cprData);
         indicator.setDailyopenandcloseissame(priceUtilService.findOpenAndClose(openAndClose));
-        indicator = indicatorComputeService.get52WeekData(indexes, smartConnect, indicator);
+        indicator = indicatorComputeService.get52WeekData(indexes, smartConnect, indicator); // HTTP call — no connection held
         indicator = signalCheckService.checkForDaySignal(indicator, supportList, resistanceList, index_CurrentPrice, new BigDecimal(avgRange));
 
         // RSI
@@ -216,7 +219,6 @@ public class VolumeAnalysisService {
             emaCalculator.setEMAFields(indicator, allData);
 
             // MA Hierarchy Signal — evaluate full bull/bear stack
-            // Returns "BUY" / "SELL" / "NEUTRAL" / null (null = any level has insufficient history)
             indicator.setMaHierarchyFlag(
                 maHierarchySignalService.evaluate(
                     index_CurrentPrice,
@@ -273,14 +275,18 @@ public class VolumeAnalysisService {
             ("SELL".equalsIgnoreCase(indicator.getHeikinAshiDay()) && "SELL".equalsIgnoreCase(indicator.getPsarFlagDay())) ? "DOWN" : "SIDEWAYS";
         indicator.setSl(currentTrend);
 
-        indicatorRepo.save(indicator);
+        indicatorRepo.save(indicator); // opens + closes connection here only
     }
 
     // =========================================================
     // Weekly Volume
+    // FIX 2: Removed @Transactional — this method called
+    //        indicatorService.saveIndicator() which is itself @Transactional.
+    //        Two nested transactions competed for connections and caused pool
+    //        timeout (the exact error in the log). saveIndicator() now owns
+    //        the sole transaction.
     // =========================================================
 
-    @Transactional
     public void getWeeklyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
             SmartConnect smartConnect, Candle candle, BigDecimal index_OpenPrice,
             List<PricesIndex> pricesList) {
@@ -309,11 +315,11 @@ public class VolumeAnalysisService {
         indicator.setOneweek("Y");
         indicatorComputeService.getSuperTrend(indicator, indexes.getName(), "ONE_WEEK", pricesList);
         indicatorComputeService.getVwap(indicator, indexes.getName(), "ONE_WEEK", pricesList);
-        indicatorService.saveIndicator(indicator);
+        indicatorService.saveIndicator(indicator); // owns its own @Transactional — no nesting
     }
 
     // =========================================================
-    // 4-Hour Volume
+    // 4-Hour Volume — unchanged
     // =========================================================
     @Transactional
     public void getFourHourVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
@@ -332,7 +338,7 @@ public class VolumeAnalysisService {
     }
 
     // =========================================================
-    // Monthly Volume
+    // Monthly Volume — unchanged
     // =========================================================
     @Transactional
     public void getMonthlyVolumeData(String timeFrame, Indexes indexes, BigDecimal index_CurrentPrice,
@@ -351,6 +357,9 @@ public class VolumeAnalysisService {
 
     // =========================================================
     // Intraday volume flow (NFO / MCX)
+    // FIX 3: Collect all candle records in memory first, then saveAll() once.
+    //        Replaces N individual save() calls (one per candle) with a single
+    //        batch insert — 1 connection instead of N.
     // =========================================================
 
     public void getVolumeData(String timeFrame, String type, boolean testflag) throws SmartAPIException {
@@ -378,12 +387,16 @@ public class VolumeAnalysisService {
             JSONArray responseArray = smartConnect.candleData(requestObject);
             if (responseArray == null) return;
 
+            // Build full list in memory first
+            List<PricesNifty> niftyBatch = new ArrayList<>();
+            List<PricesMcx>   mcxBatch   = new ArrayList<>();
+
             responseArray.forEach(item -> {
                 JSONArray ohlcArray = (JSONArray) item;
-                BigDecimal open = new BigDecimal(String.valueOf(ohlcArray.getDouble(1)));
-                BigDecimal high = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
-                BigDecimal low  = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
-                BigDecimal close = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
+                BigDecimal open   = new BigDecimal(String.valueOf(ohlcArray.getDouble(1)));
+                BigDecimal high   = new BigDecimal(String.valueOf(ohlcArray.getDouble(2)));
+                BigDecimal low    = new BigDecimal(String.valueOf(ohlcArray.getDouble(3)));
+                BigDecimal close  = new BigDecimal(String.valueOf(ohlcArray.getDouble(4)));
                 BigDecimal volume = new BigDecimal(String.valueOf(ohlcArray.getDouble(5)));
                 if (type.equalsIgnoreCase("NFO")) {
                     PricesNifty prices = new PricesNifty();
@@ -391,23 +404,25 @@ public class VolumeAnalysisService {
                     prices.setVolume(volume); prices.setRange(high.subtract(low)); prices.setName(strategy.getName());
                     prices.setTimestamp(ohlcArray.getString(0)); prices.setType(priceUtilService.getPriceType(open, close));
                     prices.setCurrentprice(index_CurrentPrice);
-                    pricesNiftyRepo.save(prices);
+                    niftyBatch.add(prices);
                 } else {
                     PricesMcx prices = new PricesMcx();
                     prices.setHigh(high); prices.setLow(low); prices.setClose(close); prices.setOpen(open);
                     prices.setVolume(volume); prices.setRange(high.subtract(low)); prices.setName(strategy.getName());
                     prices.setTimestamp(ohlcArray.getString(0)); prices.setType(priceUtilService.getPriceType(open, close));
                     prices.setCurrentprice(index_CurrentPrice);
-                    pricesMcxRepo.save(prices);
+                    mcxBatch.add(prices);
                 }
             });
 
             if (type.equalsIgnoreCase("NFO")) {
+                if (!niftyBatch.isEmpty()) pricesNiftyRepo.saveAll(niftyBatch); // 1 connection instead of N
                 indicatorComputeService.updateHeikinAshi(strategy.getName(), null, type);
                 percentageCalc();
                 signalCheckService.getSignal(index_CurrentPrice);
                 signalCheckService.monitorPsarAndheikinachiStrategy("NFO", index_CurrentPrice);
             } else {
+                if (!mcxBatch.isEmpty()) pricesMcxRepo.saveAll(mcxBatch);       // 1 connection instead of N
                 indicatorComputeService.updateHeikinAshi(strategy.getName(), null, type);
                 percentageCalcMcx();
                 signalCheckService.getSignalMcx(index_CurrentPrice);
@@ -446,6 +461,7 @@ public class VolumeAnalysisService {
 
     // =========================================================
     // Volume percentage calculations
+    // FIX 3 (continued): Build updated list in memory, then saveAll() once
     // =========================================================
 
     public BigDecimal percentageCalc() throws SmartAPIException {
@@ -454,7 +470,10 @@ public class VolumeAnalysisService {
             BigDecimal volume     = getSingleVolumeData("FIVE_MINUTE", "NFO");
             BigDecimal percentage = calcPercentage(volume);
             BigDecimal result     = volume.multiply(percentage).divide(new BigDecimal("100"));
-            priceList.stream().map(p -> pricesIndexRepo.save(getPercVolume(p, result))).collect(Collectors.toList());
+            List<PricesIndex> updated = priceList.stream()
+                    .map(p -> getPercVolume(p, result))
+                    .collect(Collectors.toList());
+            pricesIndexRepo.saveAll(updated); // 1 connection instead of N
         }
         return null;
     }
@@ -463,7 +482,10 @@ public class VolumeAnalysisService {
         List<PricesMcx> priceList = pricesMcxRepo.findAllByOrderByIdDesc();
         if (priceList != null) {
             BigDecimal result = priceList.get(1).getVolume().multiply(new BigDecimal("10")).divide(new BigDecimal("100"));
-            priceList.stream().map(p -> pricesMcxRepo.save(getPercVolumeMcx(p, result))).collect(Collectors.toList());
+            List<PricesMcx> updated = priceList.stream()
+                    .map(p -> getPercVolumeMcx(p, result))
+                    .collect(Collectors.toList());
+            pricesMcxRepo.saveAll(updated); // 1 connection instead of N
         }
         return null;
     }
@@ -491,7 +513,7 @@ public class VolumeAnalysisService {
     }
 
     // =========================================================
-    // Volume utility
+    // Volume utility — unchanged
     // =========================================================
 
     public static String checkLastVolumeVsAvg(List<PricesIndex> pricesList) {
