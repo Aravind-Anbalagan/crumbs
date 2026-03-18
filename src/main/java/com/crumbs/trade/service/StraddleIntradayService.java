@@ -104,8 +104,9 @@ public class StraddleIntradayService {
 	private final Map<String, LocalDate> strikeInitDate = new HashMap<>();
 	private final Map<String, Map<String, BigDecimal>> prevCloseMap = new HashMap<>();
 
-	
-	
+	// ================= ALERT DEDUP =================
+	private final Map<String, LocalDateTime> sentAlertKeys = new HashMap<>();
+	private static final int ALERT_COOLDOWN_MINUTES = 5;
 	
 	// =====================================================
 	// MAIN ENTRY - WITH COMPREHENSIVE VALIDATION
@@ -233,7 +234,7 @@ public class StraddleIntradayService {
 	        // =========================================================
 	        // SAVE TO DB
 	        // =========================================================
-	        int savedCount = savePriceDetails(strikeList, strategy, spotPrice);
+	        int savedCount = savePriceDetails(strikeList, strategy, spotPrice, atmStrike);
 	        logger.info("Saved {} records to database for {}", savedCount, name);
 
 	    } catch (Exception e) {
@@ -470,7 +471,8 @@ public class StraddleIntradayService {
 	public int savePriceDetails(
 		List<StraddlePremiumDto> strikeList, 
 		Strategy strategy, 
-		BigDecimal spotPrice
+		BigDecimal spotPrice,
+		BigDecimal atmStrike
 	) {
 
 		int count = 0;
@@ -577,7 +579,8 @@ public class StraddleIntradayService {
 				count++;
 				 // 🔔 Trigger Telegram ONLY if crossover happened
 				// 🔔 CONFIGURABLE MULTI-ALERT SYSTEM
-				if (isAlertRequired("STRADDLE_PREMIUM")) {
+				if (isAlertRequired("STRADDLE_PREMIUM")
+				        && dto.getStrikePrice().compareTo(atmStrike) == 0) {
 				    checkAndSendAlerts(entity);
 				}
 			} catch (Exception e) {
@@ -622,6 +625,10 @@ public class StraddleIntradayService {
 	
 	private void sendTelegramAlert(StraddleIntraday entity, AlertType alertType) {
 	    try {
+	        if (isAlertAlreadySent(entity.getStrike(), alertType)) {
+	            return;
+	        }
+
 	        String message = buildTelegramMessage(entity, alertType);
 	        boolean sent = telegramService.sendMessage(message);
 
@@ -2560,5 +2567,25 @@ public class StraddleIntradayService {
 	                optionType, strikePrice, e.getMessage());
 	        return false;
 	    }
+	}
+	
+	private boolean isAlertAlreadySent(BigDecimal strike, AlertType alertType) {
+	    String key = strike.toPlainString() + "_" + alertType.name();
+	    LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+
+	    LocalDateTime lastSent = sentAlertKeys.get(key);
+
+	    if (lastSent != null) {
+	        long minutesSinceLastSent = java.time.Duration.between(lastSent, now).toMinutes();
+	        if (minutesSinceLastSent < ALERT_COOLDOWN_MINUTES) {
+	            logger.debug("Cooldown active [{}] for strike {} — {}m since last alert (cooldown: {}m)",
+	                alertType, strike, minutesSinceLastSent, ALERT_COOLDOWN_MINUTES);
+	            return true; // still in cooldown
+	        }
+	    }
+
+	    // Update timestamp on every allowed send
+	    sentAlertKeys.put(key, now);
+	    return false;
 	}
 }

@@ -15,6 +15,8 @@ import javax.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class TelegramService {
@@ -22,6 +24,15 @@ public class TelegramService {
     static Logger logger = LoggerFactory.getLogger(TelegramService.class);
 
     private static final int TELEGRAM_MAX_CHARS = 3800; // safe margin below Telegram's 4096 limit
+
+    /**
+     * Matches any valid Telegram HTML tag so the sanitizer can leave them alone.
+     * Supported tags: b, i, u, s, code, pre, a (with optional href), and their closing forms.
+     */
+    private static final Pattern VALID_TAG = Pattern.compile(
+        "<(/?(b|i|u|s|code|pre)|a(\\s+href=\"[^\"]*\")?|/a)>",
+        Pattern.CASE_INSENSITIVE
+    );
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -108,6 +119,8 @@ public class TelegramService {
     /**
      * Splits text at complete line boundaries (never mid-row) and sends
      * each chunk as a separate message to a single chat ID string.
+     * Each chunk is sanitized before sending — any rogue < that is not part
+     * of a valid Telegram HTML tag is escaped to &lt; automatically.
      * Returns true only if all chunks were sent successfully.
      */
     private boolean sendChunkedToSingleChat(String chatId, String text) {
@@ -115,10 +128,11 @@ public class TelegramService {
         boolean allSent = true;
         for (int i = 0; i < chunks.size(); i++) {
             try {
+                String safe = sanitizeHtml(chunks.get(i)); // ← safety net: fixes any rogue < from any caller
                 String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
                 Map<String, Object> body = Map.of(
                     "chat_id",    chatId,
-                    "text",       chunks.get(i),
+                    "text",       safe,
                     "parse_mode", "HTML"
                 );
                 HttpHeaders headers = new HttpHeaders();
@@ -126,7 +140,7 @@ public class TelegramService {
                 HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
                 ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
                 if (response.getStatusCode().is2xxSuccessful()) {
-                    logger.info("✅ Chunk {}/{} sent ({} chars)", i + 1, chunks.size(), chunks.get(i).length());
+                    logger.info("✅ Chunk {}/{} sent ({} chars)", i + 1, chunks.size(), safe.length());
                 } else {
                     logger.error("❌ Chunk {}/{} failed. Status: {}", i + 1, chunks.size(), response.getStatusCode());
                     allSent = false;
@@ -246,7 +260,7 @@ public class TelegramService {
         String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
         Map<String, Object> body = Map.of(
             "chat_id",    chatId,
-            "text",       text,
+            "text",       sanitizeHtml(text), // ← safety net applied here too
             "parse_mode", "HTML"
         );
         HttpHeaders headers = new HttpHeaders();
@@ -288,7 +302,7 @@ public class TelegramService {
             String[] row = rows.get(i);
             for (int j = 0; j < row.length; j++) {
                 String raw   = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
-                String cell  = escapeHtml(raw);  // ← escape before truncating
+                String cell  = escapeHtml(raw);
                 int    width = (j < colWidths.length) ? colWidths[j] : 10;
                 if (cell.length() > width) cell = cell.substring(0, width - 1) + ".";
                 sb.append(String.format("%-" + width + "s", cell));
@@ -333,7 +347,6 @@ public class TelegramService {
 
             sb.append("</pre>");
 
-            // sendMessage handles all chunking — no size logic needed here
             boolean sent = sendMessage(sb.toString());
             logger.info("MA hierarchy alert sent: {}", sent);
 
@@ -371,14 +384,13 @@ public class TelegramService {
 
     /**
      * Formats a row of cells into a fixed-width string.
-     * Each cell is HTML-escaped before truncation so that
-     * special characters like <, >, & never break Telegram's HTML parser.
+     * Each cell is HTML-escaped before truncation.
      */
     private String formatRow(String[] row, int[] colWidths) {
         StringBuilder sb = new StringBuilder();
         for (int j = 0; j < row.length; j++) {
             String raw   = (row[j] == null || row[j].equalsIgnoreCase("null")) ? "-" : row[j];
-            String cell  = escapeHtml(raw);  // ← escape before truncating
+            String cell  = escapeHtml(raw);
             int    width = (j < colWidths.length) ? colWidths[j] : 10;
             if (cell.length() > width) cell = cell.substring(0, width - 1) + ".";
             sb.append(String.format("%-" + width + "s", cell));
@@ -388,7 +400,7 @@ public class TelegramService {
 
     /**
      * Escapes characters that would break Telegram's HTML parser.
-     * Must be applied to all data-driven content before embedding in HTML messages.
+     * Use this when building message content from data values (cells, names, prices).
      * Order matters: & must be escaped first to avoid double-escaping.
      */
     private String escapeHtml(String text) {
@@ -397,5 +409,61 @@ public class TelegramService {
             .replace("&", "&amp;")   // must be first
             .replace("<", "&lt;")
             .replace(">", "&gt;");
+    }
+
+    /**
+     * Safety-net sanitizer applied to every outbound message just before sending.
+     *
+     * Problem: any service can call sendMessage() with a string that contains a raw
+     * '<' (e.g. a stock symbol like "<NA>", a signal label, a computed value).
+     * Even one rogue '<' that Telegram can't parse as a known tag causes a 400 error
+     * for the entire message — regardless of where the '<' came from.
+     *
+     * Strategy:
+     *  1. Replace every '<' with the placeholder \u0000LT\u0000.
+     *  2. Restore only the valid Telegram HTML tags from the placeholder.
+     *  3. Escape all remaining placeholders (data-level '<') as &lt;.
+     *
+     * Valid Telegram HTML tags: <b> </b> <i> </i> <u> </u> <s> </s>
+     *                           <code> </code> <pre> </pre> <a href="..."> </a>
+     *
+     * This means structural tags you intentionally wrote are preserved,
+     * and any rogue '<' from data is safely escaped — no 400 ever again.
+     */
+    private String sanitizeHtml(String text) {
+        if (text == null || text.isEmpty()) return text;
+
+        final String PLACEHOLDER = "\u0000LT\u0000";
+
+        // Step 1 — replace every '<' with a safe placeholder
+        String result = text.replace("<", PLACEHOLDER);
+
+        // Step 2 — restore valid Telegram HTML tags (placeholder → '<')
+        // Covers: <b> <i> <u> <s> <code> <pre> and their closing forms,
+        //         plus <a href="..."> and </a>
+        result = result
+            .replace(PLACEHOLDER + "b>",      "<b>")
+            .replace(PLACEHOLDER + "/b>",     "</b>")
+            .replace(PLACEHOLDER + "i>",      "<i>")
+            .replace(PLACEHOLDER + "/i>",     "</i>")
+            .replace(PLACEHOLDER + "u>",      "<u>")
+            .replace(PLACEHOLDER + "/u>",     "</u>")
+            .replace(PLACEHOLDER + "s>",      "<s>")
+            .replace(PLACEHOLDER + "/s>",     "</s>")
+            .replace(PLACEHOLDER + "code>",   "<code>")
+            .replace(PLACEHOLDER + "/code>",  "</code>")
+            .replace(PLACEHOLDER + "pre>",    "<pre>")
+            .replace(PLACEHOLDER + "/pre>",   "</pre>")
+            .replace(PLACEHOLDER + "/a>",     "</a>");
+
+        // Restore <a href="..."> — needs regex because href value varies
+        result = Pattern.compile(Pattern.quote(PLACEHOLDER) + "a(\\s+href=\"[^\"]*\")>")
+                        .matcher(result)
+                        .replaceAll("<a$1>");
+
+        // Step 3 — any remaining placeholder is a rogue '<' from data — escape it
+        result = result.replace(PLACEHOLDER, "&lt;");
+
+        return result;
     }
 }

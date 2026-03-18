@@ -46,13 +46,14 @@ public class AlertConditionChecker {
         BigDecimal peVwap  = entity.getPeVwap();
 
         if (cePrice == null || pePrice == null ||
-            ceVwap  == null || peVwap  == null)  return false;
+            ceVwap  == null || peVwap  == null) return false;
 
         if (ceVwap.compareTo(BigDecimal.ZERO) <= 0 ||
             peVwap.compareTo(BigDecimal.ZERO) <= 0) return false;
 
-        return cePrice.compareTo(ceVwap) > 0   // CE Price > CE VWAP ✅
-            && pePrice.compareTo(peVwap) < 0;  // PE Price < PE VWAP ✅
+        return cePrice.compareTo(ceVwap) > 0    // CE Price > CE VWAP
+            && pePrice.compareTo(peVwap) < 0    // PE Price < PE VWAP
+            && cePrice.compareTo(pePrice) > 0;  // CE > PE
     }
 
     // =====================================================
@@ -65,12 +66,13 @@ public class AlertConditionChecker {
         BigDecimal peVwap  = entity.getPeVwap();
 
         if (cePrice == null || pePrice == null ||
-            ceVwap  == null || peVwap  == null)  return false;
+            ceVwap  == null || peVwap  == null) return false;
 
         if (ceVwap.compareTo(BigDecimal.ZERO) <= 0 ||
             peVwap.compareTo(BigDecimal.ZERO) <= 0) return false;
 
-        return pePrice.compareTo(peVwap) > 0   // PE Price > PE VWAP ✅
-            && cePrice.compareTo(ceVwap) < 0;  // CE Price < CE VWAP ✅
+        return pePrice.compareTo(peVwap) > 0    // PE Price > PE VWAP
+            && cePrice.compareTo(ceVwap) < 0    // CE Price < CE VWAP
+            && pePrice.compareTo(cePrice) > 0;  // PE > CE  ← ADD THIS
     }
 }
