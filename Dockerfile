@@ -34,4 +34,8 @@ CMD ["sh", "-c", "exec java \
   -Dhttp.proxyPort=3128 \
   -Dhttps.proxyHost=159.223.86.190 \
   -Dhttps.proxyPort=3128 \
+  -Dhttp.proxyUser=${PROXY_USER} \
+  -Dhttp.proxyPassword=${PROXY_PASS} \
+  -Dhttps.proxyUser=${PROXY_USER} \
+  -Dhttps.proxyPassword=${PROXY_PASS} \
   -jar crumbs.jar"]
