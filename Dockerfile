@@ -26,13 +26,12 @@ RUN mvn clean package -DskipTests
 # 🚀 Stage 2: Run the app
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-
-# Copy fat JAR only
 COPY --from=build /app/target/crumbs.jar crumbs.jar
-
-# Use container-aware memory limits — keeps JVM within Railway's RAM ceiling
 ENV JAVA_TOOL_OPTIONS="-Xms128m -Xmx400m -XX:+UseContainerSupport -XX:+UnlockDiagnosticVMOptions -XX:NativeMemoryTracking=summary"
-
 EXPOSE 8080
-
-CMD ["sh", "-c", "exec java -jar crumbs.jar"]
+CMD ["sh", "-c", "exec java \
+  -Dhttp.proxyHost=159.223.86.190 \
+  -Dhttp.proxyPort=3128 \
+  -Dhttps.proxyHost=159.223.86.190 \
+  -Dhttps.proxyPort=3128 \
+  -jar crumbs.jar"]
