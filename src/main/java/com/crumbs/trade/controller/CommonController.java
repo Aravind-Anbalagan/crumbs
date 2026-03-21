@@ -65,7 +65,8 @@ public class CommonController {
 
     @Value("${app.local.resources.path:src/main/resources}")
     private String localResourcesPath;
-
+    @Value("${spring.datasource.url}")
+    private String dbUrl;
     @Autowired private NiftyRepo       niftyRepo;
     @Autowired private RestTemplate    restTemplate;
     @Autowired private IndexesRepo     indexesRepo;
@@ -78,7 +79,12 @@ public class CommonController {
     // ================================================================
     // ===================== ENDPOINTS ================================
     // ================================================================
+    
 
+    @GetMapping("/db-check")
+    public String dbCheck() {
+        return dbUrl;
+    }
     @GetMapping(value = "/clear")
     public ResponseEntity<String> deleteOrders() {
         try {
