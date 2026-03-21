@@ -30,8 +30,8 @@ COPY --from=build /app/target/crumbs.jar crumbs.jar
 ENV JAVA_TOOL_OPTIONS="-Xms128m -Xmx400m -XX:+UseContainerSupport -XX:+UnlockDiagnosticVMOptions -XX:NativeMemoryTracking=summary"
 EXPOSE 8080
 CMD ["sh", "-c", "exec java \
-  -Dhttp.proxyHost=159.223.86.190 \
-  -Dhttp.proxyPort=3128 \
-  -Dhttps.proxyHost=159.223.86.190 \
-  -Dhttps.proxyPort=3128 \
+  -Dhttp.proxyHost=${PROXY_HOST} \
+  -Dhttp.proxyPort=${PROXY_PORT} \
+  -Dhttps.proxyHost=${PROXY_HOST} \
+  -Dhttps.proxyPort=${PROXY_PORT} \
   -jar crumbs.jar"]
