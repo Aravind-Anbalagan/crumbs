@@ -95,20 +95,160 @@ public class OrderService {
     }
 
     // =========================================================================
+    // ENTRY — with pre-resolved Token (straddle / options use case)
+    //
+    // Bypasses symbol resolution entirely — token is already known at call site.
+    // Used by CPRStraddleService where CE/PE tokens are resolved from Indexes
+    // table ahead of time via StraddleIntradayService.getAllTokenDetails().
+    //
+    // WHY this is needed:
+    //   orderPlace() calls createToken() → getNameAndTradingSymbol() which
+    //   looks up the Strategy by name. For straddle legs the strategy name
+    //   is CPR_STRATEGY (not CPR_STRATEGY_CE / _PE) and the token is already
+    //   in hand — so the lookup is redundant and fragile.
+    // =========================================================================
+    public void orderPlaceWithToken(Token token, String strategyName, String signal)
+            throws SmartAPIException, Exception {
+
+        logger.info("Order Trigger (pre-resolved token) → Strategy={} | Signal={} | Token={} | Symbol={}",
+                strategyName, signal, token.getToken(), token.getSymbol());
+
+        SmartConnect sc = angelOne.signIn();
+        if (sc == null) throw new Exception("AngelOne login failed");
+
+        Strategy strategy = strategyRepo.findByName(strategyName);
+        if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
+
+        // ------------------------------------------------------------------
+        // 1. Check active trade — same guard as existing orderPlace
+        // ------------------------------------------------------------------
+        Orders activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
+
+        if (activeTrade != null) {
+            logger.info("Active Trade Found → {}", activeTrade.getSymbol());
+
+            if (activeTrade.getType().equalsIgnoreCase(signal)) {
+                logger.info("Same signal already active → SKIP");
+                return;
+            }
+
+            logger.info("Opposite Signal → EXIT current trade");
+            if ("Y".equalsIgnoreCase(strategy.getLive())) {
+                placeExitOrder(activeTrade);
+            }
+
+            activeTrade.setActive(0);
+            ordersRepo.save(activeTrade);
+            return;
+        }
+
+        // ------------------------------------------------------------------
+        // 2. Resolve lot size from Indexes table and set on token
+        //    (quantity comes from Indexes.lotsize — same as createToken())
+        // ------------------------------------------------------------------
+        if (token.getQuantity() == 0) {
+            Indexes idx = indexesRepo.findByNameAndSymbol(
+                    strategy.getName(), token.getSymbol());
+            if (idx != null && idx.getLotsize() > 0) {
+                token.setQuantity(idx.getLotsize());
+                logger.info("Lot size resolved from Indexes -> symbol={} qty={}",
+                        token.getSymbol(), idx.getLotsize());
+            } else {
+                logger.error("Lot size not found for symbol={} — order aborted.", token.getSymbol());
+                return;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 3. Prepare and place using the pre-resolved token directly
+        // ------------------------------------------------------------------
+        prepareSellOrder(token, strategyName, signal, null);
+        placeFinalOrder(sc, token, strategy, 0, null);
+    }
+
+    // =========================================================================
+    // ENTRY — with pre-resolved Token + skipActiveCheck flag
+    //
+    // skipActiveCheck = true  → bypasses active trade lookup
+    //                           used for straddle legs (CE + PE both under
+    //                           same strategy name — active check would skip PE)
+    // skipActiveCheck = false → same behaviour as original orderPlaceWithToken
+    // =========================================================================
+    public void orderPlaceWithToken(Token token, String strategyName,
+                                     String signal, boolean skipActiveCheck)
+            throws SmartAPIException, Exception {
+
+        logger.info("Order Trigger (token, skipCheck={}) -> Strategy={} | Signal={} | Symbol={}",
+                skipActiveCheck, strategyName, signal, token.getSymbol());
+
+        SmartConnect sc = angelOne.signIn();
+        if (sc == null) throw new Exception("AngelOne login failed");
+
+        Strategy strategy = strategyRepo.findByName(strategyName);
+        if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
+
+        if (!skipActiveCheck) {
+            Orders activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
+            if (activeTrade != null) {
+                logger.info("Active Trade Found -> {}", activeTrade.getSymbol());
+                if (activeTrade.getType().equalsIgnoreCase(signal)) {
+                    logger.info("Same signal already active -> SKIP");
+                    return;
+                }
+                logger.info("Opposite Signal -> EXIT current trade");
+                if ("Y".equalsIgnoreCase(strategy.getLive())) placeExitOrder(activeTrade);
+                activeTrade.setActive(0);
+                ordersRepo.save(activeTrade);
+                return;
+            }
+        }
+
+        prepareSellOrder(token, strategyName, signal, null);
+        placeFinalOrder(sc, token, strategy, 0, null);
+    }
+
+    // =========================================================================
+    // EXIT BY TOKEN  (straddle use case — two legs share same strategy name,
+    //                 identified uniquely by their token)
+    // =========================================================================
+    public void exitActiveTradeByToken(String token, String strategyName)
+            throws IOException, SmartAPIException {
+
+        Strategy strategy    = strategyRepo.findByName(strategyName);
+        Orders   activeTrade = ordersRepo.findByTokenAndActive(token, 1);
+
+        if (activeTrade == null) {
+            logger.info("No active trade for token -> {}", token);
+            return;
+        }
+
+        logger.info("Exiting trade by token -> {} | symbol={}",
+                token, activeTrade.getSymbol());
+
+        if ("Y".equalsIgnoreCase(strategy.getLive())) {
+            placeExitOrder(activeTrade);
+        }
+
+        activeTrade.setActive(0);
+        ordersRepo.save(activeTrade);
+        logger.info("Trade closed by token -> {}", activeTrade.getSymbol());
+    }
+
+    // =========================================================================
     // CREATE NEW ENTRY
     // =========================================================================
     private void placeNewEntry(String strategyName, int spotPrice, String signal,
                                SmartConnect sc, Strategy strategy, OrderMeta meta)
             throws Exception, SmartAPIException {
 
-        BigDecimal ltp = angelOneService.getcurrentPrice(
-                sc, strategy.getExchange(),
-                strategy.getTradingsymbol(), strategy.getToken());
-
-        if (ltp == null) throw new Exception("LTP fetch failed");
-        logger.info("LTP: {}", ltp);
-
+        // LTP is fetched internally by createToken() -> getNameAndTradingSymbol()
+        // No duplicate API call needed here
         Token token = createToken(strategy, signal);
+
+        if (token.getToken() == null || token.getToken().isEmpty()) {
+            throw new Exception("Token resolution failed for strategy: " + strategyName);
+        }
+
         prepareSellOrder(token, strategyName, signal, meta);
 
         placeFinalOrder(sc, token, strategy,
@@ -198,7 +338,7 @@ public class OrderService {
     public void exitActiveTrade(String strategyName)
             throws IOException, SmartAPIException {
 
-        Strategy strategy   = strategyRepo.findByName(strategyName);
+        Strategy strategy    = strategyRepo.findByName(strategyName);
         Orders   activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
 
         if (activeTrade == null) {
@@ -288,12 +428,13 @@ public class OrderService {
 
         if ("Y".equalsIgnoreCase(strategy.getLive())) {
             angelOneService.placeOrder(sc, token);
-            logger.info("✅ LIVE ENTRY ORDER → {}", token.getSymbol());
+            logger.info("LIVE ENTRY ORDER -> {}", token.getSymbol());
         }
 
-        if ("Y".equalsIgnoreCase(strategy.getPapertrade())) {
-            angelOneService.insertOrder(token, paperType);
-            logger.info("📄 PAPER ENTRY ORDER → {}", token.getSymbol());
-        }
+        // Always save to DB — required for SL monitoring and exit tracking
+        // (findByTokenAndActive / findByNameAndActive depend on this row)
+        angelOneService.insertOrder(token, paperType);
+        logger.info("Order saved to DB -> symbol={} token={} active=1",
+                token.getSymbol(), token.getToken());
     }
 }

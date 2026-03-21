@@ -939,6 +939,7 @@ public class StraddleIntradayService {
 				t.setToken(ceIndex.getToken());
 				t.setSymbol(ceIndex.getSymbol());
 				t.setExch_seg(ceIndex.getExchange());
+				t.setQuantity(ceIndex.getLotsize());
 				dto.setCeToken(t);
 				logger.debug("Found CE token for {}: {}", ceSymbol, t.getToken());
 			} else {
@@ -955,6 +956,7 @@ public class StraddleIntradayService {
 				t.setToken(peIndex.getToken());
 				t.setSymbol(peIndex.getSymbol());
 				t.setExch_seg(peIndex.getExchange());
+				t.setQuantity(peIndex.getLotsize());
 				dto.setPeToken(t);
 				logger.debug("Found PE token for {}: {}", peSymbol, t.getToken());
 			} else {

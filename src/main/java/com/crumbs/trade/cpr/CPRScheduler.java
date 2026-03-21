@@ -56,7 +56,7 @@ public class CPRScheduler {
     @Scheduled(cron = "0 21-59 9  * * MON-FRI", zone = "Asia/Kolkata")  // 09:21 – 09:59
     @Scheduled(cron = "0 *     10-14 * * MON-FRI", zone = "Asia/Kolkata")  // 10:00 – 14:59
     @Scheduled(cron = "0 0-19  15 * * MON-FRI",  zone = "Asia/Kolkata")  // 15:00 – 15:19  ← FIX
-    public void runCPRMonitor() {
+    public void runCPRMonitor() throws IOException, SmartAPIException {
         if (!isActive()) return;
         strategyService.executeCPRStrategy();
     }

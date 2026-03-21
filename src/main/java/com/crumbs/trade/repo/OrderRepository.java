@@ -19,4 +19,6 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
 	Optional<Orders> findTopByNameAndActiveOrderByIdDesc(String name, int active);
 
 	List<Orders> findByName(String name);
+	
+	Orders findByTokenAndActive(String token, int active);
 }
