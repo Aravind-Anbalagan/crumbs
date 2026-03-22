@@ -85,6 +85,13 @@ public class CommonController {
     public String dbCheck() {
         return dbUrl;
     }
+    
+    @GetMapping("/debug/ip")
+    public String getServerIp() throws Exception {
+        RestTemplate rt = new RestTemplate();
+        return rt.getForObject("https://ifconfig.me", String.class);
+    }
+    
     @GetMapping(value = "/clear")
     public ResponseEntity<String> deleteOrders() {
         try {
