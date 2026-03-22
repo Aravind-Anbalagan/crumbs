@@ -1,201 +1,154 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.5</version>
-        <relativePath />
-    </parent>
-    <groupId>com.crumbs</groupId>
-    <artifactId>crumbs</artifactId>
-    <name>crumbs_new</name>
-    <description>Demo project for Spring Boot</description>
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.2.5</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.crumbs</groupId>
+	<artifactId>crumbs</artifactId>
+	<name>crumbs_new</name>
+	<description>Demo project for Spring Boot</description>
+	<url />
+	<licenses>
+		<license />
+	</licenses>
+	<developers>
+		<developer />
+	</developers>
+	<scm>
+		<connection />
+		<developerConnection />
+		<tag />
+		<url />
+	</scm>
+	<properties>
+		<java.version>17</java.version>
+		<spring-boot.version>3.2.5</spring-boot.version>
+		<start-class>com.crumbs.trade.CrumbsNewApplication</start-class>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
 
-    <properties>
-        <java.version>17</java.version>
-        <spring-boot.version>3.2.5</spring-boot.version>
-        <start-class>com.crumbs.trade.CrumbsNewApplication</start-class>
-    </properties>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-openai</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<version>1.18.30</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	<!-- Angel One API <dependency> <groupId>com.angelbroking.smartapi</groupId> 
+		<artifactId>smartapi-java</artifactId> <version>1.0.0</version> <scope>system</scope> 
+		<systemPath>${basedir}/lib/smartapi-java-2.2.6.jar</systemPath> </dependency> -->
+	<dependency>
+  <groupId>com.angelbroking.smartapi</groupId>
+  <artifactId>smartapi-java</artifactId>
+  <version>2.2.6</version>
+</dependency>
+<dependency>
+    <groupId>io.samco</groupId>
+    <artifactId>stocknote-bridge-java</artifactId>
+    <version>3.0.0</version>
+</dependency>
 
-    <dependencies>
-
-        <!-- ═══════════════════════════════════════════
-             CORE — required, do not touch
-        ════════════════════════════════════════════ -->
-
-        <!-- JPA + Hibernate — used by all repos and entities -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
+		<!-- H2 Database -->
+		<dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <scope>runtime</scope>
+</dependency>
+		<dependency>
+        <groupId>org.jsoup</groupId>
+        <artifactId>jsoup</artifactId>
+        <version>1.16.1</version>
         </dependency>
-
-        <!-- Web + RestTemplate — used by TelegramService, controllers -->
-        <!-- Tomcat excluded — Undertow added below instead (lighter) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-tomcat</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- Undertow — replaces Tomcat, ~3MB lighter -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-undertow</artifactId>
-        </dependency>
-
-        <!-- PostgreSQL driver — runtime only, not bundled in compile -->
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Lombok — compile-time only, zero runtime cost -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>1.18.30</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- ═══════════════════════════════════════════
-             BROKER SDKs — required, do not touch
-        ════════════════════════════════════════════ -->
-
-        <dependency>
-            <groupId>com.angelbroking.smartapi</groupId>
-            <artifactId>smartapi-java</artifactId>
-            <version>2.2.6</version>
-        </dependency>
-
-        <dependency>
-            <groupId>io.samco</groupId>
-            <artifactId>stocknote-bridge-java</artifactId>
-            <version>3.0.0</version>
-        </dependency>
-
-        <!-- ═══════════════════════════════════════════
-             UTILITIES — required by existing features
-        ════════════════════════════════════════════ -->
-
-        <!-- OTP generation — used in login/auth flow -->
-        <dependency>
-            <groupId>com.eatthepath</groupId>
-            <artifactId>java-otp</artifactId>
-            <version>0.4.0</version>
-        </dependency>
-
-        <!-- HTML parsing — used for scraping/NSE data -->
-        <dependency>
-            <groupId>org.jsoup</groupId>
-            <artifactId>jsoup</artifactId>
-            <version>1.16.1</version>
-        </dependency>
-
-        <!-- Email alerts -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
-        <!-- ═══════════════════════════════════════════
-             SPRING AI — keep only starter, removed
-             duplicate spring-ai-openai which was
-             already included by the starter
-        ════════════════════════════════════════════ -->
-
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
-        </dependency>
-        <!-- REMOVED: spring-ai-openai — duplicate, starter includes it -->
-
-        <!-- ═══════════════════════════════════════════
-             DEV / DOCS — optional, not in prod jar
-        ════════════════════════════════════════════ -->
-
-        <!-- Swagger UI — only active in non-prod profiles -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.2.0</version>
-        </dependency>
-
-        <!-- Test — never bundled into the jar -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-	    </dependency>
-	
-		<!-- NTP time sync — used by TimeLookup.java -->
+		<dependency>
+		  <groupId>com.eatthepath</groupId>
+		  <artifactId>java-otp</artifactId>
+		  <version>0.4.0</version>
+		</dependency>
+		<!-- Apache Common -->
 		<dependency>
 			<groupId>commons-net</groupId>
 			<artifactId>commons-net</artifactId>
-			<version>3.9.0</version>
+			<version>3.9.0</version> <!-- ✅ Latest as of 2025 -->
+		</dependency>
+		<!-- Email -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+		<!-- Swagger -->
+
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>2.2.0</version>
 		</dependency>
 
-        <!-- ═══════════════════════════════════════════
-             REMOVED DEPENDENCIES — reason noted
-        ════════════════════════════════════════════ -->
+	
+	</dependencies>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>0.8.1</version> <!-- ✅ Latest as of July 2025 -->
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+	 <build>
+        <finalName>crumbs</finalName> <!-- Creates crumbs.jar -->
 
-        <!-- REMOVED: spring-boot-starter-actuator
-             Not used in any service. Adds ~5MB.
-             Add back if you need /health or /metrics endpoints. -->
+	<plugins>
+		<!-- Spring Boot Plugin -->
+		<plugin>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-maven-plugin</artifactId>
+			<version>${spring-boot.version}</version>
+			<configuration>
+				<mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>  <!-- ✅ ADD THIS -->
+				<includeSystemScope>true</includeSystemScope>
+			</configuration>
+			<executions>
+				<execution>
+					<goals>
+						<goal>repackage</goal> <!-- makes it executable -->
+					</goals>
+				</execution>
+			</executions>
+		</plugin>
 
-        <!-- REMOVED: commons-net
-             FTP library. Not seen in any service.
-             Add back if you use FTP anywhere. -->
-
-    </dependencies>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>0.8.1</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <build>
-        <finalName>crumbs</finalName>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>${spring-boot.version}</version>
-                <configuration>
-                    <mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>
-                    <includeSystemScope>true</includeSystemScope>
-                    <!-- Exclude optional deps from fat jar -->
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
+            <!-- Ensures proper Main-Class is set -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -204,42 +157,48 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>
+                            <mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass> <!-- Replace with your actual main class -->
                         </manifest>
                     </archive>
                 </configuration>
             </plugin>
         </plugins>
     </build>
-
-    <repositories>
-        <repository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots><enabled>false</enabled></snapshots>
-        </repository>
-        <repository>
-            <id>spring-snapshots</id>
-            <name>Spring Snapshots</name>
-            <url>https://repo.spring.io/snapshot</url>
-            <releases><enabled>false</enabled></releases>
-        </repository>
-    </repositories>
-
-    <pluginRepositories>
-        <pluginRepository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots><enabled>false</enabled></snapshots>
-        </pluginRepository>
-        <pluginRepository>
-            <id>spring-snapshots</id>
-            <name>Spring Snapshots</name>
-            <url>https://repo.spring.io/snapshot</url>
-            <releases><enabled>false</enabled></releases>
-        </pluginRepository>
-    </pluginRepositories>
+	<repositories>
+		<repository>
+			<id>spring-milestones</id>
+			<name>Spring Milestones</name>
+			<url>https://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+		<repository>
+			<id>spring-snapshots</id>
+			<name>Spring Snapshots</name>
+			<url>https://repo.spring.io/snapshot</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+		</repository>
+	</repositories>
+	<pluginRepositories>
+		<pluginRepository>
+			<id>spring-milestones</id>
+			<name>Spring Milestones</name>
+			<url>https://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</pluginRepository>
+		<pluginRepository>
+			<id>spring-snapshots</id>
+			<name>Spring Snapshots</name>
+			<url>https://repo.spring.io/snapshot</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+		</pluginRepository>
+	</pluginRepositories>
 
 </project>
