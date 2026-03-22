@@ -8,10 +8,15 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.crumbs.trade.entity.Alert;
 import com.crumbs.trade.entity.TelegramUser;
+import com.crumbs.trade.repo.AlertConfigRepo;
+import com.crumbs.trade.repo.AlertRepo;
 import com.crumbs.trade.repo.TelegramUserRepo;
 
 import javax.annotation.PostConstruct;
+
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +54,8 @@ public class TelegramService {
     private Long updateOffset = 0L;
 
     @Autowired TelegramUserRepo telegramUserRepo;
+    @Autowired AlertConfigRepo alertConfigRepo;
+    @Autowired AlertRepo    alertRepo;
 
     // =========================================================
     // Initialization
@@ -282,6 +289,7 @@ public class TelegramService {
             String message = buildStockTable(rows);
             boolean sent = sendMessage(message);
             logger.info("📨 Stock alert sent: {}", sent);
+            saveAlertIfEnabled("STOCK_ALERT", message, "INFO", sent); // ← add this
         } catch (Exception e) {
             logger.error("❌ Error while sending stock alert: {}", e.getMessage());
         }
@@ -349,6 +357,7 @@ public class TelegramService {
 
             boolean sent = sendMessage(sb.toString());
             logger.info("MA hierarchy alert sent: {}", sent);
+            saveAlertIfEnabled("MA_HIERARCHY", sb.toString(), buyCount > 0 ? "BUY" : "SELL", sent); // ← add this
 
         } catch (Exception e) {
             logger.error("Error building MA hierarchy alert: {}", e.getMessage());
@@ -465,5 +474,29 @@ public class TelegramService {
         result = result.replace(PLACEHOLDER, "&lt;");
 
         return result;
+    }
+    
+
+    /**
+     * Saves the alert message to alert_log only if alert_config
+     * has save_enabled = true for this strategy.
+     * Call this AFTER a successful send — pass the boolean result from sendMessage().
+     */
+ // TelegramService.java
+    public void saveAlertIfEnabled(String strategyName, String message,
+                                    String signalType, boolean sent) {
+        try {
+            Alert alert = Alert.builder()
+                    .strategyName(strategyName)
+                    .message(message)
+                    .signalType(signalType)
+                    .status(sent ? "SENT" : "FAILED")
+                    .sentAt(LocalDateTime.now())
+                    .build();
+            alertRepo.save(alert);
+            logger.info("💾 Alert saved for strategy: {}", strategyName);
+        } catch (Exception e) {
+            logger.error("⚠️ Could not save alert for {}: {}", strategyName, e.getMessage());
+        }
     }
 }

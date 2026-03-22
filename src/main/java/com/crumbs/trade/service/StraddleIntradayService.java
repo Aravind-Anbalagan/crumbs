@@ -636,6 +636,14 @@ public class StraddleIntradayService {
 	            logger.info("✅ Alert sent [{}] for {} strike {}",
 	                alertType, entity.getName(), entity.getStrike());
 	        }
+	        
+	        // ← save to alert table if config allows
+	        telegramService.saveAlertIfEnabled(
+	            entity.getName(),   // strategyName  e.g. "STRADDLE_PREMIUM"
+	            message,
+	            alertType.name(),   // signalType    e.g. "CE_PE_CROSSOVER"
+	            sent
+	        );
 	    } catch (Exception ex) {
 	        logger.error("Telegram alert failed [{}] for {} {}",
 	            alertType, entity.getName(), entity.getStrike(), ex);
