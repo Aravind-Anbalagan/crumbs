@@ -68,19 +68,47 @@
              BROKER SDKs
         ════════════════════════════════════════════════════ -->
 
-        <!-- Angel One API (local JAR injected via Dockerfile) -->
-        <dependency>
-            <groupId>com.angelbroking.smartapi</groupId>
-            <artifactId>smartapi-java</artifactId>
-            <version>2.2.6</version>
-        </dependency>
+	<!-- Angel One API -->
+	<dependency>
+		<groupId>com.angelbroking.smartapi</groupId>
+		<artifactId>smartapi-java</artifactId>
+		<version>2.2.6</version>
+		<exclusions>
+			<exclusion>
+				<groupId>ch.qos.logback</groupId>
+				<artifactId>logback-classic</artifactId>
+			</exclusion>
+			<exclusion>
+				<groupId>ch.qos.logback</groupId>
+				<artifactId>logback-core</artifactId>
+			</exclusion>
+			<exclusion>
+				<groupId>org.slf4j</groupId>
+				<artifactId>slf4j-api</artifactId>
+			</exclusion>
+		</exclusions>
+	</dependency>
 
-        <!-- Samco Stocknote API (local JAR injected via Dockerfile) -->
-        <dependency>
-            <groupId>io.samco</groupId>
-            <artifactId>stocknote-bridge-java</artifactId>
-            <version>3.0.0</version>
-        </dependency>
+	<!-- Samco Stocknote API -->
+	<dependency>
+		<groupId>io.samco</groupId>
+		<artifactId>stocknote-bridge-java</artifactId>
+		<version>3.0.0</version>
+		<exclusions>
+			<exclusion>
+				<groupId>ch.qos.logback</groupId>
+				<artifactId>logback-classic</artifactId>
+			</exclusion>
+			<exclusion>
+				<groupId>ch.qos.logback</groupId>
+				<artifactId>logback-core</artifactId>
+			</exclusion>
+			<exclusion>
+				<groupId>org.slf4j</groupId>
+				<artifactId>slf4j-api</artifactId>
+			</exclusion>
+		</exclusions>
+	</dependency>
 
         <!-- ═══════════════════════════════════════════════════
              SPRING AI
