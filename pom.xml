@@ -7,25 +7,12 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>3.2.5</version>
-		<relativePath /> <!-- lookup parent from repository -->
+		<relativePath />
 	</parent>
 	<groupId>com.crumbs</groupId>
 	<artifactId>crumbs</artifactId>
 	<name>crumbs_new</name>
 	<description>Demo project for Spring Boot</description>
-	<url />
-	<licenses>
-		<license />
-	</licenses>
-	<developers>
-		<developer />
-	</developers>
-	<scm>
-		<connection />
-		<developerConnection />
-		<tag />
-		<url />
-	</scm>
 	<properties>
 		<java.version>17</java.version>
 		<spring-boot.version>3.2.5</spring-boot.version>
@@ -44,7 +31,6 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
-
 		<dependency>
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-openai-spring-boot-starter</artifactId>
@@ -64,122 +50,103 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-	<!-- Angel One API <dependency> <groupId>com.angelbroking.smartapi</groupId> 
-		<artifactId>smartapi-java</artifactId> <version>1.0.0</version> <scope>system</scope> 
-		<systemPath>${basedir}/lib/smartapi-java-2.2.6.jar</systemPath> </dependency> -->
-	<dependency>
-  <groupId>com.angelbroking.smartapi</groupId>
-  <artifactId>smartapi-java</artifactId>
-  <version>2.2.6</version>
-</dependency>
-<dependency>
-    <groupId>io.samco</groupId>
-    <artifactId>stocknote-bridge-java</artifactId>
-    <version>3.0.0</version>
-</dependency>
-
-		<!-- H2 Database -->
 		<dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
-    <scope>runtime</scope>
-</dependency>
-		<dependency>
-        <groupId>org.jsoup</groupId>
-        <artifactId>jsoup</artifactId>
-        <version>1.16.1</version>
-        </dependency>
-		<dependency>
-		  <groupId>com.eatthepath</groupId>
-		  <artifactId>java-otp</artifactId>
-		  <version>0.4.0</version>
+			<groupId>com.angelbroking.smartapi</groupId>
+			<artifactId>smartapi-java</artifactId>
+			<version>2.2.6</version>
 		</dependency>
-		<!-- Apache Common -->
+		<dependency>
+			<groupId>io.samco</groupId>
+			<artifactId>stocknote-bridge-java</artifactId>
+			<version>3.0.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jsoup</groupId>
+			<artifactId>jsoup</artifactId>
+			<version>1.16.1</version>
+		</dependency>
+		<dependency>
+			<groupId>com.eatthepath</groupId>
+			<artifactId>java-otp</artifactId>
+			<version>0.4.0</version>
+		</dependency>
 		<dependency>
 			<groupId>commons-net</groupId>
 			<artifactId>commons-net</artifactId>
-			<version>3.9.0</version> <!-- ✅ Latest as of 2025 -->
+			<version>3.9.0</version>
 		</dependency>
-		<!-- Email -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
-		<!-- Swagger -->
-
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>2.2.0</version>
 		</dependency>
-
-	
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
 				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-bom</artifactId>
-				<version>0.8.1</version> <!-- ✅ Latest as of July 2025 -->
+				<version>0.8.1</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
-	 <build>
-        <finalName>crumbs</finalName> <!-- Creates crumbs.jar -->
-
-	<plugins>
-		<!-- Spring Boot Plugin -->
-		<plugin>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-maven-plugin</artifactId>
-			<version>${spring-boot.version}</version>
-			<configuration>
-				<mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>  <!-- ✅ ADD THIS -->
-				<includeSystemScope>true</includeSystemScope>
-			</configuration>
-			<executions>
-				<execution>
-					<goals>
-						<goal>repackage</goal> <!-- makes it executable -->
-					</goals>
-				</execution>
-			</executions>
-		</plugin>
-
-            <!-- Ensures proper Main-Class is set -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.3.0</version>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <addClasspath>true</addClasspath>
-                            <mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass> <!-- Replace with your actual main class -->
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
+	<build>
+		<finalName>crumbs</finalName>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<version>${spring-boot.version}</version>
+				<configuration>
+					<mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>
+					<includeSystemScope>true</includeSystemScope>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>3.3.0</version>
+				<configuration>
+					<archive>
+						<manifest>
+							<addClasspath>true</addClasspath>
+							<mainClass>com.crumbs.trade.CrumbsNewApplication</mainClass>
+						</manifest>
+					</archive>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
 	<repositories>
 		<repository>
 			<id>spring-milestones</id>
 			<name>Spring Milestones</name>
 			<url>https://repo.spring.io/milestone</url>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
+			<snapshots><enabled>false</enabled></snapshots>
 		</repository>
 		<repository>
 			<id>spring-snapshots</id>
 			<name>Spring Snapshots</name>
 			<url>https://repo.spring.io/snapshot</url>
-			<releases>
-				<enabled>false</enabled>
-			</releases>
+			<releases><enabled>false</enabled></releases>
 		</repository>
 	</repositories>
 	<pluginRepositories>
@@ -187,18 +154,13 @@
 			<id>spring-milestones</id>
 			<name>Spring Milestones</name>
 			<url>https://repo.spring.io/milestone</url>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
+			<snapshots><enabled>false</enabled></snapshots>
 		</pluginRepository>
 		<pluginRepository>
 			<id>spring-snapshots</id>
 			<name>Spring Snapshots</name>
 			<url>https://repo.spring.io/snapshot</url>
-			<releases>
-				<enabled>false</enabled>
-			</releases>
+			<releases><enabled>false</enabled></releases>
 		</pluginRepository>
 	</pluginRepositories>
-
 </project>
