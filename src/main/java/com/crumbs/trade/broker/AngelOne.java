@@ -18,7 +18,8 @@ public class AngelOne {
     private User user;
 
     // 🔐 Credentials kept inside class
-    private final String apiKey = "7HklvkfL";
+    //private final String apiKey = "7HklvkfL";
+    private final String apiKey = "7d0kJJe7";
     private final String clientID = "R705672";
     private final String clientPass = "8889";
     private final String totpKey = "A5EK2EGRTGRG7DOKSJI6SZG66Q";
