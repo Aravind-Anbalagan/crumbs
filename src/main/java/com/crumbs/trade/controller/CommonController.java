@@ -92,6 +92,13 @@ public class CommonController {
         return rt.getForObject("https://ifconfig.me", String.class);
     }
     
+    @GetMapping("/debug/angel-ip")
+    public String testAngelOneConnection() throws Exception {
+        RestTemplate rt = new RestTemplate();
+        // This shows what IP Angel One sees from your app
+        return rt.getForObject("https://api.angelbroking.com/", String.class);
+    }
+    
     @GetMapping(value = "/clear")
     public ResponseEntity<String> deleteOrders() {
         try {
