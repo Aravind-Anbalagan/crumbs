@@ -197,7 +197,7 @@ public class PreMarketLevelOrderManagementService {
     // FIX: reconstruct in-memory state from DB after a restart
     // ============================================================
 
-    @PostConstruct
+    //@PostConstruct
     public synchronized void recoverState() {
         ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1).ifPresent(order -> {
             try {
