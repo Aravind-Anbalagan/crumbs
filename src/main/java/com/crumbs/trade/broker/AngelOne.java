@@ -8,7 +8,10 @@ import org.springframework.stereotype.Component;
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.models.User;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
-
+import java.io.IOException;
+import java.net.*;
+import java.util.Collections;
+import java.util.List;
 @Component
 public class AngelOne {
 
@@ -36,10 +39,23 @@ public class AngelOne {
      */
     private void applyProxy() {
         if (proxyHost != null && !proxyHost.isEmpty()) {
-            System.setProperty("http.proxyHost",  proxyHost);
-            System.setProperty("http.proxyPort",  String.valueOf(proxyPort));
-            System.setProperty("https.proxyHost", proxyHost);
-            System.setProperty("https.proxyPort", String.valueOf(proxyPort));
+            final String host = proxyHost;
+            final int port = proxyPort;
+
+            ProxySelector.setDefault(new ProxySelector() {
+                @Override
+                public List<Proxy> select(URI uri) {
+                    return Collections.singletonList(
+                        new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port))
+                    );
+                }
+
+                @Override
+                public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {
+                    logger.error("Proxy connection failed to {}: {}", uri, ioe.getMessage());
+                }
+            });
+
             logger.info("Angel One proxy set: {}:{}", proxyHost, proxyPort);
         } else {
             logger.info("Angel One using direct connection (no proxy)");
