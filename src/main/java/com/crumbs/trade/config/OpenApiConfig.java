@@ -19,7 +19,7 @@ public class OpenApiConfig {
     @Value("${server.hostname:localhost}")
     private String hostname;
 
-    @PostConstruct
+    //@PostConstruct
     public void printSwaggerBaseUrl() {
         String swaggerUrl;
 
