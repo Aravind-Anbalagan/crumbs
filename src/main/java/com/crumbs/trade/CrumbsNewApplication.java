@@ -43,8 +43,15 @@ public class CrumbsNewApplication {
     private int proxyPort;
 
     public static void main(String[] args) {
-        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
-        SpringApplication.run(CrumbsNewApplication.class, args);
+    	
+    	 try {
+    		 TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
+    	        SpringApplication.run(CrumbsNewApplication.class, args);
+         } catch (Exception e) {
+             e.printStackTrace(); // goes straight to stderr
+             throw e;
+         }
+       
     }
 
     /**
