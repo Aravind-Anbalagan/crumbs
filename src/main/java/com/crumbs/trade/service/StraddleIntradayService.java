@@ -91,7 +91,7 @@ public class StraddleIntradayService {
 	// Strategy-specific cache: Map<StrategyName, Map<Token, BigDecimal>>
 	private final Map<String, Map<String, BigDecimal>> prevHighMap = new HashMap<>();
 	private final Map<String, Map<String, BigDecimal>> prevLowMap = new HashMap<>();
-	private LocalDate prevDayDataDate = null;
+	public LocalDate prevDayDataDate = null;
 	
 	
 	

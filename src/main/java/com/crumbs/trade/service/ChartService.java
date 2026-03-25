@@ -100,22 +100,58 @@ public class ChartService {
     // JSON / candle data fetch
     // =========================================================
 
-    public JSONArray getJsonDetails(Indexes indexes, String type, boolean testflag,
-                                    String fromDate, String toDate, String timeFrame) {
-        try {
-            SmartConnect smartConnect = angelOne.signIn();
-            JSONObject requestObject = new JSONObject();
-            requestObject.put("exchange",    indexes.getExchange());
-            requestObject.put("symboltoken", indexes.getToken());
-            requestObject.put("interval",    timeFrame);
-            requestObject.put("fromdate",    fromDate);
-            requestObject.put("todate",      toDate);
-            return smartConnect.candleData(requestObject);
-        } catch (Exception ex) {
-            logger.error("Error in getJsonDetails() for {}", indexes.getName());
-        }
-        return null;
-    }
+	public JSONArray getJsonDetails(Indexes indexes, String fromDate, String toDate, String timeFrame) {
+
+		int maxRetries = 3;
+		long delay = 1000;
+
+		for (int attempt = 1; attempt <= maxRetries; attempt++) {
+
+			try {
+				SmartConnect smartConnect = angelOne.signIn();
+
+				JSONObject requestObject = new JSONObject();
+				requestObject.put("exchange", indexes.getExchange());
+				requestObject.put("symboltoken", indexes.getToken());
+				requestObject.put("interval", timeFrame);
+				requestObject.put("fromdate", fromDate);
+				requestObject.put("todate", toDate);
+
+// ✅ DIRECT ARRAY (your SDK behavior)
+				JSONArray data = smartConnect.candleData(requestObject);
+
+				if (data == null || data.length() == 0) {
+					logger.warn("Empty candle data for {}", indexes.getName());
+					return new JSONArray(); // never null
+				}
+
+// 🔥 DEBUG (keep temporarily)
+				logger.info("Candles count for {}: {}", indexes.getName(), data.length());
+
+				return data;
+
+			} catch (Exception ex) {
+
+				logger.warn("Retry {}/{} failed for {} - {}", attempt, maxRetries, indexes.getName(), ex.getMessage());
+
+				if (attempt == maxRetries) {
+					logger.error("Final failure for {}", indexes.getName(), ex);
+					break;
+				}
+
+				try {
+					Thread.sleep(delay);
+				} catch (InterruptedException ie) {
+					Thread.currentThread().interrupt();
+				}
+
+				delay *= 2;
+			}
+		}
+
+// ✅ NEVER return null
+		return new JSONArray();
+	}
 
     public OHLC getOHLC(JSONArray ohlcArray) {
         OHLC ohlc = new OHLC();
@@ -295,7 +331,7 @@ public class ChartService {
         if (indexes == null) return;
 
         if ("HEIKIN_PSAR".equalsIgnoreCase(tableName)) {
-            JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
+            JSONArray responseArray = getJsonDetails(indexes, fromDate, toDate, timeFrame);
             if (responseArray == null) return;
             List<Vix> batch = new ArrayList<>();
             responseArray.forEach(item -> {
@@ -312,7 +348,7 @@ public class ChartService {
             } else {
                 logger.info("📦 [CACHE] Miss for {} — full fetch from AngelOne", cacheKey);
                 long t = TimerLog.start();
-                JSONArray responseArray = getJsonDetails(indexes, type, testflag, fromDate, toDate, timeFrame);
+                JSONArray responseArray = getJsonDetails(indexes, fromDate, toDate, timeFrame);
                 TimerLog.end(logger, "AngelOne API full fetch for " + name, t);
                 if (responseArray == null) return;
                 logger.info("📊 {} candles fetched for {}", responseArray.length(), name);
@@ -335,7 +371,7 @@ public class ChartService {
         String from = getCurrentCandleTime("FROM", intervalMinutes);
         String to   = getCurrentCandleTime("TO",   intervalMinutes);
         logger.info("🕯 [INCREMENTAL] Fetching latest candle for {} | from={} to={}", cacheKey, from, to);
-        JSONArray responseArray = getJsonDetails(indexes, type, false, from, to, timeFrame);
+        JSONArray responseArray = getJsonDetails(indexes, from, to, timeFrame);
         if (responseArray == null || responseArray.isEmpty()) return;
         OHLC ohlc = getOHLC((JSONArray) responseArray.get(responseArray.length() - 1));
         if (ohlc == null) return;

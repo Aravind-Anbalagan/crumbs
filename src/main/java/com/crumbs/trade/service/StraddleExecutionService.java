@@ -43,7 +43,7 @@ public class StraddleExecutionService {
             }
             
             LoggerFactory.getLogger(getClass())
-                .info("🚀 PRE-MARKET EXECUTION STARTED FOR {} at 9:00 AM", name);
+                .info("🚀 PRE-MARKET EXECUTION STARTED FOR {}", name);
             
             // Fetch pre-market data, analyze, and save to PreMarketAnalysis table
             // This internally calls straddleIntradayService.getPreMarketLTP()

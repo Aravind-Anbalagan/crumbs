@@ -188,6 +188,7 @@ public class StraddleChartController {
     
     @GetMapping("/preMarketAnalysis")
     public void getPreMartketLevels() {
+    	straddleIntradayService.prevDayDataDate = null;
         straddleExecutionService.executePreMarket("NIFTY");
     }
 }

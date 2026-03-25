@@ -504,17 +504,61 @@ public class FuturesStrategyService {
     //  API calls — shared session, with delays & 503 handling
     // ─────────────────────────────────────────────
 
-    private JSONArray fetchOneHourCandle(SmartConnect smartConnect, Indexes idx) throws Exception {
-        LocalDateTime[] window = resolveNseOneHourWindow();
-        JSONObject req = new JSONObject();
-        req.put("exchange", idx.getExchange());
-        req.put("symboltoken", idx.getToken());
-        req.put("interval", "ONE_HOUR");
-        req.put("fromdate", window[0].toString().replace("T", " "));
-        req.put("todate", window[1].toString().replace("T", " "));
-        logger.debug("Fetching 1H candle for {} from {} to {}", idx.getName(), window[0], window[1]);
-        return smartConnect.candleData(req);
+    private JSONArray fetchOneHourCandle(SmartConnect smartConnect, Indexes idx) {
+        int maxRetries = 5;
+        long delay = 3000;  // Start with 3s
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // ✅ Delay BEFORE retry (not before first attempt)
+                if (attempt > 1) {
+                    logger.info("Retrying 1H candle for {} after {}ms (attempt {}/{})...",
+                            idx.getName(), delay, attempt, maxRetries);
+                    sleepQuietly(delay);
+                    delay *= 2;  // Exponential: 3s → 6s → 12s → 24s → 48s
+                }
+
+                LocalDateTime[] window = resolveNseOneHourWindow();
+                JSONObject req = new JSONObject();
+                req.put("exchange", idx.getExchange());
+                req.put("symboltoken", idx.getToken());
+                req.put("interval", "ONE_HOUR");
+                req.put("fromdate", window[0].toString().replace("T", " "));
+                req.put("todate", window[1].toString().replace("T", " "));
+
+                logger.debug("Fetching 1H candle for {} from {} to {}", idx.getName(), window[0], window[1]);
+                JSONArray candles = smartConnect.candleData(req);
+
+                // ✅ Valid data — return immediately
+                if (candles != null && !candles.isEmpty()) {
+                    logger.debug("✅ 1H candle fetched for {} on attempt {}", idx.getName(), attempt);
+                    return candles;
+                }
+
+                // ✅ null or empty — both are retryable
+                String reason = (candles == null) ? "NULL" : "empty";
+                logger.warn("{} 1H candle response for {} (attempt {}/{}) — will retry",
+                        reason, idx.getName(), attempt, maxRetries);
+
+            } catch (Exception e) {
+                boolean is503 = e.getMessage() != null &&
+                        (e.getMessage().contains("503") || e.getMessage().contains("timedout"));
+
+                if (is503) {
+                    logger.warn("⚠️ 503/timeout for {} 1H candle (attempt {}/{}) — will retry",
+                            idx.getName(), attempt, maxRetries);
+                } else {
+                    logger.warn("Error fetching 1H candle for {} (attempt {}/{}): {} — will retry",
+                            idx.getName(), attempt, maxRetries, e.getMessage());
+                }
+            }
+        }
+
+        logger.error("❌ Failed to fetch 1H candle for {} after {} retries (null/empty/error)",
+                idx.getName(), maxRetries);
+        return null;
     }
+
 
     /**
      * Fetches expiry-day OHLC for a single stock.
@@ -523,10 +567,19 @@ public class FuturesStrategyService {
      * ✅ Handles 503 specifically with an extended back-off.
      */
     private ExpiryOHLC fetchExpiryOHLC(SmartConnect smartConnect, Indexes idx, LocalDate expiryDate) {
-        int maxRetries = 3;
+        int maxRetries = 5;
+        long delay = 3000;  // Start with 3s like your working method
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                // ✅ Delay BEFORE retry (not before first attempt)
+                if (attempt > 1) {
+                    logger.info("Retrying {} after {}ms (attempt {}/{})...",
+                            idx.getName(), delay, attempt, maxRetries);
+                    sleepQuietly(delay);
+                    delay *= 2;  // Exponential backoff: 3s → 6s → 12s → 24s → 48s
+                }
+
                 LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(expiryDate) ?
                         expiryDate : NSEWorkingDays.getLastWorkingDay(expiryDate);
                 LocalDate fromDate = tradingDate.minusDays(1);
@@ -540,6 +593,7 @@ public class FuturesStrategyService {
 
                 JSONArray candles = smartConnect.candleData(req);
 
+                // ✅ Valid data — return immediately
                 if (candles != null && !candles.isEmpty()) {
                     JSONArray c = candles.getJSONArray(candles.length() - 1);
                     BigDecimal open  = c.getBigDecimal(1);
@@ -547,31 +601,36 @@ public class FuturesStrategyService {
                     BigDecimal low   = c.getBigDecimal(3);
                     BigDecimal close = c.getBigDecimal(4);
                     logger.debug("OHLC {}: O={} H={} L={} C={}", idx.getName(), open, high, low, close);
-
-                    // ✅ Polite delay after every successful fetch
-                    sleepQuietly(OHLC_FETCH_DELAY_MS);
                     return new ExpiryOHLC(open, high, low, close);
                 }
+
+                // ✅ null or empty — both are retryable
+                String reason = (candles == null) ? "NULL" : "empty";
+                logger.warn("{} candle response for {} (attempt {}/{}) — will retry",
+                        reason, idx.getName(), attempt, maxRetries);
 
             } catch (Exception e) {
                 boolean is503 = e.getMessage() != null &&
                         (e.getMessage().contains("503") || e.getMessage().contains("timedout"));
-
+                
                 if (is503) {
-                    logger.warn("⚠️ 503/timeout for {} (attempt {}/{}). Sleeping {}ms before retry...",
-                            idx.getName(), attempt, maxRetries, RATE_LIMIT_SLEEP_MS);
-                    sleepQuietly(RATE_LIMIT_SLEEP_MS);
+                    logger.warn("⚠️ 503/timeout for {} (attempt {}/{}) — will retry",
+                            idx.getName(), attempt, maxRetries);
                 } else {
-                    logger.warn("Retry {}/{} failed for {} OHLC: {}",
-                            attempt, maxRetries, idx.getName(), e.getMessage());
-                    sleepQuietly(RETRY_BASE_DELAY_MS + (int)(Math.random() * 1000));
+                    logger.warn("Error for {} (attempt {}/{}): {} — will retry",
+                            idx.getName(), attempt, maxRetries, e.getMessage());
                 }
             }
         }
 
-        logger.error("❌ Failed to fetch OHLC for {} after {} retries", idx.getName(), maxRetries);
+        logger.error("❌ Failed to fetch OHLC for {} after {} retries (null/empty/error)",
+                idx.getName(), maxRetries);
         return null;
     }
+
+    
+
+
 
     // ─────────────────────────────────────────────
     //  LTP batch fetch
