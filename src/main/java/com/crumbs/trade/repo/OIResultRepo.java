@@ -10,6 +10,10 @@ import com.crumbs.trade.entity.OIResult;
 
 public interface OIResultRepo extends JpaRepository<OIResult, Long> {
 
+	@Modifying
+	@Query("delete from OIResult o")
+	void deleteAll();
+	
     @Query("""
         SELECT o FROM OIResult o
         WHERE o.name = :name

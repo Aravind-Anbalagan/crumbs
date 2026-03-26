@@ -31,6 +31,7 @@ import com.crumbs.trade.repo.AlertRepo;
 import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.OIRepo;
+import com.crumbs.trade.repo.OIResultRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.PreMarketAnalysisRepo;
 import com.crumbs.trade.repo.PredictionHistoryRepo;
@@ -138,6 +139,8 @@ public class AngelOneService {
 	@Autowired
 	AlertRepo alertRepo;
 	
+	@Autowired OIResultRepo oiResultRepo;
+	
 	/*
 	 * Get current price
 	 */
@@ -236,6 +239,7 @@ public class AngelOneService {
 		predictionHistoryRepo.deleteAll();
 		//preMarketAnalysisRepo.deleteAll();
 		alertRepo.deleteAll();
+		oiResultRepo.deleteAll();
 	}
 	/*
 	 * Get current price
