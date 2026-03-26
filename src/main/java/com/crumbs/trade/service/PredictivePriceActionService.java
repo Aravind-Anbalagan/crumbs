@@ -146,18 +146,24 @@ public class PredictivePriceActionService {
             return "WEAK";
         }
 
-        SRLevelDTO toDTO(int candleMinutes) {
-            return new SRLevelDTO(
-                    price,
-                    touches,
-                    rejections,
-                    breakouts,
-                    volumeConfirmed,
-                    formatLastVisited(minCandlesAgo, candleMinutes),
-                    calcConfidence()
-                );
-            
+        SRLevelDTO toDTO(int candleMinutes, boolean isSupport) {
+            SRLevelDTO dto = new SRLevelDTO();
+            dto.setPrice(price);
+            dto.setVisited(touches);
+            dto.setHeavyVolume(volumeConfirmed);
+            dto.setLastVisited(formatLastVisited(minCandlesAgo, candleMinutes));
+            dto.setConfidence(calcConfidence());
+
+            if (isSupport) {
+                dto.setBounce(rejections);       // buyers defended → bounce
+                dto.setBreakdown(breakouts);     // sellers punched through → breakdown
+            } else {
+                dto.setRejection(rejections);    // sellers defended → rejection
+                dto.setBreakout(breakouts);      // buyers punched through → breakout
             }
+
+            return dto;
+        }
     }
 
    
@@ -181,18 +187,25 @@ public class PredictivePriceActionService {
     }
     // ==================== RESULT BUILDER ====================
 
-	private PriceActionResult buildResult(BigDecimal currentPrice, List<LevelAccumulator> supports,
-			List<LevelAccumulator> resistances, int candleMinutes) {
-		PriceActionResult result = new PriceActionResult();
-		result.setCurrentPrice(currentPrice);
+    private PriceActionResult buildResult(BigDecimal currentPrice,
+            List<LevelAccumulator> supports,
+            List<LevelAccumulator> resistances,
+            int candleMinutes) {
+        PriceActionResult result = new PriceActionResult();
+        result.setCurrentPrice(currentPrice);
 
-		result.setSupportLevels(supports.stream().map(acc -> acc.toDTO(candleMinutes)).collect(Collectors.toList()));
+        result.setSupportLevels(
+                supports.stream()
+                        .map(acc -> acc.toDTO(candleMinutes, true))    // isSupport = true
+                        .collect(Collectors.toList()));
 
-		result.setResistanceLevels(
-				resistances.stream().map(acc -> acc.toDTO(candleMinutes)).collect(Collectors.toList()));
+        result.setResistanceLevels(
+                resistances.stream()
+                        .map(acc -> acc.toDTO(candleMinutes, false))   // isSupport = false
+                        .collect(Collectors.toList()));
 
-		return result;
-	}
+        return result;
+    }
 
     private PriceActionResult emptyResult(BigDecimal currentPrice) {
         PriceActionResult r = new PriceActionResult();

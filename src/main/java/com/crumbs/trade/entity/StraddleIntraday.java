@@ -130,4 +130,19 @@ public class StraddleIntraday {
 
     @Column(name = "combined_prev_close", precision = 10, scale = 2)
     private BigDecimal combinedPrevClose;
+    
+    @Column(precision = 20, scale = 4)
+    private BigDecimal ceLtpChange;
+
+    @Column(precision = 20, scale = 4)
+    private BigDecimal peLtpChange;
+
+    @Column(precision = 20, scale = 4)
+    private BigDecimal ceOiChange;
+
+    @Column(precision = 20, scale = 4)
+    private BigDecimal peOiChange;
+
+    private String marketType;
+    private String dominance;
 }

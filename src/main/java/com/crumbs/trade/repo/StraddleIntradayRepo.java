@@ -160,11 +160,37 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
         @Param("timestamp") LocalDateTime timestamp
     );
 
-    StraddleIntraday findTopByNameAndExpiryAndStrikeOrderByTimestampDesc(
-    	    String name, String expiry, BigDecimal strike
-    	);
+	StraddleIntraday findTopByNameAndExpiryAndStrikeOrderByTimestampDesc(String name, String expiry, BigDecimal strike);
 
-    	List<StraddleIntraday> findByNameAndExpiryAndStrikeOrderByTimestampDesc(
-    	    String name, String expiry, BigDecimal strike
-    	);
+	List<StraddleIntraday> findByNameAndExpiryAndStrikeOrderByTimestampDesc(String name, String expiry,
+			BigDecimal strike);
+
+
+	// Base rows per strike (first 5 mins)
+	List<StraddleIntraday> findTop5ByNameAndStrikeOrderByTimestampAsc(
+	    String name, BigDecimal strike);
+	
+	@Query("SELECT DISTINCT s.strike FROM StraddleIntraday s WHERE s.name = :name")
+	List<BigDecimal> findDistinctStrikes(String name);
+	
+	// 🔹 latest record
+    StraddleIntraday findTopByNameOrderByTimestampDesc(String name);
+
+    // 🔹 base rows (first 5)
+    List<StraddleIntraday>
+    findTop5ByNameAndStrikeAndTimestampBetweenOrderByTimestampAsc(
+            String name,
+            BigDecimal strike,
+            LocalDateTime start,
+            LocalDateTime end
+    );
+
+    // 🔹 last rows (latest 3)
+    List<StraddleIntraday>
+    findTop3ByNameAndStrikeAndTimestampBetweenOrderByTimestampDesc(
+            String name,
+            BigDecimal strike,
+            LocalDateTime start,
+            LocalDateTime end
+    );
 }

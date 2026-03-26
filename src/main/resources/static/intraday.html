@@ -74,7 +74,6 @@
       display: flex; gap: 6px; align-items: center; font-size: 14px;
       user-select: none; max-width: 96vw; border: 1px solid rgba(255,255,255,0.3);
     }
-    /* thin vertical separator between groups */
     .tb-sep { width: 1px; height: 26px; background: #e0e0e0; flex-shrink: 0; margin: 0 2px; }
 
     #toolbar label { font-weight: 500; color: #555; white-space: nowrap; font-size: 13px; }
@@ -86,7 +85,6 @@
     #toolbar select:focus { outline: none; border-color: #4a5568; }
     #toolbar .group { display: flex; gap: 7px; align-items: center; }
 
-    /* standard toolbar button */
     .tb-btn {
       background: linear-gradient(135deg, #4a5568, #2d3748); color: #fff;
       border: none; font-weight: 600; padding: 0 15px; border-radius: 8px;
@@ -97,7 +95,6 @@
     .tb-btn.green { background: linear-gradient(135deg, #22c55e, #16a34a); }
     .tb-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(0,0,0,.25); }
 
-    /* square icon button inside toolbar */
     .draw-btn {
       width: 34px; height: 34px; flex-shrink: 0;
       border: 2px solid #e0e0e0; border-radius: 8px;
@@ -108,7 +105,6 @@
     .draw-btn:hover  { border-color: #4a5568; transform: translateY(-1px); }
     .draw-btn.active { background: linear-gradient(135deg,#4a5568,#2d3748); color:#fff; border-color:#4a5568; }
 
-    /* freeze button — amber when active */
     #btnFreeze { font-size: 14px; }
     #btnFreeze.frozen {
       background: linear-gradient(135deg,#f59e0b,#d97706);
@@ -116,14 +112,12 @@
     }
     #btnFreeze.frozen:hover { box-shadow: 0 4px 12px rgba(245,158,11,.45); }
 
-    /* colour swatch */
     #colorPicker {
       width: 34px; height: 34px; flex-shrink: 0;
       border: 2px solid #e0e0e0; border-radius: 8px;
       cursor: pointer; padding: 2px;
     }
 
-    /* FROZEN badge floats above toolbar */
     #freezeBadge {
       display: none; position: absolute; top: -10px; right: 16px;
       background: #f59e0b; color: #fff; font-size: 9px; font-weight: 800;
@@ -133,7 +127,6 @@
     }
     #freezeBadge.show { display: block; }
 
-    /* Settings dropdown */
     #settingsDropdown { position: absolute; top: 24px; left: 24px; z-index: 30; user-select: none; }
     #settingsMenu {
       display: none; position: absolute; top: 48px; left: 0;
@@ -213,6 +206,8 @@
     .pp-val { font-weight:700; font-family:monospace; }
     @keyframes priceFlash { 0%,100%{background:transparent} 50%{background:rgba(34,197,94,.15)} }
     .flash { animation: priceFlash .4s ease; }
+
+    /* ── SR Tooltip ── */
     #srTooltip { position: fixed; z-index: 50; pointer-events: none; width: 270px; display: none; }
     #srTooltip.show { display:block; animation: ttFade .15s ease; }
     @keyframes ttFade { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
@@ -269,8 +264,6 @@
 
   <!-- ═══════════════════ UNIFIED TOOLBAR ═══════════════════ -->
   <div id="toolbar">
-
-    <!-- Symbol -->
     <div class="group">
       <label for="symbolSelect">Name:</label>
       <select id="symbolSelect">
@@ -279,10 +272,7 @@
         <option value="SILVERM">SILVERM</option>
       </select>
     </div>
-
     <div class="tb-sep"></div>
-
-    <!-- Timeframe -->
     <div class="group">
       <label for="tfSelect">TF:</label>
       <select id="tfSelect">
@@ -293,18 +283,12 @@
         <option value="ONE_DAY">1 Day</option>
       </select>
     </div>
-
     <div class="tb-sep"></div>
-
-    <!-- Navigation -->
     <div class="group">
       <button class="tb-btn green" id="btnToday">Today</button>
       <button class="tb-btn"       id="btnRefresh">Refresh</button>
     </div>
-
     <div class="tb-sep"></div>
-
-    <!-- Drawing tools — live in the same bar -->
     <div class="group">
       <button class="draw-btn" id="btnHLine"    title="Draw Horizontal Line">&#8212;</button>
       <button class="draw-btn" id="btnVLine"    title="Draw Vertical Line">|</button>
@@ -312,8 +296,6 @@
       <button class="draw-btn" id="btnFreeze"   title="Freeze lines">❄</button>
       <button class="draw-btn" id="btnClearDraw" title="Clear drawn lines">&#x2715;</button>
     </div>
-
-    <!-- FROZEN badge — floats above top-right of toolbar -->
     <span id="freezeBadge">FROZEN</span>
   </div>
   <!-- ═════════════════════════════════════════════════════════ -->
@@ -366,6 +348,7 @@
 
   <div id="drawIndicator"></div>
 
+  <!-- ── SR Tooltip ── -->
   <div id="srTooltip">
     <div class="tt-card">
       <div class="tt-head">
@@ -378,18 +361,33 @@
         <div class="tt-dots"   id="ttDots"></div>
       </div>
       <div class="tt-stats">
-        <div class="tt-stat"><div class="tt-stat-lbl">Visited</div>  <div class="tt-stat-val"       id="ttVisited">-</div></div>
-        <div class="tt-stat"><div class="tt-stat-lbl">Reacted</div>  <div class="tt-stat-val green" id="ttReacted">-</div></div>
-        <div class="tt-stat"><div class="tt-stat-lbl">Broken</div>   <div class="tt-stat-val"       id="ttBroken">-</div></div>
-        <div class="tt-stat"><div class="tt-stat-lbl">Heavy Vol</div><div class="tt-stat-val"       id="ttHeavyVol">-</div></div>
+        <div class="tt-stat">
+          <div class="tt-stat-lbl">Visited</div>
+          <div class="tt-stat-val" id="ttVisited">-</div>
+        </div>
+        <!-- CHANGED: label id added — updated dynamically to Rejection / Bounce -->
+        <div class="tt-stat">
+          <div class="tt-stat-lbl" id="ttReactedLbl">-</div>
+          <div class="tt-stat-val green" id="ttReacted">-</div>
+        </div>
+        <!-- CHANGED: label id added — updated dynamically to Breakout / Breakdown -->
+        <div class="tt-stat">
+          <div class="tt-stat-lbl" id="ttBrokenLbl">-</div>
+          <div class="tt-stat-val" id="ttBroken">-</div>
+        </div>
+        <div class="tt-stat">
+          <div class="tt-stat-lbl">Heavy Vol</div>
+          <div class="tt-stat-val" id="ttHeavyVol">-</div>
+        </div>
       </div>
+      <!-- CHANGED: bar label ids added — updated dynamically -->
       <div class="tt-bar-row">
-        <div class="tt-bar-lbl">Reactions</div>
+        <div class="tt-bar-lbl" id="ttRejBarLbl">-</div>
         <div class="tt-track"><div class="tt-fill"     id="ttRejBar" style="width:0%"></div></div>
         <div class="tt-bar-num" id="ttRejNum"></div>
       </div>
       <div class="tt-bar-row">
-        <div class="tt-bar-lbl">Breakouts</div>
+        <div class="tt-bar-lbl" id="ttBrkBarLbl">-</div>
         <div class="tt-track"><div class="tt-fill red" id="ttBrkBar" style="width:0%"></div></div>
         <div class="tt-bar-num" id="ttBrkNum"></div>
       </div>
@@ -512,7 +510,6 @@ function restoreFrozenLines(){
     }catch(e){ console.warn('[Freeze] restore failed',e); }
   });
 }
-
 function applyFreezeUI(on){
   isFrozen=on;
   $('btnFreeze').classList.toggle('frozen', on);
@@ -533,7 +530,27 @@ function syncFreezeState(){
   applyFreezeUI(loadLinesFromStorage().length>0);
 }
 
-// ── S/R ───────────────────────────────────────────────────────
+// ── S/R helpers ───────────────────────────────────────────────
+
+/**
+ * Returns the direction-aware "reacted" value for a level.
+ * Support  → bounce    (buyers defended)
+ * Resistance → rejection (sellers defended)
+ */
+function srReacted(lvl){
+  return lvl._type === 'support' ? (lvl.bounce || 0) : (lvl.rejection || 0);
+}
+
+/**
+ * Returns the direction-aware "broken" value for a level.
+ * Support  → breakdown  (sellers punched through)
+ * Resistance → breakout (buyers punched through)
+ */
+function srBroken(lvl){
+  return lvl._type === 'support' ? (lvl.breakdown || 0) : (lvl.breakout || 0);
+}
+
+// ── S/R drawing ───────────────────────────────────────────────
 function getEnabledConf(){
   return new Set(CONFIDENCE_LEVELS.filter(k=>{const el=$('chk'+k);return el&&el.checked;}));
 }
@@ -541,113 +558,189 @@ function clearLines(arr){
   arr.forEach(l=>{try{candleSeries.removePriceLine(l);}catch(e){}});
   arr.length=0;
 }
-function srTitle(type,lvl){
-  const arrow=type==='support'?'S':'R';
-  const cmap={CRITICAL:'CRT',HIGH:'HI',LOW:'LO'};
-  const conf=cmap[(lvl.confidence||'LOW').toUpperCase()]||'?';
-  const vc=lvl.heavyVolume?'*':'';
-  const v=lvl.visited!=null?`V:${lvl.visited}`:'';
-  const r=lvl.reacted!=null?`R:${lvl.reacted}`:'';
-  const b=(lvl.broken>0)?`B:${lvl.broken}`:'';
-  return [arrow,conf,vc,v,r,b].filter(Boolean).join(' ');
+
+// CHANGED: srTitle now reads direction-aware fields via srReacted / srBroken
+function srTitle(type, lvl){
+  const arrow = type === 'support' ? 'S' : 'R';
+  const cmap  = { CRITICAL:'CRT', HIGH:'HI', LOW:'LO' };
+  const conf  = cmap[(lvl.confidence || 'LOW').toUpperCase()] || '?';
+  const vc    = lvl.heavyVolume ? '*' : '';
+  const v     = lvl.visited != null ? `V:${lvl.visited}` : '';
+  const r     = srReacted(lvl) > 0  ? `R:${srReacted(lvl)}` : '';
+  const b     = srBroken(lvl)  > 0  ? `B:${srBroken(lvl)}`  : '';
+  return [arrow, conf, vc, v, r, b].filter(Boolean).join(' ');
 }
-function drawOneSR(type,lvl,enabledSet){
-  if(!candleSeries)return null;
-  const conf=(lvl.confidence||'LOW').toUpperCase();
-  if(!enabledSet.has(conf))return null;
-  const st=SR_STYLE[conf]||SR_STYLE.LOW;
-  const color=(SR_COLOR[type]||{})[conf];
-  if(!color)return null;
-  srRegistry[Number(lvl.price).toFixed(2)+'_'+type]={...lvl,_type:type};
+
+function drawOneSR(type, lvl, enabledSet){
+  if(!candleSeries) return null;
+  const conf = (lvl.confidence || 'LOW').toUpperCase();
+  if(!enabledSet.has(conf)) return null;
+  const st    = SR_STYLE[conf] || SR_STYLE.LOW;
+  const color = (SR_COLOR[type] || {})[conf];
+  if(!color) return null;
+  srRegistry[Number(lvl.price).toFixed(2) + '_' + type] = { ...lvl, _type: type };
   try{
     return candleSeries.createPriceLine({
-      price:Number(lvl.price),color,lineWidth:st.lineWidth,lineStyle:st.lineStyle,
-      axisLabelVisible:true,title:srTitle(type,lvl),
+      price: Number(lvl.price), color, lineWidth: st.lineWidth, lineStyle: st.lineStyle,
+      axisLabelVisible: true, title: srTitle(type, lvl),
     });
-  }catch(e){console.warn('[SR]',type,lvl.price,conf,e.message);return null;}
+  }catch(e){ console.warn('[SR]', type, lvl.price, conf, e.message); return null; }
 }
 function drawSupportLevels(){
   clearLines(srSupLines);
-  const levels=(lastData&&lastData.supportLevels)||[];
-  if(!chkSupport.checked||!candleSeries){$('supportCount').textContent='';return;}
-  const enabled=getEnabledConf(); let drawn=0;
-  levels.forEach(lvl=>{const l=drawOneSR('support',lvl,enabled);if(l){srSupLines.push(l);drawn++;}});
-  $('supportCount').textContent=levels.length?drawn+'/'+levels.length:'';
+  const levels = (lastData && lastData.supportLevels) || [];
+  if(!chkSupport.checked || !candleSeries){ $('supportCount').textContent = ''; return; }
+  const enabled = getEnabledConf(); let drawn = 0;
+  levels.forEach(lvl => { const l = drawOneSR('support', lvl, enabled); if(l){ srSupLines.push(l); drawn++; } });
+  $('supportCount').textContent = levels.length ? drawn + '/' + levels.length : '';
 }
 function drawResistanceLevels(){
   clearLines(srResLines);
-  const levels=(lastData&&lastData.resistanceLevels)||[];
-  if(!chkResistance.checked||!candleSeries){$('resistanceCount').textContent='';return;}
-  const enabled=getEnabledConf(); let drawn=0;
-  levels.forEach(lvl=>{const l=drawOneSR('resistance',lvl,enabled);if(l){srResLines.push(l);drawn++;}});
-  $('resistanceCount').textContent=levels.length?drawn+'/'+levels.length:'';
+  const levels = (lastData && lastData.resistanceLevels) || [];
+  if(!chkResistance.checked || !candleSeries){ $('resistanceCount').textContent = ''; return; }
+  const enabled = getEnabledConf(); let drawn = 0;
+  levels.forEach(lvl => { const l = drawOneSR('resistance', lvl, enabled); if(l){ srResLines.push(l); drawn++; } });
+  $('resistanceCount').textContent = levels.length ? drawn + '/' + levels.length : '';
 }
-function redrawSR(){srRegistry={};drawSupportLevels();drawResistanceLevels();}
+function redrawSR(){ srRegistry = {}; drawSupportLevels(); drawResistanceLevels(); }
 
 // ── Tooltip ───────────────────────────────────────────────────
 function findNearestSR(price){
-  const threshold=price*0.003; let best=null,bestDist=Infinity;
-  Object.values(srRegistry).forEach(lvl=>{
-    const d=Math.abs(Number(lvl.price)-price);
-    if(d<=threshold&&d<bestDist){bestDist=d;best=lvl;}
+  const threshold = price * 0.003; let best = null, bestDist = Infinity;
+  Object.values(srRegistry).forEach(lvl => {
+    const d = Math.abs(Number(lvl.price) - price);
+    if(d <= threshold && d < bestDist){ bestDist = d; best = lvl; }
   });
   return best;
 }
+
+// CHANGED: calcDecision reads direction-aware fields via srReacted / srBroken
 function calcDecision(lvl){
-  const r=lvl.reacted||0,b=lvl.broken||0;
-  const conf=(lvl.confidence||'').toUpperCase();
-  if(conf==='CRITICAL'){
-    if(b===0)return{cls:'critical',icon:'🔴',label:'Priority Trade Zone',detail:`${r} reactions, zero breakouts`};
-    return{cls:'watch',icon:'⚠️',label:'Critical — breaks recorded',detail:`${b} breakout${b!==1?'s':''}`};
+  const r    = srReacted(lvl);
+  const b    = srBroken(lvl);
+  const conf = (lvl.confidence || '').toUpperCase();
+  const isS  = lvl._type === 'support';
+
+  if(conf === 'CRITICAL'){
+    if(b === 0) return {
+      cls: 'critical', icon: '🔴',
+      label: isS ? 'Priority Buy Zone'  : 'Priority Sell Zone',
+      detail: `${r} ${isS ? 'bounces' : 'rejections'}, zero ${isS ? 'breakdowns' : 'breakouts'}`
+    };
+    return {
+      cls: 'watch', icon: '⚠️',
+      label: 'Critical — breaks recorded',
+      detail: `${b} ${isS ? 'breakdown' : 'breakout'}${b !== 1 ? 's' : ''}`
+    };
   }
-  if(conf==='HIGH'){
-    if(b===0&&r>=5)return{cls:'strong',icon:'🛡',label:'Strong Hold Expected',detail:`${r} reactions, no breakouts`};
-    return{cls:'watch',icon:'⚠️',label:'Watchlist Level',detail:`V:${lvl.visited||0} R:${r} B:${b}`};
+  if(conf === 'HIGH'){
+    if(b === 0 && r >= 5) return {
+      cls: 'strong', icon: '🛡',
+      label: 'Strong Hold Expected',
+      detail: `${r} ${isS ? 'bounces' : 'rejections'}, no ${isS ? 'breakdowns' : 'breakouts'}`
+    };
+    return {
+      cls: 'watch', icon: '⚠️',
+      label: 'Watchlist Level',
+      detail: `V:${lvl.visited || 0} R:${r} B:${b}`
+    };
   }
-  return{cls:'risky',icon:'🟢',label:'Background Level — Low Priority',detail:`V:${lvl.visited||0}`};
+  return { cls: 'risky', icon: '🟢', label: 'Background Level — Low Priority', detail: `V:${lvl.visited || 0}` };
 }
-function showSRTooltip(lvl,mx,my){
-  const type=lvl._type,conf=(lvl.confidence||'LOW').toUpperCase();
-  const price=Number(lvl.price),v=lvl.visited||0,r=lvl.reacted||0,b=lvl.broken||0,vc=!!lvl.heavyVolume;
-  const typeEl=$('ttType'); typeEl.textContent=type==='support'?'Support':'Resistance'; typeEl.className='tt-type '+type;
-  const priceEl=$('ttPrice'); priceEl.textContent=price.toFixed(2); priceEl.className='tt-price '+type;
-  const badge=$('ttBadge'); badge.textContent=conf; badge.className='tt-badge '+conf;
-  const filled=CONF_DOTS[conf]||1;
-  $('ttDots').innerHTML=Array.from({length:3},(_,i)=>
-    `<div class="tt-dot${i<filled?' on '+conf:''}"></div>`).join('');
-  $('ttVisited').textContent=v; $('ttReacted').textContent=r;
-  const bEl=$('ttBroken'); bEl.textContent=b; bEl.className='tt-stat-val '+(b===0?'green':b<=2?'amber':'red');
-  const hvEl=$('ttHeavyVol'); hvEl.textContent=vc?'Yes':'No'; hvEl.className='tt-stat-val '+(vc?'green':'red');
-  const allLvls=Object.values(srRegistry);
-  const maxR=Math.max(...allLvls.map(l=>l.reacted||0),1);
-  const maxB=Math.max(...allLvls.map(l=>l.broken||0),1);
-  const rejBar=$('ttRejBar');
-  rejBar.style.width=Math.min(100,(r/maxR)*100).toFixed(0)+'%';
-  rejBar.className='tt-fill '+(conf==='CRITICAL'?'critical':conf==='HIGH'?'high':'low');
-  $('ttBrkBar').style.width=Math.min(100,(b/maxB)*100).toFixed(0)+'%';
-  $('ttRejNum').textContent=r; $('ttBrkNum').textContent=b;
-  const vcDot=$('ttVcDot'); vcDot.className='tt-vc-dot '+(vc?'on':'off');
-  const vcTxt=$('ttVcText'); vcTxt.textContent=vc?'Heavy Volume':'No Heavy Volume'; vcTxt.style.color=vc?'#4ade80':'#64748b';
-  $('ttLast').innerHTML='Last: <span>'+(lvl.lastVisited||'&mdash;')+'</span>';
-  const dec=calcDecision(lvl);
-  const decEl=$('ttDecision'); decEl.className='tt-decision '+dec.cls;
-  decEl.innerHTML=`${dec.icon} <strong>${dec.label}</strong> — ${dec.detail}`;
-  const rect=chartEl.getBoundingClientRect();
-  const ax=rect.left+mx,ay=rect.top+my,W=276,H=340;
-  let left=ax+16,top=ay-H/2;
-  if(left+W>window.innerWidth-16)left=ax-W-16;
-  top=Math.max(8,Math.min(window.innerHeight-H-8,top));
-  srTooltip.style.left=left+'px'; srTooltip.style.top=top+'px';
+
+// CHANGED: showSRTooltip reads direction-aware fields and updates labels dynamically
+function showSRTooltip(lvl, mx, my){
+  const type     = lvl._type;
+  const isSupport = type === 'support';
+  const conf     = (lvl.confidence || 'LOW').toUpperCase();
+  const price    = Number(lvl.price);
+  const v        = lvl.visited || 0;
+  const vc       = !!lvl.heavyVolume;
+
+  // Direction-aware values
+  const r = srReacted(lvl);   // bounce (S) or rejection (R)
+  const b = srBroken(lvl);    // breakdown (S) or breakout (R)
+
+  // Header
+  const typeEl = $('ttType');
+  typeEl.textContent = isSupport ? 'Support' : 'Resistance';
+  typeEl.className   = 'tt-type ' + type;
+  const priceEl = $('ttPrice');
+  priceEl.textContent = price.toFixed(2);
+  priceEl.className   = 'tt-price ' + type;
+
+  // Badge + dots
+  const badge = $('ttBadge');
+  badge.textContent = conf;
+  badge.className   = 'tt-badge ' + conf;
+  const filled = CONF_DOTS[conf] || 1;
+  $('ttDots').innerHTML = Array.from({length:3}, (_,i) =>
+    `<div class="tt-dot${i < filled ? ' on ' + conf : ''}"></div>`).join('');
+
+  // Stats
+  $('ttVisited').textContent = v;
+  $('ttReacted').textContent = r;
+
+  const bEl = $('ttBroken');
+  bEl.textContent = b;
+  bEl.className   = 'tt-stat-val ' + (b === 0 ? 'green' : b <= 2 ? 'amber' : 'red');
+
+  const hvEl = $('ttHeavyVol');
+  hvEl.textContent = vc ? 'Yes' : 'No';
+  hvEl.className   = 'tt-stat-val ' + (vc ? 'green' : 'red');
+
+  // CHANGED: update stat labels to direction-aware names
+  $('ttReactedLbl').textContent = isSupport ? 'Bounce'    : 'Rejection';
+  $('ttBrokenLbl').textContent  = isSupport ? 'Breakdown' : 'Breakout';
+
+  // Bars
+  const allLvls = Object.values(srRegistry);
+  const maxR = Math.max(...allLvls.map(l => srReacted(l)), 1);
+  const maxB = Math.max(...allLvls.map(l => srBroken(l)),  1);
+
+  const rejBar = $('ttRejBar');
+  rejBar.style.width = Math.min(100, (r / maxR) * 100).toFixed(0) + '%';
+  rejBar.className   = 'tt-fill ' + (conf === 'CRITICAL' ? 'critical' : conf === 'HIGH' ? 'high' : 'low');
+  $('ttBrkBar').style.width = Math.min(100, (b / maxB) * 100).toFixed(0) + '%';
+  $('ttRejNum').textContent = r;
+  $('ttBrkNum').textContent = b;
+
+  // CHANGED: update bar labels to direction-aware names
+  $('ttRejBarLbl').textContent = isSupport ? 'Bounces'    : 'Rejections';
+  $('ttBrkBarLbl').textContent = isSupport ? 'Breakdowns' : 'Breakouts';
+
+  // Footer
+  const vcDot = $('ttVcDot');
+  vcDot.className = 'tt-vc-dot ' + (vc ? 'on' : 'off');
+  const vcTxt = $('ttVcText');
+  vcTxt.textContent  = vc ? 'Heavy Volume' : 'No Heavy Volume';
+  vcTxt.style.color  = vc ? '#4ade80' : '#64748b';
+  $('ttLast').innerHTML = 'Last: <span>' + (lvl.lastVisited || '&mdash;') + '</span>';
+
+  // Decision
+  const dec   = calcDecision(lvl);
+  const decEl = $('ttDecision');
+  decEl.className = 'tt-decision ' + dec.cls;
+  decEl.innerHTML = `${dec.icon} <strong>${dec.label}</strong> — ${dec.detail}`;
+
+  // Position
+  const rect = chartEl.getBoundingClientRect();
+  const ax = rect.left + mx, ay = rect.top + my, W = 276, H = 340;
+  let left = ax + 16, top = ay - H / 2;
+  if(left + W > window.innerWidth - 16) left = ax - W - 16;
+  top = Math.max(8, Math.min(window.innerHeight - H - 8, top));
+  srTooltip.style.left = left + 'px';
+  srTooltip.style.top  = top  + 'px';
   srTooltip.classList.add('show');
 }
-function hideSRTooltip(){srTooltip.classList.remove('show');}
+function hideSRTooltip(){ srTooltip.classList.remove('show'); }
 function initSRCrosshair(){
-  chart.subscribeCrosshairMove(param=>{
-    if(!param||!param.point||param.point.x==null){hideSRTooltip();return;}
-    const price=candleSeries.coordinateToPrice(param.point.y);
-    if(price==null){hideSRTooltip();return;}
-    const lvl=findNearestSR(price);
-    if(lvl)showSRTooltip(lvl,param.point.x,param.point.y); else hideSRTooltip();
+  chart.subscribeCrosshairMove(param => {
+    if(!param || !param.point || param.point.x == null){ hideSRTooltip(); return; }
+    const price = candleSeries.coordinateToPrice(param.point.y);
+    if(price == null){ hideSRTooltip(); return; }
+    const lvl = findNearestSR(price);
+    if(lvl) showSRTooltip(lvl, param.point.x, param.point.y); else hideSRTooltip();
   });
 }
 

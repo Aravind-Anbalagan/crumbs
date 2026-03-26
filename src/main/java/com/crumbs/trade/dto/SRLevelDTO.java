@@ -15,8 +15,11 @@ import java.math.BigDecimal;
 public class SRLevelDTO {
     private BigDecimal price;
     private int        visited;
-    private int        reacted;
-    private int        broken;
+    // ADD these four:
+    private int rejection;   // resistance only — how many times sellers won
+    private int breakout;    // resistance only — how many times sellers got stopped out
+    private int bounce;      // support only   — how many times buyers won
+    private int breakdown;   // support only   — how many times buyers got stopped out
     private boolean    heavyVolume;
     private String     lastVisited;   // "2 hours ago (10:30)"
     private String     confidence;    // UNTESTED | LOW | MODERATE | HIGH | ABSOLUTE

@@ -205,7 +205,7 @@ public class PriceActionService {
                           && currentPrice.subtract(z.level).compareTo(maxDistance) <= 0)
                 .sorted(Comparator.comparing(z -> lockedWeightedDistance(z, currentPrice)))
                 .limit(MAX_SR_ZONES)
-                .map(z -> lockedToDTO(z, candleMinutes))
+                .map(z -> lockedToDTO(z, candleMinutes, true))
                 .collect(Collectors.toList());
 
         List<SRLevelDTO> resistanceLevels = locked.resistances.stream()
@@ -214,7 +214,7 @@ public class PriceActionService {
                           && z.level.subtract(currentPrice).compareTo(maxDistance) <= 0)
                 .sorted(Comparator.comparing(z -> lockedWeightedDistance(z, currentPrice)))
                 .limit(MAX_SR_ZONES)
-                .map(z -> lockedToDTO(z, candleMinutes))
+                .map(z -> lockedToDTO(z, candleMinutes, false))
                 .collect(Collectors.toList());
 
         result.setSupportLevels(supportLevels);
@@ -396,15 +396,22 @@ public class PriceActionService {
 
     // ==================== CONVERSION ====================
 
-    private SRLevelDTO lockedToDTO(LockedZone z, int candleMinutes) {
+    private SRLevelDTO lockedToDTO(LockedZone z, int candleMinutes, boolean isSupport) {
         SRLevelDTO dto = new SRLevelDTO();
         dto.setPrice(z.level);
         dto.setVisited(z.touches);
-        dto.setReacted(z.reacted);
-        dto.setBroken(z.broken);
         dto.setHeavyVolume(z.volumeConfirmed);
         dto.setLastVisited(formatLastVisited(z.lastTouchAge, candleMinutes));
         dto.setConfidence(calcConfidence(z.touches, z.reacted, z.broken, z.volumeConfirmed));
+
+        if (isSupport) {
+            dto.setBounce(z.reacted);       // buyers defended → bounce
+            dto.setBreakdown(z.broken);     // sellers punched through → breakdown
+        } else {
+            dto.setRejection(z.reacted);    // sellers defended → rejection
+            dto.setBreakout(z.broken);      // buyers punched through → breakout
+        }
+
         return dto;
     }
 
