@@ -185,4 +185,18 @@ public class OIAnalysisService {
 
 		return current.subtract(base).divide(base, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
 	}
+	
+	public List<BigDecimal> getStrikeList(String name) {
+
+	    if (name == null || name.isEmpty()) {
+	        return Collections.emptyList();
+	    }
+
+	    List<BigDecimal> strikes = repo.findDistinctStrikes(name);
+
+	    // Optional: sort ascending
+	    strikes.sort(BigDecimal::compareTo);
+
+	    return strikes;
+	}
 }

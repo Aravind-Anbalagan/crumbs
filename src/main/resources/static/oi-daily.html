@@ -1,207 +1,551 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Option Chain with Δ Indicators</title>
-<script>
-    // Authentication check - must be at the top
-    if (!sessionStorage.getItem('isLoggedIn')) {
-        window.location.href = '/';
-    }
-</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NIFTY OI Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body {
-    font-family: 'Segoe UI',sans-serif;
-    background: #f6f9fc;
-    margin:0;
-    padding:16px;
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:      #0a0e14;
+    --surface: #111820;
+    --border:  #1c2a38;
+    --ce:      #00c8ff;
+    --pe:      #ff5370;
+    --gold:    #f0b429;
+    --green:   #3ddc84;
+    --red:     #ff5370;
+    --muted:   #3d5468;
+    --label:   #5a7a92;
+    --text:    #b8ccd8;
+    --white:   #e8f0f7;
+    --mono:    'IBM Plex Mono', monospace;
+    --sans:    'IBM Plex Sans', sans-serif;
   }
-  #optionInfo {
-    text-align:center;
-    background:#e3f2fd;
-    border-radius:8px;
-    padding:8px 16px;
-    font-weight:500;
-    margin-bottom:16px;
-  }
-  .interval-bar {text-align:center;margin-bottom:14px;}
-  table {
-    width:100%;
-    border-collapse:collapse;
-    box-shadow:0 2px 12px rgba(0,0,0,.07);
-    background:#fff;
-    font-size:.9rem;
-    table-layout: fixed; /* locks column width */
-  }
-  th,td {
-    text-align:center;
-    padding:6px 4px;
-    border:1px solid #eee;
-    font-variant-numeric:tabular-nums;
-    word-wrap:break-word;
-  }
-  thead {background:#0d47a1;color:#fff;}
-  .pos {color:#388e3c;font-weight:600;}
-  .neg {color:#d32f2f;font-weight:600;}
-  .highlight {background:#fff8e1;}
-  tr.spot {border-left:5px solid #1565c0;background:#e8f4ff;}
+  body { background:var(--bg); font-family:var(--sans); color:var(--text); min-height:100vh; padding:18px; }
 
-  /* Fixed column widths */
-  th:nth-child(1), td:nth-child(1) { width:90px; }   /* Call Signal */
-  th:nth-child(2), td:nth-child(2) { width:100px; }  /* Call OI */
-  th:nth-child(3), td:nth-child(3) { width:100px; }  /* Call Vol */
-  th:nth-child(4), td:nth-child(4) { width:100px; }  /* Call LTP */
-  th:nth-child(5), td:nth-child(5) { width:80px; }   /* Strike */
-  th:nth-child(6), td:nth-child(6) { width:100px; }  /* Put LTP */
-  th:nth-child(7), td:nth-child(7) { width:100px; }  /* Put Vol */
-  th:nth-child(8), td:nth-child(8) { width:100px; }  /* Put OI */
-  th:nth-child(9), td:nth-child(9) { width:90px; }   /* Put Signal */
-
-  /* Trading Signal Pills */
-  .status {
-    font-weight:600;
-    padding:2px 6px;
-    border-radius:5px;
-    display:inline-block;
+  /* HEADER */
+  .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+  .header-left { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .title { font-family:var(--mono); font-size:18px; font-weight:600; color:var(--white); }
+  .strike-select-wrap { display:flex; align-items:center; gap:8px; }
+  .strike-badge { 
+    font-family:var(--mono); font-size:11px; padding:2px 9px; 
+    border:1px solid var(--ce); color:var(--ce); letter-spacing:1px; 
+    background:var(--surface); border-radius:4px;
   }
-  .buy {color:#1b5e20; background:#c8e6c9;}
-  .sell{color:#b71c1c; background:#ffcdd2;}
-  .hold{color:#555; background:#e0e0e0;}
+  .strike-select {
+    font-family:var(--mono); font-size:11px; padding:4px 8px;
+    background:var(--surface); border:1px solid var(--border); color:var(--ce);
+    border-radius:4px; min-width:90px;
+  }
+  .strike-select:focus { outline:none; border-color:var(--ce); box-shadow:0 0 0 2px rgba(0,200,255,.2); }
+  .header-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  #clock { font-family:var(--mono); font-size:12px; color:var(--label); }
+
+  /* STATUS BAR */
+  .status-bar {
+    display:flex; align-items:center; gap:8px;
+    padding:6px 12px;
+    border:1px solid var(--border);
+    font-family:var(--mono); font-size:11px;
+  }
+  .status-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .status-dot.live    { background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 2s ease infinite; }
+  .status-dot.loading { background:var(--gold);  box-shadow:0 0 6px var(--gold);  animation:spin-pulse 1s linear infinite; }
+  .status-dot.error   { background:var(--red);   box-shadow:0 0 6px var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  @keyframes spin-pulse { 0%{opacity:1} 50%{opacity:.2} 100%{opacity:1} }
+  #status-text { color:var(--label); }
+  #status-text.live   { color:var(--green); }
+  #status-text.error  { color:var(--red); }
+
+  /* COUNTDOWN */
+  #countdown { font-family:var(--mono); font-size:11px; color:var(--muted); }
+
+  .btn-refresh {
+    font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:1px;
+    padding:5px 14px; background:none; border:1px solid var(--border); color:var(--label);
+    cursor:pointer; transition:.2s;
+  }
+  .btn-refresh:hover { border-color:var(--ce); color:var(--ce); }
+  .btn-refresh:disabled { opacity:.4; cursor:not-allowed; }
+  .btn-refresh.spinning { animation:spin-btn .6s linear infinite; }
+  @keyframes spin-btn { to{transform:rotate(360deg)} }
+
+  /* STATS */
+  .stats { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+  .stat { background:var(--surface); border:1px solid var(--border); padding:10px 16px; min-width:130px; flex:1; }
+  .stat-lbl { font-size:10px; font-weight:600; letter-spacing:1.5px; color:var(--label); text-transform:uppercase; margin-bottom:5px; }
+  .stat-val { font-family:var(--mono); font-size:20px; font-weight:600; color:var(--white); line-height:1; }
+  .stat-chg { font-family:var(--mono); font-size:11px; margin-top:4px; }
+  .ce-col { color:var(--ce); }
+  .pe-col { color:var(--pe); }
+  .up     { color:var(--green); }
+  .dn     { color:var(--red); }
+  .gold   { color:var(--gold); }
+
+  /* TABS */
+  .view-tabs { display:flex; margin-bottom:12px; border:1px solid var(--border); width:fit-content; }
+  .tab {
+    font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:1px;
+    padding:7px 18px; background:none; border:none; color:var(--label);
+    cursor:pointer; transition:.2s; border-right:1px solid var(--border); text-transform:uppercase;
+  }
+  .tab:last-child { border-right:none; }
+  .tab.active { background:var(--surface); color:var(--white); }
+  .tab:hover:not(.active) { color:var(--text); }
+
+  /* CARDS */
+  .card { background:var(--surface); border:1px solid var(--border); padding:18px 20px 14px; margin-bottom:12px; }
+  .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .card-title { font-size:11px; font-weight:600; letter-spacing:1.5px; color:var(--label); text-transform:uppercase; }
+  .legend { display:flex; gap:16px; align-items:center; }
+  .leg-item { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
+  .leg-dot { width:10px; height:3px; border-radius:2px; }
+
+  /* FIXED HEIGHT CHARTS */
+  .chart-wrap { position:relative; width:100%; height:320px; }
+  .chart-wrap.mini { height:200px; }
+  .chart-wrap canvas { position:absolute !important; top:0; left:0; width:100% !important; height:100% !important; }
+
+  /* MINI ROW */
+  .mini-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+  /* LOADING OVERLAY */
+  #loading { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:99; }
+  .spinner { width:36px; height:36px; border:2px solid var(--border); border-top-color:var(--ce); border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  #loading p { font-family:var(--mono); font-size:11px; color:var(--ce); letter-spacing:2px; }
+  #app { display:none; }
+
+  /* DATA SOURCE TAG */
+  .src-tag {
+    display:inline-block; font-family:var(--mono); font-size:9px; font-weight:600;
+    letter-spacing:1px; padding:1px 7px; border-radius:2px; vertical-align:middle; margin-left:6px;
+  }
+  .src-live   { background:rgba(61,220,132,.15); color:var(--green); border:1px solid rgba(61,220,132,.4); }
+  .src-sample { background:rgba(240,180,41,.10); color:var(--gold);  border:1px solid rgba(240,180,41,.3); }
 </style>
 </head>
 <body>
-<div id="optionInfo">
-  Name: <span id="optName">-</span> |
-  Expiry: <span id="expiry">-</span> |
-  Last Update: <span id="lastUpdate">-</span>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>LOADING STRIKES…</p>
 </div>
 
-<div class="interval-bar">
-  <label for="intervalSelector"><strong>Interval:</strong></label>
-  <select id="intervalSelector"></select>
-</div>
-<table>
-  <thead>
-    <tr>
-      <th>Call Signal</th>
-      <th>Call OI</th>
-      <th>Call Vol</th>
-      <th>Call LTP</th>
-      <th>Strike</th>
-      <th>Put LTP</th>
-      <th>Put Vol</th>
-      <th>Put OI</th>
-      <th>Put Signal</th>
-    </tr>
-  </thead>
-  <tbody id="optionChainBody"></tbody>
-</table>
-<script>
-let intervalOptions = [];
-let apiData = [];
+<div id="app">
 
-// Helpers
-function fmtUnits(num){
-  if(num == null) return "-";
-  const abs = Math.abs(num);
-  if(abs >= 1e7) return (num/1e7).toFixed(2) + " CR";
-  if(abs >= 1e5) return (num/1e5).toFixed(2) + " L";
-  if(abs >= 1e3) return (num/1e3).toFixed(2) + " K";
-  return num.toString();
-}
-function fmtP(p){ return p != null ? p.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : "-"; }
-function formatDelta(val){
-  if(val == null || val === 0) return '';
-  if(val > 0) return `<span class="pos">▲ ${fmtUnits(val)}</span>`;
-  if(val < 0) return `<span class="neg">▼ ${fmtUnits(Math.abs(val))}</span>`;
-  return '';
-}
-function formatSignal(tradingSignal){
-  if(!tradingSignal) return "-";
-  const parts = tradingSignal.split("-");
-  const decision = parts.pop().trim().toUpperCase();
-  const timestamp = parts.join("-").trim();
-  let cls = "hold";
-  if(decision === "BUY") cls = "buy";
-  if(decision === "SELL") cls = "sell";
-  return `<span class="status ${cls}" title="${timestamp}">${decision}</span>`;
+  <div class="header">
+    <div class="header-left">
+      <span class="title">NIFTY</span>
+      <div class="strike-select-wrap">
+        <span class="strike-badge" id="strike-badge">STRIKE —</span>
+        <select id="strike-select" class="strike-select">
+          <option value="">Select Strike</option>
+        </select>
+      </div>
+      <span id="src-tag" class="src-tag src-sample">SAMPLE</span>
+    </div>
+    <div class="header-right">
+      <span id="clock"></span>
+      <div class="status-bar">
+        <div class="status-dot live" id="status-dot"></div>
+        <span id="status-text">—</span>
+      </div>
+      <span id="countdown"></span>
+      <button class="btn-refresh" id="refresh-btn" onclick="manualRefresh()">↻ REFRESH</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-lbl">CE OI</div>
+      <div class="stat-val ce-col" id="s-ce-oi">—</div>
+      <div class="stat-chg" id="s-ce-chg">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">PE OI</div>
+      <div class="stat-val pe-col" id="s-pe-oi">—</div>
+      <div class="stat-chg" id="s-pe-chg">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">PCR</div>
+      <div class="stat-val gold" id="s-pcr">—</div>
+      <div class="stat-chg" id="s-pcr-bias">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">CE LTP</div>
+      <div class="stat-val" id="s-ce-ltp">—</div>
+      <div class="stat-chg" id="s-ce-ltp-c">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">PE LTP</div>
+      <div class="stat-val" id="s-pe-ltp">—</div>
+      <div class="stat-chg" id="s-pe-ltp-c">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">Updated</div>
+      <div class="stat-val" id="s-count">—</div>
+      <div class="stat-chg" id="s-ts">—</div>
+    </div>
+  </div>
+
+  <div class="view-tabs">
+    <button class="tab active" onclick="setView('oi',this)">OI Buildup</button>
+    <button class="tab" onclick="setView('ltp',this)">LTP</button>
+    <button class="tab" onclick="setView('change',this)">OI Change</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title" id="main-title">OPEN INTEREST — CE vs PE</span>
+      <div class="legend">
+        <div class="leg-item ce-col"><div class="leg-dot" style="background:var(--ce)"></div>CE</div>
+        <div class="leg-item pe-col"><div class="leg-dot" style="background:var(--pe)"></div>PE</div>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+  </div>
+
+  <div class="mini-row">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">CE OI Trend</span>
+        <span class="ce-col" style="font-family:var(--mono);font-size:11px;" id="m-ce-last">—</span>
+      </div>
+      <div class="chart-wrap mini"><canvas id="miniCE"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">PE OI Trend</span>
+        <span class="pe-col" style="font-family:var(--mono);font-size:11px;" id="m-pe-last">—</span>
+      </div>
+      <div class="chart-wrap mini"><canvas id="miniPE"></canvas></div>
+    </div>
+  </div>
+
+</div><script>
+// ── CONFIG ────────────────────────────────────────────────────────
+const STRIKES_API   = '/api/oi/strikes/NIFTY';
+const OI_API_BASE   = '/api/oi/strike/NIFTY/';
+const REFRESH_SEC   = 60;
+const FETCH_TIMEOUT = 10000;
+
+// ── STATE ─────────────────────────────────────────────────────────
+let DATA         = [];
+let STRIKES      = [];
+let charts       = {};
+let currentView  = 'oi';
+let currentStrike = null;
+let isLive       = false;
+let countdown    = REFRESH_SEC;
+let countdownTmr = null;
+let isFetching   = false;
+
+// ── CLOCK ─────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-IN', { hour12: false });
+}, 1000);
+
+// ── HELPERS ───────────────────────────────────────────────────────
+const L   = v => v >= 1e5 ? (v/1e5).toFixed(2)+'L' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : Math.round(v).toString();
+const T   = ts => new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:false});
+const Sgn = v  => (v >= 0 ? '+' : '') + v.toFixed(2);
+
+// ── STRIKE HANDLER ────────────────────────────────────────────────
+function setStrike(strike) {
+  if (strike === currentStrike) return;
+  currentStrike = strike;
+  document.getElementById('strike-badge').textContent = `STRIKE ${strike}`;
+  loadData();
 }
 
-async function fetchData(){
-  try{
-    const response = await fetch("http://localhost:8080/optionChain/oi-data");
-    if(!response.ok) throw new Error("HTTP " + response.status);
-    return await response.json();
-  }catch(err){
-    console.error("Error fetching API", err);
-    return [];
+// ── LOAD STRIKES ──────────────────────────────────────────────────
+async function loadStrikes() {
+  try {
+    const res = await fetchWithTimeout(STRIKES_API, FETCH_TIMEOUT);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    STRIKES = await res.json();
+    
+    // Set ATM (middle strike) as default
+    const atmIndex = Math.floor(STRIKES.length / 2);
+    const atmStrike = STRIKES[atmIndex];
+    
+    const select = document.getElementById('strike-select');
+    select.innerHTML = '<option value="">Select Strike</option>' + 
+      STRIKES.map(s => `<option value="${s}">${s}</option>`).join('');
+    
+    // --- DROPDOWN CHANGE LISTENER ---
+    select.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val) setStrike(val);
+    });
+    
+    select.value = atmStrike;
+    setStrike(atmStrike);
+    
+  } catch (err) {
+    console.warn('[Strikes]', err.message);
+    setStatus('error', 'Strikes unavailable');
   }
 }
 
-async function setupAndRender(selectedInterval){
-  apiData = await fetchData();
-  if(apiData.length > 0){
-    document.getElementById("optName").textContent = apiData[0].name || "-";
-    document.getElementById("expiry").textContent = apiData[0].expiry || "-";
-    document.getElementById("lastUpdate").textContent = new Date().toLocaleString(undefined, {hour12:false});
-  }
-  if(apiData.length){
-    const firstItem = apiData[0];
-    const callIntervals = firstItem.callSignal ? Object.keys(JSON.parse(firstItem.callSignal).intervalChanges || {}) : [];
-    const putIntervals  = firstItem.putSignal  ? Object.keys(JSON.parse(firstItem.putSignal).intervalChanges || {}) : [];
-    intervalOptions = Array.from(new Set([...callIntervals,...putIntervals]));
-    const sel = document.getElementById('intervalSelector');
-    sel.innerHTML = intervalOptions.map(k=>`<option value="${k}">${k}</option>`).join('');
-    let defaultInterval = intervalOptions.includes("Overall")? "Overall": intervalOptions[0];
-    sel.value = (selectedInterval && intervalOptions.includes(selectedInterval)) ? selectedInterval : defaultInterval;
-    sel.onchange = ()=> renderTable(sel.value);
-    renderTable(sel.value);
+// ── STATUS UI ─────────────────────────────────────────────────────
+function setStatus(state, msg) {
+  const dot  = document.getElementById('status-dot');
+  const txt  = document.getElementById('status-text');
+  const tag  = document.getElementById('src-tag');
+  dot.className  = 'status-dot ' + state;
+  txt.className  = state;
+  txt.textContent = msg;
+  if (state === 'live') {
+    tag.className   = 'src-tag src-live';
+    tag.textContent = 'LIVE';
+  } else if (state === 'error') {
+    tag.className   = 'src-tag src-sample';
+    tag.textContent = 'CACHED';
   }
 }
 
-function renderTable(selectedInterval){
-  if(!intervalOptions.includes(selectedInterval)) selectedInterval = intervalOptions[0];
-  const tbody = document.getElementById("optionChainBody");
-  tbody.innerHTML = "";
-  let maxCallOI = 0, maxPutOI = 0;
-  const processed = apiData.map(item=>{
-    const call = item.callSignal? JSON.parse(item.callSignal):{};
-    const put  = item.putSignal? JSON.parse(item.putSignal):{};
-    const cInt = call.intervalChanges?.[selectedInterval] || {};
-    const pInt = put.intervalChanges?.[selectedInterval] || {};
-    maxCallOI = Math.max(maxCallOI, call.oi||0);
-    maxPutOI = Math.max(maxPutOI, put.oi||0);
-    return {item,call,put,cInt,pInt};
+// ── COUNTDOWN ─────────────────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownTmr);
+  countdown = REFRESH_SEC;
+  document.getElementById('countdown').textContent = `next in ${countdown}s`;
+  countdownTmr = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      clearInterval(countdownTmr);
+      document.getElementById('countdown').textContent = 'refreshing…';
+      loadData();
+    } else {
+      document.getElementById('countdown').textContent = `next in ${countdown}s`;
+    }
+  }, 1000);
+}
+
+// ── FETCH WITH TIMEOUT ────────────────────────────────────────────
+async function fetchWithTimeout(url, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (e) {
+    clearTimeout(timer);
+    throw e;
+  }
+}
+
+// ── LOAD OI DATA ──────────────────────────────────────────────────
+async function loadData() {
+  if (!currentStrike || isFetching) return;
+  isFetching = true;
+
+  const API_URL = OI_API_BASE + currentStrike;
+  
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '↻';
+  btn.classList.add('spinning');
+  setStatus('loading', 'fetching…');
+
+  try {
+    const res = await fetchWithTimeout(API_URL, FETCH_TIMEOUT);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Non-JSON response from API');
+    }
+
+    const raw  = await res.json();
+    const rows = normalise(raw);
+
+    if (!rows.length) throw new Error('Empty dataset');
+
+    DATA   = rows;
+    isLive = true;
+    const ts = T(DATA[DATA.length - 1].timestamp);
+    setStatus('live', `live · last ${ts}`);
+
+  } catch (err) {
+    isLive = false;
+    const msg = err.name === 'AbortError'
+      ? 'timeout — using cached data'
+      : `${err.message} — using cached data`;
+    setStatus('error', msg);
+    console.warn('[OI Dashboard]', err.message);
+  }
+
+  render(DATA);
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display     = 'block';
+
+  btn.disabled = false;
+  btn.textContent = '↻ REFRESH';
+  btn.classList.remove('spinning');
+  isFetching = false;
+
+  startCountdown();
+}
+
+function manualRefresh() {
+  clearInterval(countdownTmr);
+  loadData();
+}
+
+// ── Normalise API response ────────────────────────────────────────
+function normalise(raw) {
+  if (Array.isArray(raw))            return raw;
+  if (raw && Array.isArray(raw.data)) return raw.data;
+  if (raw && typeof raw === 'object') return [raw];
+  return [];
+}
+
+// ── CHART DEFAULTS ────────────────────────────────────────────────
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size   = 10;
+Chart.defaults.color       = '#3d5468';
+
+const GRID = 'rgba(28,42,56,0.9)';
+const xCfg = { grid:{color:GRID}, border:{color:'#1c2a38'}, ticks:{color:'#3d5468',maxRotation:0,maxTicksLimit:10} };
+const yCfg = { grid:{color:GRID}, border:{color:'#1c2a38'}, ticks:{color:'#3d5468', callback: v => L(v)} };
+const TTP  = {
+  backgroundColor:'#111820', borderColor:'#1c2a38', borderWidth:1,
+  titleColor:'#5a7a92', bodyColor:'#b8ccd8', padding:10, boxWidth:8, boxHeight:8
+};
+
+// ── CHARTS ────────────────────────────────────────────────────────
+function buildMain(data) {
+  const labels = data.map(d => T(d.timestamp));
+  let datasets, title, type;
+
+  if (currentView === 'oi') {
+    title = 'OPEN INTEREST — CE vs PE'; type = 'bar';
+    datasets = [
+      { label:'CE OI', data:data.map(d=>d.ceOi),
+        backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+      { label:'PE OI', data:data.map(d=>d.peOi),
+        backgroundColor:'rgba(255,83,112,0.22)', borderColor:'#ff5370', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+    ];
+  } else if (currentView === 'ltp') {
+    title = 'LTP MOVEMENT — CE vs PE'; type = 'line';
+    datasets = [
+      { label:'CE LTP', data:data.map(d=>d.ceLtp), borderColor:'#00c8ff',
+        backgroundColor:'rgba(0,200,255,0.06)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
+      { label:'PE LTP', data:data.map(d=>d.peLtp), borderColor:'#ff5370',
+        backgroundColor:'rgba(255,83,112,0.06)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
+    ];
+  } else {
+    title = 'OI CHANGE — CE vs PE'; type = 'bar';
+    datasets = [
+      { label:'CE OI Δ', data:data.map(d=>d.ceOiChange),
+        backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+      { label:'PE OI Δ', data:data.map(d=>d.peOiChange),
+        backgroundColor:'rgba(255,83,112,0.22)', borderColor:'#ff5370', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+    ];
+  }
+
+  document.getElementById('main-title').textContent = title;
+  if (charts.main) charts.main.destroy();
+  charts.main = new Chart(document.getElementById('mainChart'), {
+    type,
+    data: { labels, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:{duration:300},
+      interaction:{mode:'index',intersect:false},
+      plugins: {
+        legend:{display:false},
+        tooltip:{...TTP, callbacks:{label: ctx =>
+          ` ${ctx.dataset.label}: ${currentView==='ltp' ? '₹'+ctx.raw.toFixed(2) : L(ctx.raw)}`
+        }}
+      },
+      scales: {
+        x: xCfg,
+        y: currentView==='ltp'
+          ? {...yCfg, ticks:{...yCfg.ticks, callback: v=>'₹'+v}}
+          : yCfg
+      }
+    }
   });
-  processed.forEach(({item,call,put,cInt,pInt})=>{
-    const tr = document.createElement("tr");
-    if(item.spot === "Y") tr.classList.add("spot");
-    tr.innerHTML = `
-      <td>${formatSignal(item.callTradingSignal)}</td>
-      <td class="${call.oi===maxCallOI?'highlight':''}">
-        ${fmtUnits(call.oi)}<br><small>${formatDelta(cInt.oiChange)}</small>
-      </td>
-      <td>${fmtUnits(call.volume)}<br><small>${formatDelta(cInt.volumeChange)}</small></td>
-      <td class="${cInt.ltpChange>0?'pos':cInt.ltpChange<0?'neg':''}">
-        ${fmtP(call.ltp)}<br><small>${formatDelta(cInt.ltpChange)}</small>
-      </td>
-      <td>${item.strikePrice}</td>
-      <td class="${pInt.ltpChange>0?'pos':pInt.ltpChange<0?'neg':''}">
-        ${fmtP(put.ltp)}<br><small>${formatDelta(pInt.ltpChange)}</small>
-      </td>
-      <td>${fmtUnits(put.volume)}<br><small>${formatDelta(pInt.volumeChange)}</small></td>
-      <td class="${put.oi===maxPutOI?'highlight':''}">
-        ${fmtUnits(put.oi)}<br><small>${formatDelta(pInt.oiChange)}</small>
-      </td>
-      <td>${formatSignal(item.putTradingSignal)}</td>
-    `;
-    tbody.appendChild(tr);
+}
+
+function buildMini(data) {
+  const labels = data.map(d => T(d.timestamp));
+  const miniOpts = {
+    responsive:true, maintainAspectRatio:false, animation:{duration:300},
+    plugins:{legend:{display:false}, tooltip:{...TTP, callbacks:{label:ctx=>` ${L(ctx.raw)}`}}},
+    scales:{ x:{...xCfg, ticks:{...xCfg.ticks, maxTicksLimit:6}}, y:yCfg }
+  };
+  if (charts.ce) charts.ce.destroy();
+  charts.ce = new Chart(document.getElementById('miniCE'), {
+    type:'line',
+    data:{labels, datasets:[{data:data.map(d=>d.ceOi), borderColor:'#00c8ff',
+      backgroundColor:'rgba(0,200,255,0.1)', fill:true, tension:0.4, pointRadius:0, borderWidth:1.5}]},
+    options: miniOpts
+  });
+  if (charts.pe) charts.pe.destroy();
+  charts.pe = new Chart(document.getElementById('miniPE'), {
+    type:'line',
+    data:{labels, datasets:[{data:data.map(d=>d.peOi), borderColor:'#ff5370',
+      backgroundColor:'rgba(255,83,112,0.1)', fill:true, tension:0.4, pointRadius:0, borderWidth:1.5}]},
+    options: miniOpts
   });
 }
 
-setupAndRender("Overall");
-setInterval(()=>{ setupAndRender(document.getElementById('intervalSelector').value); },180000);
+// ── STATS ─────────────────────────────────────────────────────────
+function updateStats(data) {
+  if (!data.length) return;
+  const l   = data[data.length - 1];
+  const pcr = l.peOi / l.ceOi;
+  document.getElementById('s-ce-oi').textContent  = L(l.ceOi);
+  document.getElementById('s-pe-oi').textContent  = L(l.peOi);
+  document.getElementById('s-pcr').textContent    = pcr.toFixed(2);
+  document.getElementById('s-count').textContent  = data.length + ' pts';
+  document.getElementById('s-ts').textContent     = T(l.timestamp);
+  document.getElementById('s-ce-chg').innerHTML   = `<span class="${l.ceOiChange>=0?'up':'dn'}">${l.ceOiChange>=0?'+':''}${L(l.ceOiChange)} from open</span>`;
+  document.getElementById('s-pe-chg').innerHTML   = `<span class="${l.peOiChange>=0?'up':'dn'}">${l.peOiChange>=0?'+':''}${L(l.peOiChange)} from open</span>`;
+  const bias = pcr>1.2?'BULLISH':pcr<0.7?'BEARISH':'NEUTRAL';
+  document.getElementById('s-pcr-bias').innerHTML = `<span class="${pcr>1.2?'up':pcr<0.7?'dn':'gold'}">${bias}</span>`;
+  document.getElementById('s-ce-ltp').innerHTML   = `<span class="${l.ceLtpChange>=0?'up':'dn'}">₹${l.ceLtp.toFixed(2)}</span>`;
+  document.getElementById('s-ce-ltp-c').innerHTML = `<span class="${l.ceLtpChange>=0?'up':'dn'}">${Sgn(l.ceLtpChange)} (${Sgn(l.cePct)}%)</span>`;
+  document.getElementById('s-pe-ltp').innerHTML   = `<span class="${l.peLtpChange>=0?'up':'dn'}">₹${l.peLtp.toFixed(2)}</span>`;
+  document.getElementById('s-pe-ltp-c').innerHTML = `<span class="${l.peLtpChange>=0?'up':'dn'}">${Sgn(l.peLtpChange)} (${Sgn(l.pePct)}%)</span>`;
+  document.getElementById('m-ce-last').textContent = L(l.ceOi);
+  document.getElementById('m-pe-last').textContent = L(l.peOi);
+}
+
+// ── VIEW SWITCH ───────────────────────────────────────────────────
+function setView(v, el) {
+  currentView = v;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  if (DATA.length) buildMain(DATA);
+}
+
+// ── RENDER ────────────────────────────────────────────────────────
+function render(data) {
+  updateStats(data);
+  buildMain(data);
+  buildMini(data);
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadStrikes();
+});
 </script>
 </body>
 </html>

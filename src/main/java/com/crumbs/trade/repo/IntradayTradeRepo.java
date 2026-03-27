@@ -2,6 +2,8 @@ package com.crumbs.trade.repo;
 
 import com.crumbs.trade.entity.IntradayTrade;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,4 +19,8 @@ public interface IntradayTradeRepo extends JpaRepository<IntradayTrade, Long> {
 
     // Keep the original Optional version if other parts of your code use it
     Optional<IntradayTrade> findBySymbolAndStatus(String symbol, String status);
+    
+    @Modifying
+    @Query("delete from IntradayTrade I")
+    void deleteAll();
 }
