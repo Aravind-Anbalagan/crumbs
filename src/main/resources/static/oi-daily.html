@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,126 +8,318 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg:      #0a0e14;
-    --surface: #111820;
-    --border:  #1c2a38;
-    --ce:      #00c8ff;
-    --pe:      #ff5370;
-    --gold:    #f0b429;
-    --green:   #3ddc84;
-    --red:     #ff5370;
-    --muted:   #3d5468;
-    --label:   #5a7a92;
-    --text:    #b8ccd8;
-    --white:   #e8f0f7;
-    --mono:    'IBM Plex Mono', monospace;
-    --sans:    'IBM Plex Sans', sans-serif;
-  }
-  body { background:var(--bg); font-family:var(--sans); color:var(--text); min-height:100vh; padding:18px; }
 
-  /* HEADER */
-  .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
-  .header-left { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
-  .title { font-family:var(--mono); font-size:18px; font-weight:600; color:var(--white); }
-  .strike-select-wrap { display:flex; align-items:center; gap:8px; }
-  .strike-badge { 
-    font-family:var(--mono); font-size:11px; padding:2px 9px; 
-    border:1px solid var(--ce); color:var(--ce); letter-spacing:1px; 
-    background:var(--surface); border-radius:4px;
+  /* ── DARK THEME (default) ── */
+  [data-theme="dark"] {
+    --bg:         #0a0e14;
+    --surface:    #111820;
+    --surface2:   #17212d;
+    --border:     #1c2a38;
+    --border2:    #243444;
+    --ce:         #00c8ff;
+    --pe:         #ff5370;
+    --gold:       #f0b429;
+    --green:      #3ddc84;
+    --red:        #ff5370;
+    --muted:      #3d5468;
+    --label:      #5a7a92;
+    --text:       #b8ccd8;
+    --white:      #e8f0f7;
+    --shadow:     rgba(0,0,0,0.4);
+    --grid:       rgba(28,42,56,0.9);
+    --tooltip-bg: #111820;
+    --tooltip-bd: #1c2a38;
+    --toggle-bg:  #1c2a38;
+    --toggle-knob:#5a7a92;
+  }
+
+  /* ── LIGHT THEME ── */
+  [data-theme="light"] {
+    --bg:         #f0f4f8;
+    --surface:    #ffffff;
+    --surface2:   #f8fafc;
+    --border:     #d1dde8;
+    --border2:    #bcccd8;
+    --ce:         #0096c7;
+    --pe:         #e03050;
+    --gold:       #b07d0a;
+    --green:      #1a9952;
+    --red:        #e03050;
+    --muted:      #8fa8bc;
+    --label:      #5a7a92;
+    --text:       #344a5c;
+    --white:      #1a2a38;
+    --shadow:     rgba(0,0,0,0.08);
+    --grid:       rgba(190,210,225,0.7);
+    --tooltip-bg: #ffffff;
+    --tooltip-bd: #d1dde8;
+    --toggle-bg:  #d1dde8;
+    --toggle-knob:#5a7a92;
+  }
+
+  /* ── BASE ── */
+  body {
+    background: var(--bg);
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 18px;
+    transition: background .25s, color .25s;
+  }
+
+  /* ── THEME TOGGLE ── */
+  .theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .theme-toggle-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--label);
+    transition: color .25s;
+    letter-spacing: .5px;
+  }
+  .toggle-track {
+    width: 36px; height: 20px;
+    background: var(--toggle-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border2);
+    position: relative;
+    transition: background .25s, border-color .25s;
+  }
+  .toggle-knob {
+    width: 14px; height: 14px;
+    background: var(--toggle-knob);
+    border-radius: 50%;
+    position: absolute;
+    top: 2px; left: 2px;
+    transition: transform .2s, background .25s;
+  }
+  [data-theme="light"] .toggle-knob {
+    transform: translateX(16px);
+    background: var(--ce);
+  }
+  .toggle-icon { font-size: 13px; }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+  }
+  .header-left  { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px; font-weight: 600;
+    color: var(--white);
+    transition: color .25s;
+  }
+
+  .strike-select-wrap { display: flex; align-items: center; gap: 8px; }
+  .strike-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; padding: 3px 10px;
+    border: 1px solid var(--ce); color: var(--ce);
+    background: transparent;
+    letter-spacing: 1px;
+    transition: color .25s, border-color .25s;
   }
   .strike-select {
-    font-family:var(--mono); font-size:11px; padding:4px 8px;
-    background:var(--surface); border:1px solid var(--border); color:var(--ce);
-    border-radius:4px; min-width:90px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; padding: 4px 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--ce);
+    min-width: 100px;
+    transition: background .25s, border-color .25s, color .25s;
   }
-  .strike-select:focus { outline:none; border-color:var(--ce); box-shadow:0 0 0 2px rgba(0,200,255,.2); }
-  .header-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-  #clock { font-family:var(--mono); font-size:12px; color:var(--label); }
+  .strike-select:focus { outline: none; border-color: var(--ce); }
 
-  /* STATUS BAR */
+  #clock {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; color: var(--label);
+    transition: color .25s;
+  }
+
+  /* ── STATUS BAR ── */
   .status-bar {
-    display:flex; align-items:center; gap:8px;
-    padding:6px 12px;
-    border:1px solid var(--border);
-    font-family:var(--mono); font-size:11px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    transition: background .25s, border-color .25s;
   }
-  .status-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-  .status-dot.live    { background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 2s ease infinite; }
-  .status-dot.loading { background:var(--gold);  box-shadow:0 0 6px var(--gold);  animation:spin-pulse 1s linear infinite; }
-  .status-dot.error   { background:var(--red);   box-shadow:0 0 6px var(--red); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.live    { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s ease infinite; }
+  .status-dot.loading { background: var(--gold);  animation: blink .8s linear infinite; }
+  .status-dot.error   { background: var(--red); }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-  @keyframes spin-pulse { 0%{opacity:1} 50%{opacity:.2} 100%{opacity:1} }
-  #status-text { color:var(--label); }
-  #status-text.live   { color:var(--green); }
-  #status-text.error  { color:var(--red); }
 
-  /* COUNTDOWN */
-  #countdown { font-family:var(--mono); font-size:11px; color:var(--muted); }
+  #status-text { color: var(--label); transition: color .25s; }
+  #status-text.live  { color: var(--green); }
+  #status-text.error { color: var(--red); }
+
+  #countdown {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    transition: color .25s;
+  }
 
   .btn-refresh {
-    font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:1px;
-    padding:5px 14px; background:none; border:1px solid var(--border); color:var(--label);
-    cursor:pointer; transition:.2s;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 1px;
+    padding: 5px 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--label); cursor: pointer;
+    transition: background .25s, border-color .2s, color .2s;
   }
-  .btn-refresh:hover { border-color:var(--ce); color:var(--ce); }
-  .btn-refresh:disabled { opacity:.4; cursor:not-allowed; }
-  .btn-refresh.spinning { animation:spin-btn .6s linear infinite; }
-  @keyframes spin-btn { to{transform:rotate(360deg)} }
+  .btn-refresh:hover { border-color: var(--ce); color: var(--ce); }
+  .btn-refresh:disabled { opacity: .4; cursor: not-allowed; }
+  @keyframes spin-btn { to { transform: rotate(360deg); } }
+  .btn-refresh.spinning { animation: spin-btn .6s linear infinite; }
 
-  /* STATS */
-  .stats { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-  .stat { background:var(--surface); border:1px solid var(--border); padding:10px 16px; min-width:130px; flex:1; }
-  .stat-lbl { font-size:10px; font-weight:600; letter-spacing:1.5px; color:var(--label); text-transform:uppercase; margin-bottom:5px; }
-  .stat-val { font-family:var(--mono); font-size:20px; font-weight:600; color:var(--white); line-height:1; }
-  .stat-chg { font-family:var(--mono); font-size:11px; margin-top:4px; }
-  .ce-col { color:var(--ce); }
-  .pe-col { color:var(--pe); }
-  .up     { color:var(--green); }
-  .dn     { color:var(--red); }
-  .gold   { color:var(--gold); }
-
-  /* TABS */
-  .view-tabs { display:flex; margin-bottom:12px; border:1px solid var(--border); width:fit-content; }
-  .tab {
-    font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:1px;
-    padding:7px 18px; background:none; border:none; color:var(--label);
-    cursor:pointer; transition:.2s; border-right:1px solid var(--border); text-transform:uppercase;
+  /* ── STATS ── */
+  .stats { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 11px 16px; min-width: 130px; flex: 1;
+    transition: background .25s, border-color .25s;
+    box-shadow: 0 1px 4px var(--shadow);
   }
-  .tab:last-child { border-right:none; }
-  .tab.active { background:var(--surface); color:var(--white); }
-  .tab:hover:not(.active) { color:var(--text); }
+  .stat-lbl {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+    color: var(--label); text-transform: uppercase; margin-bottom: 5px;
+    transition: color .25s;
+  }
+  .stat-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px; font-weight: 600; color: var(--white); line-height: 1;
+    transition: color .25s;
+  }
+  .stat-chg {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; margin-top: 4px;
+  }
 
-  /* CARDS */
-  .card { background:var(--surface); border:1px solid var(--border); padding:18px 20px 14px; margin-bottom:12px; }
-  .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
-  .card-title { font-size:11px; font-weight:600; letter-spacing:1.5px; color:var(--label); text-transform:uppercase; }
-  .legend { display:flex; gap:16px; align-items:center; }
-  .leg-item { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
-  .leg-dot { width:10px; height:3px; border-radius:2px; }
+  .ce-col { color: var(--ce)   !important; }
+  .pe-col { color: var(--pe)   !important; }
+  .up     { color: var(--green)!important; }
+  .dn     { color: var(--red)  !important; }
+  .gold   { color: var(--gold) !important; }
 
-  /* FIXED HEIGHT CHARTS */
-  .chart-wrap { position:relative; width:100%; height:320px; }
-  .chart-wrap.mini { height:200px; }
-  .chart-wrap canvas { position:absolute !important; top:0; left:0; width:100% !important; height:100% !important; }
-
-  /* MINI ROW */
-  .mini-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-
-  /* LOADING OVERLAY */
-  #loading { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:99; }
-  .spinner { width:36px; height:36px; border:2px solid var(--border); border-top-color:var(--ce); border-radius:50%; animation:spin .7s linear infinite; }
-  @keyframes spin { to{transform:rotate(360deg)} }
-  #loading p { font-family:var(--mono); font-size:11px; color:var(--ce); letter-spacing:2px; }
-  #app { display:none; }
-
-  /* DATA SOURCE TAG */
+  /* ── SOURCE TAG ── */
   .src-tag {
-    display:inline-block; font-family:var(--mono); font-size:9px; font-weight:600;
-    letter-spacing:1px; padding:1px 7px; border-radius:2px; vertical-align:middle; margin-left:6px;
+    display: inline-block; font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; font-weight: 600; letter-spacing: 1px;
+    padding: 2px 7px; vertical-align: middle;
   }
-  .src-live   { background:rgba(61,220,132,.15); color:var(--green); border:1px solid rgba(61,220,132,.4); }
-  .src-sample { background:rgba(240,180,41,.10); color:var(--gold);  border:1px solid rgba(240,180,41,.3); }
+  .src-live   { background: rgba(61,220,132,.15); color: var(--green); border: 1px solid rgba(61,220,132,.4); }
+  .src-sample { background: rgba(240,180,41,.10); color: var(--gold);  border: 1px solid rgba(240,180,41,.3); }
+
+  /* ── TABS ── */
+  .view-tabs {
+    display: flex; margin-bottom: 12px;
+    border: 1px solid var(--border);
+    width: fit-content;
+    transition: border-color .25s;
+  }
+  .tab {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 1px;
+    padding: 7px 18px; background: none; border: none;
+    color: var(--label); cursor: pointer; transition: background .2s, color .2s;
+    border-right: 1px solid var(--border); text-transform: uppercase;
+  }
+  .tab:last-child { border-right: none; }
+  .tab.active { background: var(--surface2); color: var(--white); }
+  .tab:hover:not(.active) { color: var(--text); background: var(--surface2); }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 18px 20px 14px; margin-bottom: 12px;
+    box-shadow: 0 1px 6px var(--shadow);
+    transition: background .25s, border-color .25s, box-shadow .25s;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    transition: border-color .25s;
+  }
+  .card-title {
+    font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+    color: var(--label); text-transform: uppercase;
+    transition: color .25s;
+  }
+  .legend { display: flex; gap: 16px; align-items: center; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .leg-dot { width: 10px; height: 3px; border-radius: 2px; }
+
+  /* ── FIXED HEIGHT CHARTS ── */
+  .chart-wrap { position: relative; width: 100%; height: 320px; }
+  .chart-wrap.mini { height: 200px; }
+  .chart-wrap canvas {
+    position: absolute !important;
+    top: 0; left: 0;
+    width: 100% !important; height: 100% !important;
+  }
+
+  /* ── MINI ROW ── */
+  .mini-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* ── RECENT TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  th {
+    text-align: left; font-size: 10px; font-weight: 600;
+    letter-spacing: 1.5px; color: var(--label); text-transform: uppercase;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    transition: color .25s, border-color .25s;
+  }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    transition: color .25s, border-color .25s, background .25s;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .sig {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    font-family: 'IBM Plex Sans', sans-serif; letter-spacing: 1px;
+    padding: 2px 7px;
+  }
+  .sig-bull { background: rgba(61,220,132,.12); color: var(--green); border: 1px solid rgba(61,220,132,.35); }
+  .sig-bear { background: rgba(255,83,112,.12); color: var(--pe);    border: 1px solid rgba(255,83,112,.35); }
+  .sig-neu  { background: rgba(240,180,41,.10); color: var(--gold);  border: 1px solid rgba(240,180,41,.30); }
+
+  /* ── LOADING SCREEN ── */
+  #loading {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; z-index: 99;
+    transition: background .25s;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid var(--border); border-top-color: var(--ce);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--ce); letter-spacing: 2px;
+  }
+  #app { display: none; }
+
+  /* ── DIVIDER ── */
+  .divider { height: 1px; background: var(--border); margin: 4px 0 12px; transition: background .25s; }
 </style>
 </head>
 <body>
@@ -139,6 +331,7 @@
 
 <div id="app">
 
+  <!-- HEADER -->
   <div class="header">
     <div class="header-left">
       <span class="title">NIFTY</span>
@@ -152,6 +345,14 @@
     </div>
     <div class="header-right">
       <span id="clock"></span>
+
+      <!-- THEME TOGGLE -->
+      <div class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">
+        <span class="toggle-icon">🌙</span>
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+        <span class="toggle-icon">☀️</span>
+      </div>
+
       <div class="status-bar">
         <div class="status-dot live" id="status-dot"></div>
         <span id="status-text">—</span>
@@ -161,6 +362,7 @@
     </div>
   </div>
 
+  <!-- STATS -->
   <div class="stats">
     <div class="stat">
       <div class="stat-lbl">CE OI</div>
@@ -194,12 +396,14 @@
     </div>
   </div>
 
+  <!-- TABS -->
   <div class="view-tabs">
     <button class="tab active" onclick="setView('oi',this)">OI Buildup</button>
     <button class="tab" onclick="setView('ltp',this)">LTP</button>
     <button class="tab" onclick="setView('change',this)">OI Change</button>
   </div>
 
+  <!-- MAIN CHART -->
   <div class="card">
     <div class="card-head">
       <span class="card-title" id="main-title">OPEN INTEREST — CE vs PE</span>
@@ -211,24 +415,53 @@
     <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
   </div>
 
+  <!-- MINI CHARTS -->
   <div class="mini-row">
     <div class="card">
       <div class="card-head">
         <span class="card-title">CE OI Trend</span>
-        <span class="ce-col" style="font-family:var(--mono);font-size:11px;" id="m-ce-last">—</span>
+        <span class="ce-col" style="font-family:'IBM Plex Mono',monospace;font-size:11px;" id="m-ce-last">—</span>
       </div>
       <div class="chart-wrap mini"><canvas id="miniCE"></canvas></div>
     </div>
     <div class="card">
       <div class="card-head">
         <span class="card-title">PE OI Trend</span>
-        <span class="pe-col" style="font-family:var(--mono);font-size:11px;" id="m-pe-last">—</span>
+        <span class="pe-col" style="font-family:'IBM Plex Mono',monospace;font-size:11px;" id="m-pe-last">—</span>
       </div>
       <div class="chart-wrap mini"><canvas id="miniPE"></canvas></div>
     </div>
   </div>
 
-</div><script>
+  <!-- RECENT TABLE -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Recent Snapshots</span>
+      <span style="font-size:11px;color:var(--label);font-family:'IBM Plex Mono',monospace;">last 10 entries</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>CE OI</th>
+            <th>CE OI Δ</th>
+            <th>CE LTP</th>
+            <th>PE OI</th>
+            <th>PE OI Δ</th>
+            <th>PE LTP</th>
+            <th>PCR</th>
+            <th>Signal</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
 // ── CONFIG ────────────────────────────────────────────────────────
 const STRIKES_API   = '/api/oi/strikes/NIFTY';
 const OI_API_BASE   = '/api/oi/strike/NIFTY/';
@@ -236,15 +469,37 @@ const REFRESH_SEC   = 60;
 const FETCH_TIMEOUT = 10000;
 
 // ── STATE ─────────────────────────────────────────────────────────
-let DATA         = [];
-let STRIKES      = [];
-let charts       = {};
-let currentView  = 'oi';
+let DATA          = [];
+let charts        = {};
+let currentView   = 'oi';
 let currentStrike = null;
-let isLive       = false;
-let countdown    = REFRESH_SEC;
-let countdownTmr = null;
-let isFetching   = false;
+let countdown     = REFRESH_SEC;
+let countdownTmr  = null;
+let isFetching    = false;
+
+// ── THEME ─────────────────────────────────────────────────────────
+function getTheme() {
+  return localStorage.getItem('oi-theme') || 'dark';
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('oi-theme', theme);
+  // Rebuild charts so grid/text colours update
+  if (DATA.length) {
+    buildMain(DATA);
+    buildMini(DATA);
+  }
+}
+function toggleTheme() {
+  applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+// Apply saved theme immediately (before paint)
+applyTheme(getTheme());
+
+// ── CSS-VAR READER (used by charts) ──────────────────────────────
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
 
 // ── CLOCK ─────────────────────────────────────────────────────────
 setInterval(() => {
@@ -257,50 +512,18 @@ const L   = v => v >= 1e5 ? (v/1e5).toFixed(2)+'L' : v >= 1e3 ? (v/1e3).toFixed(
 const T   = ts => new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:false});
 const Sgn = v  => (v >= 0 ? '+' : '') + v.toFixed(2);
 
-// ── STRIKE HANDLER ────────────────────────────────────────────────
-function setStrike(strike) {
-  if (strike === currentStrike) return;
-  currentStrike = strike;
-  document.getElementById('strike-badge').textContent = `STRIKE ${strike}`;
-  loadData();
-}
-
-// ── LOAD STRIKES ──────────────────────────────────────────────────
-async function loadStrikes() {
-  try {
-    const res = await fetchWithTimeout(STRIKES_API, FETCH_TIMEOUT);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
-    STRIKES = await res.json();
-    
-    // Set ATM (middle strike) as default
-    const atmIndex = Math.floor(STRIKES.length / 2);
-    const atmStrike = STRIKES[atmIndex];
-    
-    const select = document.getElementById('strike-select');
-    select.innerHTML = '<option value="">Select Strike</option>' + 
-      STRIKES.map(s => `<option value="${s}">${s}</option>`).join('');
-    
-    // --- DROPDOWN CHANGE LISTENER ---
-    select.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (val) setStrike(val);
-    });
-    
-    select.value = atmStrike;
-    setStrike(atmStrike);
-    
-  } catch (err) {
-    console.warn('[Strikes]', err.message);
-    setStatus('error', 'Strikes unavailable');
-  }
+function normalise(raw) {
+  if (Array.isArray(raw))             return raw;
+  if (raw && Array.isArray(raw.data)) return raw.data;
+  if (raw && typeof raw === 'object') return [raw];
+  return [];
 }
 
 // ── STATUS UI ─────────────────────────────────────────────────────
 function setStatus(state, msg) {
-  const dot  = document.getElementById('status-dot');
-  const txt  = document.getElementById('status-text');
-  const tag  = document.getElementById('src-tag');
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  const tag = document.getElementById('src-tag');
   dot.className  = 'status-dot ' + state;
   txt.className  = state;
   txt.textContent = msg;
@@ -330,18 +553,46 @@ function startCountdown() {
   }, 1000);
 }
 
-// ── FETCH WITH TIMEOUT ────────────────────────────────────────────
+// ── FETCH ─────────────────────────────────────────────────────────
 async function fetchWithTimeout(url, ms) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(timer);
     return res;
-  } catch (e) {
-    clearTimeout(timer);
-    throw e;
+  } catch (e) { clearTimeout(timer); throw e; }
+}
+
+// ── LOAD STRIKES ──────────────────────────────────────────────────
+async function loadStrikes() {
+  try {
+    const res = await fetchWithTimeout(STRIKES_API, FETCH_TIMEOUT);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const strikes = await res.json();
+    const atmIdx  = Math.floor(strikes.length / 2);
+    const atm     = strikes[atmIdx];
+
+    const select = document.getElementById('strike-select');
+    select.innerHTML = '<option value="">Select Strike</option>' +
+      strikes.map(s => `<option value="${s}"${s===atm?' selected':''}>${s}</option>`).join('');
+    select.addEventListener('change', e => { if (e.target.value) setStrike(e.target.value); });
+    setStrike(atm);
+
+  } catch (err) {
+    console.warn('[Strikes]', err.message);
+    setStatus('error', 'Strikes unavailable');
+    // Show app anyway with empty state
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display     = 'block';
   }
+}
+
+function setStrike(strike) {
+  if (strike === currentStrike) return;
+  currentStrike = strike;
+  document.getElementById('strike-badge').textContent = `STRIKE ${strike}`;
+  loadData();
 }
 
 // ── LOAD OI DATA ──────────────────────────────────────────────────
@@ -349,8 +600,6 @@ async function loadData() {
   if (!currentStrike || isFetching) return;
   isFetching = true;
 
-  const API_URL = OI_API_BASE + currentStrike;
-  
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true;
   btn.textContent = '↻';
@@ -358,77 +607,74 @@ async function loadData() {
   setStatus('loading', 'fetching…');
 
   try {
-    const res = await fetchWithTimeout(API_URL, FETCH_TIMEOUT);
+    const res = await fetchWithTimeout(OI_API_BASE + currentStrike, FETCH_TIMEOUT);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) throw new Error('Non-JSON response');
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error('Non-JSON response from API');
-    }
-
-    const raw  = await res.json();
-    const rows = normalise(raw);
-
+    const rows = normalise(await res.json());
     if (!rows.length) throw new Error('Empty dataset');
 
-    DATA   = rows;
-    isLive = true;
-    const ts = T(DATA[DATA.length - 1].timestamp);
-    setStatus('live', `live · last ${ts}`);
+    DATA = rows;
+    setStatus('live', `live · last ${T(DATA[DATA.length-1].timestamp)}`);
 
   } catch (err) {
-    isLive = false;
-    const msg = err.name === 'AbortError'
-      ? 'timeout — using cached data'
-      : `${err.message} — using cached data`;
+    const msg = err.name === 'AbortError' ? 'timeout — cached data' : `${err.message} — cached`;
     setStatus('error', msg);
-    console.warn('[OI Dashboard]', err.message);
+    console.warn('[OI]', err.message);
   }
 
-  render(DATA);
+  if (DATA.length) render(DATA);
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display     = 'block';
 
-  btn.disabled = false;
+  btn.disabled    = false;
   btn.textContent = '↻ REFRESH';
   btn.classList.remove('spinning');
   isFetching = false;
-
   startCountdown();
 }
 
-function manualRefresh() {
-  clearInterval(countdownTmr);
-  loadData();
-}
+function manualRefresh() { clearInterval(countdownTmr); loadData(); }
 
-// ── Normalise API response ────────────────────────────────────────
-function normalise(raw) {
-  if (Array.isArray(raw))            return raw;
-  if (raw && Array.isArray(raw.data)) return raw.data;
-  if (raw && typeof raw === 'object') return [raw];
-  return [];
-}
-
-// ── CHART DEFAULTS ────────────────────────────────────────────────
+// ── CHART HELPERS ─────────────────────────────────────────────────
 Chart.defaults.font.family = "'IBM Plex Mono', monospace";
 Chart.defaults.font.size   = 10;
-Chart.defaults.color       = '#3d5468';
 
-const GRID = 'rgba(28,42,56,0.9)';
-const xCfg = { grid:{color:GRID}, border:{color:'#1c2a38'}, ticks:{color:'#3d5468',maxRotation:0,maxTicksLimit:10} };
-const yCfg = { grid:{color:GRID}, border:{color:'#1c2a38'}, ticks:{color:'#3d5468', callback: v => L(v)} };
-const TTP  = {
-  backgroundColor:'#111820', borderColor:'#1c2a38', borderWidth:1,
-  titleColor:'#5a7a92', bodyColor:'#b8ccd8', padding:10, boxWidth:8, boxHeight:8
-};
+function chartCfg() {
+  // Read live CSS vars so they respond to theme changes
+  const grid    = cssVar('--grid');
+  const border  = cssVar('--border');
+  const tickCol = cssVar('--label');
+  const bgTip   = cssVar('--tooltip-bg');
+  const bdTip   = cssVar('--tooltip-bd');
+  const textCol = cssVar('--text');
 
-// ── CHARTS ────────────────────────────────────────────────────────
+  const xCfg = {
+    grid:   { color: grid },
+    border: { color: border },
+    ticks:  { color: tickCol, maxRotation: 0, maxTicksLimit: 10 }
+  };
+  const yCfg = {
+    grid:   { color: grid },
+    border: { color: border },
+    ticks:  { color: tickCol, callback: v => L(v) }
+  };
+  const TTP = {
+    backgroundColor: bgTip,
+    borderColor:     bdTip,
+    borderWidth: 1,
+    titleColor:  tickCol,
+    bodyColor:   textCol,
+    padding: 10, boxWidth: 8, boxHeight: 8
+  };
+  return { xCfg, yCfg, TTP };
+}
+
+// ── MAIN CHART ────────────────────────────────────────────────────
 function buildMain(data) {
+  const { xCfg, yCfg, TTP } = chartCfg();
   const labels = data.map(d => T(d.timestamp));
   let datasets, title, type;
 
@@ -436,25 +682,29 @@ function buildMain(data) {
     title = 'OPEN INTEREST — CE vs PE'; type = 'bar';
     datasets = [
       { label:'CE OI', data:data.map(d=>d.ceOi),
-        backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+        backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5,
+        barPercentage:0.8, categoryPercentage:0.7 },
       { label:'PE OI', data:data.map(d=>d.peOi),
-        backgroundColor:'rgba(255,83,112,0.22)', borderColor:'#ff5370', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+        backgroundColor:'rgba(255,83,112,0.22)', borderColor:'#ff5370', borderWidth:1.5,
+        barPercentage:0.8, categoryPercentage:0.7 },
     ];
   } else if (currentView === 'ltp') {
     title = 'LTP MOVEMENT — CE vs PE'; type = 'line';
     datasets = [
       { label:'CE LTP', data:data.map(d=>d.ceLtp), borderColor:'#00c8ff',
-        backgroundColor:'rgba(0,200,255,0.06)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
+        backgroundColor:'rgba(0,200,255,0.08)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
       { label:'PE LTP', data:data.map(d=>d.peLtp), borderColor:'#ff5370',
-        backgroundColor:'rgba(255,83,112,0.06)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
+        backgroundColor:'rgba(255,83,112,0.08)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
     ];
   } else {
     title = 'OI CHANGE — CE vs PE'; type = 'bar';
     datasets = [
       { label:'CE OI Δ', data:data.map(d=>d.ceOiChange),
-        backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+        backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5,
+        barPercentage:0.8, categoryPercentage:0.7 },
       { label:'PE OI Δ', data:data.map(d=>d.peOiChange),
-        backgroundColor:'rgba(255,83,112,0.22)', borderColor:'#ff5370', borderWidth:1.5, barPercentage:0.8, categoryPercentage:0.7 },
+        backgroundColor:'rgba(255,83,112,0.22)', borderColor:'#ff5370', borderWidth:1.5,
+        barPercentage:0.8, categoryPercentage:0.7 },
     ];
   }
 
@@ -464,43 +714,52 @@ function buildMain(data) {
     type,
     data: { labels, datasets },
     options: {
-      responsive:true, maintainAspectRatio:false, animation:{duration:300},
-      interaction:{mode:'index',intersect:false},
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend:{display:false},
-        tooltip:{...TTP, callbacks:{label: ctx =>
-          ` ${ctx.dataset.label}: ${currentView==='ltp' ? '₹'+ctx.raw.toFixed(2) : L(ctx.raw)}`
+        legend: { display: false },
+        tooltip: { ...TTP, callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${
+            currentView === 'ltp' ? '₹' + ctx.raw.toFixed(2) : L(ctx.raw)
+          }`
         }}
       },
       scales: {
         x: xCfg,
-        y: currentView==='ltp'
-          ? {...yCfg, ticks:{...yCfg.ticks, callback: v=>'₹'+v}}
+        y: currentView === 'ltp'
+          ? { ...yCfg, ticks: { ...yCfg.ticks, callback: v => '₹' + v } }
           : yCfg
       }
     }
   });
 }
 
+// ── MINI CHARTS ───────────────────────────────────────────────────
 function buildMini(data) {
+  const { xCfg, yCfg, TTP } = chartCfg();
   const labels = data.map(d => T(d.timestamp));
   const miniOpts = {
-    responsive:true, maintainAspectRatio:false, animation:{duration:300},
-    plugins:{legend:{display:false}, tooltip:{...TTP, callbacks:{label:ctx=>` ${L(ctx.raw)}`}}},
-    scales:{ x:{...xCfg, ticks:{...xCfg.ticks, maxTicksLimit:6}}, y:yCfg }
+    responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+    plugins: { legend: { display: false },
+      tooltip: { ...TTP, callbacks: { label: ctx => ` ${L(ctx.raw)}` } } },
+    scales: { x: { ...xCfg, ticks: { ...xCfg.ticks, maxTicksLimit: 6 } }, y: yCfg }
   };
+
   if (charts.ce) charts.ce.destroy();
   charts.ce = new Chart(document.getElementById('miniCE'), {
-    type:'line',
-    data:{labels, datasets:[{data:data.map(d=>d.ceOi), borderColor:'#00c8ff',
-      backgroundColor:'rgba(0,200,255,0.1)', fill:true, tension:0.4, pointRadius:0, borderWidth:1.5}]},
+    type: 'line',
+    data: { labels, datasets: [{ data: data.map(d => d.ceOi),
+      borderColor: '#00c8ff', backgroundColor: 'rgba(0,200,255,0.1)',
+      fill: true, tension: 0.4, pointRadius: 0, borderWidth: 1.5 }] },
     options: miniOpts
   });
+
   if (charts.pe) charts.pe.destroy();
   charts.pe = new Chart(document.getElementById('miniPE'), {
-    type:'line',
-    data:{labels, datasets:[{data:data.map(d=>d.peOi), borderColor:'#ff5370',
-      backgroundColor:'rgba(255,83,112,0.1)', fill:true, tension:0.4, pointRadius:0, borderWidth:1.5}]},
+    type: 'line',
+    data: { labels, datasets: [{ data: data.map(d => d.peOi),
+      borderColor: '#ff5370', backgroundColor: 'rgba(255,83,112,0.1)',
+      fill: true, tension: 0.4, pointRadius: 0, borderWidth: 1.5 }] },
     options: miniOpts
   });
 }
@@ -510,21 +769,61 @@ function updateStats(data) {
   if (!data.length) return;
   const l   = data[data.length - 1];
   const pcr = l.peOi / l.ceOi;
+
   document.getElementById('s-ce-oi').textContent  = L(l.ceOi);
   document.getElementById('s-pe-oi').textContent  = L(l.peOi);
   document.getElementById('s-pcr').textContent    = pcr.toFixed(2);
   document.getElementById('s-count').textContent  = data.length + ' pts';
   document.getElementById('s-ts').textContent     = T(l.timestamp);
-  document.getElementById('s-ce-chg').innerHTML   = `<span class="${l.ceOiChange>=0?'up':'dn'}">${l.ceOiChange>=0?'+':''}${L(l.ceOiChange)} from open</span>`;
-  document.getElementById('s-pe-chg').innerHTML   = `<span class="${l.peOiChange>=0?'up':'dn'}">${l.peOiChange>=0?'+':''}${L(l.peOiChange)} from open</span>`;
-  const bias = pcr>1.2?'BULLISH':pcr<0.7?'BEARISH':'NEUTRAL';
-  document.getElementById('s-pcr-bias').innerHTML = `<span class="${pcr>1.2?'up':pcr<0.7?'dn':'gold'}">${bias}</span>`;
-  document.getElementById('s-ce-ltp').innerHTML   = `<span class="${l.ceLtpChange>=0?'up':'dn'}">₹${l.ceLtp.toFixed(2)}</span>`;
-  document.getElementById('s-ce-ltp-c').innerHTML = `<span class="${l.ceLtpChange>=0?'up':'dn'}">${Sgn(l.ceLtpChange)} (${Sgn(l.cePct)}%)</span>`;
-  document.getElementById('s-pe-ltp').innerHTML   = `<span class="${l.peLtpChange>=0?'up':'dn'}">₹${l.peLtp.toFixed(2)}</span>`;
-  document.getElementById('s-pe-ltp-c').innerHTML = `<span class="${l.peLtpChange>=0?'up':'dn'}">${Sgn(l.peLtpChange)} (${Sgn(l.pePct)}%)</span>`;
+
+  document.getElementById('s-ce-chg').innerHTML =
+    `<span class="${l.ceOiChange>=0?'up':'dn'}">${l.ceOiChange>=0?'+':''}${L(l.ceOiChange)} from open</span>`;
+  document.getElementById('s-pe-chg').innerHTML =
+    `<span class="${l.peOiChange>=0?'up':'dn'}">${l.peOiChange>=0?'+':''}${L(l.peOiChange)} from open</span>`;
+
+  const bias = pcr > 1.2 ? 'BULLISH' : pcr < 0.7 ? 'BEARISH' : 'NEUTRAL';
+  document.getElementById('s-pcr-bias').innerHTML =
+    `<span class="${pcr>1.2?'up':pcr<0.7?'dn':'gold'}">${bias}</span>`;
+
+  document.getElementById('s-ce-ltp').innerHTML =
+    `<span class="${l.ceLtpChange>=0?'up':'dn'}">₹${l.ceLtp.toFixed(2)}</span>`;
+  document.getElementById('s-ce-ltp-c').innerHTML =
+    `<span class="${l.ceLtpChange>=0?'up':'dn'}">${Sgn(l.ceLtpChange)} (${Sgn(l.cePct)}%)</span>`;
+  document.getElementById('s-pe-ltp').innerHTML =
+    `<span class="${l.peLtpChange>=0?'up':'dn'}">₹${l.peLtp.toFixed(2)}</span>`;
+  document.getElementById('s-pe-ltp-c').innerHTML =
+    `<span class="${l.peLtpChange>=0?'up':'dn'}">${Sgn(l.peLtpChange)} (${Sgn(l.pePct)}%)</span>`;
+
   document.getElementById('m-ce-last').textContent = L(l.ceOi);
   document.getElementById('m-pe-last').textContent = L(l.peOi);
+}
+
+// ── SIGNAL ────────────────────────────────────────────────────────
+function signal(d) {
+  if (d.ceOiChange > 0 && d.ceLtpChange > 0) return ['LONG BUILD', 'sig-bull'];
+  if (d.ceOiChange > 0 && d.ceLtpChange < 0) return ['SHORT BUILD', 'sig-bear'];
+  if (d.peOiChange > 0 && d.peLtpChange > 0) return ['PUT BUILD',   'sig-bear'];
+  if (d.ceOiChange < 0 && d.ceLtpChange > 0) return ['SHT COVER',   'sig-bull'];
+  return ['NEUTRAL', 'sig-neu'];
+}
+
+// ── TABLE ─────────────────────────────────────────────────────────
+function buildTable(data) {
+  document.getElementById('tbl-body').innerHTML = data.slice(-10).reverse().map(d => {
+    const pcr = (d.peOi / d.ceOi).toFixed(2);
+    const [lbl, cls] = signal(d);
+    return `<tr>
+      <td style="color:var(--label)">${T(d.timestamp)}</td>
+      <td class="ce-col">${L(d.ceOi)}</td>
+      <td class="${d.ceOiChange>=0?'up':'dn'}">${d.ceOiChange>=0?'+':''}${L(d.ceOiChange)}</td>
+      <td class="${d.ceLtpChange>=0?'up':'dn'}">₹${d.ceLtp.toFixed(1)}</td>
+      <td class="pe-col">${L(d.peOi)}</td>
+      <td class="${d.peOiChange>=0?'up':'dn'}">${d.peOiChange>=0?'+':''}${L(d.peOiChange)}</td>
+      <td class="${d.peLtpChange>=0?'up':'dn'}">₹${d.peLtp.toFixed(1)}</td>
+      <td class="${pcr>1.2?'up':pcr<0.7?'dn':'gold'}">${pcr}</td>
+      <td><span class="sig ${cls}">${lbl}</span></td>
+    </tr>`;
+  }).join('');
 }
 
 // ── VIEW SWITCH ───────────────────────────────────────────────────
@@ -540,12 +839,11 @@ function render(data) {
   updateStats(data);
   buildMain(data);
   buildMini(data);
+  buildTable(data);
 }
 
 // ── BOOT ─────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadStrikes();
-});
+document.addEventListener('DOMContentLoaded', () => loadStrikes());
 </script>
 </body>
 </html>
