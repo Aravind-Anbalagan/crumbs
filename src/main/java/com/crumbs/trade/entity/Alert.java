@@ -20,7 +20,7 @@ public class Alert {
     @Column(name = "strategy_name", nullable = false, length = 50)
     private String strategyName;
 
-    @Column(name = "symbol", nullable = false, length = 20)
+    @Column(name = "symbol", length = 20, nullable = true)  // ← was nullable = false
     private String symbol;
 
     @Column(name = "signal_type", length = 30)
