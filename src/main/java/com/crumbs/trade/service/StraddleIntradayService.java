@@ -128,12 +128,19 @@ public class StraddleIntradayService {
 	            return;
 	        }
 
-	        String session = samco.getSamcoSession();
+	        //String session = samco.getSamcoSession();
+	        String session = null;
 	        BigDecimal spotPrice = null;
+	       
 	        if ("NIFTY".equalsIgnoreCase(name)) {
-	            spotPrice = samco.getNifty50Price(session);
+	            //spotPrice = samco.getNifty50Price(session);
+	        	strategy = strategyRepo.findByName("NIFTY_INDEX");
+	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
+						strategy.getToken());
 	        } else if ("CRUDEOIL".equalsIgnoreCase(name)) {
-	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+	            //spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+				spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
+						strategy.getToken());
 	        }
 
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
