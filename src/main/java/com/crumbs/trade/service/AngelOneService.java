@@ -382,7 +382,7 @@ public class AngelOneService {
 		orders.setOrderid(token.getOrderId() != null ? token.getOrderId() : "1");
 
 		// CREATED DATE
-		orders.setCreatedOn(LocalDateTime.now().toString());
+		orders.setCreatedOn(LocalDateTime.now());
 
 		// ASK PRICE
 		Double ask = token.getPrice();

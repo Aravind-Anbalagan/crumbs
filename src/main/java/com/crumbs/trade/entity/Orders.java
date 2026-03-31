@@ -1,8 +1,13 @@
 package com.crumbs.trade.entity;
 
-import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Data;
 
 @Data
@@ -16,7 +21,7 @@ public class Orders {
 	@Column(name="orderid")
 	String orderid;
 	@Column(name="createdon")
-	String createdOn;
+	private LocalDateTime createdOn;
 	@Column(name="symbol")
 	String symbol;
 	@Column(name="token")
@@ -43,4 +48,16 @@ public class Orders {
 	String exchange;
 	@Column(name="quantity")
 	int quantity;
+	private String optionType; // CE / PE
+    private String side;       // BUY / SELL
+
+    private String tradePhase; // ENTRY / EXIT / FLIP / STOP
+    private String status;     // OPEN / CLOSED
+    
+    @Column(name = "trade_cycle_id")
+    private String tradeCycleId;
+    
+    @Column(name = "is_reversal")
+    private Boolean reversal;
+  
 }

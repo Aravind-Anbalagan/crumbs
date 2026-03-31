@@ -722,7 +722,7 @@ public class PreMarketLevelOrderManagementService {
                 order.setSignal(direction.name());
                 order.setExchange(EXCHANGE.name());
                 order.setType(type);
-                order.setCreatedOn(LocalDateTime.now().toString());
+                order.setCreatedOn(LocalDateTime.now());
                 ordersRepo.save(order);
             }
         );

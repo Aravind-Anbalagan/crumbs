@@ -1,23 +1,16 @@
 package com.crumbs.trade.entity;
 
-
 import java.time.LocalDateTime;
-
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
 @Table(name = "alert", indexes = {
-    @Index(name = "idx_alert_strategy", columnList = "strategy_name"),
-    @Index(name = "idx_alert_sent_at",  columnList = "sent_at")
+    @Index(name = "idx_alert_strategy",  columnList = "strategy_name"),
+    @Index(name = "idx_alert_symbol",    columnList = "symbol"),
+    @Index(name = "idx_alert_sent_at",   columnList = "sent_at")
 })
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class Alert {
 
     @Id
@@ -27,11 +20,24 @@ public class Alert {
     @Column(name = "strategy_name", nullable = false, length = 50)
     private String strategyName;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    private String message;
+    @Column(name = "symbol", nullable = false, length = 20)
+    private String symbol;
 
-    @Column(name = "signal_type", length = 20)
-    private String signalType;
+    @Column(name = "signal_type", length = 30)
+    private String signalType;          // VWAP_DOMINANCE_CE / VWAP_DOMINANCE_PE
+                                        // CE_PE_CROSSOVER   / PE_CE_CROSSOVER
+
+    @Column(name = "strike")
+    private Integer strike;             // ATM strike at time of alert
+
+    // ── live prices at alert time ──────────────────
+    @Column(name = "ce_price")  private Double cePrice;
+    @Column(name = "pe_price")  private Double pePrice;
+    @Column(name = "ce_vwap")   private Double ceVwap;
+    @Column(name = "pe_vwap")   private Double peVwap;
+
+    @Column(columnDefinition = "TEXT")
+    private String message;
 
     @Column(length = 10)
     @Builder.Default
