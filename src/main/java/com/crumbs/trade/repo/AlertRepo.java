@@ -19,30 +19,40 @@ public interface AlertRepo extends JpaRepository<Alert, Long> {
 	@Query("delete from Alert a")
 	void deleteAll();
     
- // Last N dominance alerts for symbol — prices + VWAP already inside each row
+ // ── Dominance alerts — filter by symbol + signalType only
+    //    strategyName removed: saved as "VWAP_DOMINANCE" by StraddleIntradayService
+    //    but queried as "VWAP_OPTION_SELLER" by DominanceService → always 0 results
     @Query("""
         SELECT a FROM Alert a
-        WHERE a.strategyName = :strategyName
-          AND a.symbol       = :symbol
-          AND a.signalType   IN ('VWAP_DOMINANCE_CE', 'VWAP_DOMINANCE_PE')
+        WHERE a.symbol     = :symbol
+          AND a.signalType IN ('VWAP_DOMINANCE_CE', 'VWAP_DOMINANCE_PE')
         ORDER BY a.sentAt DESC
         """)
     List<Alert> findTopDominanceAlerts(
-            @Param("strategyName") String strategyName,
-            @Param("symbol")       String symbol,
-            Pageable pageable);
+            @Param("symbol")   String symbol,
+            Pageable           pageable);
 
-    // Crossovers in a time window — for noise check + warning
+    // ── Crossover alerts — filter by symbol + signalType + time window
     @Query("""
         SELECT a FROM Alert a
-        WHERE a.strategyName = :strategyName
-          AND a.symbol       = :symbol
-          AND a.signalType   IN ('CE_PE_CROSSOVER', 'PE_CE_CROSSOVER')
-          AND a.sentAt      >= :since
+        WHERE a.symbol     = :symbol
+          AND a.signalType IN ('CE_PE_CROSSOVER', 'PE_CE_CROSSOVER')
+          AND a.sentAt    >= :since
         ORDER BY a.sentAt DESC
         """)
     List<Alert> findRecentCrossoverAlerts(
-            @Param("strategyName") String strategyName,
-            @Param("symbol")       String symbol,
-            @Param("since")        LocalDateTime since);
+            @Param("symbol") String symbol,
+            @Param("since")  LocalDateTime since);
+
+    // ── Recent dominance alerts — for SL check (last N ticks)
+    @Query("""
+        SELECT a FROM Alert a
+        WHERE a.symbol     = :symbol
+          AND a.signalType IN ('VWAP_DOMINANCE_CE', 'VWAP_DOMINANCE_PE')
+          AND a.sentAt    >= :since
+        ORDER BY a.sentAt DESC
+        """)
+    List<Alert> findRecentDominanceAlerts(
+            @Param("symbol") String symbol,
+            @Param("since")  LocalDateTime since);
 }

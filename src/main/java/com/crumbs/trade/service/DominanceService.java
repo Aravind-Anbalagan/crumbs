@@ -22,11 +22,11 @@ public class DominanceService {
     // ⚙️ TUNING
     // =========================
     private static final String STRATEGY            = "VWAP_OPTION_SELLER";
-    private static final int    CONFIRM_TICKS        = 3;   // consecutive same-bias ticks to enter
-    private static final int    SL_TICKS             = 2;   // consecutive broken-thesis ticks to exit
-    private static final int    CROSSOVER_WINDOW_MIN = 60;  // noise check window
-    private static final int    MAX_CROSSOVERS       = 5;   // sideways threshold
-    private static final int    MAX_ENTRIES_PER_DAY  = 3;   // hard daily safety cap
+    private static final int    CONFIRM_TICKS        = 3;    // consecutive same-bias ticks to enter
+    private static final int    SL_TICKS             = 2;    // consecutive broken-thesis ticks to exit
+    private static final int    CROSSOVER_WINDOW_MIN = 60;   // noise check window (minutes)
+    private static final int    MAX_CROSSOVERS       = 5;    // sideways threshold
+    private static final int    MAX_ENTRIES_PER_DAY  = 3;    // hard daily safety cap
 
     @Autowired
     private AlertRepo alertRepo;
@@ -61,7 +61,7 @@ public class DominanceService {
 
         // ─────────────────────────────────────────────
         // PHASE 1: Manage open position first
-        //   SL / EOD — always checked before entry
+        //   EOD / SL always checked before entry logic
         // ─────────────────────────────────────────────
         Orders openOrder = ordersRepo
                 .findTopByNameAndSymbolAndStatusOrderByCreatedOnDesc(
@@ -77,15 +77,14 @@ public class DominanceService {
                 return;
             }
 
-            // Fetch latest alert to read current prices vs VWAP
+            // Need at least one recent alert to evaluate SL
             Alert latest = getLatestDominanceAlert(symbol);
-
             if (latest == null) {
                 log(symbol, "⏳ No recent alert — holding position");
                 return;
             }
 
-            // SL check — thesis broken for SL_TICKS consecutive ticks?
+            // SL: thesis broken for SL_TICKS consecutive ticks?
             if (isSlTriggered(symbol, openOrder)) {
                 closeOrder(openOrder, "SL_HIT");
                 log(symbol, "🛑 SL HIT — "
@@ -93,8 +92,8 @@ public class DominanceService {
                         + " price back above its VWAP"
                         + " | entry=" + openOrder.getAskPrice()
                         + " | cycle=" + openOrder.getTradeCycleId());
+                // cycle resets — next tick free to look for new entry
                 return;
-                // cycle resets — next tick is free to look for new entry
             }
 
             // Crossover warning — momentum shifting against us?
@@ -120,21 +119,27 @@ public class DominanceService {
             return;
         }
 
-        // Noise filter — too many crossovers in window = choppy, skip
+        // ── Noise filter ──────────────────────────────
+        // FIX: removed STRATEGY param — alerts saved as strategyName="CROSSOVER"
+        //      but STRATEGY constant is "VWAP_OPTION_SELLER" → always 0 results
         List<Alert> crossovers = alertRepo.findRecentCrossoverAlerts(
-                STRATEGY, symbol,
+                symbol,
                 LocalDateTime.now().minusMinutes(CROSSOVER_WINDOW_MIN));
 
-        if (crossovers != null && crossovers.size() > MAX_CROSSOVERS) {
-            log(symbol, "❌ Sideways — "
-                    + crossovers.size() + " crossovers in last "
-                    + CROSSOVER_WINDOW_MIN + "min");
+        int crossoverCount = crossovers == null ? 0 : crossovers.size();
+        log(symbol, "🔀 Crossovers in last " + CROSSOVER_WINDOW_MIN + "min → " + crossoverCount);
+
+        if (crossoverCount > MAX_CROSSOVERS) {
+            log(symbol, "❌ Sideways — " + crossoverCount + " crossovers");
             return;
         }
 
-        // Confirmation — last CONFIRM_TICKS dominance alerts must all agree
+        // ── Confirmation ──────────────────────────────
+        // FIX: removed STRATEGY param — alerts saved as strategyName="VWAP_DOMINANCE"
+        //      but STRATEGY constant is "VWAP_OPTION_SELLER" → always 0 results
+        //      → log always showed "Not enough dominance alerts yet (0/3)"
         List<Alert> recentDominance = alertRepo.findTopDominanceAlerts(
-                STRATEGY, symbol,
+                symbol,
                 PageRequest.of(0, CONFIRM_TICKS));
 
         if (recentDominance == null || recentDominance.size() < CONFIRM_TICKS) {
@@ -152,7 +157,9 @@ public class DominanceService {
                 .filter(a -> "VWAP_DOMINANCE_PE".equals(a.getSignalType()))
                 .count();
 
-        // Must be unanimous — any mixed tick = not ready
+        log(symbol, "📊 Last " + CONFIRM_TICKS + " ticks → CE=" + ceCount + " PE=" + peCount);
+
+        // Must be unanimous — any mixed tick = not confirmed
         String bias = null;
         if (ceCount == CONFIRM_TICKS) bias = "UP";
         if (peCount == CONFIRM_TICKS) bias = "DOWN";
@@ -164,16 +171,15 @@ public class DominanceService {
         }
 
         // ─────────────────────────────────────────────
-        // ENTRY — pull entry price directly from the
-        // latest alert saved by your existing scheduler
+        // ENTRY — prices read directly from Alert row
+        //   saved by StraddleIntradayService scheduler
+        //   no live market call needed
         // ─────────────────────────────────────────────
-        Alert entryAlert = recentDominance.get(0); // most recent tick
-
+        Alert  entryAlert  = recentDominance.get(0); // most recent tick
         int    entryStrike = entryAlert.getStrike()  != null ? entryAlert.getStrike()  : 0;
-        double entryPrice  = getEntryPrice(entryAlert, bias); // PE price if UP, CE price if DOWN
+        double entryPrice  = getEntryPrice(entryAlert, bias); // PE price if UP, CE if DOWN
 
-        String cycleId = STRATEGY + "_" + symbol + "_"
-                + System.currentTimeMillis();
+        String cycleId = STRATEGY + "_" + symbol + "_" + System.currentTimeMillis();
 
         Orders entry = buildOrder(symbol, cycleId, bias, entryStrike, entryPrice);
         ordersRepo.save(entry);
@@ -194,8 +200,9 @@ public class DominanceService {
     // =========================
     private boolean isSlTriggered(String symbol, Orders openOrder) {
 
+        // FIX: removed STRATEGY param — same mismatch as above
         List<Alert> lastAlerts = alertRepo.findTopDominanceAlerts(
-                STRATEGY, symbol,
+                symbol,
                 PageRequest.of(0, SL_TICKS));
 
         if (lastAlerts == null || lastAlerts.size() < SL_TICKS) return false;
@@ -207,23 +214,23 @@ public class DominanceService {
                 .allMatch(a -> isThesisBroken(a, soldOption));
     }
 
-    // Thesis is broken when the option we sold has recovered above its VWAP
+    // Thesis broken when the option we sold has recovered above its own VWAP
     private boolean isThesisBroken(Alert a, String soldOption) {
 
         if (a.getCePrice() == null || a.getPePrice() == null
                 || a.getCeVwap() == null || a.getPeVwap() == null) {
-            return false;
+            return false; // incomplete data — don't trigger SL on nulls
         }
 
         if ("PE".equals(soldOption)) {
-            // We sold PE because PE < PE VWAP
-            // Thesis broken → PE price is back >= PE VWAP
+            // Sold PE because PE < PE VWAP
+            // Thesis broken → PE price back >= PE VWAP
             return a.getPePrice() >= a.getPeVwap();
         }
 
         if ("CE".equals(soldOption)) {
-            // We sold CE because CE < CE VWAP
-            // Thesis broken → CE price is back >= CE VWAP
+            // Sold CE because CE < CE VWAP
+            // Thesis broken → CE price back >= CE VWAP
             return a.getCePrice() >= a.getCeVwap();
         }
 
@@ -232,26 +239,27 @@ public class DominanceService {
 
     // =========================
     // ⚠️ CROSSOVER WARNING
-    //   Log if a crossover adverse to our
-    //   position fired in the last 2 min
+    //   Log if an adverse crossover fired
+    //   in the last 2 min vs our position
     // =========================
     private void checkCrossoverWarning(String symbol, Orders openOrder) {
 
+        // FIX: removed STRATEGY param
         List<Alert> recent = alertRepo.findRecentCrossoverAlerts(
-                STRATEGY, symbol,
+                symbol,
                 LocalDateTime.now().minusMinutes(2));
 
         if (recent == null || recent.isEmpty()) return;
 
         Alert latest = recent.get(0);
 
-        // Holding PE sell → adverse signal is PE crossing above CE
+        // Holding PE sell → adverse = PE crossing above CE
         if ("PE".equals(openOrder.getOptionType())
                 && "PE_CE_CROSSOVER".equals(latest.getSignalType())) {
             log(symbol, "⚠️  PE crossover fired — PE gaining strength, watch next tick");
         }
 
-        // Holding CE sell → adverse signal is CE crossing above PE
+        // Holding CE sell → adverse = CE crossing above PE
         if ("CE".equals(openOrder.getOptionType())
                 && "CE_PE_CROSSOVER".equals(latest.getSignalType())) {
             log(symbol, "⚠️  CE crossover fired — CE gaining strength, watch next tick");
@@ -262,21 +270,20 @@ public class DominanceService {
     // 📍 HELPERS
     // =========================
 
-    // Entry price = the option we are about to sell, from the alert
+    // Entry price = the option we are selling, read from the alert row
     private double getEntryPrice(Alert a, String bias) {
         if ("UP".equals(bias)) {
-            // selling PE → record PE price as our entry premium
-            return a.getPePrice() != null ? a.getPePrice() : 0.0;
+            return a.getPePrice() != null ? a.getPePrice() : 0.0; // selling PE
         } else {
-            // selling CE → record CE price as our entry premium
-            return a.getCePrice() != null ? a.getCePrice() : 0.0;
+            return a.getCePrice() != null ? a.getCePrice() : 0.0; // selling CE
         }
     }
 
     // Most recent dominance alert for this symbol
+    // FIX: removed STRATEGY param
     private Alert getLatestDominanceAlert(String symbol) {
         List<Alert> alerts = alertRepo.findTopDominanceAlerts(
-                STRATEGY, symbol, PageRequest.of(0, 1));
+                symbol, PageRequest.of(0, 1));
         return (alerts != null && !alerts.isEmpty()) ? alerts.get(0) : null;
     }
 
@@ -303,13 +310,14 @@ public class DominanceService {
         o.setReversal(false);
         o.setSignal(bias);
         o.setExchange("NIFTY".equals(symbol) ? "NSE" : "MCX");
-        o.setAskPrice((int) entryPrice);   // premium collected at entry
+        o.setAskPrice((int) entryPrice); // premium collected at entry
 
+        // Conservative seller: UP = sell PE (weak side), DOWN = sell CE (weak side)
         if ("UP".equals(bias)) {
-            o.setOptionType("PE");   // sell PE — UP market, PE is weak
+            o.setOptionType("PE");
             o.setSide("SELL");
         } else {
-            o.setOptionType("CE");   // sell CE — DOWN market, CE is weak
+            o.setOptionType("CE");
             o.setSide("SELL");
         }
 
