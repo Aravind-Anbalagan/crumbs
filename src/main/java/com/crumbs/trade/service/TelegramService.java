@@ -28,12 +28,8 @@ public class TelegramService {
 
     static Logger logger = LoggerFactory.getLogger(TelegramService.class);
 
-    private static final int TELEGRAM_MAX_CHARS = 3800; // safe margin below Telegram's 4096 limit
+    private static final int TELEGRAM_MAX_CHARS = 3800;
 
-    /**
-     * Matches any valid Telegram HTML tag so the sanitizer can leave them alone.
-     * Supported tags: b, i, u, s, code, pre, a (with optional href), and their closing forms.
-     */
     private static final Pattern VALID_TAG = Pattern.compile(
         "<(/?(b|i|u|s|code|pre)|a(\\s+href=\"[^\"]*\")?|/a)>",
         Pattern.CASE_INSENSITIVE
@@ -54,8 +50,8 @@ public class TelegramService {
     private Long updateOffset = 0L;
 
     @Autowired TelegramUserRepo telegramUserRepo;
-    @Autowired AlertConfigRepo alertConfigRepo;
-    @Autowired AlertRepo    alertRepo;
+    @Autowired AlertConfigRepo  alertConfigRepo;
+    @Autowired AlertRepo        alertRepo;
 
     // =========================================================
     // Initialization
@@ -81,7 +77,8 @@ public class TelegramService {
         try {
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                List<Map<String, Object>> result = (List<Map<String, Object>>) response.getBody().get("result");
+                List<Map<String, Object>> result =
+                        (List<Map<String, Object>>) response.getBody().get("result");
                 if (result != null && !result.isEmpty()) {
                     for (Map<String, Object> update : result) {
                         Long currentUpdateId = ((Number) update.get("update_id")).longValue();
@@ -96,7 +93,8 @@ public class TelegramService {
                     }
                     if (cachedChatId != null) {
                         logger.info("✅ Chat ID fetched and cached: {}", cachedChatId);
-                        logger.info("💡 Add this to application.properties: telegram.chat-id={}", cachedChatId);
+                        logger.info("💡 Add this to application.properties: telegram.chat-id={}",
+                                cachedChatId);
                         return;
                     }
                 }
@@ -120,23 +118,16 @@ public class TelegramService {
     }
 
     // =========================================================
-    // Core: chunked send — used by ALL send methods
+    // Core: chunked send
     // =========================================================
 
-    /**
-     * Splits text at complete line boundaries (never mid-row) and sends
-     * each chunk as a separate message to a single chat ID string.
-     * Each chunk is sanitized before sending — any rogue < that is not part
-     * of a valid Telegram HTML tag is escaped to &lt; automatically.
-     * Returns true only if all chunks were sent successfully.
-     */
     private boolean sendChunkedToSingleChat(String chatId, String text) {
         List<String> chunks = splitAtLineBoundary(text);
         boolean allSent = true;
         for (int i = 0; i < chunks.size(); i++) {
             try {
-                String safe = sanitizeHtml(chunks.get(i)); // ← safety net: fixes any rogue < from any caller
-                String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
+                String safe = sanitizeHtml(chunks.get(i));
+                String url  = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
                 Map<String, Object> body = Map.of(
                     "chat_id",    chatId,
                     "text",       safe,
@@ -149,10 +140,11 @@ public class TelegramService {
                 if (response.getStatusCode().is2xxSuccessful()) {
                     logger.info("✅ Chunk {}/{} sent ({} chars)", i + 1, chunks.size(), safe.length());
                 } else {
-                    logger.error("❌ Chunk {}/{} failed. Status: {}", i + 1, chunks.size(), response.getStatusCode());
+                    logger.error("❌ Chunk {}/{} failed. Status: {}",
+                            i + 1, chunks.size(), response.getStatusCode());
                     allSent = false;
                 }
-                if (i < chunks.size() - 1) Thread.sleep(500); // avoid Telegram rate limit
+                if (i < chunks.size() - 1) Thread.sleep(500);
             } catch (Exception e) {
                 logger.error("❌ Chunk {}/{} error: {}", i + 1, chunks.size(), e.getMessage());
                 allSent = false;
@@ -161,10 +153,6 @@ public class TelegramService {
         return allSent;
     }
 
-    /**
-     * Splits text at complete line boundaries and sends each chunk
-     * to a Long chatId (used for broadcast per-user sends).
-     */
     private void sendChunkedToChat(Long chatId, String text) {
         List<String> chunks = splitAtLineBoundary(text);
         for (int i = 0; i < chunks.size(); i++) {
@@ -172,47 +160,38 @@ public class TelegramService {
                 sendToChat(chatId, chunks.get(i));
                 if (i < chunks.size() - 1) Thread.sleep(500);
             } catch (Exception e) {
-                logger.error("Failed to send chunk {}/{} to {}: {}", i + 1, chunks.size(), chatId, e.getMessage());
+                logger.error("Failed to send chunk {}/{} to {}: {}",
+                        i + 1, chunks.size(), chatId, e.getMessage());
             }
         }
     }
 
-    /**
-     * Splits a message into chunks that are within TELEGRAM_MAX_CHARS,
-     * always breaking only on a complete \n line boundary — never mid-row.
-     * Automatically closes and reopens <pre> tags across chunk boundaries.
-     */
     private List<String> splitAtLineBoundary(String text) {
         List<String> chunks = new ArrayList<>();
         String[] lines = text.split("\n", -1);
 
-        StringBuilder current = new StringBuilder();
-        boolean insidePre = false;
+        StringBuilder current  = new StringBuilder();
+        boolean       insidePre = false;
 
         for (String line : lines) {
-            // Track whether we are inside a <pre> block
             if (line.contains("<pre>"))  insidePre = true;
             if (line.contains("</pre>")) insidePre = false;
 
             String lineWithBreak = line + "\n";
+            boolean wouldExceed  = (current.length() + lineWithBreak.length()) > TELEGRAM_MAX_CHARS;
+            boolean hasContent   = current.length() > 0;
 
-            boolean wouldExceed = (current.length() + lineWithBreak.length()) > TELEGRAM_MAX_CHARS;
-            boolean chunkHasContent = current.length() > 0;
-
-            if (wouldExceed && chunkHasContent) {
-                // Close <pre> if open before sealing this chunk
+            if (wouldExceed && hasContent) {
                 String chunk = current.toString();
                 if (insidePre) chunk += "</pre>";
                 chunks.add(chunk);
                 current.setLength(0);
-                // Re-open <pre> on the next chunk if we were inside one
                 if (insidePre) current.append("<pre>");
             }
 
             current.append(lineWithBreak);
         }
 
-        // Flush remaining content
         if (current.length() > 0) {
             String last = current.toString();
             if (insidePre && !last.contains("</pre>")) last += "</pre>";
@@ -223,13 +202,9 @@ public class TelegramService {
     }
 
     // =========================================================
-    // Public send methods — all delegate to chunked helpers
+    // Public send methods
     // =========================================================
 
-    /**
-     * Sends a message to the configured/cached single chat.
-     * Automatically chunks if the message exceeds 3800 chars.
-     */
     public boolean sendMessage(String text) {
         try {
             String chatId = getChatId();
@@ -240,10 +215,6 @@ public class TelegramService {
         }
     }
 
-    /**
-     * Broadcasts text to all active Telegram users.
-     * Automatically chunks long messages per user — never hits 400.
-     */
     public int sendBroadcast(String text) {
         List<TelegramUser> users = telegramUserRepo.findByActiveTrue();
         int sent = 0;
@@ -251,7 +222,7 @@ public class TelegramService {
             try {
                 sendChunkedToChat(user.getChatId(), text);
                 sent++;
-                Thread.sleep(60); // inter-user delay
+                Thread.sleep(60);
             } catch (Exception e) {
                 logger.error("Failed to send to {}", user.getChatId(), e);
             }
@@ -259,15 +230,11 @@ public class TelegramService {
         return sent;
     }
 
-    /**
-     * Low-level single-chunk send to a Long chatId.
-     * Used internally by sendChunkedToChat — do NOT call directly with large text.
-     */
     public void sendToChat(Long chatId, String text) {
         String url = String.format("%s/bot%s/sendMessage", baseUrl, botToken);
         Map<String, Object> body = Map.of(
             "chat_id",    chatId,
-            "text",       sanitizeHtml(text), // ← safety net applied here too
+            "text",       sanitizeHtml(text),
             "parse_mode", "HTML"
         );
         HttpHeaders headers = new HttpHeaders();
@@ -277,34 +244,25 @@ public class TelegramService {
     }
 
     // =========================================================
-    // Stock alert (PSAR + Heikin-Ashi first-signal stocks)
+    // Stock alert
     // =========================================================
 
-    /**
-     * Entry point for the daily bullish/bearish stock alert.
-     * Delegates to sendMessage which handles chunking automatically.
-     */
     public void sendStockAlert(List<String[]> rows) {
         try {
-            String message = buildStockTable(rows);
-            boolean sent = sendMessage(message);
+            String  message = buildStockTable(rows);
+            boolean sent    = sendMessage(message);
             logger.info("📨 Stock alert sent: {}", sent);
-            saveAlertIfEnabled("STOCK_ALERT", message, "INFO", sent); // ← add this
+            saveAlertIfEnabled("STOCK_ALERT", message, "INFO", sent);
         } catch (Exception e) {
             logger.error("❌ Error while sending stock alert: {}", e.getMessage());
         }
     }
 
-    /**
-     * Builds a Telegram-friendly fixed-width table for stock alerts.
-     * Cell values are HTML-escaped to prevent parse errors on special chars.
-     */
     public String buildStockTable(List<String[]> rows) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("📊 <b>Stock Details</b>\n\n");
-        sb.append("<pre>");
+        StringBuilder sb        = new StringBuilder();
+        int[]         colWidths = { 12, 8, 8, 8, 6 };
 
-        int[] colWidths = { 12, 8, 8, 8, 6 }; // StockName, Price, Option, Signal, Type
+        sb.append("📊 <b>Stock Details</b>\n\n").append("<pre>");
 
         for (int i = 0; i < rows.size(); i++) {
             String[] row = rows.get(i);
@@ -317,7 +275,8 @@ public class TelegramService {
             }
             sb.append("\n");
             if (i == 0) {
-                int total = 0; for (int w : colWidths) total += w;
+                int total = 0;
+                for (int w : colWidths) total += w;
                 sb.append("-".repeat(total)).append("\n");
             }
         }
@@ -330,16 +289,12 @@ public class TelegramService {
     // MA Hierarchy alert
     // =========================================================
 
-    /**
-     * Sends the MA hierarchy BUY/SELL stack alert.
-     * Builds the full table as one string and delegates to sendMessage —
-     * chunking is handled automatically at clean line boundaries.
-     */
     public void sendMAHierarchyAlert(List<String[]> rows, int buyCount, int sellCount) {
         try {
             int[]  colWidths  = { 12, 14, 10, 6 };
-            int    totalWidth = 0; for (int w : colWidths) totalWidth += w;
-            String separator  = "-".repeat(totalWidth) + "\n";
+            int    totalWidth = 0;
+            for (int w : colWidths) totalWidth += w;
+            String separator = "-".repeat(totalWidth) + "\n";
 
             StringBuilder sb = new StringBuilder();
             sb.append("📈 <b>MA Hierarchy Stack Alert</b>\n")
@@ -357,7 +312,8 @@ public class TelegramService {
 
             boolean sent = sendMessage(sb.toString());
             logger.info("MA hierarchy alert sent: {}", sent);
-            saveAlertIfEnabled("MA_HIERARCHY", sb.toString(), buyCount > 0 ? "BUY" : "SELL", sent); // ← add this
+            saveAlertIfEnabled("MA_HIERARCHY", sb.toString(),
+                    buyCount > 0 ? "BUY" : "SELL", sent);
 
         } catch (Exception e) {
             logger.error("Error building MA hierarchy alert: {}", e.getMessage());
@@ -388,13 +344,82 @@ public class TelegramService {
     }
 
     // =========================================================
-    // Private helpers
+    // saveAlertIfEnabled — three overloads, one implementation
     // =========================================================
 
     /**
-     * Formats a row of cells into a fixed-width string.
-     * Each cell is HTML-escaped before truncation.
+     * Overload 1 — non-symbol alerts (STOCK_ALERT, MA_HIERARCHY).
+     * No symbol, no price fields.
      */
+    public void saveAlertIfEnabled(String strategyName, String message,
+                                    String signalType, boolean sent) {
+        saveAlertFull(strategyName, null, message, signalType, sent,
+                      null, null, null, null, null);
+    }
+
+    /**
+     * Overload 2 — symbol alerts without price data.
+     * Used when only the symbol is known (e.g. crossover-only saves).
+     */
+    public void saveAlertIfEnabled(String strategyName, String symbol,
+                                    String message, String signalType, boolean sent) {
+        saveAlertFull(strategyName, symbol, message, signalType, sent,
+                      null, null, null, null, null);
+    }
+
+    /**
+     * Overload 3 — full VWAP dominance / crossover alert.
+     * Populates symbol, strike, cePrice, pePrice, ceVwap, peVwap so that
+     * DominanceService can read these fields directly from the Alert row
+     * for SL checks without any live market call.
+     */
+    public void saveAlertIfEnabled(String strategyName, String symbol,
+                                    String message,  String signalType, boolean sent,
+                                    Integer strike,
+                                    Double cePrice,  Double pePrice,
+                                    Double ceVwap,   Double peVwap) {
+        saveAlertFull(strategyName, symbol, message, signalType, sent,
+                      strike, cePrice, pePrice, ceVwap, peVwap);
+    }
+
+    /**
+     * Single implementation — all three overloads delegate here.
+     * Null-safe: any field not supplied by the caller is stored as null.
+     */
+    private void saveAlertFull(String strategyName, String symbol,
+                                String message,      String signalType, boolean sent,
+                                Integer strike,
+                                Double cePrice,      Double pePrice,
+                                Double ceVwap,       Double peVwap) {
+        try {
+            Alert alert = Alert.builder()
+                    .strategyName(strategyName)
+                    .symbol(symbol)           // null for STOCK_ALERT / MA_HIERARCHY
+                    .message(message)
+                    .signalType(signalType)
+                    .status(sent ? "SENT" : "FAILED")
+                    .sentAt(LocalDateTime.now())
+                    .strike(strike)           // null unless overload 3 used
+                    .cePrice(cePrice)         // null unless overload 3 used
+                    .pePrice(pePrice)         // null unless overload 3 used
+                    .ceVwap(ceVwap)           // null unless overload 3 used
+                    .peVwap(peVwap)           // null unless overload 3 used
+                    .build();
+
+            alertRepo.save(alert);
+            logger.info("💾 Alert saved — strategy={} symbol={} signal={}",
+                    strategyName, symbol, signalType);
+
+        } catch (Exception e) {
+            logger.error("⚠️ Could not save alert for {} {}: {}",
+                    strategyName, symbol, e.getMessage());
+        }
+    }
+
+    // =========================================================
+    // Private helpers
+    // =========================================================
+
     private String formatRow(String[] row, int[] colWidths) {
         StringBuilder sb = new StringBuilder();
         for (int j = 0; j < row.length; j++) {
@@ -407,49 +432,21 @@ public class TelegramService {
         return sb.toString();
     }
 
-    /**
-     * Escapes characters that would break Telegram's HTML parser.
-     * Use this when building message content from data values (cells, names, prices).
-     * Order matters: & must be escaped first to avoid double-escaping.
-     */
     private String escapeHtml(String text) {
         if (text == null) return "-";
         return text
-            .replace("&", "&amp;")   // must be first
+            .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;");
     }
 
-    /**
-     * Safety-net sanitizer applied to every outbound message just before sending.
-     *
-     * Problem: any service can call sendMessage() with a string that contains a raw
-     * '<' (e.g. a stock symbol like "<NA>", a signal label, a computed value).
-     * Even one rogue '<' that Telegram can't parse as a known tag causes a 400 error
-     * for the entire message — regardless of where the '<' came from.
-     *
-     * Strategy:
-     *  1. Replace every '<' with the placeholder \u0000LT\u0000.
-     *  2. Restore only the valid Telegram HTML tags from the placeholder.
-     *  3. Escape all remaining placeholders (data-level '<') as &lt;.
-     *
-     * Valid Telegram HTML tags: <b> </b> <i> </i> <u> </u> <s> </s>
-     *                           <code> </code> <pre> </pre> <a href="..."> </a>
-     *
-     * This means structural tags you intentionally wrote are preserved,
-     * and any rogue '<' from data is safely escaped — no 400 ever again.
-     */
     private String sanitizeHtml(String text) {
         if (text == null || text.isEmpty()) return text;
 
         final String PLACEHOLDER = "\u0000LT\u0000";
 
-        // Step 1 — replace every '<' with a safe placeholder
         String result = text.replace("<", PLACEHOLDER);
 
-        // Step 2 — restore valid Telegram HTML tags (placeholder → '<')
-        // Covers: <b> <i> <u> <s> <code> <pre> and their closing forms,
-        //         plus <a href="..."> and </a>
         result = result
             .replace(PLACEHOLDER + "b>",      "<b>")
             .replace(PLACEHOLDER + "/b>",     "</b>")
@@ -465,38 +462,12 @@ public class TelegramService {
             .replace(PLACEHOLDER + "/pre>",   "</pre>")
             .replace(PLACEHOLDER + "/a>",     "</a>");
 
-        // Restore <a href="..."> — needs regex because href value varies
         result = Pattern.compile(Pattern.quote(PLACEHOLDER) + "a(\\s+href=\"[^\"]*\")>")
                         .matcher(result)
                         .replaceAll("<a$1>");
 
-        // Step 3 — any remaining placeholder is a rogue '<' from data — escape it
         result = result.replace(PLACEHOLDER, "&lt;");
 
         return result;
-    }
-    
-
-    /**
-     * Saves the alert message to alert_log only if alert_config
-     * has save_enabled = true for this strategy.
-     * Call this AFTER a successful send — pass the boolean result from sendMessage().
-     */
- // TelegramService.java
-    public void saveAlertIfEnabled(String strategyName, String message,
-                                    String signalType, boolean sent) {
-        try {
-            Alert alert = Alert.builder()
-                    .strategyName(strategyName)
-                    .message(message)
-                    .signalType(signalType)
-                    .status(sent ? "SENT" : "FAILED")
-                    .sentAt(LocalDateTime.now())
-                    .build();
-            alertRepo.save(alert);
-            logger.info("💾 Alert saved for strategy: {}", strategyName);
-        } catch (Exception e) {
-            logger.error("⚠️ Could not save alert for {}: {}", strategyName, e.getMessage());
-        }
     }
 }

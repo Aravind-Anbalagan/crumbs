@@ -632,28 +632,45 @@ public class StraddleIntradayService {
 	
 	private void sendTelegramAlert(StraddleIntraday entity, AlertType alertType) {
 	    try {
-	        if (isAlertAlreadySent(entity.getStrike(), alertType)) {
-	            return;
-	        }
+	        if (isAlertAlreadySent(entity.getStrike(), alertType)) return;
 
 	        String message = buildTelegramMessage(entity, alertType);
-	        boolean sent = telegramService.sendMessage(message);
+	        boolean sent   = telegramService.sendMessage(message);
 
 	        if (sent) {
-	            logger.info("✅ Alert sent [{}] for {} strike {}",
-	                alertType, entity.getName(), entity.getStrike());
+	        	logger.info("✅ Alert sent [{}] for {} strike {}",
+	                    alertType, entity.getName(), entity.getStrike());
 	        }
-	        
-	        // ← save to alert table if config allows
+
+	        // Derive strategy group from alertType
+	        String strategyName = (alertType == AlertType.CE_PE_CROSSOVER
+	                            || alertType == AlertType.PE_CE_CROSSOVER)
+	                ? "CROSSOVER"
+	                : "VWAP_DOMINANCE";
+
+	        // ✅ Full overload — symbol + prices written to Alert row
+	        //    DominanceService SL check reads cePrice/pePrice/ceVwap/peVwap from here
 	        telegramService.saveAlertIfEnabled(
-	            entity.getName(),   // strategyName  e.g. "STRADDLE_PREMIUM"
-	            message,
-	            alertType.name(),   // signalType    e.g. "CE_PE_CROSSOVER"
-	            sent
+	                strategyName,
+	                entity.getName(),               // symbol  → "NIFTY" / "CRUDEOIL"
+	                message,
+	                alertType.name(),               // signalType → "VWAP_DOMINANCE_CE" etc.
+	                sent,
+	                entity.getStrike() != null
+	                        ? entity.getStrike().intValue() : null,
+	                entity.getCePrice() != null
+	                        ? entity.getCePrice().doubleValue() : null,
+	                entity.getPePrice() != null
+	                        ? entity.getPePrice().doubleValue() : null,
+	                entity.getCeVwap()  != null
+	                        ? entity.getCeVwap().doubleValue()  : null,
+	                entity.getPeVwap()  != null
+	                        ? entity.getPeVwap().doubleValue()  : null
 	        );
+
 	    } catch (Exception ex) {
-	        logger.error("Telegram alert failed [{}] for {} {}",
-	            alertType, entity.getName(), entity.getStrike(), ex);
+	    	logger.error("Telegram alert failed [{}] for {} {}",
+	                alertType, entity.getName(), entity.getStrike(), ex);
 	    }
 	}
 	
