@@ -47,6 +47,7 @@ import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.AlertType;
 import com.crumbs.trade.utility.ConditionalLogger;
 import com.crumbs.trade.utility.NSEWorkingDays;
+import com.crumbs.trade.utility.SamcoSessionManager;
 
 @Service
 public class StraddleIntradayService {
@@ -81,7 +82,8 @@ public class StraddleIntradayService {
 	@Autowired
 	Samco samco;
 	@Autowired PriceUtilService priceUtilService;
-	
+	@Autowired
+	private SamcoSessionManager sessionManager;
 	// ================= VWAP STATE =================
 	private final Map<String, BigDecimal> tpvMap = new HashMap<>();
 	private final Map<String, BigDecimal> volMap = new HashMap<>();
@@ -128,19 +130,18 @@ public class StraddleIntradayService {
 	            return;
 	        }
 
-	        //String session = samco.getSamcoSession();
-	        String session = null;
+	        String session = sessionManager.getSession();
 	        BigDecimal spotPrice = null;
 	       
 	        if ("NIFTY".equalsIgnoreCase(name)) {
-	            //spotPrice = samco.getNifty50Price(session);
-	        	strategy = strategyRepo.findByName("NIFTY_INDEX");
+	            spotPrice = samco.getNifty50Price(session);
+	        	//strategy = strategyRepo.findByName("NIFTY");
 	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
 						strategy.getToken());
 	        } else if ("CRUDEOIL".equalsIgnoreCase(name)) {
-	            //spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
-				spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
-						strategy.getToken());
+	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+				//spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
+				//		strategy.getToken());
 	        }
 
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -2355,7 +2356,7 @@ public class StraddleIntradayService {
 	        logger.info("=== PRE-MARKET DATA FETCH STARTED FOR {} ===", name);
 	        
 	        // 1. Get spot price
-	        String session = samco.getSamcoSession();
+	        String session = sessionManager.getSession();
 	        BigDecimal spotPrice = samco.getNifty50Price(session);
 	        
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
