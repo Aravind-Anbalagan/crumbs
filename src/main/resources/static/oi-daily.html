@@ -511,7 +511,7 @@
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────
-const REFRESH_SEC   = 60;
+const REFRESH_SEC   = 30;
 const FETCH_TIMEOUT = 10000;
 
 // Supported indices — add more here as needed
@@ -587,22 +587,45 @@ function setStatus(state, msg) {
   }
 }
 
-// ── COUNTDOWN ─────────────────────────────────────────────────────
+// ── COUNTDOWN (pauses when tab is hidden) ─────────────────────────
+function tickCountdown() {
+  if (document.visibilityState !== 'visible') return; // skip hidden ticks
+  countdown--;
+  if (countdown <= 0) {
+    clearInterval(countdownTmr);
+    countdownTmr = null;
+    document.getElementById('countdown').textContent = 'refreshing…';
+    loadData();
+  } else {
+    document.getElementById('countdown').textContent = `next in ${countdown}s`;
+  }
+}
+
 function startCountdown() {
   clearInterval(countdownTmr);
   countdown = REFRESH_SEC;
   document.getElementById('countdown').textContent = `next in ${countdown}s`;
-  countdownTmr = setInterval(() => {
-    countdown--;
-    if (countdown <= 0) {
-      clearInterval(countdownTmr);
-      document.getElementById('countdown').textContent = 'refreshing…';
-      loadData();
-    } else {
-      document.getElementById('countdown').textContent = `next in ${countdown}s`;
-    }
-  }, 1000);
+  countdownTmr = setInterval(tickCountdown, 1000);
 }
+
+// Resume or catch-up when the tab becomes visible again
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') {
+    // Tab hidden — show paused indicator
+    if (countdownTmr) {
+      document.getElementById('countdown').textContent = 'paused';
+    }
+    return;
+  }
+  // Tab visible — if countdown still running, just let it continue;
+  // if it fired while hidden (countdown ≤ 0), refresh immediately
+  if (countdown <= 0 && !countdownTmr) {
+    document.getElementById('countdown').textContent = 'refreshing…';
+    loadData();
+  } else if (countdownTmr) {
+    document.getElementById('countdown').textContent = `next in ${countdown}s`;
+  }
+});
 
 // ── FETCH ─────────────────────────────────────────────────────────
 async function fetchWithTimeout(url, ms) {
