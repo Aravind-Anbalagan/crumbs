@@ -47,7 +47,7 @@ public class OIScheduler {
             // 🔥 CORE: Save multi-strike snapshot
             oiAnalysisService.saveSnapshot(name);
 
-            System.out.println("📊 OI Snapshot Saved → " + name);
+            
 
         } catch (Exception e) {
             System.err.println("❌ OI Scheduler Error (" + name + "): " + e.getMessage());

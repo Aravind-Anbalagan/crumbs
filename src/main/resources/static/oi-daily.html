@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NIFTY OI Dashboard</title>
+<title>OI Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -31,6 +31,8 @@
     --tooltip-bd: #1c2a38;
     --toggle-bg:  #1c2a38;
     --toggle-knob:#5a7a92;
+    --index-bg:   #0d1822;
+    --index-active:#00c8ff;
   }
 
   /* ── LIGHT THEME ── */
@@ -55,6 +57,8 @@
     --tooltip-bd: #d1dde8;
     --toggle-bg:  #d1dde8;
     --toggle-knob:#5a7a92;
+    --index-bg:   #eef4f9;
+    --index-active:#0096c7;
   }
 
   /* ── BASE ── */
@@ -109,7 +113,7 @@
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
   }
-  .header-left  { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .header-left  { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
   .title {
@@ -117,6 +121,41 @@
     font-size: 18px; font-weight: 600;
     color: var(--white);
     transition: color .25s;
+    letter-spacing: 1px;
+  }
+
+  /* ── INDEX SWITCHER ── */
+  .index-switcher {
+    display: flex;
+    border: 1px solid var(--border2);
+    background: var(--index-bg);
+    transition: background .25s, border-color .25s;
+  }
+  .index-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 1px;
+    padding: 4px 12px;
+    background: none; border: none;
+    color: var(--label); cursor: pointer;
+    transition: background .2s, color .2s;
+    border-right: 1px solid var(--border2);
+    text-transform: uppercase;
+  }
+  .index-btn:last-child { border-right: none; }
+  .index-btn.active {
+    background: var(--surface2);
+    color: var(--index-active);
+  }
+  .index-btn:hover:not(.active) {
+    color: var(--text);
+    background: var(--surface2);
+  }
+
+  /* ── SEPARATOR ── */
+  .sep {
+    width: 1px; height: 22px;
+    background: var(--border2);
+    transition: background .25s;
   }
 
   .strike-select-wrap { display: flex; align-items: center; gap: 8px; }
@@ -326,7 +365,7 @@
 
 <div id="loading">
   <div class="spinner"></div>
-  <p>LOADING STRIKES…</p>
+  <p id="loading-text">LOADING STRIKES…</p>
 </div>
 
 <div id="app">
@@ -334,7 +373,15 @@
   <!-- HEADER -->
   <div class="header">
     <div class="header-left">
-      <span class="title">NIFTY</span>
+      <!-- Index switcher -->
+      <div class="index-switcher" id="index-switcher">
+        <button class="index-btn active" data-index="NIFTY"     onclick="setIndex('NIFTY',this)">NIFTY</button>
+        <button class="index-btn"        data-index="CRUDEOIL"  onclick="setIndex('CRUDEOIL',this)">CRUDE OIL</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Strike selector -->
       <div class="strike-select-wrap">
         <span class="strike-badge" id="strike-badge">STRIKE —</span>
         <select id="strike-select" class="strike-select">
@@ -343,6 +390,7 @@
       </div>
       <span id="src-tag" class="src-tag src-sample">SAMPLE</span>
     </div>
+
     <div class="header-right">
       <span id="clock"></span>
 
@@ -463,15 +511,20 @@
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────
-const STRIKES_API   = '/api/oi/strikes/NIFTY';
-const OI_API_BASE   = '/api/oi/strike/NIFTY/';
 const REFRESH_SEC   = 60;
 const FETCH_TIMEOUT = 10000;
+
+// Supported indices — add more here as needed
+const INDICES = ['NIFTY', 'CRUDEOIL'];
+
+function strikesUrl(index)  { return `/api/oi/strikes/${index}`; }
+function oiUrl(index, strike) { return `/api/oi/strike/${index}/${strike}`; }
 
 // ── STATE ─────────────────────────────────────────────────────────
 let DATA          = [];
 let charts        = {};
 let currentView   = 'oi';
+let currentIndex  = 'NIFTY';
 let currentStrike = null;
 let countdown     = REFRESH_SEC;
 let countdownTmr  = null;
@@ -484,7 +537,6 @@ function getTheme() {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('oi-theme', theme);
-  // Rebuild charts so grid/text colours update
   if (DATA.length) {
     buildMain(DATA);
     buildMini(DATA);
@@ -493,10 +545,9 @@ function applyTheme(theme) {
 function toggleTheme() {
   applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
 }
-// Apply saved theme immediately (before paint)
 applyTheme(getTheme());
 
-// ── CSS-VAR READER (used by charts) ──────────────────────────────
+// ── CSS-VAR READER ────────────────────────────────────────────────
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
@@ -564,25 +615,76 @@ async function fetchWithTimeout(url, ms) {
   } catch (e) { clearTimeout(timer); throw e; }
 }
 
+// ── INDEX SWITCH ──────────────────────────────────────────────────
+function setIndex(index, el) {
+  if (index === currentIndex) return;
+  currentIndex  = index;
+  currentStrike = null;
+  DATA          = [];
+
+  // Update button states
+  document.querySelectorAll('.index-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+
+  // Update page title
+  document.title = `${currentIndex} OI Dashboard`;
+
+  // Reset strike dropdown
+  const select = document.getElementById('strike-select');
+  select.innerHTML = '<option value="">Loading…</option>';
+  document.getElementById('strike-badge').textContent = 'STRIKE —';
+
+  // Clear charts
+  ['main','ce','pe'].forEach(k => { if (charts[k]) { charts[k].destroy(); delete charts[k]; } });
+  document.getElementById('tbl-body').innerHTML = '';
+
+  // Reset stats
+  ['s-ce-oi','s-pe-oi','s-pcr','s-ce-ltp','s-pe-ltp','s-count',
+   's-ce-chg','s-pe-chg','s-pcr-bias','s-ce-ltp-c','s-pe-ltp-c','s-ts',
+   'm-ce-last','m-pe-last'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+
+  clearInterval(countdownTmr);
+  document.getElementById('countdown').textContent = '';
+
+  loadStrikes();
+}
+
 // ── LOAD STRIKES ──────────────────────────────────────────────────
 async function loadStrikes() {
+  document.getElementById('loading-text').textContent = `LOADING ${currentIndex} STRIKES…`;
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('app').style.display     = 'none';
+
   try {
-    const res = await fetchWithTimeout(STRIKES_API, FETCH_TIMEOUT);
+    const res = await fetchWithTimeout(strikesUrl(currentIndex), FETCH_TIMEOUT);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const strikes = await res.json();
+
+    if (!Array.isArray(strikes) || !strikes.length) {
+      throw new Error('No strikes available');
+    }
+
     const atmIdx  = Math.floor(strikes.length / 2);
     const atm     = strikes[atmIdx];
 
     const select = document.getElementById('strike-select');
-    select.innerHTML = '<option value="">Select Strike</option>' +
+    // Remove old listener by cloning
+    const newSelect = select.cloneNode(false);
+    select.parentNode.replaceChild(newSelect, select);
+    newSelect.innerHTML = '<option value="">Select Strike</option>' +
       strikes.map(s => `<option value="${s}"${s===atm?' selected':''}>${s}</option>`).join('');
-    select.addEventListener('change', e => { if (e.target.value) setStrike(e.target.value); });
+    newSelect.addEventListener('change', e => { if (e.target.value) setStrike(e.target.value); });
+
     setStrike(atm);
 
   } catch (err) {
     console.warn('[Strikes]', err.message);
-    setStatus('error', 'Strikes unavailable');
-    // Show app anyway with empty state
+    setStatus('error', `${currentIndex} — ${err.message}`);
+    const sel = document.getElementById('strike-select');
+    sel.innerHTML = '<option value="">No strikes</option>';
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display     = 'block';
   }
@@ -596,8 +698,13 @@ function setStrike(strike) {
 }
 
 // ── LOAD OI DATA ──────────────────────────────────────────────────
+function showApp() {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display     = 'block';
+}
+
 async function loadData() {
-  if (!currentStrike || isFetching) return;
+  if (!currentStrike || isFetching) { showApp(); return; }
   isFetching = true;
 
   const btn = document.getElementById('refresh-btn');
@@ -607,7 +714,7 @@ async function loadData() {
   setStatus('loading', 'fetching…');
 
   try {
-    const res = await fetchWithTimeout(OI_API_BASE + currentStrike, FETCH_TIMEOUT);
+    const res = await fetchWithTimeout(oiUrl(currentIndex, currentStrike), FETCH_TIMEOUT);
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     const ct = res.headers.get('content-type') || '';
     if (!ct.includes('application/json')) throw new Error('Non-JSON response');
@@ -626,8 +733,7 @@ async function loadData() {
 
   if (DATA.length) render(DATA);
 
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('app').style.display     = 'block';
+  showApp();
 
   btn.disabled    = false;
   btn.textContent = '↻ REFRESH';
@@ -643,7 +749,6 @@ Chart.defaults.font.family = "'IBM Plex Mono', monospace";
 Chart.defaults.font.size   = 10;
 
 function chartCfg() {
-  // Read live CSS vars so they respond to theme changes
   const grid    = cssVar('--grid');
   const border  = cssVar('--border');
   const tickCol = cssVar('--label');
@@ -679,7 +784,7 @@ function buildMain(data) {
   let datasets, title, type;
 
   if (currentView === 'oi') {
-    title = 'OPEN INTEREST — CE vs PE'; type = 'bar';
+    title = `OPEN INTEREST — CE vs PE  [${currentIndex}]`; type = 'bar';
     datasets = [
       { label:'CE OI', data:data.map(d=>d.ceOi),
         backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5,
@@ -689,7 +794,7 @@ function buildMain(data) {
         barPercentage:0.8, categoryPercentage:0.7 },
     ];
   } else if (currentView === 'ltp') {
-    title = 'LTP MOVEMENT — CE vs PE'; type = 'line';
+    title = `LTP MOVEMENT — CE vs PE  [${currentIndex}]`; type = 'line';
     datasets = [
       { label:'CE LTP', data:data.map(d=>d.ceLtp), borderColor:'#00c8ff',
         backgroundColor:'rgba(0,200,255,0.08)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
@@ -697,7 +802,7 @@ function buildMain(data) {
         backgroundColor:'rgba(255,83,112,0.08)', fill:true, tension:0.35, pointRadius:0, borderWidth:2 },
     ];
   } else {
-    title = 'OI CHANGE — CE vs PE'; type = 'bar';
+    title = `OI CHANGE — CE vs PE  [${currentIndex}]`; type = 'bar';
     datasets = [
       { label:'CE OI Δ', data:data.map(d=>d.ceOiChange),
         backgroundColor:'rgba(0,200,255,0.22)', borderColor:'#00c8ff', borderWidth:1.5,
