@@ -308,6 +308,7 @@ public class DominanceService {
         o.setStatus("OPEN");
         o.setTradePhase("ENTRY");
         o.setReversal(false);
+        o.setStrike(strike);   // ← add this line
         o.setSignal(bias);
         o.setExchange("NIFTY".equals(symbol) ? "NSE" : "MCX");
         o.setAskPrice((int) entryPrice); // premium collected at entry
@@ -328,9 +329,18 @@ public class DominanceService {
     // 🔒 CLOSE ORDER
     // =========================
     private void closeOrder(Orders o, String phase) {
-        o.setStatus("CLOSED");
-        o.setTradePhase(phase);
-        ordersRepo.save(o);
+    	 o.setStatus("CLOSED");
+    	    o.setTradePhase(phase);
+    	    o.setClosedOn(LocalDateTime.now());                     // ← exit timestamp
+
+    	    // Capture exit price from the latest alert
+    	    Alert latest = getLatestDominanceAlert(o.getSymbol());
+    	    if (latest != null) {
+    	        double exitPx = getEntryPrice(latest, o.getSignal()); // same side logic
+    	        o.setExitPrice((int) exitPx);
+    	    }
+
+    	    ordersRepo.save(o);
     }
 
     private void log(String symbol, String msg) {

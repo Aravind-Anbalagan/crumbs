@@ -228,8 +228,15 @@ public class CPRStraddleService {
                 return;
             }
 
-            straddleIntradayService.getPriceForAllTheStrikesBatch(
+            // ✅ Capture return value and update atmDto
+            List<StraddlePremiumDto> updated = straddleIntradayService.getPriceForAllTheStrikesBatch(
                     Collections.singletonList(atmDto), sc, optionStrategy.getExchange());
+
+            if (updated == null || updated.isEmpty()) {
+                logger.error("Batch price fetch returned empty - skipping tick.");
+                return;
+            }
+            atmDto = updated.get(0); // ✅ atmDto now has fresh prices
 
             BigDecimal ceCurrent = atmDto.getCePrice();
             BigDecimal peCurrent = atmDto.getPePrice();

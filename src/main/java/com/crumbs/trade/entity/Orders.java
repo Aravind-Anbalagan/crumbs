@@ -59,5 +59,11 @@ public class Orders {
     
     @Column(name = "is_reversal")
     private Boolean reversal;
+    
+    @Column(name = "closed_on")
+    private LocalDateTime closedOn;
+
+    @Column(name = "strike")
+    private Integer strike;
   
 }
