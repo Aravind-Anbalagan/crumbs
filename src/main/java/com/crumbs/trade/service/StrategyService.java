@@ -71,6 +71,10 @@ public class StrategyService {
     // Strangle range
     public static int MAX = 0;
     public static int MIN = 0;
+    
+    private int buyConfirmCount  = 0;
+    private int sellConfirmCount = 0;
+    private static final int BREAKOUT_CONFIRM_TICKS = 5; // consecutive 1-min closes to confirm breakout
 
     // =========================================================================
     // AUTOWIRED
@@ -200,6 +204,8 @@ public class StrategyService {
         buySLHit.set(false);
         sellSLHit.set(false);
         skipCPRTakeStraddle.set(false); // NEW
+        buyConfirmCount  = 0;  // ← missing
+        sellConfirmCount = 0;  // ← missing
         cprStraddleService.resetDailyFlags(); // NEW — reset straddle state too
         logger.info("🔄 CPR daily flags reset successfully.");
     }
@@ -281,19 +287,37 @@ public class StrategyService {
     // =========================================================================
     // SIGNAL GENERATION — unchanged
     // =========================================================================
-    private String generateSignal(BigDecimal price,
-                                  BigDecimal first5High, BigDecimal first5Low,
-                                  BigDecimal upperBand,  BigDecimal lowerBand,
-                                  String marketType) {
-        if ("NORMAL".equals(marketType)) {
-            if (price.compareTo(first5High) > 0 && price.compareTo(upperBand) > 0) return "BUY";
-            if (price.compareTo(first5Low)  < 0 && price.compareTo(lowerBand) < 0) return "SELL";
-        } else {
-            if (price.compareTo(first5High) > 0) return "BUY";
-            if (price.compareTo(first5Low)  < 0) return "SELL";
-        }
-        return "WAIT";
-    }
+	private String generateSignal(BigDecimal price, BigDecimal first5High, BigDecimal first5Low, BigDecimal upperBand,
+			BigDecimal lowerBand, String marketType) {
+		if ("NORMAL".equals(marketType)) {
+			if (price.compareTo(first5High) > 0 && price.compareTo(upperBand) > 0) {
+				sellConfirmCount = 0;
+				if (++buyConfirmCount >= BREAKOUT_CONFIRM_TICKS)
+					return "BUY";
+			} else if (price.compareTo(first5Low) < 0 && price.compareTo(lowerBand) < 0) {
+				buyConfirmCount = 0;
+				if (++sellConfirmCount >= BREAKOUT_CONFIRM_TICKS)
+					return "SELL";
+			} else {
+				buyConfirmCount = 0;
+				sellConfirmCount = 0;
+			}
+		} else {
+			if (price.compareTo(first5High) > 0) {
+				sellConfirmCount = 0;
+				if (++buyConfirmCount >= BREAKOUT_CONFIRM_TICKS)
+					return "BUY";
+			} else if (price.compareTo(first5Low) < 0) {
+				buyConfirmCount = 0;
+				if (++sellConfirmCount >= BREAKOUT_CONFIRM_TICKS)
+					return "SELL";
+			} else {
+				buyConfirmCount = 0;
+				sellConfirmCount = 0;
+			}
+		}
+		return "WAIT";
+	}
 
     // =========================================================================
     // STOPLOSS CHECK — unchanged
