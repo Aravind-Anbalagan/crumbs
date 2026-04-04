@@ -113,11 +113,16 @@ public class TradeExecutionService {
         dto.setTradeType(o.getType());
         dto.setStatus(o.getActive() == 1 ? "OPEN" : "CLOSED");
 
-        dto.setEntryPrice(BigDecimal.valueOf(o.getAskPrice()));
-        dto.setExitPrice(o.getExitPrice() == 0 ? null : BigDecimal.valueOf(o.getExitPrice()));
+        dto.setEntryPrice(o.getAskPrice());
 
-        dto.setTargetPrice(BigDecimal.valueOf(o.getPl()));
-        dto.setSlPrice(BigDecimal.valueOf(o.getSl()));
+        dto.setExitPrice(
+            o.getExitPrice() == null || o.getExitPrice().compareTo(BigDecimal.ZERO) == 0
+                ? null
+                : o.getExitPrice()
+        );
+
+        dto.setTargetPrice(o.getPl());
+        dto.setSlPrice(o.getSl());
 
         dto.setMethod("CPR");
 

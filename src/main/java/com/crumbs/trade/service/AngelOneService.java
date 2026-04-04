@@ -32,6 +32,7 @@ import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.IndicatorRepo;
 import com.crumbs.trade.repo.IntradayTradeRepo;
+import com.crumbs.trade.repo.LevelRepository;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.OIResultRepo;
 import com.crumbs.trade.repo.OrderRepository;
@@ -143,6 +144,7 @@ public class AngelOneService {
 	
 	@Autowired OIResultRepo oiResultRepo;
 	@Autowired IntradayTradeRepo intradayTradeRepo;
+	@Autowired LevelRepository levelRepository;
 	
 	/*
 	 * Get current price
@@ -244,7 +246,8 @@ public class AngelOneService {
 		alertRepo.deleteAll();
 		oiResultRepo.deleteAll();
 		intradayTradeRepo.deleteAll();
-	}
+		levelRepository.deleteAll();
+		}
 	/*
 	 * Get current price
 	 */
@@ -386,11 +389,11 @@ public class AngelOneService {
 
 		// ASK PRICE
 		Double ask = token.getPrice();
-		orders.setAskPrice(ask != null ? ask.intValue() : 0);
+		orders.setAskPrice(ask != null ? BigDecimal.valueOf(ask) : BigDecimal.ZERO);
 
 		// SL
 		Double sl = token.getTriggerPrice();
-		orders.setSl(sl != null ? sl.intValue() : 0);
+		orders.setSl(sl != null ? BigDecimal.valueOf(sl) : BigDecimal.ZERO);
 
 		// BASIC DETAILS
 		orders.setSymbol(safe(token.getSymbol()));
@@ -403,7 +406,7 @@ public class AngelOneService {
 		orders.setActive(1);
 
 		// BREAKEVEN
-		orders.setBreakeven(breakEven);
+		orders.setBreakeven(BigDecimal.valueOf(breakEven));
 
 		// QUANTITY – works for int **or** Integer
 		try {

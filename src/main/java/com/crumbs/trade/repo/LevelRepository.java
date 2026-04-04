@@ -1,50 +1,71 @@
 package com.crumbs.trade.repo;
 
 import com.crumbs.trade.entity.Level;
-import com.crumbs.trade.entity.TradeExecution;
+
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
-@Repository
 public interface LevelRepository extends JpaRepository<Level, Long> {
 
-    // ------------------------------------------------
-    // 1️⃣ Used when saving fresh snapshot (scheduler)
-    // ------------------------------------------------
-    void deleteBySymbolAndTimeframe(String symbol, String timeframe);
+	@Modifying
+	@Query("delete from Level o")
+	void deleteAll();
+    // =========================================================
+    // 🔹 1. FIND MATCHING LEVEL (MERGE LOGIC)
+    // =========================================================
+    @Query("""
+        SELECT l FROM Level l
+        WHERE l.symbol = :symbol
+        AND l.timeframe = :timeframe
+        AND l.active = true
+        AND ABS(l.price - :price) <= :buffer
+    """)
+    Level findMatchingLevel(@Param("symbol") String symbol,
+                            @Param("timeframe") String timeframe,
+                            @Param("price") BigDecimal price,
+                            @Param("buffer") BigDecimal buffer);
 
-    // ------------------------------------------------
-    // 2️⃣ Used by analysis utility (VERY IMPORTANT)
-    // ------------------------------------------------
-    List<Level> findBySymbolAndTimeframe(
-            String symbol,
-            String timeframe
-    );
 
-    // ------------------------------------------------
-    // 3️⃣ Optional: only latest generated snapshot
-    // ------------------------------------------------
-    List<Level> findBySymbolAndTimeframeOrderByGeneratedAtDesc(
-            String symbol,
-            String timeframe
-    );
-    
-    /**
-     * Find all resistance levels (SEQ < 0) for symbol and timeframe
-     */
-    List<Level> findBySymbolAndTimeframeAndSeqLessThan(
-            String symbol, 
-            String timeframe, 
-            Integer seq);
+    // =========================================================
+    // 🔹 2. GET ACTIVE LEVELS (FOR TRADING)
+    // =========================================================
+    @Query("""
+        SELECT l FROM Level l
+        WHERE l.symbol = :symbol
+        AND l.active = true
+        ORDER BY l.price ASC
+    """)
+    List<Level> findActiveLevels(@Param("symbol") String symbol);
 
-    /**
-     * Find all support levels (SEQ > 0) for symbol and timeframe
-     */
-    List<Level> findBySymbolAndTimeframeAndSeqGreaterThan(
-            String symbol, 
-            String timeframe, 
-            Integer seq);
+
+    // =========================================================
+    // 🔹 3. (OPTIONAL) FETCH ALL FOR UI (EOD PLOT)
+    // =========================================================
+    @Query("""
+        SELECT l FROM Level l
+        WHERE l.symbol = :symbol
+        AND l.timeframe = :timeframe
+        ORDER BY l.price ASC
+    """)
+    List<Level> findAllLevels(@Param("symbol") String symbol,
+                             @Param("timeframe") String timeframe);
+
+
+    // =========================================================
+    // 🔹 4. (OPTIONAL) DEACTIVATE OLD LEVELS
+    // =========================================================
+    @Query("""
+        UPDATE Level l
+        SET l.active = false
+        WHERE l.symbol = :symbol
+        AND l.active = true
+        AND l.lastTouchedAt < :cutoffTime
+    """)
+    void deactivateOldLevels(@Param("symbol") String symbol,
+                             @Param("cutoffTime") java.time.LocalDateTime cutoffTime);
 }

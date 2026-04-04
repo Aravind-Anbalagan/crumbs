@@ -1,5 +1,6 @@
 package com.crumbs.trade.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
@@ -26,22 +27,12 @@ public class Orders {
 	String symbol;
 	@Column(name="token")
 	String token;
-	@Column(name="askprice")
-	int askPrice;
-	@Column(name="exitprice")
-	int exitPrice;
-    @Column(name="sl")
-	int sl;
-	@Column(name="pl")
-	int pl;
 	@Column(name="name")
 	String name;
 	@Column(name="type")
 	String type;
 	@Column(name="active")
 	int active;
-	@Column(name="breakeven")
-	int breakeven;
 	@Column(name="signal")
 	String signal;
 	@Column(name="exchange")
@@ -63,7 +54,22 @@ public class Orders {
     @Column(name = "closed_on")
     private LocalDateTime closedOn;
 
-    @Column(name = "strike")
-    private Integer strike;
+    @Column(name = "askprice", precision = 12, scale = 2)
+    private BigDecimal askPrice;   // entry price
+
+    @Column(name = "exitprice", precision = 12, scale = 2)
+    private BigDecimal exitPrice;
+
+    @Column(name = "sl", precision = 12, scale = 2)
+    private BigDecimal sl;
+
+    @Column(name = "pl", precision = 12, scale = 2)
+    private BigDecimal pl;         // target initially, pnl after close
+
+    @Column(name = "breakeven", precision = 12, scale = 2)
+    private BigDecimal breakeven;
+
+    @Column(name = "strike", precision = 12, scale = 2)
+    private BigDecimal strike;     // level price
   
 }

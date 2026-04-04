@@ -29,7 +29,6 @@ public class HeikinPsarExecutionService {
     @Autowired private VixRepo vixRepo;
     @Autowired private OIService oiService;
     @Autowired private SRService srService;
-    @Autowired private TradeManagerService tradeManagerService;
     @Autowired private LevelRepository levelRepo;
 
     // ================= CORE EXECUTIONS =================

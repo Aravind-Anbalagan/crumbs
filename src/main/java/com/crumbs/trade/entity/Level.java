@@ -1,20 +1,21 @@
 package com.crumbs.trade.entity;
 
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 
-@Data
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Entity
 @Table(
         name = "levels",
         indexes = {
-                @Index(name = "idx_levels_symbol_tf", columnList = "symbol, timeframe"),
-                @Index(name = "idx_levels_method_seq", columnList = "method, seq"),
-                @Index(name = "idx_levels_value", columnList = "levelValue")
+                @Index(name = "idx_levels_symbol_tf_active", columnList = "symbol, timeframe, active"),
+                @Index(name = "idx_levels_symbol_price",     columnList = "symbol, price")   // ✅ composite — merge lookup uses both
         }
 )
 public class Level {
@@ -26,52 +27,75 @@ public class Level {
     // --------------------------------
     // Instrument Context
     // --------------------------------
-    @Column(nullable = false, length = 20)
-    private String symbol;              // NIFTY, BANKNIFTY
+    @Column(nullable = false, length = 25)
+    private String symbol;
 
-    @Column(nullable = false, length = 20)
-    private String timeframe;           // 5M, 15M, HOURLY, DAILY
+    @Column(nullable = false, length = 25)
+    private String timeframe;
 
     // --------------------------------
-    // SR Ordering & Direction
+    // Plot Core
     // --------------------------------
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal price;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal zoneHigh;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal zoneLow;
+
+    @Column(nullable = false, length = 12)
+    private String type;                // SUPPORT / RESISTANCE
+
+    // --------------------------------
+    // Behavior Tracking
+    // --------------------------------
+    @Builder.Default
     @Column(nullable = false)
-    private Integer seq;
-    /*
-     * seq > 0  => SUPPORT  (1 strongest, 5 weakest)
-     * seq < 0  => RESISTANCE (-1 strongest, -5 weakest)
-     * seq != 0 => enforced by validation
-     */
+    private Integer touches = 0;
 
-    // --------------------------------
-    // Source of Level
-    // --------------------------------
-    @Column(nullable = false, length = 20)
-    private String method;              // PRICE_ACTION / FIBO
-
-    // --------------------------------
-    // Price Level (COMMON COLUMN)
-    // --------------------------------
-    @Column(name = "level_value", nullable = false, precision = 12, scale = 2)
-    private BigDecimal levelValue;
-
-    // --------------------------------
-    // Fibo / Strength Metadata
-    // --------------------------------
-    @Column(length = 10)
-    private String strength;            // CRITICAL / MODERATE / WEAK
-
-    private Integer touches;             // No. of touches (Fibo)
-
-    @Column(length = 120)
-    private String label;                // API label text
-
-    // --------------------------------
-    // Audit Fields
-    // --------------------------------
+    @Builder.Default
     @Column(nullable = false)
-    private LocalDateTime generatedAt;   // API calculation time
+    private Integer bounce = 0;
 
+    @Builder.Default
     @Column(nullable = false)
+    private Integer rejection = 0;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer breakout = 0;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer breakdown = 0;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean heavyVolume = false;
+
+    // --------------------------------
+    // Plot Weight
+    // --------------------------------
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer strengthScore = 0;
+
+    // --------------------------------
+    // Lifecycle
+    // --------------------------------
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean active = true;
+
+    private LocalDateTime lastTouchedAt;    // updated on each SR scan
+    private LocalDateTime lastTradedAt;     // ✅ NEW — stamped when an order fires; drives cooldown guard
+
+    // --------------------------------
+    // Audit
+    // --------------------------------
+    @Builder.Default
+    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

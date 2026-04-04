@@ -203,8 +203,8 @@ public class PreMarketLevelOrderManagementService {
             try {
                 state      = State.ACTIVE;
                 direction  = TradeDirection.valueOf(order.getSignal());
-                entryPrice = BigDecimal.valueOf(order.getAskPrice());
-                currentSL  = BigDecimal.valueOf(order.getSl());
+                entryPrice = order.getAskPrice();
+                currentSL  = order.getSl();
                 lotSize    = resolveLotSize(order.getToken());
 
                 // Reconstruct target for FIXED mode
@@ -554,7 +554,7 @@ public class PreMarketLevelOrderManagementService {
             return;
         }
 
-        BigDecimal pnlPts = current.subtract(BigDecimal.valueOf(order.getAskPrice()));
+        BigDecimal pnlPts = current.subtract(order.getAskPrice());
         // FIX: use stored lotSize for ₹ PnL (direction may be null after restart;
         //      fallback to reading lot size from DB token)
         int resolvedLot   = (lotSize > 1) ? lotSize : resolveLotSize(order.getToken());
@@ -575,8 +575,8 @@ public class PreMarketLevelOrderManagementService {
             // We bypass saveOrder() and write directly so token & symbol are available.
             ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1)
                 .ifPresent(activeOrder -> {
-                    activeOrder.setExitPrice(current.setScale(0, RoundingMode.HALF_UP).intValue());
-                    activeOrder.setPl(pnlPts.setScale(0, RoundingMode.HALF_UP).intValue());
+                	activeOrder.setExitPrice(current.setScale(2, RoundingMode.HALF_UP));
+                	activeOrder.setPl(pnlPts.setScale(2, RoundingMode.HALF_UP));
                     activeOrder.setActive(0);
                     activeOrder.setType(TYPE_FORCE_EXIT);
                     ordersRepo.save(activeOrder);
@@ -699,8 +699,8 @@ public class PreMarketLevelOrderManagementService {
         ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1).ifPresentOrElse(
             order -> {
                 // Closing an existing active order
-                order.setExitPrice(price.setScale(0, RoundingMode.HALF_UP).intValue());
-                order.setPl(pnl != null ? pnl.setScale(0, RoundingMode.HALF_UP).intValue() : 0);
+            	order.setExitPrice(scale(price));
+                order.setPl(pnl != null ? scale(pnl) : BigDecimal.ZERO);
                 order.setActive(0);
                 order.setType(type);
                 ordersRepo.save(order);
@@ -716,8 +716,8 @@ public class PreMarketLevelOrderManagementService {
                 order.setName(STRATEGY_NAME);
                 order.setSymbol(data.getName());
                 order.setToken(getToken(data));
-                order.setAskPrice(price.setScale(0, RoundingMode.HALF_UP).intValue());
-                order.setSl(currentSL.setScale(0, RoundingMode.HALF_UP).intValue());
+                order.setAskPrice(scale(price));
+                order.setSl(scale(currentSL));
                 order.setActive(1);
                 order.setSignal(direction.name());
                 order.setExchange(EXCHANGE.name());
@@ -728,9 +728,12 @@ public class PreMarketLevelOrderManagementService {
         );
     }
 
+    private BigDecimal scale(BigDecimal value) {
+        return value != null ? value.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+    }
     private void updateSLInDb(BigDecimal newSL) {
         ordersRepo.findTopByNameAndActiveOrderByIdDesc(STRATEGY_NAME, 1).ifPresent(order -> {
-            order.setSl(newSL.setScale(0, RoundingMode.HALF_UP).intValue());
+        	order.setSl(scale(newSL));
             ordersRepo.save(order);
         });
     }

@@ -1,5 +1,6 @@
 package com.crumbs.trade.service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
@@ -308,10 +309,10 @@ public class DominanceService {
         o.setStatus("OPEN");
         o.setTradePhase("ENTRY");
         o.setReversal(false);
-        o.setStrike(strike);   // ← add this line
+        o.setStrike(new BigDecimal(strike));   // ← add this line
         o.setSignal(bias);
         o.setExchange("NIFTY".equals(symbol) ? "NSE" : "MCX");
-        o.setAskPrice((int) entryPrice); // premium collected at entry
+        o.setAskPrice(new BigDecimal(entryPrice)); // premium collected at entry
 
         // Conservative seller: UP = sell PE (weak side), DOWN = sell CE (weak side)
         if ("UP".equals(bias)) {
@@ -337,7 +338,7 @@ public class DominanceService {
     	    Alert latest = getLatestDominanceAlert(o.getSymbol());
     	    if (latest != null) {
     	        double exitPx = getEntryPrice(latest, o.getSignal()); // same side logic
-    	        o.setExitPrice((int) exitPx);
+    	        o.setExitPrice(new BigDecimal(exitPx));
     	    }
 
     	    ordersRepo.save(o);

@@ -25,7 +25,6 @@ import org.springframework.stereotype.Service;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
-import com.crumbs.trade.builder.LevelBuilder;
 import com.crumbs.trade.cache.CandleCache;
 import com.crumbs.trade.dto.CandleDTO;
 import com.crumbs.trade.dto.CandleRequestDto;
@@ -62,7 +61,6 @@ public class SRService {
     @Autowired ChartRepo chartRepo;
     @Autowired StrategyRepo strategyRepo;
     @Autowired LevelRepository levelRepo;
-    @Autowired LevelBuilder levelBuilder;
     @Autowired CandleCache candleCache;
 
     // ── Previous-day OHLC cache ───────────────────────────────────────────────

@@ -19,6 +19,7 @@ import com.crumbs.trade.dto.StraddlePremiumDto;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.service.AngelOneService;
 import com.crumbs.trade.service.OrderService;
 import com.crumbs.trade.service.StraddleIntradayService;
 import com.crumbs.trade.utility.AppConstant;
@@ -34,68 +35,72 @@ public class CPRStraddleService {
     // =========================================================================
     // CONSTANTS
     // =========================================================================
-    // 65% SL per leg — either leg hits SL -> exit BOTH legs -> no more trades today
-    // Why 65%: on big candle days IV is elevated; 65% gives enough room for
-    // mean reversion while ensuring the opposite leg has profited ~50%+
-    // Net result on SL day = breakeven (65% loss one leg, 50%+ profit other)
-    private static final BigDecimal SL_MULTIPLIER = new BigDecimal("1.65");
+    private static final BigDecimal SL_MULTIPLIER        = new BigDecimal("1.65");
+    private static final int        BREAKOUT_CONFIRM_TICKS = 5; // consecutive ticks to confirm trend
 
     // =========================================================================
-    // STATE  (reset at 09:00 AM daily via resetDailyFlags())
+    // STATE  (reset at 09:00 AM daily)
     // =========================================================================
     private final AtomicBoolean straddlePlaced = new AtomicBoolean(false);
     private final AtomicBoolean ceSLHit        = new AtomicBoolean(false);
     private final AtomicBoolean peSLHit        = new AtomicBoolean(false);
-    private final AtomicBoolean ceLegPlaced    = new AtomicBoolean(false); // CE order confirmed in market
-    private final AtomicBoolean peLegPlaced    = new AtomicBoolean(false); // PE order confirmed in market
+    private final AtomicBoolean ceLegPlaced    = new AtomicBoolean(false);
+    private final AtomicBoolean peLegPlaced    = new AtomicBoolean(false);
 
-    private BigDecimal         ceEntryPremium  = null;
-    private BigDecimal         peEntryPremium  = null;
-    private BigDecimal         ceSLPrice       = null; // fixed at 09:20, never changes
-    private BigDecimal         peSLPrice       = null; // fixed at 09:20, never changes
+    private BigDecimal ceEntryPremium = null;
+    private BigDecimal peEntryPremium = null;
+    private BigDecimal ceSLPrice      = null; // fixed at 09:20, never changes
+    private BigDecimal peSLPrice      = null; // fixed at 09:20, never changes
 
-    // ATM dto held in memory - tokens resolved once at 09:20,
-    // reused every minute for SL price re-fetch (no token lookup overhead)
-    private StraddlePremiumDto atmDto          = null;
+    // 5-min candle levels — passed in at placement, used for trend SL
+    private BigDecimal first5High     = null; // CE SELL trend SL — price > this for 5 ticks
+    private BigDecimal first5Low      = null; // PE SELL trend SL — price < this for 5 ticks
+
+    // Breakout confirm counters
+    // CE: Nifty trending UP (price > first5High) → CE short in trouble → exit both
+    // PE: Nifty trending DOWN (price < first5Low) → PE short in trouble → exit both
+    private int ceBreakoutCount  = 0; // increments when Nifty LTP > first5High
+    private int peBreakdownCount = 0; // increments when Nifty LTP < first5Low
+
+    private StraddlePremiumDto atmDto = null;
 
     // =========================================================================
     // AUTOWIRED
     // =========================================================================
     @Autowired AngelOne                angelOne;
+    @Autowired AngelOneService         angelOneService;
     @Autowired StrategyRepo            strategyRepo;
     @Autowired OrderService            orderService;
-    @Autowired StraddleIntradayService straddleIntradayService; // reused as-is, zero changes
+    @Autowired StraddleIntradayService straddleIntradayService;
     @Autowired CPRRepo                 cprRepo;
 
     // =========================================================================
     // STEP 1 - PLACE STRADDLE  (called once at 09:20 when big candle detected)
-    //
-    // Uses StraddleIntradayService:
-    //   getATMStrike()                  -> nearest 50 to LTP
-    //   buildStraddleDtos()             -> creates DTO list
-    //   getAllTokenDetails()             -> resolves CE/PE tokens from Indexes table
-    //   getPriceForAllTheStrikesBatch() -> live LTP via batch API
+    // first5High / first5Low passed in from StrategyService — already buffered ±5
     // =========================================================================
-    public void placeStraddle(SmartConnect sc, BigDecimal ltp) {
+    public void placeStraddle(SmartConnect sc, BigDecimal ltp,
+                               BigDecimal first5High, BigDecimal first5Low) {
         if (straddlePlaced.get()) {
             logger.warn("Straddle already placed today - skipping duplicate call.");
             return;
         }
 
         try {
+            // Store 5-min levels for trend SL monitoring
+            this.first5High = first5High;
+            this.first5Low  = first5Low;
+            logger.info("5-min levels stored → first5High={} first5Low={}", first5High, first5Low);
+
             Strategy optionStrategy = strategyRepo.findByName("NIFTY");
             if (optionStrategy == null) {
                 logger.error("Strategy not found - cannot place straddle.");
                 return;
             }
 
-            // ATM strike (nearest 50)
             BigDecimal atmStrike = straddleIntradayService.getATMStrike(
                     AppConstant.CPR_STRATEGY, optionStrategy, ltp);
             logger.info("LTP={} -> ATM Strike={}", ltp, atmStrike);
 
-            // Build strike list and filter to ATM only
-            // buildStraddleDtos() returns +/-range; we only need the ATM row
             List<StraddlePremiumDto> strikeList =
                     straddleIntradayService.buildStraddleDtos(atmStrike, 50)
                             .stream()
@@ -107,26 +112,20 @@ public class CPRStraddleService {
                 return;
             }
 
-            // Resolve CE + PE tokens from Indexes table
-            // Symbol format: {name}{expiry}{strike}CE / PE
-            // e.g. NIFTY25MAR2323300CE - same as existing straddle logic
             strikeList = straddleIntradayService.getAllTokenDetails(strikeList, optionStrategy);
             StraddlePremiumDto candidate = strikeList.get(0);
 
             if (candidate.getCeToken() == null || candidate.getPeToken() == null) {
                 logger.error("CE or PE token not resolved for ATM={} - aborting.", atmStrike);
-                return; // atmDto stays null -> monitorStraddleSL skips cleanly
+                return;
             }
 
-            // Log tokens before fetch
             logger.info("CE token={} | PE token={}",
                     candidate.getCeToken().getToken(), candidate.getPeToken().getToken());
 
-            // Fetch live premiums — strikeList prices populated here
             strikeList = straddleIntradayService.getPriceForAllTheStrikesBatch(
                     strikeList, sc, optionStrategy.getExchange());
 
-            // Assign atmDto AFTER batch fetch — so getCePrice()/getPePrice() are populated
             atmDto = strikeList.get(0);
 
             ceEntryPremium = atmDto.getCePrice();
@@ -138,16 +137,13 @@ public class CPRStraddleService {
                 return;
             }
 
-            // Calculate 65% SL per leg
-            // stored in memory — fixed at 09:20, reused every monitor tick
             ceSLPrice = ceEntryPremium.multiply(SL_MULTIPLIER).setScale(2, RoundingMode.HALF_UP);
             peSLPrice = peEntryPremium.multiply(SL_MULTIPLIER).setScale(2, RoundingMode.HALF_UP);
 
             logger.info("ATM={} | CE entry={} SL={} | PE entry={} SL={}",
                     atmStrike, ceEntryPremium, ceSLPrice, peEntryPremium, peSLPrice);
 
-            // Place CE leg using pre-resolved token
-            // straddlePlaced = true ONLY when BOTH legs confirmed in market
+            // Place CE leg
             try {
                 Token ceToken = new Token();
                 ceToken.setToken(atmDto.getCeToken().getToken());
@@ -162,7 +158,7 @@ public class CPRStraddleService {
                 logger.error("CE leg order failed.", e);
             }
 
-            // Place PE leg using pre-resolved token
+            // Place PE leg
             try {
                 Token peToken = new Token();
                 peToken.setToken(atmDto.getPeToken().getToken());
@@ -180,7 +176,7 @@ public class CPRStraddleService {
             if (ceLegPlaced.get() && peLegPlaced.get()) {
                 straddlePlaced.set(true);
                 logger.info("CPR Straddle active - both legs confirmed.");
-                saveStraddleToDB(atmStrike); // persist straddle details to DB
+                saveStraddleToDB(atmStrike);
             } else {
                 logger.error("Straddle incomplete - CE={} PE={} - straddlePlaced=false. Manual check required.",
                         ceLegPlaced.get(), peLegPlaced.get());
@@ -192,15 +188,15 @@ public class CPRStraddleService {
     }
 
     // =========================================================================
-    // STEP 2 - MONITOR SL  (called every 1 min via existing CPR scheduler tick)
+    // STEP 2 - MONITOR SL  (called every 1 min)
     //
-    // Option B: either leg hits 65% SL -> exit BOTH legs -> no more trades today
-    // NOTE: No straddlePlaced guard here - StrategyService.skipCPRTakeStraddle
-    //       is the gate. This method is only called on big candle days.
+    // TWO SL conditions per leg — either triggers → exit BOTH legs:
+    //
+    //  Premium SL  : option price >= entry × 1.65
+    //  Trend SL    : Nifty LTP > first5High for 5 consecutive ticks (CE short in trouble)
+    //                Nifty LTP < first5Low  for 5 consecutive ticks (PE short in trouble)
     // =========================================================================
-    public void monitorStraddleSL() {
-        // straddlePlaced = true ONLY when both legs confirmed in market
-        // if placeStraddle() failed for any reason this stays false -> skip safely
+    public void monitorStraddleSL() throws SmartAPIException {
         if (!straddlePlaced.get()) {
             logger.warn("Straddle not placed - skipping monitor.");
             return;
@@ -212,14 +208,11 @@ public class CPRStraddleService {
         }
 
         try {
-            // ── SL prices are in-memory (set once at 09:20, never change) ─
-            // No DB read needed every tick — zero overhead
             if (isInvalid(ceSLPrice) || isInvalid(peSLPrice)) {
-                logger.error("SL prices not set in memory - skipping. ceSL={} peSL={}", ceSLPrice, peSLPrice);
+                logger.error("SL prices not set - skipping. ceSL={} peSL={}", ceSLPrice, peSLPrice);
                 return;
             }
 
-            // ── Fetch live CE + PE prices ──────────────────────────────────
             SmartConnect sc             = angelOne.signIn();
             Strategy     optionStrategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
 
@@ -228,7 +221,7 @@ public class CPRStraddleService {
                 return;
             }
 
-            // ✅ Capture return value and update atmDto
+            // ── Fetch live option premiums ─────────────────────────────────
             List<StraddlePremiumDto> updated = straddleIntradayService.getPriceForAllTheStrikesBatch(
                     Collections.singletonList(atmDto), sc, optionStrategy.getExchange());
 
@@ -236,30 +229,77 @@ public class CPRStraddleService {
                 logger.error("Batch price fetch returned empty - skipping tick.");
                 return;
             }
-            atmDto = updated.get(0); // ✅ atmDto now has fresh prices
+            atmDto = updated.get(0);
 
             BigDecimal ceCurrent = atmDto.getCePrice();
             BigDecimal peCurrent = atmDto.getPePrice();
 
-            logger.info("SL Monitor | CE current={} / SL={} | PE current={} / SL={}",
-                    ceCurrent, ceSLPrice, peCurrent, peSLPrice);
+            // ── Fetch Nifty LTP for trend SL check ────────────────────────
+            BigDecimal niftyLtp = angelOneService.getcurrentPrice(
+                    sc, optionStrategy.getExchange(),
+                    optionStrategy.getTradingsymbol(), optionStrategy.getToken(), "ltp");
 
-            // ── CE leg SL check — compare live price vs in-memory SL ──────
-            if (ceLegPlaced.get() && !ceSLHit.get() && ceCurrent != null
-                    && ceCurrent.compareTo(ceSLPrice) >= 0) {
-                logger.info("CE SL Hit! current={} >= SL={} - exiting BOTH legs.", ceCurrent, ceSLPrice);
-                ceSLHit.set(true);
-                exitBothLegs("CE SL hit");
-                return; // no more monitoring today
+            logger.info("SL Monitor | CE={}/{} PE={}/{} | NiftyLTP={} first5H={} first5L={} | ceBreakout={} peBreakdown={}",
+                    ceCurrent, ceSLPrice, peCurrent, peSLPrice,
+                    niftyLtp, first5High, first5Low,
+                    ceBreakoutCount, peBreakdownCount);
+
+            // ── Update trend confirm counters ──────────────────────────────
+            if (niftyLtp != null && first5High != null && first5Low != null) {
+
+                if (niftyLtp.compareTo(first5High) > 0) {
+                    ceBreakoutCount++;   // Nifty above first5High → CE short at risk
+                    peBreakdownCount = 0;
+                } else if (niftyLtp.compareTo(first5Low) < 0) {
+                    peBreakdownCount++; // Nifty below first5Low → PE short at risk
+                    ceBreakoutCount = 0;
+                } else {
+                    ceBreakoutCount  = 0; // price back inside range → reset both
+                    peBreakdownCount = 0;
+                }
             }
 
-            // ── PE leg SL check — compare live price vs in-memory SL ──────
-            if (peLegPlaced.get() && !peSLHit.get() && peCurrent != null
-                    && peCurrent.compareTo(peSLPrice) >= 0) {
-                logger.info("PE SL Hit! current={} >= SL={} - exiting BOTH legs.", peCurrent, peSLPrice);
-                peSLHit.set(true);
-                exitBothLegs("PE SL hit");
-                return; // no more monitoring today
+            
+         // ── CE SL check ───────────────────────────────────────────────
+            if (ceLegPlaced.get() && !ceSLHit.get()) {
+                boolean premiumSL = ceCurrent != null && ceCurrent.compareTo(ceSLPrice) >= 0;
+                boolean trendSL   = ceBreakoutCount >= BREAKOUT_CONFIRM_TICKS;
+
+                if (premiumSL) {
+                    logger.info("CE Premium SL Hit! current={} >= SL={} - exiting BOTH legs.", ceCurrent, ceSLPrice);
+                    exitBothLegs("CE Premium SL hit");
+                    return;
+                }
+                if (trendSL) {
+                    logger.info("CE Trend SL Hit! Nifty above first5High={} for {} ticks - exiting CE leg only.",
+                            first5High, ceBreakoutCount);
+                    orderService.exitActiveTradeByToken(
+                            atmDto.getCeToken().getToken(), AppConstant.CPR_STRATEGY);
+                    ceSLHit.set(true);
+                    logger.info("CE leg closed. PE continues.");
+                    return;
+                }
+            }
+
+            // ── PE SL check ───────────────────────────────────────────────
+            if (peLegPlaced.get() && !peSLHit.get()) {
+                boolean premiumSL = peCurrent != null && peCurrent.compareTo(peSLPrice) >= 0;
+                boolean trendSL   = peBreakdownCount >= BREAKOUT_CONFIRM_TICKS;
+
+                if (premiumSL) {
+                    logger.info("PE Premium SL Hit! current={} >= SL={} - exiting BOTH legs.", peCurrent, peSLPrice);
+                    exitBothLegs("PE Premium SL hit");
+                    return;
+                }
+                if (trendSL) {
+                    logger.info("PE Trend SL Hit! Nifty below first5Low={} for {} ticks - exiting PE leg only.",
+                            first5Low, peBreakdownCount);
+                    orderService.exitActiveTradeByToken(
+                            atmDto.getPeToken().getToken(), AppConstant.CPR_STRATEGY);
+                    peSLHit.set(true);
+                    logger.info("PE leg closed. CE continues.");
+                    return;
+                }
             }
 
         } catch (Exception e) {
@@ -268,10 +308,7 @@ public class CPRStraddleService {
     }
 
     // =========================================================================
-    // STEP 3 - EOD EXIT  (called at 15:20 via exitAllCPRPositions())
-    // Exits only legs that are still open (SL not already hit)
-    // NOTE: No straddlePlaced guard here - StrategyService.skipCPRTakeStraddle
-    //       is the gate. This method is only called on big candle days.
+    // STEP 3 - EOD EXIT  (called at 15:20)
     // =========================================================================
     public void exitAllStraddlePositions() {
         try {
@@ -303,14 +340,12 @@ public class CPRStraddleService {
     }
 
     // =========================================================================
-    // EXIT BOTH LEGS  (Option B - either SL hit -> close both -> done for day)
+    // EXIT BOTH LEGS
     // =========================================================================
     private void exitBothLegs(String reason) {
         logger.info("{} - closing both legs. No more trades today.", reason);
         try {
             if (ceLegPlaced.get() && !ceSLHit.get()) {
-                // exit by token — CE and PE share same strategy name,
-                // token is the only unique identifier per leg
                 orderService.exitActiveTradeByToken(
                         atmDto.getCeToken().getToken(), AppConstant.CPR_STRATEGY);
                 ceSLHit.set(true);
@@ -329,26 +364,20 @@ public class CPRStraddleService {
     }
 
     // =========================================================================
-    // SAVE STRADDLE TO DB
-    // Reuses existing CPR table — no schema change needed
-    //   pivot  = ATM strike
-    //   high   = CE entry premium
-    //   low    = PE entry premium
-    //   top    = CE SL price  (entry * 1.65)
-    //   bottom = PE SL price  (entry * 1.65)
+    // SAVE TO DB
     // =========================================================================
     private void saveStraddleToDB(BigDecimal atmStrike) {
         try {
             com.crumbs.trade.entity.CPR cpr = new com.crumbs.trade.entity.CPR();
             cpr.setName(AppConstant.CPR_STRATEGY);
             cpr.setDate(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            cpr.setPivot(atmStrike);        // ATM strike
-            cpr.setHigh(ceEntryPremium);    // CE entry premium
-            cpr.setLow(peEntryPremium);     // PE entry premium
-            cpr.setTop(ceSLPrice);          // CE SL price
-            cpr.setBottom(peSLPrice);       // PE SL price
+            cpr.setPivot(atmStrike);
+            cpr.setHigh(ceEntryPremium);
+            cpr.setLow(peEntryPremium);
+            cpr.setTop(ceSLPrice);
+            cpr.setBottom(peSLPrice);
             cprRepo.save(cpr);
-            logger.info("Straddle saved to DB -> ATM={} | CE entry={} SL={} | PE entry={} SL={}",
+            logger.info("Straddle saved → ATM={} CE entry={} SL={} PE entry={} SL={}",
                     atmStrike, ceEntryPremium, ceSLPrice, peEntryPremium, peSLPrice);
         } catch (Exception e) {
             logger.error("Failed to save straddle to DB", e);
@@ -356,7 +385,7 @@ public class CPRStraddleService {
     }
 
     // =========================================================================
-    // DAILY RESET  (called at 09:00 AM via StrategyService.resetDailyFlags())
+    // DAILY RESET  (called at 09:00 AM)
     // =========================================================================
     public void resetDailyFlags() {
         straddlePlaced.set(false);
@@ -364,11 +393,15 @@ public class CPRStraddleService {
         peSLHit.set(false);
         ceLegPlaced.set(false);
         peLegPlaced.set(false);
-        ceEntryPremium = null;
-        peEntryPremium = null;
-        ceSLPrice      = null;
-        peSLPrice      = null;
-        atmDto         = null;
+        ceEntryPremium   = null;
+        peEntryPremium   = null;
+        ceSLPrice        = null;
+        peSLPrice        = null;
+        first5High       = null;
+        first5Low        = null;
+        ceBreakoutCount  = 0;
+        peBreakdownCount = 0;
+        atmDto           = null;
         logger.info("CPRStraddleService daily flags reset.");
     }
 
@@ -380,7 +413,7 @@ public class CPRStraddleService {
     }
 
     // =========================================================================
-    // GETTERS - for debugging / status API
+    // GETTERS
     // =========================================================================
     public boolean isStraddlePlaced()     { return straddlePlaced.get(); }
     public boolean isCeSLHit()            { return ceSLHit.get(); }
