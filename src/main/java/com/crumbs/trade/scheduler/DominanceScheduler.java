@@ -13,7 +13,7 @@ public class DominanceScheduler {
     private DominanceService dominanceService;
 
     // Every 1 minute
-    @Scheduled(fixedRate = 60000)
+    @Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
     public void runDominanceCheck() {
         dominanceService.process();
     }

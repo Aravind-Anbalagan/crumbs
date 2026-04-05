@@ -354,56 +354,56 @@ public class FuturesStrategyService {
 
     @Transactional
     public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
-        LocalDate today = LocalDate.now();
+
         logger.info("======== SAVE & DEDUP STARTED ({} events) ========", events.size());
 
-        // Step 1: in-memory dedup
+        // Step 1: in-memory dedup — one entry per stock+breakType
         Map<String, FuturesBreakEvent> uniqueMap = new LinkedHashMap<>();
         for (FuturesBreakEvent event : events) {
-            String key = event.getName() + "_" + event.getBreakType() + "_" + today;
+            String key = event.getName() + "_" + event.getBreakType(); // ← removed date
             uniqueMap.putIfAbsent(key, event);
         }
         logger.info("After in-memory dedup: {} unique events", uniqueMap.size());
 
-        List<FuturesBreakEvent> newlyCreatedEvents = new ArrayList<>();
-        int updatedCount = 0, skippedCount = 0;
+        List<FuturesBreakEvent> newSignals   = new ArrayList<>();
+        int updatedCount = 0;
 
         for (FuturesBreakEvent newEvent : uniqueMap.values()) {
-            Optional<FuturesBreakEvent> existingActive = futuresBreakEventRepo
-                    .findByNameAndBreakTypeAndBreakDateAndStatus(
-                            newEvent.getName(), newEvent.getBreakType(), today, "ACTIVE");
 
-            if (existingActive.isPresent()) {
-                FuturesBreakEvent existing = existingActive.get();
-                updateBreakEvent(existing, newEvent);
-                futuresBreakEventRepo.save(existing);
+            // Step 2: Check DB — does ANY record exist for this stock+breakType?
+            Optional<FuturesBreakEvent> existing = futuresBreakEventRepo
+                    .findByNameAndBreakType(newEvent.getName(), newEvent.getBreakType());
+
+            if (existing.isPresent()) {
+                // ✅ Record exists → just update price/PnL, NO notification
+                FuturesBreakEvent record = existing.get();
+                record.setCurrentPrice(newEvent.getCurrentPrice());
+                record.setPercentMove(newEvent.getPercentMove());
+                record.setBreakDate(newEvent.getBreakDate());
+                record.setBreakTime(newEvent.getBreakTime());
+                record.setStatus("ACTIVE");
+                futuresBreakEventRepo.save(record);
                 updatedCount++;
-                logger.info("🔄 Updated ACTIVE signal: {} {} (PnL={}%) — no notification",
-                        existing.getName(), existing.getBreakType(), existing.getPercentMove());
+                logger.info("🔄 Updated existing signal: {} {} | Price={} | PnL={}% — no notification",
+                        record.getName(), record.getBreakType(),
+                        record.getCurrentPrice(), record.getPercentMove());
 
             } else {
-                boolean inactiveExists = futuresBreakEventRepo
-                        .existsByNameAndBreakTypeAndBreakDate(
-                                newEvent.getName(), newEvent.getBreakType(), today);
-
-                if (!inactiveExists) {
-                    newEvent.setStatus("ACTIVE");
-                    newEvent.setCurrentPrice(newEvent.getBreakPrice());
-                    FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
-                    newlyCreatedEvents.add(saved);
-                    logger.info("🆕 NEW signal (ID={}): {} {} at {} — will notify",
-                            saved.getId(), saved.getName(), saved.getBreakType(), saved.getBreakPrice());
-                } else {
-                    skippedCount++;
-                    logger.info("⚠️ Inactive signal exists for {} {} — skipping",
-                            newEvent.getName(), newEvent.getBreakType());
-                }
+                // ✅ No record exists → insert + send notification
+                newEvent.setStatus("ACTIVE");
+                newEvent.setCurrentPrice(newEvent.getBreakPrice());
+                FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
+                newSignals.add(saved);
+                logger.info("🆕 NEW signal (ID={}): {} {} at {} — will notify",
+                        saved.getId(), saved.getName(),
+                        saved.getBreakType(), saved.getBreakPrice());
             }
         }
 
-        logger.info("======== SAVE & DEDUP DONE: New={}, Updated={}, Skipped={} ========",
-                newlyCreatedEvents.size(), updatedCount, skippedCount);
-        return newlyCreatedEvents;
+        logger.info("======== SAVE & DEDUP DONE: New={}, Updated={} ========",
+                newSignals.size(), updatedCount);
+
+        return newSignals; // ← only new ones trigger notification
     }
 
     // ─────────────────────────────────────────────

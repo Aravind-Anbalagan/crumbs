@@ -355,13 +355,25 @@ public class CommonController {
     // ================================================================
 
     private boolean shouldIncludeIndex(JsonNode node, List<String> optionNameList) {
+
         String name    = node.path("name").asText();
         String symbol  = node.path("symbol").asText();
         String exchSeg = node.path("exch_seg").asText();
+        String instrumentType = node.path("instrumenttype").asText();
 
-        return (!name.matches("[a-zA-Z ]*\\d+.*")
-                    && symbol.contains("-EQ")
-                    && exchSeg.equals("NSE"))
+        if (name.equals("TCS")) {
+            System.out.println("DEBUG: " + symbol + " | " + exchSeg);
+        }
+
+        boolean isNoDigitName = !name.matches("[a-zA-Z ]*\\d+.*");
+
+        // ✅ Equity (Cash market)
+        boolean isEquity = exchSeg.equals("NSE") && symbol.contains("-EQ");
+
+        // ✅ Stock Options (F&O)
+        boolean isStockOption = exchSeg.equals("NFO") && "OPTSTK".equals(instrumentType);
+
+        return (isNoDigitName && (isEquity || isStockOption))
                 || exchSeg.equals("BSE")
                 || name.equals("NIFTY")
                 || name.equals("CRUDEOIL")
