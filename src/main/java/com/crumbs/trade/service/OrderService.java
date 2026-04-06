@@ -22,7 +22,6 @@ import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.StrategyRepo;
-
 import jakarta.mail.internet.AddressException;
 
 @Service
@@ -183,8 +182,8 @@ public class OrderService {
 
         SmartConnect sc = angelOne.signIn();
         if (sc == null) throw new Exception("AngelOne login failed");
-
-        Strategy strategy = strategyRepo.findByName(strategyName);
+        Strategy strategy = strategyRepo.findByName("NIFTY");
+       
         if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
 
         if (!skipActiveCheck) {
