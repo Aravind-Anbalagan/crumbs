@@ -182,7 +182,7 @@ public class VolumeAnalysisService {
         indicator.setDailyopenandcloseissame(priceUtilService.findOpenAndClose(openAndClose));
         indicator = indicatorComputeService.get52WeekData(indexes, smartConnect, indicator); // HTTP call — no connection held
         indicator = signalCheckService.checkForDaySignal(indicator, supportList, resistanceList, index_CurrentPrice, new BigDecimal(avgRange));
-
+        indicator = signalCheckService.getLastExpiryLevel(smartConnect,indexes,indicator,index_CurrentPrice);
         // RSI
         if (last15.size() >= 5) indicator.setDailyRSI(rsiCalculator.getRSIData(last15));
         else                     indicator.setDailyRSI(null);

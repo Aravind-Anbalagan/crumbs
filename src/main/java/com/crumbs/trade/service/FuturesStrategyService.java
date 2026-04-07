@@ -65,7 +65,7 @@ public class FuturesStrategyService {
     //  Inner classes
     // ─────────────────────────────────────────────
 
-    private static class ExpiryOHLC {
+    public static class ExpiryOHLC {
         BigDecimal open, high, low, close;
 
         public ExpiryOHLC(BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close) {
@@ -566,7 +566,7 @@ public class FuturesStrategyService {
      * ✅ Adds inter-call delay to avoid rate limiting (503).
      * ✅ Handles 503 specifically with an extended back-off.
      */
-    private ExpiryOHLC fetchExpiryOHLC(SmartConnect smartConnect, Indexes idx, LocalDate expiryDate) {
+    public ExpiryOHLC fetchExpiryOHLC(SmartConnect smartConnect, Indexes idx, LocalDate expiryDate) {
         int maxRetries = 5;
         long delay = 3000;  // Start with 3s like your working method
 

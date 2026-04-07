@@ -1,9 +1,11 @@
 package com.crumbs.trade.service;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,6 +17,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import com.angelbroking.smartapi.SmartConnect;
+import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.entity.FuturesConfig;
+import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Indicator;
 import com.crumbs.trade.entity.PSARIndex;
 import com.crumbs.trade.entity.PSARMcx;
@@ -26,6 +32,7 @@ import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.PricesMcx;
 import com.crumbs.trade.entity.ResultMcx;
 import com.crumbs.trade.entity.ResultNifty;
+import com.crumbs.trade.repo.FuturesConfigRepo;
 import com.crumbs.trade.repo.PriceHeikinashiIndexRepo;
 import com.crumbs.trade.repo.PriceHeikinashiMcxRepo;
 import com.crumbs.trade.repo.PriceHeikinashiNiftyRepo;
@@ -36,11 +43,9 @@ import com.crumbs.trade.repo.PsarMcxRepo;
 import com.crumbs.trade.repo.PsarNiftyRepo;
 import com.crumbs.trade.repo.ResultMcxRepo;
 import com.crumbs.trade.repo.ResultNiftyRepo;
+import com.crumbs.trade.service.FuturesStrategyService.ExpiryOHLC;
 
 import jakarta.mail.MessagingException;
-import java.io.IOException;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 
 /**
  * Handles support/resistance signal detection and intraday monitoring.
@@ -61,7 +66,9 @@ public class SignalCheckService {
     @Autowired PsarMcxRepo psarMcxRepo;
     @Autowired ResultMcxRepo resultMcxRepo;
     @Autowired ResultService resultService;
-
+    @Autowired FuturesStrategyService futuresStrategyService;
+    @Autowired AngelOne angelOne;
+    @Autowired private FuturesConfigRepo configRepo;
     // =========================================================
     // PSAR / Heikin-Ashi entry checks
     // =========================================================
@@ -317,4 +324,37 @@ public class SignalCheckService {
         String updateHour = (hour >= -9 && hour <= 9) ? "0" + hour : String.valueOf(hour);
         return updateHour + ":" + updateMin;
     }
+    
+    //Fetch Last Expiry Level
+	public Indicator getLastExpiryLevel(SmartConnect smartConnect, Indexes indexes, Indicator indicator,
+			BigDecimal currentPrice) {
+
+		FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_500")
+				.filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
+
+		if (masterConfig == null) {
+			logger.warn("NIFTY_500 config not active. Skipping execution.");
+			return indicator;
+		}
+
+		LocalDate expiryDate = masterConfig.getExecutionDate();
+		ExpiryOHLC expiryOHLC = futuresStrategyService.fetchExpiryOHLC(smartConnect, indexes, expiryDate);
+
+		if (expiryOHLC == null || expiryOHLC.high == null || expiryOHLC.low == null || currentPrice == null) {
+			logger.warn("Expiry OHLC or current price is missing. Skipping execution.");
+			return indicator;
+		}
+
+		String level;
+		if (currentPrice.compareTo(expiryOHLC.high) > 0) {
+			level = "ABOVE";
+		} else if (currentPrice.compareTo(expiryOHLC.low) < 0) {
+			level = "BELOW";
+		} else {
+			level = "RANGE";
+		}
+
+		indicator.setLastExpiryLevel(level);
+		return indicator;
+	}
 }

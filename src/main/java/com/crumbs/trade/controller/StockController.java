@@ -121,7 +121,7 @@ public class StockController {
 	public String findBullishStocks() throws SmartAPIException, Exception {
 		if (strategyRepo.findByName("STOCK").getActive().equals("Y")) {
 			taskService.findBullishStocks();
-			taskService.callAI();
+			//taskService.callAI();
 			if (strategyRepo.findByName("SPREAD_STRATEGY").getActive().equals("Y")) {
 				spreadService.getStockList();
 			}

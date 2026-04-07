@@ -385,16 +385,21 @@ public class StockProcessingService {
     }
 
     private boolean isUpSignal(Indicator stock) {
-        return "UP".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
+        return (
+            "UP".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
             || "UP".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
-            || "UP".equalsIgnoreCase(stock.getCprflag());
+            || "UP".equalsIgnoreCase(stock.getCprflag())
+        ) && "ABOVE".equalsIgnoreCase(stock.getLastExpiryLevel());
     }
 
     private boolean isDownSignal(Indicator stock) {
-        return "DOWN".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
+        return (
+            "DOWN".equalsIgnoreCase(stock.getPrevdayclosepriceflag())
             || "DOWN".equalsIgnoreCase(stock.getFirst3FiveMinsCandle())
-            || "DOWN".equalsIgnoreCase(stock.getCprflag());
+            || "DOWN".equalsIgnoreCase(stock.getCprflag())
+        ) && "BELOW".equalsIgnoreCase(stock.getLastExpiryLevel());
     }
+
 
     // =========================================================
     // Error classification + sleep
