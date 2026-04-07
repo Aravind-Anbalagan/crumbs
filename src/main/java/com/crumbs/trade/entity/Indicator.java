@@ -195,6 +195,7 @@ public class Indicator {
     @Column(name = "options") private String options;
     @Column(name = "sector") private String sector;
     @Column(name = "tradetype") private String tradetype;
+    @Column(name = "lastExpiryLevel") private String lastExpiryLevel;
 
     @Column(name = "superTrendDaily") private BigDecimal superTrendDaily;
     @Column(name = "superTrendSignalDaily") private String superTrendSignalDaily;
