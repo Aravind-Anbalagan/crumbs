@@ -27,10 +27,14 @@ public class PreMarketLevelScheduler {
     }
    
     
- // Runs every 10 seconds during market hours
 
-    @Scheduled(cron = "*/10 15-59 9 * * MON-FRI", zone = "Asia/Kolkata")
+
+ // ==================== UPDATED MARKET STRATEGY (Starts at 9:20) ====================
+    // 1. First hour session: Changed starting minute from 15 to 20
+    @Scheduled(cron = "*/10 20-59 9 * * MON-FRI", zone = "Asia/Kolkata")
+    // 2. Mid-day session: Stays the same (10:00 AM to 02:59 PM)
     @Scheduled(cron = "*/10 * 10-14 * * MON-FRI", zone = "Asia/Kolkata")
+    // 3. Closing session: Stays the same (03:00 PM to 03:30 PM)
     @Scheduled(cron = "*/10 0-30 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMarketLevelStrategy() throws IOException, SmartAPIException {
       

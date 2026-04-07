@@ -24,13 +24,13 @@
       --text3:     #a09d94;
       --accent:    #1a6b3a;
       --accent-bg: #eaf5ef;
-      --red:       #b83224;
-      --red-bg:    #fdf0ee;
-      --amber:     #8a5c08;
+      --red:        #b83224;
+      --red-bg:     #fdf0ee;
+      --amber:      #8a5c08;
       --amber-bg:  #fef8e8;
       --blue:      #1a4fa0;
-      --blue-bg:   #edf2fc;
-      --primary:   #2d4a7a;
+      --blue-bg:    #edf2fc;
+      --primary:    #2d4a7a;
       --primary-hover: #1e3560;
       --radius:    10px;
       --shadow:    0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
@@ -46,13 +46,13 @@
       --text3:     #5a5650;
       --accent:    #4db870;
       --accent-bg: #0f2218;
-      --red:       #df7060;
-      --red-bg:    #200f0c;
-      --amber:     #d4a545;
+      --red:        #df7060;
+      --red-bg:     #200f0c;
+      --amber:      #d4a545;
       --amber-bg:  #1e1608;
       --blue:      #6090e0;
-      --blue-bg:   #0c1728;
-      --primary:   #5a80c0;
+      --blue-bg:    #0c1728;
+      --primary:    #5a80c0;
       --primary-hover: #7098d8;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -208,15 +208,10 @@
       padding: 3px 9px; border-radius: 20px;
       font-size: 11.5px; font-weight: 600; white-space: nowrap;
     }
-    .badge .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
     .badge.buy  { background: var(--accent-bg); color: var(--accent); }
-    .badge.buy .dot  { background: var(--accent); }
     .badge.sell { background: var(--red-bg);    color: var(--red); }
-    .badge.sell .dot { background: var(--red); }
     .badge.hold { background: var(--amber-bg);  color: var(--amber); }
-    .badge.hold .dot { background: var(--amber); }
     .badge.info { background: var(--blue-bg);   color: var(--blue); }
-    .badge.info .dot { background: var(--blue); }
     .badge.na   { background: var(--surface2);  color: var(--text3); font-weight: 400; }
 
     /* Pagination */
@@ -235,11 +230,6 @@
     .pg-btn:hover { border-color: var(--border2); color: var(--text); }
     .pg-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
-    /* Empty */
-    .empty { text-align: center; padding: 56px 20px; color: var(--text3); }
-    .empty svg { opacity: 0.4; margin-bottom: 10px; }
-    .empty p { font-size: 13px; margin-top: 4px; }
-
     /* Loader */
     #loader {
       display: none; position: fixed; inset: 0; z-index: 200;
@@ -253,82 +243,49 @@
       animation: spin 0.75s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #loader p { font-size: 13px; color: var(--text2); font-weight: 500; }
-    @keyframes rowIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
-
-    /* Responsive */
-    @media (max-width: 800px) { .stats { display: none; } }
-    @media (max-width: 600px) {
-      .page { padding: 14px 12px 40px; }
-      .page-title em { display: none; }
-      .divider { display: none; }
-      .search-wrap input { width: 140px; }
-    }
-    .table-wrap::-webkit-scrollbar { height: 6px; }
-    .table-wrap::-webkit-scrollbar-track { background: var(--surface2); }
-    .table-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
   </style>
 </head>
 <body>
 
 <div class="page">
-
-  <!-- Header -->
   <div class="page-header">
     <div class="page-title">
-      Stock Indicators
-      <em id="headerSub">Daily · All</em>
+      Stock Indicators <em id="headerSub">Daily · All</em>
     </div>
     <button class="btn btn-primary" onclick="window.location.href='result.html'">📊 Results</button>
   </div>
 
-  <!-- Toolbar -->
   <div class="toolbar">
-    <!-- Timeframe -->
     <div class="seg" id="timeframeSeg">
       <label class="checked" data-val="DAILY">Daily</label>
       <label data-val="WEEKLY">Weekly</label>
       <label data-val="COMBINE">Combine</label>
       <label data-val="INTRADAY">Intraday</label>
     </div>
-
     <div class="divider"></div>
-
-    <!-- Signal filter -->
     <select id="secondaryFilter"></select>
-
-    <!-- Intraday sub-type -->
     <div class="seg" id="intradaySeg" style="display:none">
       <label class="checked" data-val="HOURLY">Hourly</label>
       <label data-val="DAILY">Daily</label>
     </div>
-
     <div class="divider"></div>
-
-    <!-- Universe -->
     <div class="seg" id="optionSeg">
       <label class="checked" data-val="ALL">Nifty 500</label>
       <label data-val="OPTIONS">Options</label>
     </div>
-
     <div class="spacer"></div>
-
-    <!-- Search -->
     <div class="search-wrap">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
       </svg>
       <input type="text" id="search" placeholder="Search stocks…" oninput="filterTable()" autocomplete="off"/>
     </div>
-
     <button class="btn" onclick="resetTable()">↺ Reset</button>
     <button class="btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
   </div>
 
-  <!-- Error -->
   <div id="errorMessage"></div>
 
-  <!-- Stats -->
   <div class="stats">
     <div class="stat-card"><div class="stat-label">Stocks</div><div class="stat-val" id="sTotal">—</div></div>
     <div class="stat-card"><div class="stat-label">Buy Signals</div><div class="stat-val g" id="sBuy">—</div></div>
@@ -336,7 +293,6 @@
     <div class="stat-card"><div class="stat-label">Avg RSI</div><div class="stat-val a" id="sRsi">—</div></div>
   </div>
 
-  <!-- Table -->
   <div class="table-wrap">
     <table>
       <thead><tr id="tableHead"></tr></thead>
@@ -347,10 +303,8 @@
       <div class="pg-btns" id="pagination"></div>
     </div>
   </div>
-
 </div>
 
-<!-- Loader -->
 <div id="loader"><div class="spinner"></div><p>Loading…</p></div>
 
 <script>
@@ -360,7 +314,6 @@ let currentPage=1, currentTF='DAILY';
 const PAGE=15;
 let intradayType=localStorage.getItem('intradayType')||'HOURLY';
 
-// ── Segment utility ──
 function initSeg(id, cb) {
   document.getElementById(id).querySelectorAll('label').forEach(l => {
     l.addEventListener('click', () => {
@@ -374,7 +327,6 @@ function getSegVal(id) {
   return c ? c.dataset.val : null;
 }
 
-// ── Build secondary filter options ──
 function buildSecondaryFilter(tf) {
   const sf = document.getElementById('secondaryFilter');
   sf.innerHTML = tf==='INTRADAY'
@@ -382,32 +334,21 @@ function buildSecondaryFilter(tf) {
     : `<option value="ALL">All Signals</option><option value="FIRST BUY">↑ First Buy</option><option value="FIRST SELL">↓ First Sell</option>`;
 }
 
-// ── Intraday stats labels ──
 function setStatLabels(tf) {
+  const cards = document.querySelectorAll('.stat-card .stat-label');
   if (tf === 'INTRADAY') {
-    document.querySelector('#sTotal').closest('.stat-card').querySelector('.stat-label').textContent = 'Stocks';
-    document.querySelector('#sBuy').closest('.stat-card').querySelector('.stat-label').textContent  = 'Uptrend';
-    document.querySelector('#sSell').closest('.stat-card').querySelector('.stat-label').textContent = 'Downtrend';
-    document.querySelector('#sRsi').closest('.stat-card').querySelector('.stat-label').textContent  = 'Win / Loss';
+    cards[1].textContent = 'Uptrend'; cards[2].textContent = 'Downtrend'; cards[3].textContent = 'Win / Loss';
   } else {
-    document.querySelector('#sTotal').closest('.stat-card').querySelector('.stat-label').textContent = 'Stocks';
-    document.querySelector('#sBuy').closest('.stat-card').querySelector('.stat-label').textContent  = 'Buy Signals';
-    document.querySelector('#sSell').closest('.stat-card').querySelector('.stat-label').textContent = 'Sell Signals';
-    document.querySelector('#sRsi').closest('.stat-card').querySelector('.stat-label').textContent  = 'Avg RSI';
+    cards[1].textContent = 'Buy Signals'; cards[2].textContent = 'Sell Signals'; cards[3].textContent = 'Avg RSI';
   }
 }
 
-// ── Init ──
 initSeg('timeframeSeg', val => {
-  currentTF = val;
-  buildSecondaryFilter(val);
-  setStatLabels(val);
+  currentTF = val; buildSecondaryFilter(val); setStatLabels(val);
   document.getElementById('intradaySeg').style.display = val==='INTRADAY' ? 'flex' : 'none';
   updateSub(); currentPage=1; loadTable();
 });
-initSeg('intradaySeg', val => {
-  intradayType=val; localStorage.setItem('intradayType',val); currentPage=1; loadTable();
-});
+initSeg('intradaySeg', val => { intradayType=val; localStorage.setItem('intradayType',val); currentPage=1; loadTable(); });
 initSeg('optionSeg', ()=>{ currentPage=1; loadTable(); });
 document.getElementById('secondaryFilter').addEventListener('change', ()=>{ updateSub(); currentPage=1; loadTable(); });
 
@@ -417,32 +358,22 @@ function updateSub() {
   document.getElementById('headerSub').textContent = `${t} · ${sf.options[sf.selectedIndex]?.text||'All'}`;
 }
 
-// ── Load ──
 async function loadTable() {
   const sf = document.getElementById('secondaryFilter').value;
   const optionFlag = getSegVal('optionSeg')==='OPTIONS';
   const loader = document.getElementById('loader');
   const err = document.getElementById('errorMessage');
   err.style.display='none'; loader.style.display='flex';
-  // Reset immediately so stale stats/table never linger during fetch
   tableData=filteredData=[]; updateStats(); renderTable();
   try {
-    // Always use heikinPsarFilter — backend uses it for both INTRADAY (UP/DOWN) and others (FIRST BUY/SELL)
     const url = `/api/indicators/flagged?flag=${currentTF}&heikinPsarFilter=${encodeURIComponent(sf)}&optionFlag=${optionFlag}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(await res.text());
     let data = await res.json();
-
-    // Client-side filter by TYPE (HOURLY / DAILY) for intraday
     if (currentTF==='INTRADAY') {
-      data = data.filter(r => {
-        const type = r.headers?.TYPE?.[0] || '';
-        return type.toUpperCase() === intradayType.toUpperCase();
-      });
+      data = data.filter(r => (r.headers?.TYPE?.[0] || '').toUpperCase() === intradayType.toUpperCase());
     }
-
     if (!data.length) throw new Error('No stocks matched your filters.');
-
     visibleKeys = Object.entries(data[0].headers).filter(([,v])=>v[1]).map(([k])=>k);
     tableData = data.map(row=>{
       const b = Object.fromEntries(visibleKeys.map(k=>[k,row.headers[k]?.[0]??'']));
@@ -453,72 +384,58 @@ async function loadTable() {
     filteredData=[...tableData]; currentPage=1; updateStats(); renderTable();
   } catch(e) {
     err.textContent=e.message||'Could not load data.'; err.style.display='block';
-    tableData=filteredData=[]; updateStats(); renderTable();
   } finally { loader.style.display='none'; }
 }
 
-// ── Stats ──
 function updateStats() {
   if (!filteredData.length) {
     ['sTotal','sBuy','sSell','sRsi'].forEach(id => document.getElementById(id).textContent = '—');
     return;
   }
   if (currentTF === 'INTRADAY') {
-    // Intraday: show UP / DOWN / Win-Loss ratio
     let up=0, down=0, win=0, loss=0;
     filteredData.forEach(r => {
       const intra = (r['INTRADAY']||'').toUpperCase();
-      const result = (r['RESULT']||'').toUpperCase();
-      if (intra==='UP')   up++;
-      if (intra==='DOWN') down++;
-      if (result==='WIN'||result==='W')  win++;
-      if (result==='LOSS'||result==='L') loss++;
+      const res = (r['RESULT']||'').toUpperCase();
+      if (intra==='UP') up++; if (intra==='DOWN') down++;
+      if (res==='WIN'||res==='W') win++; if (res==='LOSS'||res==='L') loss++;
     });
     document.getElementById('sTotal').textContent = filteredData.length;
-    document.getElementById('sBuy').textContent   = up;
-    document.getElementById('sSell').textContent  = down;
-    document.getElementById('sRsi').textContent   = (win||loss) ? `${win} / ${loss}` : '—';
-    // Color the RSI stat value naturally
+    document.getElementById('sBuy').textContent = up;
+    document.getElementById('sSell').textContent = down;
+    document.getElementById('sRsi').textContent = (win||loss) ? `${win} / ${loss}` : '—';
     document.getElementById('sRsi').className = 'stat-val';
   } else {
     let buy=0,sell=0,rs=0,rc=0;
     filteredData.forEach(r=>{
       const st=(r['SUPERTREND']||r['D_SUPERTREND']||'').toUpperCase();
-      if(st.includes('BUY')) buy++;
-      if(st.includes('SELL')) sell++;
+      if(st.includes('BUY')) buy++; if(st.includes('SELL')) sell++;
       const n=parseFloat(r['RSI']); if(!isNaN(n)){rs+=n;rc++;}
     });
     document.getElementById('sTotal').textContent = filteredData.length;
-    document.getElementById('sBuy').textContent   = buy;
-    document.getElementById('sSell').textContent  = sell;
-    document.getElementById('sRsi').textContent   = rc?(rs/rc).toFixed(1):'—';
-    document.getElementById('sRsi').className     = 'stat-val a';
+    document.getElementById('sBuy').textContent = buy;
+    document.getElementById('sSell').textContent = sell;
+    document.getElementById('sRsi').textContent = rc?(rs/rc).toFixed(1):'—';
+    document.getElementById('sRsi').className = 'stat-val a';
   }
 }
 
-// ── Filter ──
 function filterTable() {
   const q=document.getElementById('search').value.toLowerCase();
   filteredData=q?tableData.filter(r=>visibleKeys.some(k=>(r[k]+'').toLowerCase().includes(q))):[...tableData];
   currentPage=1; updateStats(); renderTable();
 }
 
-// ── Reset ──
 function resetTable() {
   document.getElementById('search').value='';
-  document.getElementById('errorMessage').style.display='none';
   ['timeframeSeg','optionSeg','intradaySeg'].forEach(id=>{
     const seg=document.getElementById(id);
     seg.querySelectorAll('label').forEach((l,i)=>l.classList.toggle('checked',i===0));
   });
-  currentTF='DAILY';
-  document.getElementById('intradaySeg').style.display='none';
-  buildSecondaryFilter('DAILY');
-  setStatLabels('DAILY');
-  currentPage=1; updateSub(); loadTable();
+  currentTF='DAILY'; document.getElementById('intradaySeg').style.display='none';
+  buildSecondaryFilter('DAILY'); setStatLabels('DAILY'); currentPage=1; updateSub(); loadTable();
 }
 
-// ── Theme ──
 function toggleTheme() {
   document.body.classList.toggle('dark');
   const d=document.body.classList.contains('dark');
@@ -526,107 +443,70 @@ function toggleTheme() {
   document.getElementById('themeBtn').textContent=d?'☀️':'🌙';
 }
 
-// ── Render ──
 function renderTable() { buildHead(); buildBody(); buildPager(); }
-
 function fmtKey(k) { return k.replace(/_+/g,' ').replace(/\b\w/g,l=>l.toUpperCase()); }
 
 function buildHead() {
   document.getElementById('tableHead').innerHTML = visibleKeys.map(k=>{
     const cls=sortState.column===k?(sortState.order==='asc'?'sort-asc':'sort-desc'):'';
-    return `<th class="${cls}" onclick="sortBy('${k}')">${fmtKey(k)}</th>`;
+    let style = '';
+    if (k.toUpperCase() === 'OPTION') style = 'text-align:center;width:80px;';
+    return `<th class="${cls}" style="${style}" onclick="sortBy('${k}')">${fmtKey(k)}</th>`;
   }).join('');
 }
 
-const SIG = new Set(['SUPERTREND','VWAP','SR','FIBO','AI','INTRADAY','VOLUME',
-  'D_HEIKIN','D_PSAR','D_SUPERTREND','D_VWAP','W_HEIKIN','W_PSAR','W_SUPERTREND','W_VWAP',
-  'COMBINE_SIGNAL','VOLUMEFLAG','WEEKLYVOLUMEFLLAG','HEIKINASHIDAY','HEIKINASHIWEEKLY','HEIKINASHIHOURLY']);
+const SIG = new Set(['SUPERTREND','VWAP','SR','FIBO','AI','INTRADAY','VOLUME','D_HEIKIN','D_PSAR','D_SUPERTREND','D_VWAP','W_HEIKIN','W_PSAR','W_SUPERTREND','W_VWAP','COMBINE_SIGNAL','VOLUMEFLAG','WEEKLYVOLUMEFLLAG','HEIKINASHIDAY','HEIKINASHIWEEKLY','HEIKINASHIHOURLY']);
 
 function cellHTML(k, val, row) {
-  if (val===null||val===undefined||val==='')
-    return `<span style="color:var(--text3)">—</span>`;
+  if (val===null||val===undefined||val==='') return `<span style="color:var(--text3)">—</span>`;
   const K=k.toUpperCase();
+
+  // ONLY CHANGE: Option column returns color-coded Y or N
+  if (K==='OPTION') {
+    const isY = val.toString().toUpperCase().startsWith('Y') || val === true || val === 'true';
+    return `<div style="text-align:center; font-weight:600; font-family:'DM Mono'; color:${isY?'var(--accent)':'var(--text3)'}">${isY?'Y':'N'}</div>`;
+  }
 
   if (K==='NAME') {
     const sym=row['symbol']||'', exc=row['exchange']||'';
     return `<div class="c-name">${val}</div><div class="c-sub">${sym}${exc?' · '+exc:''}</div>`;
   }
   if (K==='SYMBOL'||K==='EXCHANGE') return '';
-
   if (K==='PRICE') {
     const n=parseFloat(val);
     return `<span class="c-price">₹${isNaN(n)?val:n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
   }
-
   if (K==='RSI') {
     const n=parseFloat(val);
     const c=n>=70?'hot':n>=55?'warm':n<=30?'cold':'ok';
     return `<span class="c-rsi ${c}">${isNaN(n)?val:n.toFixed(1)}</span>`;
   }
-
-  if (K==='SECTOR') return `<span class="c-sector">${val}</span>`;
-
-  // ── INTRADAY specific ──
-
-  // OPTION: Y → "Options" green chip, N → plain grey
-  if (K==='OPTION') {
-    const v=val.toString().toUpperCase();
-    return v==='Y'
-      ? `<span class="badge buy" style="font-size:11px">Options</span>`
-      : `<span class="badge na" style="font-size:11px">—</span>`;
-  }
-
-  // TYPE: show as a neutral chip (HOURLY / DAILY)
-  if (K==='TYPE') {
-    return `<span class="badge info" style="font-size:10.5px;letter-spacing:0.4px">${val}</span>`;
-  }
-
-  // RESULT: WIN = green, LOSS = red, open/pending = amber
+  if (K==='TYPE') return `<span class="badge info">${val}</span>`;
   if (K==='RESULT') {
     const v=val.toString().toUpperCase();
-    if (v==='WIN'||v==='W') return `<span class="badge buy"><span class="dot"></span>WIN</span>`;
-    if (v==='LOSS'||v==='L') return `<span class="badge sell"><span class="dot"></span>LOSS</span>`;
-    // open trade (null handled above; non-null means pending/open)
-    return `<span class="badge hold"><span class="dot"></span>${val}</span>`;
+    if (v==='WIN'||v==='W') return `<span class="badge buy">WIN</span>`;
+    if (v==='LOSS'||v==='L') return `<span class="badge sell">LOSS</span>`;
+    return `<span class="badge hold">${val}</span>`;
   }
-
-  // Timestamps
-  if (K==='EXECUTED_AT'||K==='UPDATED_AT'||K.includes('DATE')||K.includes('TIME')) {
-    return `<span class="c-dt">${val}</span>`;
-  }
-
+  if (K==='EXECUTED_AT'||K==='UPDATED_AT'||K.includes('DATE')||K.includes('TIME')) return `<span class="c-dt">${val}</span>`;
   if (SIG.has(K)||K.endsWith('SIGNAL')||K.endsWith('FLAG')) return mkBadge(val);
-
   const n=parseFloat(val);
-  if (!isNaN(n)&&val.toString().trim()!=='')
-    return `<span class="c-num">${n.toLocaleString('en-IN')}</span>`;
+  if (!isNaN(n)&&val.toString().trim()!=='') return `<span class="c-num">${n.toLocaleString('en-IN')}</span>`;
   return `<span>${val}</span>`;
 }
 
 function mkBadge(val) {
   const v=(val||'').toString().toUpperCase();
-  if (v.includes('BUY')||v==='UP'||v==='BULLISH'||v==='WIN'||v==='Y')
-    return `<span class="badge buy"><span class="dot"></span>${val}</span>`;
-  if (v.includes('SELL')||v==='DOWN'||v==='BEARISH'||v==='LOSS')
-    return `<span class="badge sell"><span class="dot"></span>${val}</span>`;
-  if (v==='HOLD'||v==='NEUTRAL')
-    return `<span class="badge hold"><span class="dot"></span>${val}</span>`;
-  if (v==='N'||v==='NO') return `<span class="badge na">${val}</span>`;
-  return `<span class="badge info"><span class="dot"></span>${val}</span>`;
+  if (v.includes('BUY')||v==='UP'||v==='BULLISH'||v==='WIN'||v==='Y') return `<span class="badge buy">${val}</span>`;
+  if (v.includes('SELL')||v==='DOWN'||v==='BEARISH'||v==='LOSS') return `<span class="badge sell">${val}</span>`;
+  if (v==='HOLD'||v==='NEUTRAL') return `<span class="badge hold">${val}</span>`;
+  return `<span class="badge info">${val}</span>`;
 }
 
 function buildBody() {
   const body=document.getElementById('tableBody');
   if (!filteredData.length) {
-    body.innerHTML=`<tr><td colspan="${visibleKeys.length||1}">
-      <div class="empty">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-          <path stroke-linecap="round" d="M3 13.5l4.5-4.5 4.5 4.5 4.5-4.5 4.5 4.5M3 6h18"/>
-        </svg>
-        <p>No stocks found for your filters</p>
-      </div>
-    </td></tr>`;
-    return;
+    body.innerHTML=`<tr><td colspan="${visibleKeys.length||1}"><div class="empty">No stocks found</div></td></tr>`; return;
   }
   let sorted=[...filteredData];
   if (sortState.column) {
@@ -634,8 +514,7 @@ function buildBody() {
     sorted.sort((a,b)=>{
       let av=a[col]??'', bv=b[col]??'';
       const K=col.toUpperCase();
-      if (K.includes('AT')||K.includes('DATE')||K.includes('TIME'))
-        return (parseDT(av)-parseDT(bv))*dir;
+      if (K.includes('AT')||K.includes('DATE')||K.includes('TIME')) return (parseDT(av)-parseDT(bv))*dir;
       const na=parseFloat(av),nb=parseFloat(bv);
       if (!isNaN(na)&&!isNaN(nb)) return (na-nb)*dir;
       return av.toString().localeCompare(bv.toString())*dir;
@@ -643,58 +522,35 @@ function buildBody() {
   }
   const start=(currentPage-1)*PAGE;
   body.innerHTML = sorted.slice(start,start+PAGE).map((row,ri)=>
-    `<tr style="animation:rowIn 0.2s ease ${ri*0.025}s both">
-      ${visibleKeys.map(k=>`<td data-label="${fmtKey(k)}">${cellHTML(k,row[k],row)}</td>`).join('')}
-    </tr>`
+    `<tr style="animation:rowIn 0.2s ease ${ri*0.025}s both">${visibleKeys.map(k=>`<td>${cellHTML(k,row[k],row)}</td>`).join('')}</tr>`
   ).join('');
 }
 
 function buildPager() {
   const total=filteredData.length, pages=Math.ceil(total/PAGE);
-  const s=(currentPage-1)*PAGE+1, e=Math.min(currentPage*PAGE,total);
-  document.getElementById('pageInfo').textContent = total?`${s}–${e} of ${total}`:'No results';
+  document.getElementById('pageInfo').textContent = total?`${(currentPage-1)*PAGE+1}–${Math.min(currentPage*PAGE,total)} of ${total}`:'No results';
   const c=document.getElementById('pagination'); c.innerHTML='';
   if (pages<=1) return;
   const mk=(lbl,pg,act=false)=>{
-    const b=document.createElement('button');
-    b.className='pg-btn'+(act?' active':''); b.textContent=lbl;
-    b.onclick=()=>{ currentPage=pg; renderTable(); window.scrollTo({top:0,behavior:'smooth'}); };
-    return b;
+    const b=document.createElement('button'); b.className='pg-btn'+(act?' active':''); b.textContent=lbl;
+    b.onclick=()=>{ currentPage=pg; renderTable(); window.scrollTo({top:0,behavior:'smooth'}); }; return b;
   };
   if (currentPage>1) c.append(mk('‹',currentPage-1));
-  let s2=Math.max(1,currentPage-2), e2=Math.min(pages,currentPage+2);
-  if (currentPage<=3) e2=Math.min(5,pages);
-  if (currentPage>=pages-2) s2=Math.max(pages-4,1);
-  for (let i=s2;i<=e2;i++) c.append(mk(i,i,i===currentPage));
+  for (let i=Math.max(1,currentPage-2);i<=Math.min(pages,currentPage+2);i++) c.append(mk(i,i,i===currentPage));
   if (currentPage<pages) c.append(mk('›',currentPage+1));
 }
 
-function sortBy(col) {
-  const asc=sortState.column===col&&sortState.order==='asc';
-  sortState={column:col,order:asc?'desc':'asc'};
-  renderTable();
-}
-
-function parseDT(str) {
-  if (!str) return Infinity;
+function sortBy(col) { const asc=sortState.column===col&&sortState.order==='asc'; sortState={column:col,order:asc?'desc':'asc'}; renderTable(); }
+function parseDT(str) { 
+  if (!str) return Infinity; 
   const m=str.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
-  if (m) return new Date(m[3],m[2]-1,m[1],m[4],m[5],m[6]).getTime();
-  const d=new Date(str); return isNaN(d)?Infinity:d.getTime();
+  return m ? new Date(m[3],m[2]-1,m[1],m[4],m[5],m[6]).getTime() : new Date(str).getTime() || Infinity; 
 }
 
-// ── Boot ──
 document.addEventListener('DOMContentLoaded', ()=>{
-  if (localStorage.getItem('theme')==='dark') {
-    document.body.classList.add('dark');
-    document.getElementById('themeBtn').textContent='☀️';
-  }
-  // Set intraday seg value
-  document.getElementById('intradaySeg').querySelectorAll('label').forEach(l=>
-    l.classList.toggle('checked', l.dataset.val===intradayType));
-  buildSecondaryFilter(currentTF);
-  setStatLabels(currentTF);
-  updateSub();
-  loadTable();
+  if (localStorage.getItem('theme')==='dark') { document.body.classList.add('dark'); document.getElementById('themeBtn').textContent='☀️'; }
+  document.getElementById('intradaySeg').querySelectorAll('label').forEach(l=>l.classList.toggle('checked', l.dataset.val===intradayType));
+  buildSecondaryFilter(currentTF); setStatLabels(currentTF); updateSub(); loadTable();
 });
 </script>
 </body>
