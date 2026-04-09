@@ -47,6 +47,7 @@ public class StraddlePremiumDto {
     
     private BigDecimal cePrevHigh;  // NEW
     private BigDecimal cePrevLow;   // NEW
+    private BigDecimal combinedPrevLow;
     
     private BigDecimal pePrevHigh;  // NEW
     private BigDecimal pePrevLow;   // NEW

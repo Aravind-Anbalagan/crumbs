@@ -315,6 +315,9 @@ public class StrategyService {
                 sellConfirmCount = 0;
             }
         }
+		logger.info(
+				"📶 buyConfirmCount={} | sellConfirmCount={} - BREAKOUT_CONFIRM_TICKS={}",
+				buyConfirmCount, sellConfirmCount, BREAKOUT_CONFIRM_TICKS);
         return "WAIT";
     }
 

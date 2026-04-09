@@ -253,6 +253,9 @@
                     <div class="checkout-item"><input type="checkbox" id="ce-prev-close-check"> <span class="swatch" style="background:#10b981"></span> CE Prev Close</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-prev-close-check"> <span class="swatch" style="background:#f59e0b"></span> PE Prev Close</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-prev-close-check"> <span class="swatch" style="background:#8b5cf6"></span> Combined Prev Close</div>
+                    <div class="checkout-item"><input type="checkbox" id="ce-prev-low-check"> <span class="swatch" style="background:#14532d"></span> CE Prev Low</div>
+					<div class="checkout-item"><input type="checkbox" id="pe-prev-low-check"> <span class="swatch" style="background:#7f1d1d"></span> PE Prev Low</div>
+					<div class="checkout-item"><input type="checkbox" id="combined-prev-low-check"> <span class="swatch" style="background:#581c87"></span> Combined Prev Low</div>
                     <button class="checkout-ok-btn" id="checkout-ok-btn">OK</button>
                 </div>
             </div>
@@ -292,6 +295,9 @@
             <div class="item" data-line="cePrevClose"><span class="swatch" style="background:#10b981"></span><span class="label">CE PrevClose:</span><strong id="val-ce-prev-close">-</strong></div>
             <div class="item" data-line="pePrevClose"><span class="swatch" style="background:#f59e0b"></span><span class="label">PE PrevClose:</span><strong id="val-pe-prev-close">-</strong></div>
             <div class="item" data-line="combinedPrevClose"><span class="swatch" style="background:#8b5cf6"></span><span class="label">Comb PrevClose:</span><strong id="val-combined-prev-close">-</strong></div>
+            <div class="item" data-line="cePrevLow"><span class="swatch" style="background:#14532d"></span><span class="label">Prev CE Low:</span><strong id="val-ce-prev-low">-</strong></div>
+			<div class="item" data-line="pePrevLow"><span class="swatch" style="background:#7f1d1d"></span><span class="label">Prev PE Low:</span><strong id="val-pe-prev-low">-</strong></div>
+			<div class="item" data-line="combinedPrevLow"><span class="swatch" style="background:#581c87"></span><span class="label">Prev Comb Low:</span><strong id="val-combined-prev-low">-</strong></div>       
         </div>
         </div>
     </div>
@@ -318,6 +324,7 @@
         ceVwapSeries: [], peVwapSeries: [], combinedVwapSeries: [],
         ceIvSeries: [], peIvSeries: [], combinedIvSeries: [],
         cePrevCloseSeries: [], pePrevCloseSeries: [], combinedPrevCloseSeries: [],
+        cePrevLowSeries: [], pePrevLowSeries: [], combinedPrevLowSeries: [],
         ceOpen: null, peOpen: null, combinedOpen: null
     };
 
@@ -351,7 +358,10 @@
     combinedVwap: false,
     cePrevClose: false,
     pePrevClose: false,
-    combinedPrevClose: false
+    combinedPrevClose: false,
+    cePrevLow: false, 
+    pePrevLow: false, 
+    combinedPrevLow: false
 };
 
     // Temporary state for pending selections
@@ -505,6 +515,9 @@
         lines.cePrevClose.setData(lineVisibility.cePrevClose ? currentSeries.cePrevCloseSeries : []);
         lines.pePrevClose.setData(lineVisibility.pePrevClose ? currentSeries.pePrevCloseSeries : []);
         lines.combinedPrevClose.setData(lineVisibility.combinedPrevClose ? currentSeries.combinedPrevCloseSeries : []);
+        lines.cePrevLow.setData(lineVisibility.cePrevLow ? currentSeries.cePrevLowSeries : []);
+    	lines.pePrevLow.setData(lineVisibility.pePrevLow ? currentSeries.pePrevLowSeries : []);
+    	lines.combinedPrevLow.setData(lineVisibility.combinedPrevLow ? currentSeries.combinedPrevLowSeries : []);
         drawOpenPriceLines();
 
         updateLegendLatest();
@@ -570,7 +583,10 @@
             combinedVwap: [],
             cePrevClose: [],
             pePrevClose: [],
-            combinedPrevClose: []
+            combinedPrevClose: [],
+            cePrevLow: [], 
+            pePrevLow: [], 
+            combinedPrevLow: []
         };
 
         for (const row of apiArray) {
@@ -630,6 +646,9 @@
                 series.pePrevClose.push({ time: t, value: vals.pePrevClose });
             if (vals.combinedPrevClose != null && Number.isFinite(vals.combinedPrevClose))
                 series.combinedPrevClose.push({ time: t, value: vals.combinedPrevClose });
+            if (row.cePrevLow != null) series.cePrevLow.push({ time: t, value: Number(row.cePrevLow) });
+        if (row.pePrevLow != null) series.pePrevLow.push({ time: t, value: Number(row.pePrevLow) });
+        if (row.combinedPrevLow != null) series.combinedPrevLow.push({ time: t, value: Number(row.combinedPrevLow) });
         }
 
         if (apiArray.length > 0) {
@@ -637,6 +656,9 @@
             currentSeries.ceOpen = Number.isFinite(Number(first.ceOpen)) ? Number(first.ceOpen) : null;
             currentSeries.peOpen = Number.isFinite(Number(first.peOpen)) ? Number(first.peOpen) : null;
             currentSeries.combinedOpen = Number.isFinite(Number(first.combinedOpen)) ? Number(first.combinedOpen) : null;
+            currentSeries.cePrevLowSeries = series.cePrevLow;
+    		currentSeries.pePrevLowSeries = series.pePrevLow;
+    		currentSeries.combinedPrevLowSeries = series.combinedPrevLow;
         }
 
         Object.assign(currentSeries, {
@@ -829,7 +851,16 @@
             color: '#8b5cf6',
             lineStyle: 2,
             priceScaleId: 'right'
-        })
+        }),
+        cePrevLow: chart.addLineSeries({ 
+        lineWidth: 2, color: '#14532d', lineStyle: 2, priceScaleId: 'right', title: 'Prev CE Low' 
+    }),
+    pePrevLow: chart.addLineSeries({ 
+        lineWidth: 2, color: '#7f1d1d', lineStyle: 2, priceScaleId: 'right', title: 'Prev PE Low' 
+    }),
+    combinedPrevLow: chart.addLineSeries({ 
+        lineWidth: 2, color: '#581c87', lineStyle: 1, priceScaleId: 'right', title: 'Comb Prev Low' 
+    })
     };
 
     function updateChartTheme() {
@@ -867,7 +898,7 @@
         });
     }
 
-    function updateLegendVisibility() {
+    function loadInitialData() {
         document.querySelectorAll('.legend .item').forEach(item => {
             const lineKey = item.dataset.line;
             if (lineKey && !lineVisibility[lineKey]) {
@@ -878,36 +909,62 @@
         });
     }
 
-    function updateLegendLatest() {
-        const values = {};
-        ['spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 'ceIv', 'peIv', 'combinedIv', 'ceExtrinsic', 'peExtrinsic', 'ceVwap', 'peVwap', 'combinedVwap', 'cePrevClose', 'pePrevClose', 'combinedPrevClose'].forEach(key => {
-            const data = currentSeries[key + 'Series'];
-            values[key] = data && data.length > 0 ? data[data.length - 1].value : null;
-        });
+   function updateLegendLatest() {
+    // Helper to format numbers to 2 decimal places safely
+    const fmt = (v) => (v !== null && isFinite(v)) ? Number(v).toFixed(2) : '-';
 
-        document.getElementById('val-spot').textContent = values.spot !== null ? values.spot.toFixed(2) : '-';
-        document.getElementById('val-ce').textContent = values.ce !== null ? values.ce.toFixed(2) : '-';
-        document.getElementById('val-pe').textContent = values.pe !== null ? values.pe.toFixed(2) : '-';
-        document.getElementById('val-combined-premium').textContent = values.combinedPremium !== null ? values.combinedPremium.toFixed(2) : '-';
-        document.getElementById('val-avg').textContent = values.avgPrice !== null ? values.avgPrice.toFixed(2) : '-';
-        document.getElementById('val-ce-iv').textContent = values.ceIv !== null ? values.ceIv.toFixed(2) : '-';
-        document.getElementById('val-pe-iv').textContent = values.peIv !== null ? values.peIv.toFixed(2) : '-';
-        document.getElementById('val-combined-iv').textContent = values.combinedIv !== null ? values.combinedIv.toFixed(2) : '-';
-        document.getElementById('val-ce-extrinsic').textContent = values.ceExtrinsic !== null ? values.ceExtrinsic.toFixed(2) : '-';
-        document.getElementById('val-pe-extrinsic').textContent = values.peExtrinsic !== null ? values.peExtrinsic.toFixed(2) : '-';
-        document.getElementById('val-ce-vwap').textContent = values.ceVwap !== null ? values.ceVwap.toFixed(2) : '-';
-        document.getElementById('val-pe-vwap').textContent = values.peVwap !== null ? values.peVwap.toFixed(2) : '-';
-        document.getElementById('val-combined-vwap').textContent = values.combinedVwap !== null ? values.combinedVwap.toFixed(2) : '-';
-        document.getElementById('val-ce-prev-close').textContent = values.cePrevClose !== null ? values.cePrevClose.toFixed(2) : '-';
-        document.getElementById('val-pe-prev-close').textContent = values.pePrevClose !== null ? values.pePrevClose.toFixed(2) : '-';
-        document.getElementById('val-combined-prev-close').textContent = values.combinedPrevClose !== null ? values.combinedPrevClose.toFixed(2) : '-';
-        document.getElementById('val-ce-open').textContent = Number.isFinite(currentSeries.ceOpen) ? currentSeries.ceOpen.toFixed(2) : '-';
-        document.getElementById('val-pe-open').textContent = Number.isFinite(currentSeries.peOpen) ? currentSeries.peOpen.toFixed(2) : '-';
-        document.getElementById('val-combined-open').textContent = Number.isFinite(currentSeries.combinedOpen) ? currentSeries.combinedOpen.toFixed(2) : '-';
+    // List of all keys that correspond to data series arrays
+    const seriesKeys = [
+        'spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 
+        'ceIv', 'peIv', 'combinedIv', 'ceExtrinsic', 'peExtrinsic', 
+        'ceVwap', 'peVwap', 'combinedVwap', 'cePrevClose', 'pePrevClose', 
+        'combinedPrevClose', 'cePrevLow', 'pePrevLow', 'combinedPrevLow'
+    ];
 
-        updateLegendVisibility();
-    }
+    // 1. Update values derived from Series Arrays (Latest Point)
+    seriesKeys.forEach(key => {
+        const data = currentSeries[key + 'Series'];
+        const val = (data && data.length > 0) ? data[data.length - 1].value : null;
+        
+        // Converts camelCase (cePrevLow) to kebab-case (val-ce-prev-low)
+        const id = 'val-' + key.replace(/([A-Z])/g, "-$1").toLowerCase();
+        const el = document.getElementById(id);
+        
+        if (el) {
+            el.textContent = fmt(val);
+        }
+    });
 
+    // 2. Update "Open" values (Static values from currentSeries, not arrays)
+    const openValues = {
+        'val-ce-open': currentSeries.ceOpen,
+        'val-pe-open': currentSeries.peOpen,
+        'val-combined-open': currentSeries.combinedOpen
+    };
+
+    Object.entries(openValues).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = fmt(val);
+        }
+    });
+
+    // 3. Refresh visibility (greys out hidden lines in the legend)
+    updateLegendVisibility();
+}
+function updateLegendVisibility() {
+    // Select all legend items that have a data-line attribute
+    document.querySelectorAll('.legend .item').forEach(item => {
+        const lineKey = item.dataset.line;
+        
+        // If the line is turned off in our visibility object, add the 'hidden' class
+        if (lineKey && !lineVisibility[lineKey]) {
+            item.classList.add('hidden');
+        } else {
+            item.classList.remove('hidden');
+        }
+    });
+}
     function updateLegendAtCrosshair(param) {
         if (!param || !param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
             updateLegendLatest();
@@ -936,7 +993,10 @@
             combinedPrevClose: getValue(getData(lines.combinedPrevClose)),
             ceOpen: getValue(getData(lines.ceOpen)) ?? currentSeries.ceOpen,
             peOpen: getValue(getData(lines.peOpen)) ?? currentSeries.peOpen,
-            combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen
+            combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen,
+            cePrevLow: getValue(getData(lines.cePrevLow)),
+            pePrevLow: getValue(getData(lines.pePrevLow)),
+            combinedPrevLow: getValue(getData(lines.combinedPrevLow))
         };
 
         const fmt = (v) => v !== null && Number.isFinite(v) ? v.toFixed(2) : '-';
@@ -960,6 +1020,9 @@
         document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
         document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
         document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
+        document.getElementById('val-ce-prev-low').textContent = fmt(values.cePrevLow);
+        document.getElementById('val-pe-prev-low').textContent = fmt(values.pePrevLow);
+        document.getElementById('val-combined-prev-low').textContent = fmt(values.combinedPrevLow);
     }
 
     function detectCrossovers(s1, s2, n1, n2) {
@@ -1172,6 +1235,9 @@
         lines.cePrevClose.setData(lineVisibility.cePrevClose ? currentSeries.cePrevCloseSeries : []);
         lines.pePrevClose.setData(lineVisibility.pePrevClose ? currentSeries.pePrevCloseSeries : []);
         lines.combinedPrevClose.setData(lineVisibility.combinedPrevClose ? currentSeries.combinedPrevCloseSeries : []);
+        lines.cePrevLow.setData(lineVisibility.cePrevLow ? currentSeries.cePrevLowSeries : []);
+		lines.pePrevLow.setData(lineVisibility.pePrevLow ? currentSeries.pePrevLowSeries : []);
+		lines.combinedPrevLow.setData(lineVisibility.combinedPrevLow ? currentSeries.combinedPrevLowSeries : []);
         drawOpenPriceLines();
 
         allCrossings = [];
@@ -1242,6 +1308,9 @@
             e.stopPropagation();
             applyLineVisibilityChanges();
             menu.classList.remove('show');
+            closeAllDropdowns();
+        
+            console.log("Lines applied and menu closed.");
         });
 
         document.getElementById('all-lines-check').addEventListener('change', (e) => {
@@ -1267,7 +1336,10 @@
             'combined-vwap-check': 'combinedVwap',
             'ce-prev-close-check': 'cePrevClose',
             'pe-prev-close-check': 'pePrevClose',
-            'combined-prev-close-check': 'combinedPrevClose'
+            'combined-prev-close-check': 'combinedPrevClose',
+            'ce-prev-low-check': 'cePrevLow',
+    		'pe-prev-low-check': 'pePrevLow',
+    		'combined-prev-low-check': 'combinedPrevLow'
         };
 
         Object.entries(checkboxHandlers).forEach(([id, key]) => {
@@ -1330,7 +1402,10 @@
             combinedVwap: 'combined-vwap-check',
             cePrevClose: 'ce-prev-close-check',
             pePrevClose: 'pe-prev-close-check',
-            combinedPrevClose: 'combined-prev-close-check'
+            combinedPrevClose: 'combined-prev-close-check',
+            cePrevLow: 'ce-prev-low-check',
+    		pePrevLow: 'pe-prev-low-check',
+    		combinedPrevLow: 'combined-prev-low-check'
         };
         Object.entries(map).forEach(([key, id]) => {
             const el = document.getElementById(id);
@@ -1490,6 +1565,19 @@
                     lines.combinedPrevClose.update({ time: t, value: vals.combinedPrevClose });
                     currentSeries.combinedPrevCloseSeries.push({ time: t, value: vals.combinedPrevClose });
                 }
+                // ADD THESE BLOCKS FOR THE NEW LINES:
+        if (lineVisibility.cePrevLow && row.cePrevLow != null) {
+            lines.cePrevLow.update({ time: t, value: Number(row.cePrevLow) });
+            currentSeries.cePrevLowSeries.push({ time: t, value: Number(row.cePrevLow) });
+        }
+        if (lineVisibility.pePrevLow && row.pePrevLow != null) {
+            lines.pePrevLow.update({ time: t, value: Number(row.pePrevLow) });
+            currentSeries.pePrevLowSeries.push({ time: t, value: Number(row.pePrevLow) });
+        }
+        if (lineVisibility.combinedPrevLow && row.combinedPrevLow != null) {
+            lines.combinedPrevLow.update({ time: t, value: Number(row.combinedPrevLow) });
+            currentSeries.combinedPrevLowSeries.push({ time: t, value: Number(row.combinedPrevLow) });
+        }
             }
 
             // Update last timestamp

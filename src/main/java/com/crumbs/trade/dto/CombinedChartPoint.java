@@ -41,4 +41,9 @@ public class CombinedChartPoint {
     BigDecimal cePrevClose;
     BigDecimal pePrevClose;
     BigDecimal combinedPrevClose;
+    
+ // 🆕 ADD THESE NEW PARAMETERS
+    BigDecimal cePrevLow;
+    BigDecimal pePrevLow;
+    BigDecimal combinedPrevLow;
 }

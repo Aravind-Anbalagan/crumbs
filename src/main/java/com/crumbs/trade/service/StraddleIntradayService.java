@@ -94,7 +94,8 @@ public class StraddleIntradayService {
 	private final Map<String, Map<String, BigDecimal>> prevHighMap = new HashMap<>();
 	private final Map<String, Map<String, BigDecimal>> prevLowMap = new HashMap<>();
 	public LocalDate prevDayDataDate = null;
-	
+	// Tracks the ISO String timestamp of the last processed 1-minute candle per token
+	private final Map<String, String> lastProcessedTimestamp = new HashMap<>();
 	
 	
 	// ================= VWAP CONTROL =================
@@ -374,93 +375,68 @@ public class StraddleIntradayService {
 	private static final BigDecimal MIN_DOMINANCE_GAP = BigDecimal.valueOf(2); // ₹2 filter
 
 	private void detectCrossoverEvent(
-	    StraddlePremiumDto dto,
-	    String name,
-	    LocalDateTime currentTs
-	) {
-	    // 1️⃣ Reset event flags
-	    dto.setCeCrossoverAbove(false);
-	    dto.setPeCrossoverAbove(false);
+		    StraddlePremiumDto dto,
+		    String name,
+		    LocalDateTime currentTs
+		) {
+		    dto.setCeCrossoverAbove(false);
+		    dto.setPeCrossoverAbove(false);
 
-	    // 2️⃣ Fetch last TWO persisted rows
-	    List<StraddleIntraday> lastTwo =
-	        straddleIntradayRepo.findLastTwo(
-	            name,
-	            dto.getStrikePrice(),
-	            PageRequest.of(0, 2)
-	        );
+		    // 1. Fetch last TWO persisted rows
+		    List<StraddleIntraday> lastTwo = straddleIntradayRepo.findLastTwo(
+		            name, dto.getStrikePrice(), PageRequest.of(0, 2));
 
-	    if (lastTwo.size() < 2) return;
+		    if (lastTwo.size() < 2) return;
 
-	    StraddleIntraday prev = lastTwo.get(0);        // t-1
-	    StraddleIntraday beforePrev = lastTwo.get(1); // t-2
+		    // 🚨 FIX: Ensure we know exactly which is T-1 and T-2
+		    StraddleIntraday prev = lastTwo.get(0);      // t-1 (Most recent in DB)
+		    StraddleIntraday beforePrev = lastTwo.get(1); // t-2 (Previous)
 
-	    // 3️⃣ Time-continuity guard
-	    long gapSeconds = Math.abs(
-	        java.time.Duration.between(
-	            prev.getTimestamp(),
-	            currentTs
-	        ).getSeconds()
-	    );
+		    // 2. Time-continuity guard
+		    long gapSeconds = Math.abs(java.time.Duration.between(prev.getTimestamp(), currentTs).getSeconds());
+		    if (gapSeconds > 120) return; 
 
-	    if (gapSeconds > 120) return;
+		    // 3. Extract Prices
+		    BigDecimal p2Ce = beforePrev.getCePrice(); // t-2
+		    BigDecimal p2Pe = beforePrev.getPePrice(); // t-2
+		    BigDecimal p1Ce = prev.getCePrice();       // t-1
+		    BigDecimal p1Pe = prev.getPePrice();       // t-1
+		    
+		    BigDecimal currCe = dto.getCePrice();      // t (Current)
+		    BigDecimal currPe = dto.getPePrice();      // t (Current)
 
-	    // 4️⃣ Prevent duplicate arrows
-	    if (Boolean.TRUE.equals(prev.getCeCrossoverAbove()) ||
-	        Boolean.TRUE.equals(prev.getPeCrossoverAbove())) {
-	        return;
-	    }
+		    if (p2Ce == null || p2Pe == null || currCe == null || currPe == null) return;
 
-	    // 5️⃣ Extract current + previous prices
-	    BigDecimal prevCe = beforePrev.getCePrice();
-	    BigDecimal prevPe = beforePrev.getPePrice();
-	    BigDecimal currCe = dto.getCePrice();
-	    BigDecimal currPe = dto.getPePrice();
+		    // 4. Dominance gap (Strength Filter)
+		    BigDecimal dominanceGap = currCe.subtract(currPe).abs();
+		    if (dominanceGap.compareTo(MIN_DOMINANCE_GAP) < 0) return;
 
-	    BigDecimal currCeVwap = dto.getCeVwap();
-	    BigDecimal currPeVwap = dto.getPeVwap();
+		    // ============================================================
+		    // 🚨 HIGHLIGHT: THE "TRUE" CROSSOVER LOGIC
+		    // ============================================================
+		    
+		    // 🟢 CE CROSSOVER: 
+		    // Was CE <= PE at t-1 AND is CE > PE now?
+		    boolean ceCrossedAbove = p1Ce.compareTo(p1Pe) <= 0 && currCe.compareTo(currPe) > 0;
+		    
+		    // 🔴 PE CROSSOVER: 
+		    // Was PE <= CE at t-1 AND is PE > CE now?
+		    boolean peCrossedAbove = p1Pe.compareTo(p1Ce) <= 0 && currPe.compareTo(currCe) > 0;
 
-	    if (prevCe == null || prevPe == null ||
-	        currCe == null || currPe == null ||
-	        currCeVwap == null || currPeVwap == null)
-	        return;
+		    // 5. VWAP Confirmation
+		    BigDecimal currCeVwap = dto.getCeVwap();
+		    BigDecimal currPeVwap = dto.getPeVwap();
+		    if (currCeVwap == null || currPeVwap == null) return;
 
-	    // 6️⃣ Dominance gap (strength filter)
-	    BigDecimal dominanceGap =
-	        currCe.subtract(currPe).abs();
-
-	    if (dominanceGap.compareTo(MIN_DOMINANCE_GAP) < 0)
-	        return; // 🚫 Weak cross — ignore
-
-	    // ================================
-	    // 🟢 CE CROSSOVER + VWAP CONFIRM
-	    // ================================
-	    boolean cePriceCross =
-	        prevCe.compareTo(prevPe) <= 0 &&
-	        currCe.compareTo(currPe) > 0;
-
-	    boolean ceVwapConfirm =
-	        currCe.compareTo(currCeVwap) > 0;
-
-	    if (cePriceCross && ceVwapConfirm) {
-	        dto.setCeCrossoverAbove(true);
-	        return;
-	    }
-
-	    // ================================
-	    // 🔴 PE CROSSOVER + VWAP CONFIRM
-	    // ================================
-	    boolean pePriceCross =
-	        prevPe.compareTo(prevCe) <= 0 &&
-	        currPe.compareTo(currCe) > 0;
-
-	    boolean peVwapConfirm =
-	        currPe.compareTo(currPeVwap) > 0;
-
-	    if (pePriceCross && peVwapConfirm) {
-	        dto.setPeCrossoverAbove(true);
-	    }
-	}
+		    if (ceCrossedAbove && currCe.compareTo(currCeVwap) > 0) {
+		        dto.setCeCrossoverAbove(true);
+		        logger.info("🚀 CE Crossover Detected for {} at Strike {}", name, dto.getStrikePrice());
+		    } 
+		    else if (peCrossedAbove && currPe.compareTo(currPeVwap) > 0) {
+		        dto.setPeCrossoverAbove(true);
+		        logger.info("🚀 PE Crossover Detected for {} at Strike {}", name, dto.getStrikePrice());
+		    }
+		}
 
 
 
@@ -1020,27 +996,37 @@ public class StraddleIntradayService {
 		// CE rows
 		for (StraddleIntraday r : ceRows) {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
-				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			,null,null,null));
+			CombinedChartPoint pt = map.computeIfAbsent(key, t -> {
+			    CombinedChartPoint newPoint = new CombinedChartPoint();
+			    newPoint.setTimestamp(t);
+			    return newPoint;
+			});
 			pt.setCe(r.getCePrice());
 			pt.setCeOpen(r.getCeOpenPrice());
 			pt.setCeExtrinsic(r.getCeExtrinsic());
 			pt.setCeVwap(r.getCeVwap());
 			pt.setCeIV(r.getCeIV());  // ✅ ADD
+			// 🟢 SET THESE HERE (Then you can delete the loops you mentioned)
+		    pt.setCePrevClose(r.getCePrevClose());
+		    pt.setCePrevLow(r.getCePrevLow());
 		}
 
 		// PE rows
 		for (StraddleIntraday r : peRows) {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
-				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			,null,null,null));
+			CombinedChartPoint pt = map.computeIfAbsent(key, t -> {
+		        CombinedChartPoint newPoint = new CombinedChartPoint();
+		        newPoint.setTimestamp(t);
+		        return newPoint;
+		    });
 			pt.setPe(r.getPePrice());
 			pt.setPeOpen(r.getPeOpenPrice());
 			pt.setPeExtrinsic(r.getPeExtrinsic());
 			pt.setPeVwap(r.getPeVwap());
 			pt.setPeIV(r.getPeIV());  // ✅ ADD
+			// 🟢 SET THESE HERE
+		    pt.setPePrevClose(r.getPePrevClose());
+		    pt.setPePrevLow(r.getPePrevLow());
 		}
 
 		// SPOT rows
@@ -1048,61 +1034,53 @@ public class StraddleIntradayService {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
 				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			,null,null,null));
+			,null,null,null,null, null, null));
 			pt.setSpot(r.getSpot());
 		}
-		// Populate prev close from database
-		for (StraddleIntraday r : ceRows) {
-		    String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-		    CombinedChartPoint pt = map.get(key);
-		    if (pt != null) {
-		        pt.setCePrevClose(r.getCePrevClose());
-		    }
-		}
+		
 
-		for (StraddleIntraday r : peRows) {
-		    String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
-		    CombinedChartPoint pt = map.get(key);
-		    if (pt != null) {
-		        pt.setPePrevClose(r.getPePrevClose());
-		    }
-		}
-
-		// Calculate combined prev close in derived values section (after existing calculations)
+		// =====================================================
+		// CONSOLIDATED DERIVED VALUES LOOP
+		// =====================================================
 		for (CombinedChartPoint pt : map.values()) {
-		    // ... existing calculations ...
 		    
-		    // 🆕 ADD THIS:
+		    // 1. Current Combined Premium & Avg
+		    if (pt.getCe() != null && pt.getPe() != null) {
+		        pt.setCombinedPremium(pt.getCe().add(pt.getPe()));
+		        pt.setAvgPrice(pt.getCombinedPremium().divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP));
+		    }
+		    
+		    // 2. Combined VWAP
+		    if (pt.getCeVwap() != null && pt.getPeVwap() != null) {
+		        pt.setCombinedVwap(pt.getCeVwap().add(pt.getPeVwap()));
+		    }
+
+		    // 3. Combined Open Price
+		    if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
+		        pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
+		    }
+		    
+		    // 4. Combined IV (Average)
+		    if (pt.getCeIV() != null && pt.getPeIV() != null) {
+		        pt.setCombinedIV(
+		            pt.getCeIV().add(pt.getPeIV())
+		                .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP)
+		        );
+		    } else if (pt.getCeIV() != null) {
+		        pt.setCombinedIV(pt.getCeIV());
+		    } else if (pt.getPeIV() != null) {
+		        pt.setCombinedIV(pt.getPeIV());
+		    }
+
+		    // 5. Combined Previous Close (Sum)
 		    if (pt.getCePrevClose() != null && pt.getPePrevClose() != null) {
 		        pt.setCombinedPrevClose(pt.getCePrevClose().add(pt.getPePrevClose()));
 		    }
-		}
-		// Derived values
-		for (CombinedChartPoint pt : map.values()) {
-			if (pt.getCe() != null && pt.getPe() != null) {
-				pt.setCombinedPremium(pt.getCe().add(pt.getPe()));
-				pt.setAvgPrice(pt.getCombinedPremium().divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP));
-			}
-			
-			if (pt.getCeVwap() != null && pt.getPeVwap() != null) {
-				pt.setCombinedVwap(pt.getCeVwap().add(pt.getPeVwap()));
-			}
 
-			if (pt.getCeOpen() != null && pt.getPeOpen() != null) {
-				pt.setCombinedOpen(pt.getCeOpen().add(pt.getPeOpen()));
-			}
-			
-			// ✅ CALCULATE COMBINED IV
-	        if (pt.getCeIV() != null && pt.getPeIV() != null) {
-	            pt.setCombinedIV(
-	                pt.getCeIV().add(pt.getPeIV())
-	                    .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP)
-	            );
-	        } else if (pt.getCeIV() != null) {
-	            pt.setCombinedIV(pt.getCeIV());
-	        } else if (pt.getPeIV() != null) {
-	            pt.setCombinedIV(pt.getPeIV());
-	        }
+		    // 6. Combined Previous Low (Sum)
+		    if (pt.getCePrevLow() != null && pt.getPePrevLow() != null) {
+		        pt.setCombinedPrevLow(pt.getCePrevLow().add(pt.getPePrevLow()));
+		    }
 		}
 
 		CombinedChartResponse response = new CombinedChartResponse();
@@ -1114,14 +1092,15 @@ public class StraddleIntradayService {
 	// VWAP RESET
 	// =====================================================
 	private void resetVwapIfNewDay() {
-		LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	    LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
 
-		if (vwapDate == null || !vwapDate.equals(today)) {
-			tpvMap.clear();
-			volMap.clear();
-			vwapDate = today;
-			logger.info("VWAP reset for new trading day: {}", today);
-		}
+	    if (vwapDate == null || !vwapDate.equals(today)) {
+	        tpvMap.clear();
+	        volMap.clear();
+	        lastProcessedTimestamp.clear(); // 🟢 Clears the String map
+	        vwapDate = today;
+	        logger.info("VWAP and Timestamp cache reset for new trading day: {}", today);
+	    }
 	}
 
 	// =====================================================
@@ -1353,27 +1332,30 @@ public class StraddleIntradayService {
 	    
 	    for (StraddlePremiumDto dto : strikeList) {
 	        
-	        // Populate CE from cache
+	        // 1. Populate CE from cache
 	        if (dto.getCeToken() != null) {
 	            String ceToken = dto.getCeToken().getToken();
 	            BigDecimal ceClose = strategyCloseCache.get(ceToken);
 	            dto.setCePrevClose(ceClose);
 	        }
 	        
-	        // Populate PE from cache
+	        // 2. Populate PE from cache
 	        if (dto.getPeToken() != null) {
 	            String peToken = dto.getPeToken().getToken();
 	            BigDecimal peClose = strategyCloseCache.get(peToken);
 	            dto.setPePrevClose(peClose);
 	        }
 	        
-	        // Calculate combined prev close if both available
+	        // 3. FIX: Calculate combined prev close as a SUM
+	        // We do NOT divide by 2 here. The straddle value is CE + PE.
 	        if (dto.getCePrevClose() != null && dto.getPePrevClose() != null) {
-
 	            BigDecimal sum = dto.getCePrevClose().add(dto.getPePrevClose());
-	            BigDecimal average = sum.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
-
-	            dto.setCombinedPrevClose(average);
+	            
+	            // Set the total value of the straddle
+	            dto.setCombinedPrevClose(sum); 
+	            
+	            logger.debug("Strike {}: CombinedPrevClose (Sum) = {}", 
+	                dto.getStrikePrice(), sum);
 	        }
 	    }
 	}
@@ -1683,34 +1665,46 @@ public class StraddleIntradayService {
 	// =====================================================
 	private BigDecimal updateVwapIncremental(String token, JSONArray candleArr) {
 
-		// Process ALL candles, not just the first one
-		for (int i = 0; i < candleArr.length(); i++) {
-			JSONArray c = candleArr.getJSONArray(i);
+	    for (int i = 0; i < candleArr.length(); i++) {
+	        JSONArray c = candleArr.getJSONArray(i);
 
-			BigDecimal high = c.getBigDecimal(2);
-			BigDecimal low = c.getBigDecimal(3);
-			BigDecimal close = c.getBigDecimal(4);
-			BigDecimal volume = c.getBigDecimal(5);
+	        // ============================================================
+	        // 🚨 FIX: Extract as String and compare alphabetically
+	        // ============================================================
+	        String candleTimestamp = c.getString(0); 
+	        String lastSeen = lastProcessedTimestamp.getOrDefault(token, "");
 
-			// Skip candles with zero volume
-			if (volume.compareTo(BigDecimal.ZERO) == 0) {
-				continue;
-			}
+	        // If current candle is not newer than last processed, skip it
+	        if (!lastSeen.isEmpty() && candleTimestamp.compareTo(lastSeen) <= 0) {
+	            continue; 
+	        }
+	        // ============================================================
 
-			BigDecimal tp = high.add(low).add(close)
-				.divide(BigDecimal.valueOf(3), 6, RoundingMode.HALF_UP);
+	        BigDecimal high   = c.getBigDecimal(2);
+	        BigDecimal low    = c.getBigDecimal(3);
+	        BigDecimal close  = c.getBigDecimal(4);
+	        BigDecimal volume = c.getBigDecimal(5);
 
-			tpvMap.put(token, tpvMap.getOrDefault(token, BigDecimal.ZERO).add(tp.multiply(volume)));
-			volMap.put(token, volMap.getOrDefault(token, BigDecimal.ZERO).add(volume));
-		}
+	        if (volume.compareTo(BigDecimal.ZERO) == 0) {
+	            continue;
+	        }
 
-		// Return VWAP, handling case where volume is zero
-		BigDecimal totalVolume = volMap.get(token);
-		if (totalVolume == null || totalVolume.compareTo(BigDecimal.ZERO) == 0) {
-			return BigDecimal.ZERO;
-		}
+	        BigDecimal tp = high.add(low).add(close)
+	            .divide(BigDecimal.valueOf(3), 6, RoundingMode.HALF_UP);
 
-		return tpvMap.get(token).divide(totalVolume, 2, RoundingMode.HALF_UP);
+	        tpvMap.put(token, tpvMap.getOrDefault(token, BigDecimal.ZERO).add(tp.multiply(volume)));
+	        volMap.put(token, volMap.getOrDefault(token, BigDecimal.ZERO).add(volume));
+
+	        // Update the "Last Seen" marker with the String
+	        lastProcessedTimestamp.put(token, candleTimestamp);
+	    }
+
+	    BigDecimal totalVolume = volMap.get(token);
+	    if (totalVolume == null || totalVolume.compareTo(BigDecimal.ZERO) == 0) {
+	        return BigDecimal.ZERO;
+	    }
+
+	    return tpvMap.get(token).divide(totalVolume, 2, RoundingMode.HALF_UP);
 	}
 
 	// =====================================================
@@ -2538,6 +2532,11 @@ public class StraddleIntradayService {
 	                dto.getCePrevClose().add(dto.getPePrevClose())
 	            );
 	        }
+	     // Inside fetchPreviousDayDataForAllStrikes
+	        if (dto.getCePrevLow() != null && dto.getPePrevLow() != null) {
+	            // 🟢 Combined Low = CE Low + PE Low
+	            dto.setCombinedPrevLow(dto.getCePrevLow().add(dto.getPePrevLow()));
+	        }
 	    }
 
 	    logger.info("Prev day OHLC fetch complete for {}: Success={}, Failure={}",
@@ -2622,5 +2621,51 @@ public class StraddleIntradayService {
 	    // Update timestamp on every allowed send
 	    sentAlertKeys.put(key, now);
 	    return false;
+	}
+	
+	/**
+	 * Backfills VWAP data from market open to current time.
+	 * This ensures VWAP is accurate even if the system restarts midday.
+	 */
+	public void warmUpVwap(String name, Strategy strategy) {
+	    logger.info("🔥 Starting VWAP warm-up for {}", name);
+	    
+	    // 1. Get the ATM strike to identify which tokens to warm up
+	    // In a full system, you might want to warm up all strikes in your range
+	    BigDecimal spotPrice = null; 
+	    try {
+	        String session = sessionManager.getSession();
+	        spotPrice = samco.getNifty50Price(session); // Fallback to your spot fetch logic
+	        
+	        if (spotPrice == null) return;
+
+	        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
+	        List<StraddlePremiumDto> warmUpList = buildStraddleDtos(atmStrike, 50);
+	        warmUpList = getAllTokenDetails(warmUpList, strategy);
+
+	        SmartConnect smartconnect = angelOne.signIn();
+
+	        for (StraddlePremiumDto dto : warmUpList) {
+	            // Warm up CE
+	            if (dto.getCeToken() != null) {
+	                JSONArray candles = fetchLatestOneMinuteCandle(
+	                    smartconnect, strategy.getExchange(), dto.getCeToken().getToken());
+	                if (candles != null) {
+	                    updateVwapIncremental(dto.getCeToken().getToken(), candles);
+	                }
+	            }
+	            // Warm up PE
+	            if (dto.getPeToken() != null) {
+	                JSONArray candles = fetchLatestOneMinuteCandle(
+	                    smartconnect, strategy.getExchange(), dto.getPeToken().getToken());
+	                if (candles != null) {
+	                    updateVwapIncremental(dto.getPeToken().getToken(), candles);
+	                }
+	            }
+	        }
+	        logger.info("✅ VWAP warm-up completed for {}", name);
+	    } catch (Exception e) {
+	        logger.error("❌ VWAP warm-up failed for {}", name, e);
+	    }
 	}
 }
