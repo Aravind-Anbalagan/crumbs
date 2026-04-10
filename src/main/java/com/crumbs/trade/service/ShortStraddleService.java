@@ -112,20 +112,23 @@ public class ShortStraddleService {
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp);
         
+        // Retrieve the entry gap (breakeven)
         BigDecimal initialGap = activeOrders.get(0).getBreakeven();
         if (initialGap == null) initialGap = currentGap;
         
-        // Use dynamic target points
+        // Fetch dynamic target points (15 or 50)
         BigDecimal ptsToCapture = TARGET_POINTS.getOrDefault(symbol.toUpperCase(), new BigDecimal("15"));
         BigDecimal targetGap = initialGap.add(ptsToCapture);
 
-        log.info("[{}][LIVE] Strike: {} | Gap: {} | Target: {} | SL: CP > CV", 
-                 symbol, tick.getStrike(), currentGap, targetGap);
+        // RESTORED CLEAR LOG FORMAT
+        log.info("[{}][LIVE] Strike: {} | CP: {} | CV: {} | Current Gap: {} | Target: {} | SL: CP > CV", 
+                 symbol, tick.getStrike(), cp, cv, currentGap, targetGap);
 
+        // EXIT Logic
         if (cp.compareTo(cv) > 0) {
             closeAll(activeOrders, tick, "STOP_LOSS (CP > CV)");
         } else if (currentGap.compareTo(targetGap) >= 0) {
-            closeAll(activeOrders, tick, "TARGET_GAP_REACHED (" + ptsToCapture + ")");
+            closeAll(activeOrders, tick, "TARGET_GAP_REACHED (" + ptsToCapture + " pts)");
         }
     }
 
