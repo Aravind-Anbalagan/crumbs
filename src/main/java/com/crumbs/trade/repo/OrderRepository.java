@@ -53,5 +53,7 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
 		                                    @Param("strategy") String strategy);
 	
 	boolean existsBySymbolAndNameAndStatus(String symbol, String name, String status);
+	// Finds active orders for this specific strategy and symbol
+    List<Orders> findByNameAndSignalAndActive(String name, String signal, int active);
 	
 }
