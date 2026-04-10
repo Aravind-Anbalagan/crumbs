@@ -34,6 +34,18 @@
             border-radius: 0 !important;
             padding: 8px !important;
         }
+        .diff-meter {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-left: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.diff-positive { background: rgba(34, 197, 94, 0.2); color: #4ade80; border-color: rgba(34, 197, 94, 0.3); }
+.diff-negative { background: rgba(239, 68, 68, 0.2); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
 
         .btn-icon {
             position: absolute;
@@ -276,6 +288,9 @@
         <div id="chart"></div>
 
         <div class="legend" id="bottom-legend">
+        <div class="item" style="border:none; background:transparent; padding:0">
+		    <div id="diff-meter" class="diff-meter" style="display:none;">Price Diff: -</div>
+		</div>
             <div class="item" data-line="spot"><span class="swatch" style="background:#000000"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div>
             <div class="item" data-line="ce"><span class="swatch" style="background:#22c55e"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div>
             <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
@@ -732,7 +747,8 @@
             lastValueVisible: true,
             lineWidth: 2.5,
             color: '#3b82f6',
-            priceScaleId: 'right'
+            priceScaleId: 'right',
+            title: 'Comb Price'
         }),
         avgPrice: chart.addLineSeries({
             priceLineVisible: false,
@@ -826,7 +842,8 @@
             lastValueVisible: true,
             lineWidth: 2.5,
             color: '#06b6d4',
-            priceScaleId: 'right'
+            priceScaleId: 'right',
+            title: 'Comb Vwap'
         }),
         cePrevClose: chart.addLineSeries({
             priceLineVisible: true,
@@ -910,10 +927,8 @@
     }
 
    function updateLegendLatest() {
-    // Helper to format numbers to 2 decimal places safely
     const fmt = (v) => (v !== null && isFinite(v)) ? Number(v).toFixed(2) : '-';
-
-    // List of all keys that correspond to data series arrays
+    
     const seriesKeys = [
         'spot', 'ce', 'pe', 'combinedPremium', 'avgPrice', 
         'ceIv', 'peIv', 'combinedIv', 'ceExtrinsic', 'peExtrinsic', 
@@ -921,35 +936,23 @@
         'combinedPrevClose', 'cePrevLow', 'pePrevLow', 'combinedPrevLow'
     ];
 
-    // 1. Update values derived from Series Arrays (Latest Point)
+    let latestPremium = null;
+    let latestVwap = null;
+
     seriesKeys.forEach(key => {
         const data = currentSeries[key + 'Series'];
         const val = (data && data.length > 0) ? data[data.length - 1].value : null;
         
-        // Converts camelCase (cePrevLow) to kebab-case (val-ce-prev-low)
+        // Match these keys exactly to the seriesKeys above
+        if (key === 'combinedPremium') latestPremium = val;
+        if (key === 'combinedVwap') latestVwap = val;
+
         const id = 'val-' + key.replace(/([A-Z])/g, "-$1").toLowerCase();
         const el = document.getElementById(id);
-        
-        if (el) {
-            el.textContent = fmt(val);
-        }
+        if (el) el.textContent = fmt(val);
     });
 
-    // 2. Update "Open" values (Static values from currentSeries, not arrays)
-    const openValues = {
-        'val-ce-open': currentSeries.ceOpen,
-        'val-pe-open': currentSeries.peOpen,
-        'val-combined-open': currentSeries.combinedOpen
-    };
-
-    Object.entries(openValues).forEach(([id, val]) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.textContent = fmt(val);
-        }
-    });
-
-    // 3. Refresh visibility (greys out hidden lines in the legend)
+    calculateDiff(latestPremium, latestVwap);
     updateLegendVisibility();
 }
 function updateLegendVisibility() {
@@ -966,65 +969,97 @@ function updateLegendVisibility() {
     });
 }
     function updateLegendAtCrosshair(param) {
-        if (!param || !param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
-            updateLegendLatest();
-            return;
-        }
-
-        const getData = (line) => param.seriesData.get(line);
-        const getValue = (data) => data && data.value !== undefined ? data.value : null;
-
-        const values = {
-            spot: getValue(getData(lines.spot)),
-            ce: getValue(getData(lines.ce)),
-            pe: getValue(getData(lines.pe)),
-            combinedPremium: getValue(getData(lines.combinedPremium)),
-            avgPrice: getValue(getData(lines.avgPrice)),
-            ceIv: getValue(getData(lines.ceIv)),
-            peIv: getValue(getData(lines.peIv)),
-            combinedIv: getValue(getData(lines.combinedIv)),
-            ceExtrinsic: getValue(getData(lines.ceExtrinsic)),
-            peExtrinsic: getValue(getData(lines.peExtrinsic)),
-            ceVwap: getValue(getData(lines.ceVwap)),
-            peVwap: getValue(getData(lines.peVwap)),
-            combinedVwap: getValue(getData(lines.combinedVwap)),
-            cePrevClose: getValue(getData(lines.cePrevClose)),
-            pePrevClose: getValue(getData(lines.pePrevClose)),
-            combinedPrevClose: getValue(getData(lines.combinedPrevClose)),
-            ceOpen: getValue(getData(lines.ceOpen)) ?? currentSeries.ceOpen,
-            peOpen: getValue(getData(lines.peOpen)) ?? currentSeries.peOpen,
-            combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen,
-            cePrevLow: getValue(getData(lines.cePrevLow)),
-            pePrevLow: getValue(getData(lines.pePrevLow)),
-            combinedPrevLow: getValue(getData(lines.combinedPrevLow))
-        };
-
-        const fmt = (v) => v !== null && Number.isFinite(v) ? v.toFixed(2) : '-';
-
-        document.getElementById('val-spot').textContent = fmt(values.spot);
-        document.getElementById('val-ce').textContent = fmt(values.ce);
-        document.getElementById('val-pe').textContent = fmt(values.pe);
-        document.getElementById('val-combined-premium').textContent = fmt(values.combinedPremium);
-        document.getElementById('val-avg').textContent = fmt(values.avgPrice);
-        document.getElementById('val-ce-iv').textContent = fmt(values.ceIv);
-        document.getElementById('val-pe-iv').textContent = fmt(values.peIv);
-        document.getElementById('val-combined-iv').textContent = fmt(values.combinedIv);
-        document.getElementById('val-ce-extrinsic').textContent = fmt(values.ceExtrinsic);
-        document.getElementById('val-pe-extrinsic').textContent = fmt(values.peExtrinsic);
-        document.getElementById('val-ce-vwap').textContent = fmt(values.ceVwap);
-        document.getElementById('val-pe-vwap').textContent = fmt(values.peVwap);
-        document.getElementById('val-combined-vwap').textContent = fmt(values.combinedVwap);
-        document.getElementById('val-ce-prev-close').textContent = fmt(values.cePrevClose);
-        document.getElementById('val-pe-prev-close').textContent = fmt(values.pePrevClose);
-        document.getElementById('val-combined-prev-close').textContent = fmt(values.combinedPrevClose);
-        document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
-        document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
-        document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
-        document.getElementById('val-ce-prev-low').textContent = fmt(values.cePrevLow);
-        document.getElementById('val-pe-prev-low').textContent = fmt(values.pePrevLow);
-        document.getElementById('val-combined-prev-low').textContent = fmt(values.combinedPrevLow);
+    if (!param || !param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+        updateLegendLatest();
+        return;
     }
 
+    const getData = (line) => param.seriesData.get(line);
+    const getValue = (data) => data && data.value !== undefined ? data.value : null;
+
+    // 1. Capture the values for the meter
+    const prem = getValue(getData(lines.combinedPremium));
+    const vwap = getValue(getData(lines.combinedVwap));
+
+    // 2. Capture all values for the legend
+    const values = {
+        spot: getValue(getData(lines.spot)),
+        ce: getValue(getData(lines.ce)),
+        pe: getValue(getData(lines.pe)),
+        combinedPremium: prem,
+        avgPrice: getValue(getData(lines.avgPrice)),
+        ceIv: getValue(getData(lines.ceIv)),
+        peIv: getValue(getData(lines.peIv)),
+        combinedIv: getValue(getData(lines.combinedIv)),
+        ceExtrinsic: getValue(getData(lines.ceExtrinsic)),
+        peExtrinsic: getValue(getData(lines.peExtrinsic)),
+        ceVwap: getValue(getData(lines.ceVwap)),
+        peVwap: getValue(getData(lines.peVwap)),
+        combinedVwap: vwap,
+        cePrevClose: getValue(getData(lines.cePrevClose)),
+        pePrevClose: getValue(getData(lines.pePrevClose)),
+        combinedPrevClose: getValue(getData(lines.combinedPrevClose)),
+        ceOpen: getValue(getData(lines.ceOpen)) ?? currentSeries.ceOpen,
+        peOpen: getValue(getData(lines.peOpen)) ?? currentSeries.peOpen,
+        combinedOpen: getValue(getData(lines.combinedOpen)) ?? currentSeries.combinedOpen,
+        cePrevLow: getValue(getData(lines.cePrevLow)),
+        pePrevLow: getValue(getData(lines.pePrevLow)),
+        combinedPrevLow: getValue(getData(lines.combinedPrevLow))
+    };
+
+    const fmt = (v) => v !== null && Number.isFinite(v) ? v.toFixed(2) : '-';
+
+    // Update standard legend labels
+    document.getElementById('val-spot').textContent = fmt(values.spot);
+    document.getElementById('val-ce').textContent = fmt(values.ce);
+    document.getElementById('val-pe').textContent = fmt(values.pe);
+    document.getElementById('val-combined-premium').textContent = fmt(values.combinedPremium);
+    document.getElementById('val-avg').textContent = fmt(values.avgPrice);
+    document.getElementById('val-ce-iv').textContent = fmt(values.ceIv);
+    document.getElementById('val-pe-iv').textContent = fmt(values.peIv);
+    document.getElementById('val-combined-iv').textContent = fmt(values.combinedIv);
+    document.getElementById('val-ce-extrinsic').textContent = fmt(values.ceExtrinsic);
+    document.getElementById('val-pe-extrinsic').textContent = fmt(values.peExtrinsic);
+    document.getElementById('val-ce-vwap').textContent = fmt(values.ceVwap);
+    document.getElementById('val-pe-vwap').textContent = fmt(values.peVwap);
+    document.getElementById('val-combined-vwap').textContent = fmt(values.combinedVwap);
+    document.getElementById('val-ce-prev-close').textContent = fmt(values.cePrevClose);
+    document.getElementById('val-pe-prev-close').textContent = fmt(values.pePrevClose);
+    document.getElementById('val-combined-prev-close').textContent = fmt(values.combinedPrevClose);
+    document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
+    document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
+    document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
+    document.getElementById('val-ce-prev-low').textContent = fmt(values.cePrevLow);
+    document.getElementById('val-pe-prev-low').textContent = fmt(values.pePrevLow);
+    document.getElementById('val-combined-prev-low').textContent = fmt(values.combinedPrevLow);
+
+    // 3. Trigger the meter update with the specific values
+    calculateDiff(prem, vwap);
+}
+function calculateDiff(prem, vwap) {
+    const meter = document.getElementById('diff-meter');
+    if (!meter) return;
+
+    // Added explicit check for Number type to ensure it doesn't fail on 0
+    const isValid = (val) => val !== null && typeof val === 'number';
+
+    if (isValid(prem) && isValid(vwap) && lineVisibility.combinedPremium && lineVisibility.combinedVwap) {
+        const diff = prem - vwap;
+        const pct = (diff / vwap) * 100;
+        const sign = diff >= 0 ? '+' : '';
+        
+        meter.style.display = 'inline-flex';
+        meter.textContent = `Diff: ${sign}${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)`;
+        
+        if (diff >= 0) {
+            meter.className = 'diff-meter diff-positive';
+        } else {
+            meter.className = 'diff-meter diff-negative';
+        }
+    } else {
+        meter.style.display = 'none';
+    }
+}
     function detectCrossovers(s1, s2, n1, n2) {
         const crossings = [];
         if (s1.length < 2 || s2.length < 2) return crossings;
