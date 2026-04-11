@@ -53,7 +53,10 @@ public class ShortStraddleService {
 
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
-        List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(symbol, STRATEGY_NAME, STATUS_ACTIVE);
+     // Update the query to look for the unique name (e.g., SHORT_STRADDLE_NIFTY)
+        String uniqueName = "SHORT_STRADDLE_" + symbol.toUpperCase();
+        List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(
+                uniqueName, STRATEGY_NAME, STATUS_ACTIVE);
 
         // 1. EOD Square-off Check
         if (!activeOrders.isEmpty() && isSquareOffTime(symbol, now)) {
@@ -160,7 +163,8 @@ public class ShortStraddleService {
 
     private void saveOrder(String symbol, String type, BigDecimal price, BigDecimal strike, String cycleId, BigDecimal gap) {
         Orders order = new Orders();
-        order.setName(symbol);
+        String uniqueName = "SHORT_STRADDLE_" + symbol.toUpperCase();
+        order.setName(uniqueName);
         order.setSignal(STRATEGY_NAME);
         order.setCreatedOn(LocalDateTime.now());
         order.setOptionType(type);

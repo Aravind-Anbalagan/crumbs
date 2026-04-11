@@ -148,7 +148,7 @@ public class CPRStraddleService {
             //      in StrategyService never returns a straddle leg by mistake.
             try {
                 orderService.orderPlaceWithToken(
-                        buildToken(atmDto.getCeToken()), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
+                        buildToken(atmDto.getCeToken(),atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
                 ceLegPlaced.set(true);
                 logger.info("CE leg placed → {}", atmDto.getCeToken().getSymbol());
             } catch (Exception | SmartAPIException e) {
@@ -158,7 +158,7 @@ public class CPRStraddleService {
             // ── Place PE leg ──────────────────────────────────────────────────
             try {
                 orderService.orderPlaceWithToken(
-                        buildToken(atmDto.getPeToken()), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
+                        buildToken(atmDto.getPeToken(),atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
                 peLegPlaced.set(true);
                 logger.info("PE leg placed → {}", atmDto.getPeToken().getSymbol());
             } catch (Exception | SmartAPIException e) {
@@ -423,12 +423,13 @@ public class CPRStraddleService {
     }
 
     /** Copies token fields into a fresh Token DTO to avoid mutating shared state */
-    private Token buildToken(Token source) {
+    private Token buildToken(Token source,BigDecimal strike) {
         Token t = new Token();
         t.setToken(source.getToken());
         t.setSymbol(source.getSymbol());
         t.setExch_seg(source.getExch_seg());
         t.setQuantity(source.getQuantity());
+        t.setStrike(strike);
         return t;
     }
 

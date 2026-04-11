@@ -14,7 +14,7 @@ public class Token {
 	String name;
 	String type;
 	String expiry;
-	String strike;
+	BigDecimal strike;
 	String lotsize;
 	String instrumenttype;
 	String exch_seg;
@@ -47,4 +47,5 @@ public class Token {
     BigDecimal pivot;            // CPR pivot
     String     marketType;       // NORMAL | GAP_UP | GAP_DOWN
     String     entryTime;        // ISO datetime of entry
+    
 }

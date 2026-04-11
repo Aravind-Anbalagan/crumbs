@@ -517,7 +517,7 @@ public class AngelOneService {
 				token.setToken(indexes.getToken());
 				token.setName(indexes.getName());
 				token.setExpiry(indexes.getExpiry());
-				token.setStrike(indexes.getStrike());
+				token.setStrike(new BigDecimal(indexes.getStrike()));
 				token.setQuantity(indexes.getLotsize());
 			} else {
 				logger.error("Unable to get token " + token.getName());

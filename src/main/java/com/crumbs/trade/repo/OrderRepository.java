@@ -55,5 +55,9 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
 	boolean existsBySymbolAndNameAndStatus(String symbol, String name, String status);
 	// Finds active orders for this specific strategy and symbol
     List<Orders> findByNameAndSignalAndActive(String name, String signal, int active);
-	
+
+    List<Orders> findAllByName(String name);
+    
+ // Partial match (Contains) - This is what you need for "CPR"
+    List<Orders> findByNameContainingIgnoreCase(String namePart);
 }

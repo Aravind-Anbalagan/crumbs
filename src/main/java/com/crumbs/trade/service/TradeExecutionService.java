@@ -1,172 +1,154 @@
 package com.crumbs.trade.service;
 
 import com.crumbs.trade.dto.UnifiedOrderDto;
-import com.crumbs.trade.entity.TradeExecution;
-import com.crumbs.trade.entity.Orders;
-import com.crumbs.trade.entity.ResultVix;
-import com.crumbs.trade.repo.TradeExecutionRepo;
-import com.crumbs.trade.repo.OrderRepository;
-import com.crumbs.trade.repo.ResultVixRepo;
+import com.crumbs.trade.entity.*;
+import com.crumbs.trade.repo.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class TradeExecutionService {
 
-    private final TradeExecutionRepo tradeExecutionRepo;
+    private final TradeExecutionRepo srRepo;
     private final OrderRepository orderRepository;
-    private final ResultVixRepo resultVixRepository;
+    private final ResultVixRepo haRepo;
 
-    // adjust formats to your actual strings
-    private static final DateTimeFormatter RV_TIMESTAMP_FMT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-    public TradeExecutionService(TradeExecutionRepo tradeExecutionRepo,
-                                 OrderRepository orderRepository,
-                                 ResultVixRepo resultVixRepository) {
-        this.tradeExecutionRepo = tradeExecutionRepo;
+    public TradeExecutionService(TradeExecutionRepo srRepo, OrderRepository orderRepository, ResultVixRepo haRepo) {
+        this.srRepo = srRepo;
         this.orderRepository = orderRepository;
-        this.resultVixRepository = resultVixRepository;
+        this.haRepo = haRepo;
     }
 
-    /**
-     * name = "SR"          -> TradeExecution
-     * name = "CPR"         -> Orders
-     * name = "HEIKIN_PSAR" -> ResultVix
-     * name = null/other    -> all three
-     */
-    public List<UnifiedOrderDto> getAllOrders(String name) {
-        List<UnifiedOrderDto> result = new ArrayList<>();
+    public List<UnifiedOrderDto> getAllOrders(String strategy) {
+        if (strategy == null) return Collections.emptyList();
+        String upperStrategy = strategy.toUpperCase();
 
-        if (name == null || "SR".equalsIgnoreCase(name)) {
-            result.addAll(
-                    tradeExecutionRepo.findAll()
-                            .stream()
-                            .map(this::fromTradeExecution)
-                            .collect(Collectors.toList())
-            );
+        if (upperStrategy.contains("CPR")) {
+            return orderRepository.findByNameContainingIgnoreCase("CPR").stream()
+                    .map(this::mapCPR).collect(Collectors.toList());
         }
 
-        if (name == null || "CPR".equalsIgnoreCase(name)) {
-            result.addAll(
-                    orderRepository.findAll()
-                            .stream()
-                            .map(this::fromOrders)
-                            .collect(Collectors.toList())
-            );
+        if (upperStrategy.startsWith("SHORT_STRADDLE_")) {
+            return orderRepository.findAllByName(upperStrategy).stream()
+                    .map(this::mapShortStraddle).collect(Collectors.toList());
         }
 
-        if (name == null || "HEIKIN_PSAR".equalsIgnoreCase(name)) {
-            result.addAll(
-                    resultVixRepository.findAll()
-                            .stream()
-                            .map(this::fromResultVix)
-                            .collect(Collectors.toList())
-            );
-        }
-
-        return result;
+        return switch (upperStrategy) {
+            case "SR" -> srRepo.findAll().stream().map(this::mapSR).collect(Collectors.toList());
+            case "HEIKIN_PSAR" -> haRepo.findAll().stream().map(this::mapHA).collect(Collectors.toList());
+            default -> Collections.emptyList();
+        };
     }
 
-    private UnifiedOrderDto fromTradeExecution(TradeExecution e) {
-        UnifiedOrderDto dto = new UnifiedOrderDto();
-        dto.setId(e.getId());
-        dto.setStrategy("SR");
-
-        dto.setSymbol(e.getSymbol());
-        dto.setTimeframe(e.getTimeframe());
-        dto.setTradeType(e.getTradeType());
-        dto.setStatus(e.getStatus());
-
-        dto.setEntryPrice(e.getEntryPrice());
-        dto.setEntryTime(e.getEntryTime());
-        dto.setExitPrice(e.getExitPrice());
-        dto.setExitTime(e.getExitTime());
-
-        dto.setTargetPrice(e.getTargetPrice());
-        dto.setSlPrice(e.getSlPrice());
-        dto.setPnl(e.getPnl());
-
-        dto.setLevelValue(e.getLevelValue());
-        dto.setMethod(e.getMethod());
-        dto.setStrength(e.getStrength());
-        dto.setExplanation(e.getExplanation());
-      
-
-        return dto;
-    }
-
-    private UnifiedOrderDto fromOrders(Orders o) {
-        UnifiedOrderDto dto = new UnifiedOrderDto();
-        dto.setId(o.getId());
-        dto.setStrategy("CPR");
-
-        dto.setSymbol(o.getSymbol());
-        dto.setTimeframe(null);
-
-        dto.setTradeType(o.getType());
-        dto.setStatus(o.getActive() == 1 ? "OPEN" : "CLOSED");
-
-        dto.setEntryPrice(o.getAskPrice());
-
-        dto.setExitPrice(
-            o.getExitPrice() == null || o.getExitPrice().compareTo(BigDecimal.ZERO) == 0
-                ? null
-                : o.getExitPrice()
-        );
-
-        dto.setTargetPrice(o.getPl());
-        dto.setSlPrice(o.getSl());
-
-        dto.setMethod("CPR");
-
-        dto.setExchange(o.getExchange());
-        dto.setToken(o.getToken());
-        dto.setSignal(o.getSignal());
-        dto.setOrderId(o.getOrderid());
-        dto.setQuantity(o.getQuantity());
-
-        return dto;
-    }
-
-    private UnifiedOrderDto fromResultVix(ResultVix r) {
-        UnifiedOrderDto dto = new UnifiedOrderDto();
-        dto.setId(r.getId());
-        dto.setStrategy("HEIKIN_PSAR");
-
-        dto.setSymbol(r.getSymbol());
-        dto.setTimeframe(null);
-
-        dto.setTradeType(r.getType());
-        dto.setStatus(r.isActive() ? "OPEN" : "CLOSED");
-
-        dto.setEntryPrice(r.getEntryPrice());
-        dto.setExitPrice(r.getExitPrice());
-
-        dto.setPoints(r.getPoints());
-        dto.setLotSize(r.getLotSize());
-        dto.setResult(r.getResult());
-
-        dto.setMethod("HEIKIN_PSAR");
-        dto.setExplanation(r.getComment());
-
-        dto.setExchange(r.getExchange());
-        dto.setToken(r.getToken());
-        DateTimeFormatter formatter =
-                DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
-
-    
-        dto.setEntryTime(LocalDateTime.parse(r.getEntryTime(), formatter));
-        dto.setExitTime(LocalDateTime.parse(r.getExitTime(), formatter));
+    private UnifiedOrderDto mapShortStraddle(Orders o) {
+        UnifiedOrderDto d = createBaseDto(o); // Fills ID, Symbol, Name, Qty
+        d.setStrategyName(o.getName());
+        d.setStrategyType("Option Seller");
         
-     
+        // Use OptionType (CE/PE) from DB
+        d.setInstrumentType(o.getOptionType());
+        
+        applyTradingMath(d, o, true); // True = Seller Math
+        applyTimestamps(d, o);
+        return d;
+    }
 
-        return dto;
+    private UnifiedOrderDto mapCPR(Orders o) {
+        UnifiedOrderDto d = createBaseDto(o); // Fills ID, Symbol, Name, Qty
+        
+        // Logic for CPR Instrument Type (Signal column)
+        d.setInstrumentType(o.getSignal() != null ? o.getSignal() : 
+                           (o.getSymbol() != null && o.getSymbol().endsWith("PE") ? "PE" : "CE"));
+
+        d.setStrategyType("Option Seller");
+        
+        applyTradingMath(d, o, true); // True = Seller Math
+        applyTimestamps(d, o);
+        return d;
+    }
+
+    // --- SHARED HELPERS TO PREVENT BREAKS ---
+
+    private UnifiedOrderDto createBaseDto(Orders o) {
+        UnifiedOrderDto d = new UnifiedOrderDto();
+        d.setId(o.getId()); // Ensure ID is mapped first
+        d.setSymbol(o.getSymbol());
+        d.setStrategyName(o.getName() != null ? o.getName() : "CPR_STRATEGY");
+        d.setQuantity(Math.abs(o.getQuantity()));
+        
+        // Strike logic
+        if (o.getStrike() != null) {
+            d.setStrike(o.getStrike().toString());
+        } else if (o.getSymbol() != null) {
+            String numericOnly = o.getSymbol().replaceAll("[^0-9]", "");
+            d.setStrike(numericOnly.length() >= 5 ? numericOnly.substring(numericOnly.length() - 5) : "-");
+        } else {
+            d.setStrike("-");
+        }
+        return d;
+    }
+
+    private void applyTradingMath(UnifiedOrderDto d, Orders o, boolean isSeller) {
+        d.setEntryPrice(o.getAskPrice());
+        d.setExitPrice(o.getExitPrice());
+        
+        BigDecimal entry = o.getAskPrice();
+        BigDecimal exit = o.getExitPrice();
+        BigDecimal pts = BigDecimal.ZERO;
+
+        if (entry != null && exit != null && exit.compareTo(BigDecimal.ZERO) > 0) {
+            // Seller: Entry - Exit | Buyer: Exit - Entry
+            pts = isSeller ? entry.subtract(exit) : exit.subtract(entry);
+        }
+        
+        d.setPoints(pts);
+        
+        // Use DB 'pl' if exists, else calculate: points * qty
+        if (o.getPl() != null && o.getPl().compareTo(BigDecimal.ZERO) != 0) {
+            d.setPnl(o.getPl());
+        } else {
+            d.setPnl(pts.multiply(BigDecimal.valueOf(d.getQuantity())));
+        }
+    }
+
+    private void applyTimestamps(UnifiedOrderDto d, Orders o) {
+        d.setEntryTime(o.getCreatedOn() != null ? 
+                      o.getCreatedOn().toString().replace("T", " ").substring(0, 19) : "N/A");
+        
+        if (o.getActive() == 0 && o.getClosedOn() != null) {
+            d.setExitTime(o.getClosedOn().toString().replace("T", " ").substring(0, 19));
+            d.setStatus("CLOSED");
+        } else {
+            d.setExitTime("ACTIVE");
+            d.setStatus("OPEN");
+        }
+    }
+
+    // Standard mappings for other tables
+    private UnifiedOrderDto mapSR(TradeExecution e) {
+        UnifiedOrderDto d = new UnifiedOrderDto();
+        d.setId(e.getId());
+        d.setStrategyName("SR");
+        d.setSymbol(e.getSymbol());
+        d.setInstrumentType(e.getTradeType());
+        d.setStrike(e.getLevelValue() != null ? e.getLevelValue().toString() : "-");
+        d.setStrategyType(e.getTradeType() != null && e.getTradeType().contains("SELL") ? "SELLER" : "BUYER");
+        d.setEntryPrice(e.getEntryPrice());
+        d.setExitPrice(e.getExitPrice());
+        d.setPnl(e.getPnl());
+        d.setStatus(e.getStatus());
+        return d;
+    }
+
+    private UnifiedOrderDto mapHA(ResultVix r) {
+        UnifiedOrderDto d = new UnifiedOrderDto();
+        d.setId(r.getId());
+        d.setStrategyName("HEIKIN_PSAR");
+        d.setSymbol(r.getSymbol());
+        d.setStatus(r.isActive() ? "OPEN" : "CLOSED");
+        return d;
     }
 }

@@ -1,643 +1,237 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Strategies – Orders Launcher</title>
-    <script>
-    // Authentication check - must be at the top
-    if (!sessionStorage.getItem('isLoggedIn')) {
-        window.location.href = '/';
-    }
-</script>
+    <title>Crumbs // Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* --- your existing styles unchanged --- */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         :root {
-            --primary: #6366f1;
-            --primary-dark: #4f46e5;
-            --primary-light: #818cf8;
-            --accent: #10b981;
-            --accent-light: #34d399;
-            --background: #0f172a;
-            --background-light: #1e293b;
-            --surface: #1e293b;
-            --surface-elevated: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --border: #334155;
+            --bg-main: #0a0f1c;
+            --glass-bg: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent: #818cf8;
+            --accent-glow: rgba(129, 140, 248, 0.3);
             --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
+            --error: #f43f5e;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
         }
 
         [data-theme="light"] {
-            --primary: #6366f1;
-            --primary-dark: #4f46e5;
-            --primary-light: #818cf8;
-            --accent: #059669;
-            --accent-light: #10b981;
-            --background: #f8fafc;
-            --background-light: #f1f5f9;
-            --surface: #ffffff;
-            --surface-elevated: #f8fafc;
-            --text-primary: #0f172a;
-            --text-secondary: #64748b;
-            --border: #e2e8f0;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
+            --bg-main: #f1f5f9;
+            --glass-bg: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(0, 0, 0, 0.05);
+            --accent: #4f46e5;
+            --text-main: #1e293b;
+            --text-dim: #64748b;
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: var(--background);
-            color: var(--text-primary);
+            background-color: var(--bg-main);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 40%),
+                radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.12) 0px, transparent 40%);
+            background-attachment: fixed;
+            color: var(--text-main);
             min-height: 100vh;
-            position: relative;
-            overflow-x: hidden;
+            padding: 1rem 1.5rem;
         }
 
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background:
-                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 40% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
-            z-index: -1;
-            animation: gradientShift 15s ease infinite;
+        .terminal-container { max-width: 1750px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+
+        /* --- Compact Header --- */
+        header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; }
+        .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); opacity: 0.8; font-weight: 400; }
+
+        /* --- Lean Glass Cards --- */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
         }
 
-        [data-theme="light"] body::before {
-            background:
-                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 40% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+        /* --- Tighter Nav --- */
+        .nav-wrapper { padding: 0.4rem; width: fit-content; }
+        .nav-btn {
+            padding: 0.5rem 1.2rem; border: none; border-radius: 12px;
+            background: transparent; color: var(--text-dim);
+            cursor: pointer; font-weight: 700; font-size: 0.8rem;
+            transition: 0.2s ease;
+        }
+        .nav-btn.active {
+            background: var(--accent); color: white;
+            box-shadow: 0 4px 12px var(--accent-glow);
         }
 
-        @keyframes gradientShift {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
-        }
+        /* --- Reduced Stats Grid --- */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+        .stat-card { padding: 1rem 1.25rem; border-left: 3px solid var(--accent); }
+        .stat-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.25rem; letter-spacing: 0.5px; }
+        .stat-value { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
 
-        .shell-root {
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: stretch;
-            padding: 1rem;
+        /* --- High Density Table --- */
+        .table-card { padding: 0.5rem; }
+        .scroll-area { overflow-x: auto; width: 100%; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0 4px; min-width: 1300px; }
+        th { 
+            padding: 0.75rem 0.8rem; text-align: left; font-size: 0.65rem; font-weight: 800; 
+            text-transform: uppercase; color: var(--text-dim);
         }
+        td { padding: 0.85rem 0.75rem; background: rgba(255, 255, 255, 0.02); border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); font-size: 0.8rem; }
+        td:first-child { border-left: 1px solid var(--glass-border); border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+        td:last-child { border-right: 1px solid var(--glass-border); border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+        
+        tr:hover td { background: rgba(255, 255, 255, 0.04); }
 
-        .shell-container {
-            width: 100%;
-            max-width: 1600px;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            height: calc(100vh - 2rem);
-        }
+        .symbol-main { font-weight: 750; font-size: 0.85rem; display: block; }
+        .symbol-sub { font-size: 0.65rem; color: var(--text-dim); }
 
-        .tiles-header {
-            display: flex;
-            gap: 1rem;
-            align-items: flex-start;
-            flex-shrink: 0;
-        }
+        .mono { font-family: 'ui-monospace', 'SFMono-Regular', 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-dim); }
+        .badge-seller { padding: 3px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; background: rgba(129, 140, 248, 0.1); color: var(--accent); border: 1px solid rgba(129, 140, 248, 0.2); }
+        
+        .pnl-green { color: var(--success); font-weight: 700; }
+        .pnl-red { color: var(--error); font-weight: 700; }
+        
+        .status-pill { padding: 2px 10px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; border: 1px solid var(--glass-border); text-transform: uppercase; }
 
-        .theme-toggle {
-            padding: 0.65rem 1.25rem;
-            background: rgba(99, 102, 241, 0.15);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 12px;
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            height: 100%;
-            min-height: 60px;
+        .btn-refresh {
+            background: var(--accent); color: white; border: none; padding: 0.5rem 1.25rem;
+            border-radius: 12px; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: 0.2s;
         }
-
-        .theme-toggle:hover {
-            background: rgba(99, 102, 241, 0.25);
-            transform: translateY(-4px);
-            box-shadow:
-                0 12px 24px rgba(0, 0, 0, 0.3),
-                0 0 0 1px rgba(99, 102, 241, 0.2);
-        }
-
-        [data-theme="light"] .theme-toggle {
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.2);
-        }
-
-        [data-theme="light"] .theme-toggle:hover {
-            background: rgba(99, 102, 241, 0.15);
-            box-shadow:
-                0 8px 24px rgba(0, 0, 0, 0.12),
-                0 0 0 1px rgba(99, 102, 241, 0.3);
-        }
-
-        .strategy-tiles {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 0.75rem;
-            flex: 1;
-        }
-
-        .tile {
-            position: relative;
-            background: rgba(30, 41, 59, 0.5);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            padding: 0.65rem 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        [data-theme="light"] .tile {
-            background: rgba(255, 255, 255, 0.8);
-            border: 1px solid rgba(0, 0, 0, 0.08);
-        }
-
-        .tile::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, var(--primary), var(--accent));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .tile:hover {
-            background: rgba(30, 41, 59, 0.7);
-            border-color: rgba(99, 102, 241, 0.5);
-            transform: translateY(-4px);
-            box-shadow:
-                0 12px 24px rgba(0, 0, 0, 0.3),
-                0 0 0 1px rgba(99, 102, 241, 0.2);
-        }
-
-        [data-theme="light"] .tile:hover {
-            background: rgba(255, 255, 255, 1);
-            box-shadow:
-                0 8px 24px rgba(0, 0, 0, 0.12),
-                0 0 0 1px rgba(99, 102, 241, 0.3);
-        }
-
-        .tile:hover::before {
-            opacity: 1;
-        }
-
-        .tile.active {
-            background: rgba(99, 102, 241, 0.12);
-            border-color: var(--primary);
-            box-shadow:
-                0 8px 32px rgba(99, 102, 241, 0.3),
-                0 0 0 1px rgba(99, 102, 241, 0.5);
-        }
-
-        [data-theme="light"] .tile.active {
-            background: rgba(99, 102, 241, 0.08);
-            box-shadow:
-                0 4px 24px rgba(99, 102, 241, 0.2),
-                0 0 0 1px rgba(99, 102, 241, 0.4);
-        }
-
-        .tile.active::before {
-            opacity: 1;
-        }
-
-        .tile-icon {
-            font-size: 1.5rem;
-            display: block;
-            filter: drop-shadow(0 2px 8px rgba(99, 102, 241, 0.4));
-            flex-shrink: 0;
-        }
-
-        .tile-content {
-            display: flex;
-            flex-direction: column;
-            gap: 0.15rem;
-            flex: 1;
-        }
-
-        .tile-title {
-            font-weight: 600;
-            font-size: 0.95rem;
-            color: var(--text-primary);
-            line-height: 1.2;
-        }
-
-        .tile-subtitle {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            line-height: 1.3;
-        }
-
-        .shell-main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: rgba(30, 41, 59, 0.5);
-            backdrop-filter: blur(20px);
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            min-height: 0;
-        }
-
-        [data-theme="light"] .shell-main {
-            background: rgba(255, 255, 255, 0.8);
-            border: 1px solid rgba(0, 0, 0, 0.08);
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-        }
-
-        .shell-main-header {
-            padding: 0.75rem 1.5rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(15, 23, 42, 0.4);
-            flex-shrink: 0;
-        }
-
-        [data-theme="light"] .shell-main-header {
-            background: rgba(248, 250, 252, 0.8);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-        }
-
-        .shell-main-title {
-            font-size: 0.9rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .shell-main-title::before {
-            content: '';
-            width: 3px;
-            height: 16px;
-            background: linear-gradient(180deg, var(--primary), var(--accent));
-            border-radius: 2px;
-        }
-
-        .shell-main-status {
-            font-size: 0.7rem;
-            color: var(--text-secondary);
-            padding: 0.3rem 0.7rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            font-family: 'Monaco', 'Courier New', monospace;
-        }
-
-        [data-theme="light"] .shell-main-status {
-            background: rgba(0, 0, 0, 0.03);
-            border: 1px solid rgba(0, 0, 0, 0.08);
-        }
-
-        .shell-main-body {
-            flex: 1;
-            position: relative;
-            background: rgba(15, 23, 42, 0.3);
-        }
-
-        [data-theme="light"] .shell-main-body {
-            background: rgba(248, 250, 252, 0.5);
-        }
-
-        #strategyContent {
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-        }
-
-        #strategyContent::-webkit-scrollbar {
-            width: 10px;
-        }
-
-        #strategyContent::-webkit-scrollbar-track {
-            background: rgba(15, 23, 42, 0.5);
-        }
-
-        [data-theme="light"] #strategyContent::-webkit-scrollbar-track {
-            background: rgba(226, 232, 240, 0.5);
-        }
-
-        #strategyContent::-webkit-scrollbar-thumb {
-            background: rgba(99, 102, 241, 0.5);
-            border-radius: 5px;
-        }
-
-        #strategyContent::-webkit-scrollbar-thumb:hover {
-            background: rgba(99, 102, 241, 0.7);
-        }
-
-        .placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-            text-align: center;
-            padding: 3rem;
-        }
-
-        .placeholder-content {
-            max-width: 400px;
-        }
-
-        .spinner {
-            width: 2.5rem;
-            height: 2.5rem;
-            border-radius: 50%;
-            border: 3px solid rgba(99, 102, 241, 0.2);
-            border-top-color: var(--primary);
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 1rem;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        @media (max-width: 1024px) {
-            .shell-root {
-                padding: 1rem;
-            }
-            
-            .strategy-tiles {
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            }
-        }
-
-        @media (max-width: 768px) {
-            .shell-root {
-                padding: 0.75rem;
-            }
-            
-            .tiles-header {
-                flex-direction: column;
-                gap: 0.75rem;
-            }
-            
-            .strategy-tiles {
-                grid-template-columns: 1fr;
-            }
-            
-            .theme-toggle {
-                width: 100%;
-                min-height: 50px;
-            }
-            
-            .shell-main-header {
-                flex-direction: column;
-                gap: 0.75rem;
-                align-items: flex-start;
-                padding: 1rem 1.5rem;
-            }
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .shell-container > * {
-            animation: fadeIn 0.5s ease-out backwards;
-        }
-
-        .tiles-header {
-            animation-delay: 0.1s;
-        }
-
-        .shell-main {
-            animation-delay: 0.2s;
-        }
+        .btn-refresh:hover { filter: brightness(1.1); }
     </style>
 </head>
 <body>
-<div class="shell-root">
-    <div class="shell-container">
-        <!-- Strategy Tiles with Theme Toggle -->
-        <section class="tiles-header">
-            <div class="strategy-tiles">
-                <div class="tile active" data-strategy="intraday-all" onclick="selectStrategy(this)">
-                    <span class="tile-icon">📈</span>
-                    <div class="tile-content">
-                        <div class="tile-title">SR Strategy</div>
-                        <div class="tile-subtitle">Support & Resistance</div>
-                    </div>
-                </div>
-                <div class="tile" data-strategy="price-action" onclick="selectStrategy(this)">
-                    <span class="tile-icon">💹</span>
-                    <div class="tile-content">
-                        <div class="tile-title">HEIKIN-PSAR</div>
-                        <div class="tile-subtitle">HeikinAshi PSAR</div>
-                    </div>
-                </div>
-                <div class="tile" data-strategy="fibo" onclick="selectStrategy(this)">
-                    <span class="tile-icon">🎯</span>
-                    <div class="tile-content">
-                        <div class="tile-title">CPR Strategy</div>
-                        <div class="tile-subtitle">CPR Levels</div>
-                    </div>
-                </div>
-            </div>
-            <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
-                <span id="themeIcon">🌙</span>
-            </button>
-        </section>
 
-        <!-- Main Content Area -->
-        <main class="shell-main">
-            <div class="shell-main-header">
-                <div class="shell-main-title" id="currentStrategyTitle">SR Strategy</div>
-                <div class="shell-main-status">
-                    <span id="currentStrategyStatus">orderList.html | /api/orders?name=SR</span>
-                </div>
-            </div>
-            <div class="shell-main-body">
-                <div id="strategyContent">
-                    <div class="placeholder">
-                        <div class="placeholder-content">
-                            <div class="spinner"></div>
-                            <div>Loading initial strategy view…</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
+<div class="terminal-container">
+    <header>
+        <div class="logo">CRUMBS <span>// ORDERS</span></div>
+        <div style="display: flex; gap: 0.75rem;">
+            <button class="btn-refresh" onclick="refreshData()">REFRESH</button>
+            <button class="nav-btn" style="background: var(--glass-bg); padding: 0.5rem 0.8rem;" onclick="toggleTheme()">🌓</button>
+        </div>
+    </header>
+
+    <div class="glass-card nav-wrapper">
+        <nav class="strategy-nav">
+            <button class="nav-btn active" onclick="setStrategy(this, 'CPR')">CPR LEVELS</button>
+            <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_NIFTY')">NIFTY STRADDLE</button>
+            <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_CRUDEOIL')">CRUDEOIL STRADDLE</button>
+        </nav>
+    </div>
+
+    <div class="stats-row">
+        <div class="glass-card stat-card">
+            <div class="stat-label">Active System</div>
+            <div class="stat-value" id="stat-name">CPR</div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-label">Orders</div>
+            <div class="stat-value" id="stat-count">0</div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-label">Captured Points</div>
+            <div class="stat-value" id="stat-points">0.00</div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-label">Session PnL</div>
+            <div class="stat-value" id="stat-pnl">₹0.00</div>
+        </div>
+    </div>
+
+    <div class="glass-card table-card">
+        <div class="scroll-area">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Entry Time</th>
+                        <th>Exit Time</th>
+                        <th>Instrument</th>
+                        <th>Strike</th>
+                        <th>Side</th>
+                        <th>Qty</th>
+                        <th>Entry Pr.</th>
+                        <th>Exit Pr.</th>
+                        <th>Points</th>
+                        <th>Net PnL</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="orderBody"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <script>
-    // Parent mapping: tile key -> API name + file
-    const strategyConfig = {
-        'intraday-all': {
-            title: 'SR Strategy',
-            apiName: 'SR',             // /api/orders?name=SR
-            path: 'orderList.html'
-        },
-        'price-action': {
-            title: 'HEIKIN-PSAR',
-            apiName: 'HEIKIN_PSAR',    // /api/orders?name=HEIKIN_PSAR
-            path: 'orderList.html'
-        },
-        'fibo': {
-            title: 'CPR Strategy',
-            apiName: 'CPR',            // /api/orders?name=CPR
-            path: 'orderList.html'
-        }
-    };
+    let currentStrategy = 'CPR';
 
-    let currentStrategyKey = 'intraday-all';
-    window.currentStrategyApiName = strategyConfig[currentStrategyKey].apiName;
-
-    async function loadStrategyHtml(strategyKey) {
-        const config = strategyConfig[strategyKey];
-        if (!config) return;
-
-        const contentDiv = document.getElementById('strategyContent');
-        contentDiv.innerHTML = `
-            <div class="placeholder">
-                <div class="placeholder-content">
-                    <div class="spinner"></div>
-                    <div>Loading ${config.title}…</div>
-                </div>
-            </div>
-        `;
-
+    async function refreshData() {
+        const tbody = document.getElementById('orderBody');
         try {
-            const response = await fetch(config.path);
-            if (!response.ok) {
-                contentDiv.innerHTML = `
-                    <div class="placeholder">
-                        <div class="placeholder-content">
-                            <div style="font-size: 2rem; margin-bottom: 1rem;">⚠️</div>
-                            <div style="color: var(--error); font-weight: 600; margin-bottom: 0.5rem;">
-                                Failed to load ${config.title}
-                            </div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                                Check that <strong>${config.path}</strong> is reachable.
-                            </div>
-                        </div>
-                    </div>
+            const response = await fetch(`/api/orders/orderList?name=${currentStrategy}`);
+            const data = await response.json();
+            
+            let totalPoints = 0, totalPnl = 0;
+
+            tbody.innerHTML = data.map((o) => {
+                totalPoints += (o.points || 0);
+                totalPnl += (o.pnl || 0);
+                const isPos = o.pnl >= 0;
+                const pnlClass = isPos ? 'pnl-green' : 'pnl-red';
+
+                return `
+                    <tr>
+                        <td class="mono">#${o.id || '--'}</td>
+                        <td class="mono">${o.entryTime || '--'}</td>
+                        <td class="mono">${o.exitTime || '--'}</td>
+                        <td>
+                            <span class="symbol-main">${o.symbol || 'N/A'}</span>
+                            <span class="symbol-sub">${o.instrumentType || ''}</span>
+                        </td>
+                        <td style="font-weight: 700; color: var(--text-main);">${o.strike || '--'}</td>
+                        <td><span class="badge-seller">${o.strategyType || 'Option Seller'}</span></td>
+                        <td style="font-weight: 700;">${o.quantity || 0}</td>
+                        <td class="mono">₹${o.entryPrice ? o.entryPrice.toFixed(2) : '0.00'}</td>
+                        <td class="mono">${o.exitPrice ? '₹' + o.exitPrice.toFixed(2) : '--'}</td>
+                        <td class="${pnlClass}">${isPos ? '+' : ''}${o.points ? o.points.toFixed(2) : '0.00'}</td>
+                        <td class="${pnlClass}">₹${o.pnl ? o.pnl.toLocaleString('en-IN') : '0'}</td>
+                        <td><span class="status-pill">${o.status || 'OPEN'}</span></td>
+                    </tr>
                 `;
-                return;
-            }
-            const html = await response.text();
+            }).join('');
 
-            contentDiv.innerHTML = '';
-            const wrapper = document.createElement('div');
-            wrapper.id = 'strategy-wrapper-' + Date.now();
-            wrapper.innerHTML = html;
-            contentDiv.appendChild(wrapper);
-
-            // expose current API name to child page
-            window.currentStrategyApiName = config.apiName;
-
-            const scripts = wrapper.querySelectorAll('script');
-            scripts.forEach(oldScript => {
-                const newScript = document.createElement('script');
-                Array.from(oldScript.attributes).forEach(attr => {
-                    newScript.setAttribute(attr.name, attr.value);
-                });
-                newScript.textContent = `(function(){ ${oldScript.textContent} })();`;
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-        } catch (e) {
-            console.error('Error loading strategy HTML', e);
-            contentDiv.innerHTML = `
-                <div class="placeholder">
-                    <div class="placeholder-content">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;">❌</div>
-                        <div style="color: var(--error); font-weight: 600; margin-bottom: 0.5rem;">
-                            Error loading ${config.title}
-                        </div>
-                        <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                            See console for details.
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+            document.getElementById('stat-count').innerText = data.length;
+            document.getElementById('stat-points').innerText = totalPoints.toFixed(2);
+            const pnlEl = document.getElementById('stat-pnl');
+            pnlEl.innerText = `₹${totalPnl.toLocaleString('en-IN')}`;
+            pnlEl.style.color = totalPnl >= 0 ? 'var(--success)' : 'var(--error)';
+        } catch (err) { console.error(err); }
     }
 
-    function selectStrategy(tileEl) {
-        const strategyKey = tileEl.getAttribute('data-strategy');
-        if (!strategyKey || strategyKey === currentStrategyKey) return;
-
-        currentStrategyKey = strategyKey;
-
-        document
-            .querySelectorAll('.tile')
-            .forEach(t => t.classList.toggle('active', t === tileEl));
-
-        const config = strategyConfig[strategyKey];
-        document.getElementById('currentStrategyTitle').textContent = config.title;
-        document.getElementById('currentStrategyStatus').textContent =
-            `${config.path} | /api/orders?name=${config.apiName}`;
-
-        loadStrategyHtml(strategyKey);
-    }
-
-    // Theme functionality
-    function initTheme() {
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        updateThemeIcon(savedTheme);
+    function setStrategy(btn, name) {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentStrategy = name;
+        document.getElementById('stat-name').innerText = name.replace('SHORT_STRADDLE_', '').replace('_', ' ');
+        refreshData();
     }
 
     function toggleTheme() {
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        updateThemeIcon(newTheme);
+        const h = document.documentElement;
+        h.setAttribute('data-theme', h.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     }
 
-    function updateThemeIcon(theme) {
-        const icon = document.getElementById('themeIcon');
-        icon.textContent = theme === 'dark' ? '🌙' : '☀️';
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        initTheme();
-        loadStrategyHtml(currentStrategyKey);
-    });
+    setInterval(refreshData, 30000);
+    window.onload = refreshData;
 </script>
 </body>
 </html>
