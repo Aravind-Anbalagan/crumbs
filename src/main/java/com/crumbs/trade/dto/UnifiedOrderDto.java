@@ -19,5 +19,6 @@ public class UnifiedOrderDto {
     private BigDecimal exitPrice;
     private BigDecimal points;     
     private BigDecimal pnl;        
-    private String status;         
+    private String status;
+    private String direction; 
 }

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
@@ -26,7 +27,7 @@ import com.crumbs.trade.broker.AngelOne;
 
 @EnableJpaAuditing
 @EntityScan("com.crumbs.trade.entity")
-@SpringBootApplication
+@SpringBootApplication(exclude = { SpringApplicationAdminJmxAutoConfiguration.class })
 public class CrumbsNewApplication {
 
     private static final Logger log = LoggerFactory.getLogger(CrumbsNewApplication.class);

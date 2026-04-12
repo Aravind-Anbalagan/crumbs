@@ -24,6 +24,7 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -249,12 +250,41 @@ public class FlatTradeService {
         con.setRequestProperty("Content-Type", "application/json");
     }
 
-    private static String sendGet(String urlStr) throws IOException {
-        URL url = new URL(urlStr);
-        HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        con.setRequestMethod("GET");
-        setCommonHeaders(con);
-        return readResponse(con);
+    private static String sendGet(String urlStr) {
+        HttpURLConnection con = null;
+        try {
+            URL url = new URL(urlStr);
+            con = (HttpURLConnection) url.openConnection();
+            
+            // Configuration
+            con.setRequestMethod("GET");
+            con.setConnectTimeout(5000); // 5 seconds timeout
+            con.setReadTimeout(5000);
+            setCommonHeaders(con);
+
+            // Check the response code before trying to read
+            int status = con.getResponseCode();
+            if (status >= 400) {
+                System.err.println("HTTP Error: " + status + " for URL: " + urlStr);
+                return null; // Or throw a custom Exception
+            }
+
+            return readResponse(con);
+
+        } catch (MalformedURLException e) {
+            System.err.println("The URL provided is invalid: " + urlStr);
+            // This is usually a developer error or bad input
+        } catch (IOException e) {
+            System.err.println("Network error or server is unreachable: " + e.getMessage());
+            // This could be a timeout or the site being down
+        } catch (Exception e) {
+            System.err.println("An unexpected error occurred: " + e.getMessage());
+        } finally {
+            if (con != null) {
+                con.disconnect();
+            }
+        }
+        return null; 
     }
 
     private static String sendPost(String urlStr, String jsonPayload) throws IOException {

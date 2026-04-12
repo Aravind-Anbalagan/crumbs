@@ -6,6 +6,7 @@ import com.crumbs.trade.repo.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,42 +45,41 @@ public class TradeExecutionService {
     }
 
     private UnifiedOrderDto mapShortStraddle(Orders o) {
-        UnifiedOrderDto d = createBaseDto(o); // Fills ID, Symbol, Name, Qty
+        UnifiedOrderDto d = createBaseDto(o);
         d.setStrategyName(o.getName());
         d.setStrategyType("Option Seller");
-        
-        // Use OptionType (CE/PE) from DB
         d.setInstrumentType(o.getOptionType());
         
-        applyTradingMath(d, o, true); // True = Seller Math
+        applyTradingMath(d, o); 
         applyTimestamps(d, o);
         return d;
     }
 
     private UnifiedOrderDto mapCPR(Orders o) {
-        UnifiedOrderDto d = createBaseDto(o); // Fills ID, Symbol, Name, Qty
+        UnifiedOrderDto d = createBaseDto(o);
         
-        // Logic for CPR Instrument Type (Signal column)
         d.setInstrumentType(o.getSignal() != null ? o.getSignal() : 
                            (o.getSymbol() != null && o.getSymbol().endsWith("PE") ? "PE" : "CE"));
 
         d.setStrategyType("Option Seller");
         
-        applyTradingMath(d, o, true); // True = Seller Math
+        applyTradingMath(d, o); 
         applyTimestamps(d, o);
         return d;
     }
 
-    // --- SHARED HELPERS TO PREVENT BREAKS ---
+    // --- SHARED HELPERS ---
 
     private UnifiedOrderDto createBaseDto(Orders o) {
         UnifiedOrderDto d = new UnifiedOrderDto();
-        d.setId(o.getId()); // Ensure ID is mapped first
+        d.setId(o.getId());
         d.setSymbol(o.getSymbol());
         d.setStrategyName(o.getName() != null ? o.getName() : "CPR_STRATEGY");
         d.setQuantity(Math.abs(o.getQuantity()));
         
-        // Strike logic
+        // NEW: Map the BUY/SELL type attribute
+        d.setDirection(o.getType()); 
+
         if (o.getStrike() != null) {
             d.setStrike(o.getStrike().toString());
         } else if (o.getSymbol() != null) {
@@ -91,13 +91,16 @@ public class TradeExecutionService {
         return d;
     }
 
-    private void applyTradingMath(UnifiedOrderDto d, Orders o, boolean isSeller) {
+    private void applyTradingMath(UnifiedOrderDto d, Orders o) {
         d.setEntryPrice(o.getAskPrice());
         d.setExitPrice(o.getExitPrice());
         
         BigDecimal entry = o.getAskPrice();
         BigDecimal exit = o.getExitPrice();
         BigDecimal pts = BigDecimal.ZERO;
+
+        // Auto-detect math logic based on the Type attribute
+        boolean isSeller = "SELL".equalsIgnoreCase(d.getDirection()) || "Option Seller".equalsIgnoreCase(d.getStrategyType());
 
         if (entry != null && exit != null && exit.compareTo(BigDecimal.ZERO) > 0) {
             // Seller: Entry - Exit | Buyer: Exit - Entry
@@ -106,7 +109,6 @@ public class TradeExecutionService {
         
         d.setPoints(pts);
         
-        // Use DB 'pl' if exists, else calculate: points * qty
         if (o.getPl() != null && o.getPl().compareTo(BigDecimal.ZERO) != 0) {
             d.setPnl(o.getPl());
         } else {
@@ -127,7 +129,6 @@ public class TradeExecutionService {
         }
     }
 
-    // Standard mappings for other tables
     private UnifiedOrderDto mapSR(TradeExecution e) {
         UnifiedOrderDto d = new UnifiedOrderDto();
         d.setId(e.getId());
@@ -135,7 +136,11 @@ public class TradeExecutionService {
         d.setSymbol(e.getSymbol());
         d.setInstrumentType(e.getTradeType());
         d.setStrike(e.getLevelValue() != null ? e.getLevelValue().toString() : "-");
-        d.setStrategyType(e.getTradeType() != null && e.getTradeType().contains("SELL") ? "SELLER" : "BUYER");
+        
+        // Use the trade type directly for mapping
+        d.setDirection(e.getTradeType() != null && e.getTradeType().toUpperCase().contains("SELL") ? "SELL" : "BUY");
+        d.setStrategyType(d.getDirection().equals("SELL") ? "SELLER" : "BUYER");
+        
         d.setEntryPrice(e.getEntryPrice());
         d.setExitPrice(e.getExitPrice());
         d.setPnl(e.getPnl());
@@ -148,6 +153,7 @@ public class TradeExecutionService {
         d.setId(r.getId());
         d.setStrategyName("HEIKIN_PSAR");
         d.setSymbol(r.getSymbol());
+        d.setDirection("BUY"); // Heikin PSAR is typically a buyer strategy in this context
         d.setStatus(r.isActive() ? "OPEN" : "CLOSED");
         return d;
     }
