@@ -9,4 +9,5 @@ public class BrokerAuthConfig {
     private String apiKey;
     private String apiSecret;
     private String totpSecret;
+    private String requestCode;
 }

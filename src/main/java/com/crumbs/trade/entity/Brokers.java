@@ -28,4 +28,6 @@ public class Brokers {
 	String apisecret;
 	@Column(name="totpsecret")
 	String totpsecret;
+	@Column(name="requestcode")
+    String requestcode;
 }
