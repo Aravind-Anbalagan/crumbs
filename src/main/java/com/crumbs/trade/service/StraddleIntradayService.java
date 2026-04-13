@@ -568,7 +568,7 @@ public class StraddleIntradayService {
 				count++;
 				 // 🔔 Trigger Telegram ONLY if crossover happened
 				// 🔔 CONFIGURABLE MULTI-ALERT SYSTEM
-				if (isAlertRequired("STRADDLE_PREMIUM")
+				if (isAlertRequired("DOMINANCE")
 				        && dto.getStrikePrice().compareTo(atmStrike) == 0) {
 				    checkAndSendAlerts(entity);
 				}

@@ -175,10 +175,10 @@ public class ShortStraddleService {
         BigDecimal targetValue = entryGap.add(ptsToCapture);
 
         processLeg(tick.getCeToken(), tick.getCeSymbol(), strategy, tick.getCePrice(), 
-                   tick.getStrike(), uniqueName, "CE", cycleId, entryGap, targetValue, isLive);
+                   tick.getStrike(), uniqueName, "CE", cycleId, entryGap, targetValue, isLive,symbol);
 
         processLeg(tick.getPeToken(), tick.getPeSymbol(), strategy, tick.getPePrice(), 
-                   tick.getStrike(), uniqueName, "PE", cycleId, entryGap, targetValue, isLive);
+                   tick.getStrike(), uniqueName, "PE", cycleId, entryGap, targetValue, isLive,symbol);
 
         telegramService.sendMessage(buildEntryMsg(symbol, tick.getStrike(), tick.getCePrice(), tick.getPePrice(), entryGap, ptsToCapture));
     }
@@ -223,7 +223,7 @@ public class ShortStraddleService {
 
     private void processLeg(String tokenStr, String symbol, Strategy strategy, BigDecimal price, 
                             BigDecimal strike, String uniqueName, String type, String cycleId, 
-                            BigDecimal gap, BigDecimal targetValue, boolean isLive) {
+                            BigDecimal gap, BigDecimal targetValue, boolean isLive, String name) {
         if (isLive) {
             try {
                 Token t = new Token();
@@ -231,6 +231,7 @@ public class ShortStraddleService {
                 t.setSymbol(symbol);
                 t.setExch_seg(strategy.getExchange());
                 t.setStrike(strike);
+                t.setName(name);
                 orderService.orderPlaceWithToken(t, uniqueName, "SELL", true);
             } catch (Exception | SmartAPIException e) {
                 log.error("❌ [{}][LEG] Failed live order for {}: {}", symbol, type, e.getMessage());

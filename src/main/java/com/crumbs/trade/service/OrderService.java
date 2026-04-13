@@ -182,7 +182,7 @@ public class OrderService {
 
         SmartConnect sc = angelOne.signIn();
         if (sc == null) throw new Exception("AngelOne login failed");
-        Strategy strategy = strategyRepo.findByName("NIFTY");
+        Strategy strategy = strategyRepo.findByName(token.getName());
        
         if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
 
