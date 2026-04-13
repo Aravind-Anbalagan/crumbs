@@ -17,7 +17,7 @@ public class LevelScheduler {
 
     // Constants for better maintenance
     private static final String SYMBOL_NIFTY = "NIFTY";
-    private static final String SYMBOL_CRUDE = "CRUDEOIL";
+    private static final String SYMBOL_CRUDE = "CRUDEOILM";
     private static final String STRATEGY_MARKET_LEVEL = "MARKET_LEVEL";
     private static final String ACTIVE_STATUS = "Y";
 
@@ -53,6 +53,11 @@ public class LevelScheduler {
     public void runTradeEngine() {
         LocalTime now = LocalTime.now();
 
+        boolean isMarketLevelActive = isActive(STRATEGY_MARKET_LEVEL);
+
+        if (!isMarketLevelActive) {
+        	return;
+        }
         // Process Nifty and Crude based on their respective time windows
         levelService.processSymbol(SYMBOL_NIFTY, isNiftyTime(now));
         levelService.processSymbol(SYMBOL_CRUDE, isCrudeTime(now));
