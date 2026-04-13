@@ -361,10 +361,6 @@ public class CommonController {
         String exchSeg = node.path("exch_seg").asText();
         String instrumentType = node.path("instrumenttype").asText();
 
-        if (name.equals("TCS")) {
-            System.out.println("DEBUG: " + symbol + " | " + exchSeg);
-        }
-
         boolean isNoDigitName = !name.matches("[a-zA-Z ]*\\d+.*");
 
         // ✅ Equity (Cash market)
@@ -377,6 +373,7 @@ public class CommonController {
                 || exchSeg.equals("BSE")
                 || name.equals("NIFTY")
                 || name.equals("CRUDEOIL")
+                || name.equals("CRUDEOILM")
                 || name.equals("NATURALGAS")
                 || name.equals("INDIA VIX")
                 || name.equals("SILVERM")

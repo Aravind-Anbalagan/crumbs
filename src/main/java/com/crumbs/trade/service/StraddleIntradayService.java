@@ -139,7 +139,7 @@ public class StraddleIntradayService {
 	        	//strategy = strategyRepo.findByName("NIFTY");
 	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
 						strategy.getToken());
-	        } else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+	        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name)) {
 	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
 				//spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
 				//		strategy.getToken());
@@ -254,7 +254,7 @@ public class StraddleIntradayService {
 	public String getSymbolByName(String name) {
 		if ("NIFTY".equalsIgnoreCase(name)) {
 			return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol();
-		} else if ("CRUDEOIL".equalsIgnoreCase(name)) {
+		} else if ("CRUDEOIL".equalsIgnoreCase(name)|| "CRUDEOILM".equalsIgnoreCase(name)) {
 			return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol1();
 		}
 		return null;
@@ -557,7 +557,12 @@ public class StraddleIntradayService {
 			}
 
 			entity.setAvgPrice(combinedPremium.divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP));
-			
+			if (dto.getCeToken() != null && dto.getPeToken() != null) {
+				entity.setCeToken(dto.getCeToken().getToken());
+				entity.setCeSymbol(dto.getCeToken().getSymbol());
+				entity.setPeToken(dto.getPeToken().getToken());
+				entity.setPeSymbol(dto.getPeToken().getSymbol());
+			}
 			try {
 				straddleIntradayRepo.save(entity);
 				count++;

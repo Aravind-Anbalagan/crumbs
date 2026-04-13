@@ -145,4 +145,10 @@ public class StraddleIntraday {
 
     private String marketType;
     private String dominance;
+    
+    private String ceToken;
+    private String peToken;
+    private String ceSymbol;
+    private String peSymbol;
+    
 }
