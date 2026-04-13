@@ -32,7 +32,7 @@ public class ShortStraddleService {
 
     private static final Map<String, BigDecimal> TARGET_POINTS = Map.of(
             "NIFTY", new BigDecimal("15"),
-            "CRUDEOIL", new BigDecimal("50")
+            "CRUDEOILM", new BigDecimal("50")
     );
 
     private static final LocalTime NIFTY_SQUARE_OFF = LocalTime.of(15, 20);
@@ -82,13 +82,26 @@ public class ShortStraddleService {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
 
+        // Condition: Premium is trading below VWAP (Bullish for Short Straddle)
         if (cp.compareTo(cv) < 0) {
+            // Increment the counter for this specific symbol
             int count = hitCounters.merge(symbol, 1, Integer::sum);
+            
+            log.info("🎯 [{}][SCAN] Hit {}/{} | Strike: {} | Gap: {}", 
+                    symbol, count, REQUIRED_CONSECUTIVE_HITS, tick.getStrike(), cv.subtract(cp));
+
             if (count >= REQUIRED_CONSECUTIVE_HITS) {
+                // 🚀 Execute trade and send Telegram Entry Msg
                 executeShortStraddle(symbol, tick, cv.subtract(cp));
+                
+                // Reset counter after successful execution
                 hitCounters.put(symbol, 0); 
             }
         } else {
+            // 🔄 Logic Guard: Reset counter if a single tick fails the condition
+            if (hitCounters.getOrDefault(symbol, 0) > 0) {
+                log.info("♻️ [{}][SCAN] Condition failed. Resetting consecutive hit counter.", symbol);
+            }
             hitCounters.put(symbol, 0);
         }
     }
