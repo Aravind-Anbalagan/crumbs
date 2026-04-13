@@ -30,6 +30,6 @@ public class ShortStraddleScheduler {
         @Scheduled(cron = "10 0-31 23 * * MON-FRI", zone = "Asia/Kolkata")
     })
     public void straddleCrude() {
-        shortStraddleService.evaluate("CRUDEOIL");
+        shortStraddleService.evaluate("CRUDEOILM");
     }
 }
