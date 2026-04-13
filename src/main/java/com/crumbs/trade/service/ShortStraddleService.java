@@ -49,7 +49,7 @@ public class ShortStraddleService {
     private final OrderRepository ordersRepository;
     private final StrategyRepo strategyRepo;
     private final OrderService orderService;
-    private final TelegramService telegramService; // Added dependency
+    private final TelegramService telegramService;
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
 
@@ -67,7 +67,7 @@ public class ShortStraddleService {
             });
             return;
         }
-
+     
         if (activeOrders.isEmpty()) {
             straddleRepository.findATMBySymbol(symbol).ifPresent(tick -> processEntrySequence(symbol, tick));
         } else {
@@ -82,26 +82,16 @@ public class ShortStraddleService {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
 
-        // Condition: Premium is trading below VWAP (Bullish for Short Straddle)
         if (cp.compareTo(cv) < 0) {
-            // Increment the counter for this specific symbol
             int count = hitCounters.merge(symbol, 1, Integer::sum);
-            
             log.info("🎯 [{}][SCAN] Hit {}/{} | Strike: {} | Gap: {}", 
                     symbol, count, REQUIRED_CONSECUTIVE_HITS, tick.getStrike(), cv.subtract(cp));
 
             if (count >= REQUIRED_CONSECUTIVE_HITS) {
-                // 🚀 Execute trade and send Telegram Entry Msg
                 executeShortStraddle(symbol, tick, cv.subtract(cp));
-                
-                // Reset counter after successful execution
                 hitCounters.put(symbol, 0); 
             }
         } else {
-            // 🔄 Logic Guard: Reset counter if a single tick fails the condition
-            if (hitCounters.getOrDefault(symbol, 0) > 0) {
-                log.info("♻️ [{}][SCAN] Condition failed. Resetting consecutive hit counter.", symbol);
-            }
             hitCounters.put(symbol, 0);
         }
     }
@@ -114,20 +104,25 @@ public class ShortStraddleService {
         if (strategy == null) return;
 
         boolean isLive = "Y".equalsIgnoreCase(strategy.getLive());
+        
+        // Calculate the specific Target Gap (Initial Gap + Profit Points)
+        BigDecimal ptsToCapture = TARGET_POINTS.getOrDefault(symbol.toUpperCase(), new BigDecimal("15"));
+        BigDecimal targetValue = entryGap.add(ptsToCapture);
 
+        // Process CE Leg
         processLeg(tick.getCeToken(), tick.getCeSymbol(), strategy, tick.getCePrice(), 
-                   tick.getStrike(), uniqueName, "CE", cycleId, entryGap, isLive);
-        processLeg(tick.getPeToken(), tick.getPeSymbol(), strategy, tick.getPePrice(), 
-                   tick.getStrike(), uniqueName, "PE", cycleId, entryGap, isLive);
+                   tick.getStrike(), uniqueName, "CE", cycleId, entryGap, targetValue, isLive);
 
-        // Telegram Notification
-        BigDecimal targetPts = TARGET_POINTS.getOrDefault(symbol.toUpperCase(), new BigDecimal("15"));
-        telegramService.sendMessage(buildEntryMsg(symbol, tick.getStrike(), tick.getCePrice(), tick.getPePrice(), entryGap, targetPts));
+        // Process PE Leg
+        processLeg(tick.getPeToken(), tick.getPeSymbol(), strategy, tick.getPePrice(), 
+                   tick.getStrike(), uniqueName, "PE", cycleId, entryGap, targetValue, isLive);
+
+        telegramService.sendMessage(buildEntryMsg(symbol, tick.getStrike(), tick.getCePrice(), tick.getPePrice(), entryGap, ptsToCapture));
     }
 
     private void processLeg(String tokenStr, String symbol, Strategy strategy, BigDecimal price, 
                             BigDecimal strike, String uniqueName, String type, String cycleId, 
-                            BigDecimal gap, boolean isLive) {
+                            BigDecimal gap, BigDecimal targetValue, boolean isLive) {
         if (isLive) {
             try {
                 Token t = new Token();
@@ -141,7 +136,8 @@ public class ShortStraddleService {
                 return; 
             }
         }
-        saveOrder(uniqueName, type, price, strike, cycleId, gap);
+        // Updated to pass symbol, token, and target to DB
+        saveOrder(uniqueName, type, price, strike, cycleId, gap, symbol, tokenStr, targetValue);
     }
 
     private void processExitSequence(String symbol, StraddleIntraday tick, List<Orders> activeOrders) {
@@ -192,11 +188,10 @@ public class ShortStraddleService {
                 log.error("❌ Exit error: {}", e.getMessage());
             }
         }
-        // Telegram Notification
         telegramService.sendMessage(buildExitMsg(symbol, tick.getStrike(), totalEntry, totalExit, reason));
     }
 
-    // ==================== TELEGRAM BUILDERS ====================
+    // ==================== MESSAGING ====================
 
     private String buildEntryMsg(String sym, BigDecimal strike, BigDecimal ce, BigDecimal pe, BigDecimal gap, BigDecimal tgt) {
         String t = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
@@ -233,9 +228,10 @@ public class ShortStraddleService {
             """, icon, sym, strike, reason.replace("_", " "), ent, ex, pnl, t);
     }
 
-    // ==================== PERSISTENCE & HELPERS ====================
+    // ==================== UPDATED DB PERSISTENCE ====================
 
-    private void saveOrder(String uniqueName, String type, BigDecimal price, BigDecimal strike, String cycleId, BigDecimal gap) {
+    private void saveOrder(String uniqueName, String type, BigDecimal price, BigDecimal strike, 
+                           String cycleId, BigDecimal gap, String symbol, String token, BigDecimal target) {
         Orders order = new Orders();
         order.setName(uniqueName);
         order.setSignal(STRATEGY_SIGNAL);
@@ -245,6 +241,12 @@ public class ShortStraddleService {
         order.setAskPrice(price);
         order.setStrike(strike);
         order.setBreakeven(gap);
+        
+        // Fix: Mapping missing fields
+        order.setSymbol(symbol); 
+        order.setToken(token);
+        order.setTarget(target); 
+        
         order.setActive(STATUS_ACTIVE);
         order.setStatus(STATUS_OPEN);
         order.setTradePhase(PHASE_ENTRY);
@@ -254,7 +256,8 @@ public class ShortStraddleService {
 
     private boolean isSquareOffTime(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(NIFTY_SQUARE_OFF);
-        if ("CRUDEOIL".equalsIgnoreCase(symbol)) return !now.isBefore(CRUDE_SQUARE_OFF);
+        if ("CRUDEOIL".equalsIgnoreCase(symbol) || "CRUDEOILM".equalsIgnoreCase(symbol)) 
+            return !now.isBefore(CRUDE_SQUARE_OFF);
         return false;
     }
 }

@@ -71,5 +71,8 @@ public class Orders {
 
     @Column(name = "strike", precision = 12, scale = 2)
     private BigDecimal strike;     // level price
+    
+    @Column(name = "target", precision = 12, scale = 2)
+    private BigDecimal target;
   
 }

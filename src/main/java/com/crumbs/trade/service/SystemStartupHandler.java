@@ -42,11 +42,11 @@ public class SystemStartupHandler {
         }
         
         // Warm up CRUDE
-        Strategy crude = strategyRepo.findByName("CRUDEOIL");
+        Strategy crude = strategyRepo.findByName("CRUDEOILM");
         if (crude != null) {
-            straddleService.warmUpVwap("CRUDEOIL", crude);
+            straddleService.warmUpVwap("CRUDEOILM", crude);
         } else {
-            logger.warn("Startup Warm-up: CRUDEOIL strategy configuration not found in DB.");
+            logger.warn("Startup Warm-up: CRUDEOILM strategy configuration not found in DB.");
         }
     }
 }
