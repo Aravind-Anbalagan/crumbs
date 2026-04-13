@@ -38,8 +38,8 @@ public class ShortStraddleService {
 
     // Max Entry Gap (Risk Cap)
     private static final Map<String, BigDecimal> MAX_ENTRY_RISK = Map.of(
-            "NIFTY", new BigDecimal("5"),
-            "CRUDEOILM", new BigDecimal("10")
+            "NIFTY", new BigDecimal("10"),
+            "CRUDEOILM", new BigDecimal("30")
     );
 
     private static final LocalTime CRUDE_START = LocalTime.of(16, 0);
