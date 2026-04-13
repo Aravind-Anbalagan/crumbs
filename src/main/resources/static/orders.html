@@ -6,6 +6,7 @@
     <title>Crumbs // Orders</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* [ORIGINAL STYLES PRESERVED] */
         :root {
             --bg-main: #0a0f1c;
             --glass-bg: rgba(15, 23, 42, 0.75);
@@ -31,29 +32,12 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
-        
-        body { 
-            background-color: var(--bg-main); 
-            background-image: radial-gradient(at 0% 0%, var(--accent), transparent 30%);
-            background-attachment: fixed; 
-            color: var(--text-main); 
-            min-height: 100vh; 
-            padding: 1rem; 
-            transition: background 0.3s ease;
-        }
-
+        body { background-color: var(--bg-main); background-image: radial-gradient(at 0% 0%, var(--accent), transparent 30%); background-attachment: fixed; color: var(--text-main); min-height: 100vh; padding: 1rem; transition: background 0.3s ease; }
         .terminal-container { max-width: 1750px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.7rem; }
-
         header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; }
         .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
         .logo span { color: var(--accent); opacity: 0.8; }
-
-        .glass-card { 
-            background: var(--glass-bg); 
-            backdrop-filter: blur(20px); 
-            border: 1px solid var(--glass-border); 
-            border-radius: 12px; 
-        }
+        .glass-card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 12px; }
 
         /* Stats Section */
         .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; }
@@ -62,52 +46,35 @@
         .stat-value { font-size: 1.5rem; font-weight: 800; margin-top: 0.2rem; }
 
         /* Navigation */
-        .nav-btn { 
-            padding: 0.5rem 1.2rem; border: none; border-radius: 8px; background: transparent; 
-            color: var(--text-dim); cursor: pointer; font-weight: 700; font-size: 0.9rem; 
-        }
+        .nav-btn { padding: 0.5rem 1.2rem; border: none; border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; font-weight: 700; font-size: 0.9rem; }
         .nav-btn.active { background: var(--accent); color: white; }
 
-        /* Table Architecture */
+        /* Table Design */
         .table-container { padding: 0.5rem; overflow-x: auto; }
-        table { width: 100%; border-collapse: separate; border-spacing: 0 3px; table-layout: fixed; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0 4px; table-layout: fixed; }
+        th { padding: 0.6rem; text-align: left; font-size: 0.7rem; font-weight: 800; color: var(--text-dim); text-transform: uppercase; }
+        td { padding: 0.6rem; background: var(--row-bg); font-size: 0.85rem; border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); }
+
+        /* 🔥 VISUAL CLUBBING CSS */
+        .straddle-group-a td { background: rgba(129, 140, 248, 0.04); border-left: 4px solid var(--accent); }
+        .straddle-group-b td { background: rgba(255, 255, 255, 0.01); border-left: 4px solid var(--text-dim); }
         
-        th { padding: 0.6rem; text-align: left; font-size: 0.75rem; font-weight: 800; color: var(--text-dim); text-transform: uppercase; border-bottom: 1px solid var(--glass-border); }
-        td { padding: 0.5rem 0.6rem; background: var(--row-bg); font-size: 0.9rem; border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); }
-        tr:hover td { background: rgba(129, 140, 248, 0.05); }
+        /* Widths */
+        .w-id { width: 60px; } .w-time { width: 105px; } .w-symbol { width: 190px; } .w-strike { width: 85px; }
+        .w-dir { width: 75px; } .w-qty { width: 55px; } .w-price { width: 90px; } .w-pts { width: 80px; }
+        .w-target { width: 85px; } .w-pnl { width: 110px; } .w-status { width: 90px; }
 
-        /* Column Sizing */
-        .w-id { width: 65px; }
-        .w-time { width: 110px; }
-        .w-symbol { width: 210px; }
-        .w-strike { width: 90px; }
-        .w-dir { width: 95px; } /* Direction Column */
-        .w-qty { width: 70px; }
-        .w-price { width: 105px; }
-        .w-pts { width: 90px; }
-        .w-pnl { width: 125px; }
-        .w-status { width: 100px; }
-
-        /* Component Styling */
         .time-stack { display: flex; flex-direction: column; line-height: 1.2; }
-        .t-date { font-size: 0.7rem; color: var(--text-dim); }
-        .t-hour { font-size: 0.9rem; font-weight: 800; }
-        
-        .symbol-main { font-weight: 800; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-        .strat-label { color: var(--accent); font-size: 0.75rem; font-weight: 700; }
-
-        .badge { padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; border: 1px solid transparent; }
-        .dir-buy { background: rgba(16, 185, 129, 0.1); color: var(--success); border-color: var(--success); }
-        .dir-sell { background: rgba(244, 63, 94, 0.1); color: var(--error); border-color: var(--error); }
-        
+        .t-date { font-size: 0.65rem; color: var(--text-dim); }
+        .t-hour { font-size: 0.85rem; font-weight: 800; }
+        .symbol-main { font-weight: 800; font-size: 0.85rem; display: block; }
+        .badge { padding: 3px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; }
+        .dir-buy { color: var(--success); border: 1px solid var(--success); }
+        .dir-sell { color: var(--error); border: 1px solid var(--error); }
         .pnl-green { color: var(--success); font-weight: 800; }
         .pnl-red { color: var(--error); font-weight: 800; }
         .mono { font-family: 'ui-monospace', monospace; }
-
-        .theme-btn { 
-            background: var(--glass-bg); color: var(--text-main); border: 1px solid var(--glass-border); 
-            padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; cursor: pointer; 
-        }
+        .theme-btn { background: var(--glass-bg); color: var(--text-main); border: 1px solid var(--glass-border); padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -126,7 +93,7 @@
         <nav style="display: flex; gap: 4px;">
             <button class="nav-btn active" onclick="setStrategy(this, 'CPR')">CPR Strategy</button>
             <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_NIFTY')">Nifty Straddle</button>
-            <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_CRUDEOIL')">Crude Straddle</button>
+            <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_CRUDEOILM')">Crude Straddle</button>
         </nav>
     </div>
 
@@ -146,11 +113,12 @@
                     <th class="w-time">EXIT</th>
                     <th class="w-symbol">INSTRUMENT</th>
                     <th class="w-strike">STRIKE</th>
-                    <th class="w-dir">DIRECTION</th>
+                    <th class="w-dir">DIR</th>
                     <th class="w-qty">QTY</th>
-                    <th class="w-price">ENTRY</th>
-                    <th class="w-price">EXIT</th>
+                    <th class="w-price">ENT.₹</th>
+                    <th class="w-price">EXIT.₹</th>
                     <th class="w-pts">PTS</th>
+                    <th class="w-target">TARGET</th>
                     <th class="w-pnl">PNL</th>
                     <th class="w-status">STATUS</th>
                 </tr>
@@ -178,6 +146,7 @@
     function formatTime(timeStr) {
         if (!timeStr || timeStr === '--' || timeStr === 'ACTIVE' || timeStr === 'N/A') return `--`;
         const parts = timeStr.split(' ');
+        if (parts.length < 2) return timeStr;
         return `<div class="time-stack"><span class="t-date">${parts[0].substring(5)}</span><span class="t-hour">${parts[1]}</span></div>`;
     }
 
@@ -186,45 +155,68 @@
         const tbody = document.getElementById('orderBody');
         try {
             const response = await fetch(`/api/orders/orderList?name=${currentStrategy}`);
-            const data = await response.json();
+            let data = await response.json();
             
             let totalPoints = 0, totalPnl = 0;
-            tbody.innerHTML = data.map(o => {
-                totalPoints += (o.points || 0);
-                totalPnl += (o.pnl || 0);
-                const isPos = o.pnl >= 0;
-                
-                // RENAMED: Use o.direction for the BUY/SELL badge
-                const tradeDir = o.direction ? o.direction.toUpperCase() : 'SELL';
+            let rowsHtml = "";
+
+            // 🔥 Visual Grouping Mapping
+            let cycleColorMap = {};
+            let colorToggle = true;
+
+            data.forEach(o => {
+                // Determine group color based on Cycle ID
+                const cycleKey = o.tradeCycleId || 'none';
+                if (!cycleColorMap[cycleKey]) {
+                    cycleColorMap[cycleKey] = colorToggle ? 'straddle-group-a' : 'straddle-group-b';
+                    colorToggle = !colorToggle;
+                }
+                const groupClass = currentStrategy.includes('STRADDLE') ? cycleColorMap[cycleKey] : '';
+
+                // Safe Values
+                const ent = o.entryPrice || 0;
+                const exi = o.exitPrice || 0;
+                const pts = o.points || 0;
+                const tgt = o.target || 0;
+                const pnl = o.pnl || 0;
+
+                totalPoints += pts;
+                totalPnl += pnl;
+
+                const isPos = pnl >= 0;
+                const tradeDir = (o.direction || 'SELL').toUpperCase();
                 const dirClass = tradeDir === 'BUY' ? 'dir-buy' : 'dir-sell';
 
-                return `
-                    <tr>
+                rowsHtml += `
+                    <tr class="${groupClass}">
                         <td class="mono w-id" style="color:var(--text-dim)">#${o.id}</td>
                         <td class="mono w-time">${formatTime(o.entryTime)}</td>
                         <td class="mono w-time">${formatTime(o.exitTime)}</td>
                         <td class="w-symbol">
-                            <span class="symbol-main" title="${o.symbol}">${o.symbol}</span>
-                            <span class="strat-label">${o.strategyType || ''}</span>
+                            <span class="symbol-main">${o.symbol}</span>
+                            <span style="font-size:0.6rem; color:var(--accent); font-weight:800;">${o.tradeCycleId ? 'STRADDLE LEG' : ''}</span>
                         </td>
                         <td class="w-strike mono" style="font-weight:700;">${o.strike || '--'}</td>
                         <td class="w-dir"><span class="badge ${dirClass}">${tradeDir}</span></td>
                         <td class="w-qty mono" style="font-weight:700;">${o.quantity}</td>
-                        <td class="mono w-price">₹${o.entryPrice.toFixed(2)}</td>
-                        <td class="mono w-price">${o.exitPrice > 0 ? '₹' + o.exitPrice.toFixed(2) : '--'}</td>
-                        <td class="w-pts mono ${o.points >= 0 ? 'pnl-green' : 'pnl-red'}">${o.points.toFixed(2)}</td>
-                        <td class="w-pnl mono ${isPos ? 'pnl-green' : 'pnl-red'}">₹${o.pnl.toLocaleString('en-IN')}</td>
+                        <td class="mono w-price">₹${ent.toFixed(2)}</td>
+                        <td class="mono w-price">${exi > 0 ? '₹' + exi.toFixed(2) : '--'}</td>
+                        <td class="w-pts mono ${pts >= 0 ? 'pnl-green' : 'pnl-red'}">${pts.toFixed(2)}</td>
+                        <td class="w-target mono" style="color:var(--accent); font-weight:700;">${tgt > 0 ? tgt.toFixed(2) : '--'}</td>
+                        <td class="w-pnl mono ${isPos ? 'pnl-green' : 'pnl-red'}">₹${pnl.toLocaleString('en-IN')}</td>
                         <td class="w-status"><span class="badge" style="color:var(--text-dim)">${o.status}</span></td>
                     </tr>
                 `;
-            }).join('');
+            });
 
+            tbody.innerHTML = rowsHtml;
             document.getElementById('stat-count').innerText = data.length;
             document.getElementById('stat-points').innerText = totalPoints.toFixed(2);
             const pnlEl = document.getElementById('stat-pnl');
             pnlEl.innerText = `₹${totalPnl.toLocaleString('en-IN')}`;
             pnlEl.style.color = totalPnl >= 0 ? 'var(--success)' : 'var(--error)';
-        } catch (e) { console.error("Fetch Error:", e); }
+
+        } catch (e) { console.error("Crumbs UI Failure:", e); }
     }
 
     function setStrategy(btn, name) {
