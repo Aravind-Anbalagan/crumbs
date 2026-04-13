@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,9 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ShortStraddleService {
 
-    // ==========================================
-    // CONFIGURATION
-    // ==========================================
     private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE_VWAP";
     private static final int REQUIRED_CONSECUTIVE_HITS = 5;
 
@@ -47,19 +45,14 @@ public class ShortStraddleService {
     private static final String PHASE_ENTRY = "ENTRY";
     private static final String PHASE_EXIT = "EXIT";
 
-    // ==========================================
-    // DEPENDENCIES
-    // ==========================================
     private final ShortStraddleRepository straddleRepository;
     private final OrderRepository ordersRepository;
     private final StrategyRepo strategyRepo;
     private final OrderService orderService;
+    private final TelegramService telegramService; // Added dependency
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
 
-    /**
-     * Main entry point called by the Scheduler
-     */
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
         String uniqueName = "SHORT_STRADDLE_" + symbol.toUpperCase();
@@ -67,21 +60,17 @@ public class ShortStraddleService {
         List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(
                 uniqueName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
-        // 1. EOD Square-off Check
         if (!activeOrders.isEmpty() && isSquareOffTime(symbol, now)) {
             straddleRepository.findLatestByName(symbol).ifPresent(tick -> {
-                log.info("⏰ [{}][EOD] Square-off reached. Closing position.", symbol);
-                closeAll(activeOrders, tick, "INTRADAY_EOD_EXIT");
+                log.info("⏰ [{}][EOD] Square-off reached.", symbol);
+                closeAll(activeOrders, tick, "EOD_SQUARE_OFF");
             });
             return;
         }
 
-        // 2. Core Logic Flow
         if (activeOrders.isEmpty()) {
-            // No active trade: Scan for Entry
             straddleRepository.findATMBySymbol(symbol).ifPresent(tick -> processEntrySequence(symbol, tick));
         } else {
-            // Trade is active: Scan for Exit
             BigDecimal tradedStrike = activeOrders.get(0).getStrike();
             straddleRepository.findLatestBySymbolAndStrike(symbol, tradedStrike).ifPresent(tick -> {
                 processExitSequence(symbol, tick, activeOrders);
@@ -92,16 +81,11 @@ public class ShortStraddleService {
     private void processEntrySequence(String symbol, StraddleIntraday tick) {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
-        BigDecimal gap = cv.subtract(cp);
 
-        // Entry Condition: Combined Premium < Combined VWAP
         if (cp.compareTo(cv) < 0) {
             int count = hitCounters.merge(symbol, 1, Integer::sum);
-            log.info("[{}][SCAN] Strike: {} | CP: {} | CV: {} | Count: {}/{}", 
-                    symbol, tick.getStrike(), cp, cv, count, REQUIRED_CONSECUTIVE_HITS);
-
             if (count >= REQUIRED_CONSECUTIVE_HITS) {
-                executeShortStraddle(symbol, tick, gap);
+                executeShortStraddle(symbol, tick, cv.subtract(cp));
                 hitCounters.put(symbol, 0); 
             }
         } else {
@@ -113,25 +97,19 @@ public class ShortStraddleService {
     protected void executeShortStraddle(String symbol, StraddleIntraday tick, BigDecimal entryGap) {
         String cycleId = UUID.randomUUID().toString();
         String uniqueName = "SHORT_STRADDLE_" + symbol.toUpperCase();
-        
-        // Fetch Strategy config (Contains Live/Paper flag and Exchange)
         Strategy strategy = strategyRepo.findByName(symbol.toUpperCase());
-        if (strategy == null) {
-            log.error("Strategy config for {} not found. Aborting execution.", symbol);
-            return;
-        }
+        if (strategy == null) return;
 
         boolean isLive = "Y".equalsIgnoreCase(strategy.getLive());
-        log.info("🚀 [{}][ENTRY] Starting Execution | Mode: {} | Strike: {}", 
-                symbol, isLive ? "LIVE" : "PAPER", tick.getStrike());
 
-        // Process CE Leg
         processLeg(tick.getCeToken(), tick.getCeSymbol(), strategy, tick.getCePrice(), 
                    tick.getStrike(), uniqueName, "CE", cycleId, entryGap, isLive);
-
-        // Process PE Leg
         processLeg(tick.getPeToken(), tick.getPeSymbol(), strategy, tick.getPePrice(), 
                    tick.getStrike(), uniqueName, "PE", cycleId, entryGap, isLive);
+
+        // Telegram Notification
+        BigDecimal targetPts = TARGET_POINTS.getOrDefault(symbol.toUpperCase(), new BigDecimal("15"));
+        telegramService.sendMessage(buildEntryMsg(symbol, tick.getStrike(), tick.getCePrice(), tick.getPePrice(), entryGap, targetPts));
     }
 
     private void processLeg(String tokenStr, String symbol, Strategy strategy, BigDecimal price, 
@@ -144,17 +122,12 @@ public class ShortStraddleService {
                 t.setSymbol(symbol);
                 t.setExch_seg(strategy.getExchange());
                 t.setStrike(strike);
-
                 orderService.orderPlaceWithToken(t, uniqueName, "SELL", true);
-                log.info("✅ LIVE {} order placed successfully for {}", type, symbol);
             } catch (Exception | SmartAPIException e) {
-                log.error("❌ Failed to place live {} order for {}: {}", type, symbol, e.getMessage());
-                return; // Stop and don't save to DB if live placement fails
+                log.error("❌ Failed live order: {}", e.getMessage());
+                return; 
             }
-        } else {
-            log.info("📝 PAPER {} order logged for {}", type, symbol);
         }
-
         saveOrder(uniqueName, type, price, strike, cycleId, gap);
     }
 
@@ -162,59 +135,92 @@ public class ShortStraddleService {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp);
-        
         BigDecimal initialGap = activeOrders.get(0).getBreakeven();
         if (initialGap == null) initialGap = currentGap;
         
         BigDecimal ptsToCapture = TARGET_POINTS.getOrDefault(symbol.toUpperCase(), new BigDecimal("15"));
         BigDecimal targetGap = initialGap.add(ptsToCapture);
 
-        log.info("[{}][LIVE] CP: {} | CV: {} | Current Gap: {} | Target: {}", 
-                symbol, cp, cv, currentGap, targetGap);
-
-        // Exit Logic: 
-        // 1. Stop Loss: CP goes above CV
-        // 2. Target: Target Gap reached
         if (cp.compareTo(cv) > 0) {
-            closeAll(activeOrders, tick, "STOP_LOSS (CP > CV)");
+            closeAll(activeOrders, tick, "STOP_LOSS_VWAP");
         } else if (currentGap.compareTo(targetGap) >= 0) {
-            closeAll(activeOrders, tick, "TARGET_REACHED (" + ptsToCapture + " pts)");
+            closeAll(activeOrders, tick, "TARGET_REACHED");
         }
     }
 
     @Transactional
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason) {
-        // Check strategy for the symbol to see if we should call the broker for exit
         String symbol = tick.getName().toUpperCase();
         Strategy strategy = strategyRepo.findByName(symbol);
         boolean isLive = strategy != null && "Y".equalsIgnoreCase(strategy.getLive());
 
-        log.info("🏁 [{}][EXIT] Reason: {} | Mode: {}", symbol, reason, isLive ? "LIVE" : "PAPER");
+        BigDecimal totalEntry = BigDecimal.ZERO;
+        BigDecimal totalExit = BigDecimal.ZERO;
 
         for (Orders order : activeOrders) {
             try {
                 if (isLive) {
                     String tokenToExit = "CE".equals(order.getOptionType()) ? tick.getCeToken() : tick.getPeToken();
                     orderService.exitActiveTradeByToken(tokenToExit, order.getName());
-                    log.info("✅ LIVE exit order executed for {}", order.getOptionType());
                 }
 
-                // Update DB state
+                BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
+                totalEntry = totalEntry.add(order.getAskPrice());
+                totalExit = totalExit.add(exitPrice);
+
                 order.setActive(STATUS_INACTIVE); 
                 order.setStatus(STATUS_CLOSED);
                 order.setTradePhase(PHASE_EXIT);
                 order.setClosedOn(LocalDateTime.now());
-                
-                BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
                 order.setExitPrice(exitPrice);
                 order.setPl(order.getAskPrice().subtract(exitPrice));
-                
                 ordersRepository.save(order);
             } catch (Exception | SmartAPIException e) {
-                log.error("❌ Error exiting leg {}: {}", order.getOptionType(), e.getMessage());
+                log.error("❌ Exit error: {}", e.getMessage());
             }
         }
+        // Telegram Notification
+        telegramService.sendMessage(buildExitMsg(symbol, tick.getStrike(), totalEntry, totalExit, reason));
     }
+
+    // ==================== TELEGRAM BUILDERS ====================
+
+    private String buildEntryMsg(String sym, BigDecimal strike, BigDecimal ce, BigDecimal pe, BigDecimal gap, BigDecimal tgt) {
+        String t = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        return String.format("""
+            🚀 **STRADDLE ENTRY: %s**
+            
+            📌 **Strike** : %s
+            💰 **CE / PE** : %.2f | %.2f
+            📊 **Combined** : **%.2f**
+            📉 **Gap to VWAP**: %.2f
+            
+            🎯 **Target** : +%s Points
+            ⏰ **Time** : %s
+            🟢 *Monitoring trade cycle...*
+            """, sym, strike, ce, pe, ce.add(pe), gap, tgt, t);
+    }
+
+    private String buildExitMsg(String sym, BigDecimal strike, BigDecimal ent, BigDecimal ex, String reason) {
+        BigDecimal pnl = ent.subtract(ex);
+        String icon = pnl.signum() >= 0 ? "✅" : "❌";
+        String t = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        return String.format("""
+            %s **STRADDLE EXIT: %s**
+            
+            📌 **Strike** : %s
+            🚪 **Reason** : **%s**
+            
+            📥 **Entry** : %.2f
+            📤 **Exit** : %.2f
+            💰 **PnL** : **%.2f Points**
+            
+            ⏰ **Time** : %s
+            🏁 *Cycle complete.*
+            """, icon, sym, strike, reason.replace("_", " "), ent, ex, pnl, t);
+    }
+
+    // ==================== PERSISTENCE & HELPERS ====================
 
     private void saveOrder(String uniqueName, String type, BigDecimal price, BigDecimal strike, String cycleId, BigDecimal gap) {
         Orders order = new Orders();
