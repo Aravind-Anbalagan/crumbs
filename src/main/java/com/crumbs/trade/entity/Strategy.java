@@ -90,4 +90,7 @@ public class Strategy {
     
     @Column(name = "quantity")
     private int quantity;
+    
+    @Column(name = "slPoints") //
+    private BigDecimal slPoints;
 }
