@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crumbs // Orders</title>
+    <title>Crumbs // 4-Group Monitor</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* [ORIGINAL STYLES PRESERVED] */
         :root {
             --bg-main: #0a0f1c;
             --glass-bg: rgba(15, 23, 42, 0.75);
@@ -16,7 +15,7 @@
             --error: #f43f5e;
             --text-main: #f8fafc;
             --text-dim: #94a3b8;
-            --row-bg: rgba(255, 255, 255, 0.02);
+            --card-inner: rgba(255, 255, 255, 0.03);
         }
 
         [data-theme="light"] {
@@ -28,52 +27,50 @@
             --error: #dc2626;
             --text-main: #0f172a;
             --text-dim: #64748b;
-            --row-bg: rgba(0, 0, 0, 0.03);
+            --card-inner: rgba(0, 0, 0, 0.02);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
-        body { background-color: var(--bg-main); background-image: radial-gradient(at 0% 0%, var(--accent), transparent 30%); background-attachment: fixed; color: var(--text-main); min-height: 100vh; padding: 1rem; transition: background 0.3s ease; }
-        .terminal-container { max-width: 1750px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.7rem; }
-        header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; }
+        body { background-color: var(--bg-main); background-image: radial-gradient(at 0% 0%, var(--accent), transparent 30%); background-attachment: fixed; color: var(--text-main); min-height: 100vh; padding: 1.5rem; transition: background 0.3s ease; }
+        
+        .terminal-container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        header { display: flex; justify-content: space-between; align-items: center; }
         .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
         .logo span { color: var(--accent); opacity: 0.8; }
+        
         .glass-card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 12px; }
-
-        /* Stats Section */
+        
         .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; }
         .stat-card { padding: 0.8rem 1.2rem; border-left: 4px solid var(--accent); }
         .stat-label { font-size: 0.65rem; font-weight: 800; color: var(--text-dim); text-transform: uppercase; }
         .stat-value { font-size: 1.5rem; font-weight: 800; margin-top: 0.2rem; }
 
-        /* Navigation */
-        .nav-btn { padding: 0.5rem 1.2rem; border: none; border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+        .nav-btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; font-weight: 700; font-size: 0.85rem; }
         .nav-btn.active { background: var(--accent); color: white; }
 
-        /* Table Design */
-        .table-container { padding: 0.5rem; overflow-x: auto; }
-        table { width: 100%; border-collapse: separate; border-spacing: 0 4px; table-layout: fixed; }
-        th { padding: 0.6rem; text-align: left; font-size: 0.7rem; font-weight: 800; color: var(--text-dim); text-transform: uppercase; }
-        td { padding: 0.6rem; background: var(--row-bg); font-size: 0.85rem; border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); }
-
-        /* 🔥 VISUAL CLUBBING CSS */
-        .straddle-group-a td { background: rgba(129, 140, 248, 0.04); border-left: 4px solid var(--accent); }
-        .straddle-group-b td { background: rgba(255, 255, 255, 0.01); border-left: 4px solid var(--text-dim); }
+        .orders-grid { display: flex; flex-direction: column; gap: 1.2rem; }
+        .straddle-card { padding: 1.2rem; border-left: 5px solid var(--accent); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .straddle-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.8rem; border-bottom: 1px solid var(--glass-border); margin-bottom: 1rem; }
         
-        /* Widths */
-        .w-id { width: 60px; } .w-time { width: 105px; } .w-symbol { width: 190px; } .w-strike { width: 85px; }
-        .w-dir { width: 75px; } .w-qty { width: 55px; } .w-price { width: 90px; } .w-pts { width: 80px; }
-        .w-target { width: 85px; } .w-pnl { width: 110px; } .w-status { width: 90px; }
+        .leg-row { 
+            display: grid; 
+            grid-template-columns: 80px 1.5fr 100px 80px 80px 1fr 1fr 120px 100px;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            background: var(--card-inner);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
 
-        .time-stack { display: flex; flex-direction: column; line-height: 1.2; }
-        .t-date { font-size: 0.65rem; color: var(--text-dim); }
-        .t-hour { font-size: 0.85rem; font-weight: 800; }
-        .symbol-main { font-weight: 800; font-size: 0.85rem; display: block; }
-        .badge { padding: 3px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; }
-        .dir-buy { color: var(--success); border: 1px solid var(--success); }
-        .dir-sell { color: var(--error); border: 1px solid var(--error); }
-        .pnl-green { color: var(--success); font-weight: 800; }
-        .pnl-red { color: var(--error); font-weight: 800; }
-        .mono { font-family: 'ui-monospace', monospace; }
+        .mono { font-family: 'ui-monospace', 'SFMono-Regular', monospace; font-weight: 700; }
+        .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; border: 1px solid currentColor; display: inline-block; text-align: center; }
+        .dir-buy { color: var(--success); }
+        .dir-sell { color: var(--error); }
+        .pnl-green { color: var(--success); }
+        .pnl-red { color: var(--error); }
+        
         .theme-btn { background: var(--glass-bg); color: var(--text-main); border: 1px solid var(--glass-border); padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; cursor: pointer; }
     </style>
 </head>
@@ -81,9 +78,9 @@
 
 <div class="terminal-container">
     <header>
-        <div class="logo">CRUMBS <span>// ORDERS</span></div>
+        <div class="logo">CRUMBS <span>// STRATEGY</span></div>
         <div style="display: flex; gap: 0.8rem; align-items: center;">
-            <div id="liveIndicator" style="font-size: 0.7rem; font-weight: 800; color: var(--success);">● LIVE FEED</div>
+            <div id="liveIndicator" style="font-size: 0.7rem; font-weight: 800; color: var(--success);">● LIVE</div>
             <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️ LIGHT MODE</button>
             <button class="theme-btn" style="background: var(--accent); color: white;" onclick="refreshData()">REFRESH</button>
         </div>
@@ -98,34 +95,13 @@
     </div>
 
     <div class="stats-row">
-        <div class="glass-card stat-card"><div class="stat-label">System Focus</div><div class="stat-value" id="stat-name">CPR</div></div>
-        <div class="glass-card stat-card"><div class="stat-label">Orders</div><div class="stat-value" id="stat-count">0</div></div>
-        <div class="glass-card stat-card"><div class="stat-label">Captured Points</div><div class="stat-value" id="stat-points">0.00</div></div>
-        <div class="glass-card stat-card"><div class="stat-label">Realized PnL</div><div class="stat-value" id="stat-pnl">₹0</div></div>
+        <div class="glass-card stat-card"><div class="stat-label">System</div><div class="stat-value" id="stat-name">CPR</div></div>
+        <div class="glass-card stat-card"><div class="stat-label">Active Groups</div><div class="stat-value" id="stat-count">0</div></div>
+        <div class="glass-card stat-card"><div class="stat-label">Total Points</div><div class="stat-value" id="stat-points">0.00</div></div>
+        <div class="glass-card stat-card"><div class="stat-label">Net Realized</div><div class="stat-value" id="stat-pnl">₹0</div></div>
     </div>
 
-    <div class="glass-card table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th class="w-id">ID</th>
-                    <th class="w-time">ENTRY</th>
-                    <th class="w-time">EXIT</th>
-                    <th class="w-symbol">INSTRUMENT</th>
-                    <th class="w-strike">STRIKE</th>
-                    <th class="w-dir">DIR</th>
-                    <th class="w-qty">QTY</th>
-                    <th class="w-price">ENT.₹</th>
-                    <th class="w-price">EXIT.₹</th>
-                    <th class="w-pts">PTS</th>
-                    <th class="w-target">TARGET</th>
-                    <th class="w-pnl">PNL</th>
-                    <th class="w-status">STATUS</th>
-                </tr>
-            </thead>
-            <tbody id="orderBody"></tbody>
-        </table>
-    </div>
+    <div id="ordersContainer" class="orders-grid"></div>
 </div>
 
 <script>
@@ -143,80 +119,88 @@
         }
     }
 
-    function formatTime(timeStr) {
-        if (!timeStr || timeStr === '--' || timeStr === 'ACTIVE' || timeStr === 'N/A') return `--`;
-        const parts = timeStr.split(' ');
-        if (parts.length < 2) return timeStr;
-        return `<div class="time-stack"><span class="t-date">${parts[0].substring(5)}</span><span class="t-hour">${parts[1]}</span></div>`;
-    }
-
     async function refreshData() {
         if (document.hidden) return;
-        const tbody = document.getElementById('orderBody');
+        const container = document.getElementById('ordersContainer');
         try {
             const response = await fetch(`/api/orders/orderList?name=${currentStrategy}`);
             let data = await response.json();
             
-            let totalPoints = 0, totalPnl = 0;
-            let rowsHtml = "";
-
-            // 🔥 Visual Grouping Mapping
-            let cycleColorMap = {};
-            let colorToggle = true;
-
+            // --- FIXED GROUPING LOGIC ---
+            const groups = {};
             data.forEach(o => {
-                // Determine group color based on Cycle ID
-                const cycleKey = o.tradeCycleId || 'none';
-                if (!cycleColorMap[cycleKey]) {
-                    cycleColorMap[cycleKey] = colorToggle ? 'straddle-group-a' : 'straddle-group-b';
-                    colorToggle = !colorToggle;
+                // Use Strike as the primary key. If strike is same, they go in one card.
+                // Fallback to tradeCycleId or just the ID if everything else is missing.
+                const key = o.strike || o.tradeCycleId || `id_${o.id}`;
+
+                if (!groups[key]) {
+                    groups[key] = { legs: [], totalPnl: 0, totalPts: 0, strike: o.strike };
                 }
-                const groupClass = currentStrategy.includes('STRADDLE') ? cycleColorMap[cycleKey] : '';
+                groups[key].legs.push(o);
+                groups[key].totalPnl += (o.pnl || 0);
+                groups[key].totalPts += (o.points || 0);
+            });
 
-                // Safe Values
-                const ent = o.entryPrice || 0;
-                const exi = o.exitPrice || 0;
-                const pts = o.points || 0;
-                const tgt = o.target || 0;
-                const pnl = o.pnl || 0;
+            let cardsHtml = "";
+            let overallPnl = 0, overallPts = 0;
 
-                totalPoints += pts;
-                totalPnl += pnl;
+            Object.keys(groups).forEach(key => {
+                const group = groups[key];
+                overallPnl += group.totalPnl;
+                overallPts += group.totalPts;
 
-                const isPos = pnl >= 0;
-                const tradeDir = (o.direction || 'SELL').toUpperCase();
-                const dirClass = tradeDir === 'BUY' ? 'dir-buy' : 'dir-sell';
+                let legsHtml = "";
+                // Sort legs so CE comes first
+                group.legs.sort((a,b) => (a.symbol || "").includes('CE') ? -1 : 1);
 
-                rowsHtml += `
-                    <tr class="${groupClass}">
-                        <td class="mono w-id" style="color:var(--text-dim)">#${o.id}</td>
-                        <td class="mono w-time">${formatTime(o.entryTime)}</td>
-                        <td class="mono w-time">${formatTime(o.exitTime)}</td>
-                        <td class="w-symbol">
-                            <span class="symbol-main">${o.symbol}</span>
-                            <span style="font-size:0.6rem; color:var(--accent); font-weight:800;">${o.tradeCycleId ? 'STRADDLE LEG' : ''}</span>
-                        </td>
-                        <td class="w-strike mono" style="font-weight:700;">${o.strike || '--'}</td>
-                        <td class="w-dir"><span class="badge ${dirClass}">${tradeDir}</span></td>
-                        <td class="w-qty mono" style="font-weight:700;">${o.quantity}</td>
-                        <td class="mono w-price">₹${ent.toFixed(2)}</td>
-                        <td class="mono w-price">${exi > 0 ? '₹' + exi.toFixed(2) : '--'}</td>
-                        <td class="w-pts mono ${pts >= 0 ? 'pnl-green' : 'pnl-red'}">${pts.toFixed(2)}</td>
-                        <td class="w-target mono" style="color:var(--accent); font-weight:700;">${tgt > 0 ? tgt.toFixed(2) : '--'}</td>
-                        <td class="w-pnl mono ${isPos ? 'pnl-green' : 'pnl-red'}">₹${pnl.toLocaleString('en-IN')}</td>
-                        <td class="w-status"><span class="badge" style="color:var(--text-dim)">${o.status}</span></td>
-                    </tr>
+                group.legs.forEach(l => {
+                    const dirClass = l.direction === 'BUY' ? 'dir-buy' : 'dir-sell';
+                    legsHtml += `
+                        <div class="leg-row">
+                            <div class="mono" style="color:var(--text-dim); font-size:0.7rem;">#${l.id}</div>
+                            <div style="font-weight:800; font-size:0.9rem;">${l.symbol}</div>
+                            <div class="mono" style="color:var(--accent)">${l.strike || '--'}</div>
+                            <div><span class="badge ${dirClass}">${l.direction || 'SELL'}</span></div>
+                            <div class="mono" style="font-size:0.8rem">QTY:${l.quantity}</div>
+                            <div class="mono">ENT: ₹${(l.entryPrice || 0).toFixed(2)}</div>
+                            <div class="mono">EXIT: ${l.exitPrice > 0 ? '₹'+l.exitPrice.toFixed(2) : '--'}</div>
+                            <div class="mono ${l.pnl >= 0 ? 'pnl-green' : 'pnl-red'}" style="font-size:1rem">₹${(l.pnl || 0).toLocaleString('en-IN')}</div>
+                            <div style="font-size:0.65rem; text-align:right; font-weight:800; color:var(--text-dim); text-transform:uppercase;">${l.status}</div>
+                        </div>
+                    `;
+                });
+
+                cardsHtml += `
+                    <div class="glass-card straddle-card">
+                        <div class="straddle-header">
+                            <div style="display:flex; flex-direction:column">
+                                <span style="font-size:0.65rem; font-weight:800; color:var(--text-dim); text-transform:uppercase;">Strike Group</span>
+                                <span style="font-size:1.1rem; font-weight:800;">${group.strike || 'N/A'} Straddle Pair</span>
+                            </div>
+                            <div style="text-align:right">
+                                <span style="font-size:0.65rem; font-weight:800; color:var(--text-dim); text-transform:uppercase;">Combined PnL</span>
+                                <div class="mono ${group.totalPnl >= 0 ? 'pnl-green' : 'pnl-red'}" style="font-size:1.3rem">
+                                    ₹${group.totalPnl.toLocaleString('en-IN')}
+                                </div>
+                            </div>
+                        </div>
+                        ${legsHtml}
+                    </div>
                 `;
             });
 
-            tbody.innerHTML = rowsHtml;
-            document.getElementById('stat-count').innerText = data.length;
-            document.getElementById('stat-points').innerText = totalPoints.toFixed(2);
+            container.innerHTML = cardsHtml || `<div style="text-align:center; padding:3rem; color:var(--text-dim)">Waiting for data...</div>`;
+            
+            document.getElementById('stat-count').innerText = Object.keys(groups).length;
+            document.getElementById('stat-points').innerText = overallPts.toFixed(2);
             const pnlEl = document.getElementById('stat-pnl');
-            pnlEl.innerText = `₹${totalPnl.toLocaleString('en-IN')}`;
-            pnlEl.style.color = totalPnl >= 0 ? 'var(--success)' : 'var(--error)';
+            pnlEl.innerText = `₹${overallPnl.toLocaleString('en-IN')}`;
+            pnlEl.style.color = overallPnl >= 0 ? 'var(--success)' : 'var(--error)';
 
-        } catch (e) { console.error("Crumbs UI Failure:", e); }
+        } catch (e) { 
+            console.error("Fetch Error:", e);
+            document.getElementById('ordersContainer').innerHTML = `<div style="color:var(--error); text-align:center; padding:2rem;">Data Error: Check console</div>`;
+        }
     }
 
     function setStrategy(btn, name) {

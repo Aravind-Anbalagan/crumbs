@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,16 +30,11 @@ public class ShortStraddleService {
     private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE_VWAP";
     private static final int REQUIRED_CONSECUTIVE_HITS = 3;
 
-    private static final Map<String, BigDecimal> TARGET_POINTS = Map.of(
-            "NIFTY", new BigDecimal("25"),
-            "CRUDEOILM", new BigDecimal("50")
-    );
-
-    // Max Entry Gap (Risk Cap)
-    private static final Map<String, BigDecimal> MAX_ENTRY_RISK = Map.of(
-            "NIFTY", new BigDecimal("10"),
-            "CRUDEOILM", new BigDecimal("30")
-    );
+    // Fallback constants if DB values are null
+    private static final BigDecimal DEFAULT_NIFTY_TARGET = new BigDecimal("25");
+    private static final BigDecimal DEFAULT_CRUDE_TARGET = new BigDecimal("50");
+    private static final BigDecimal DEFAULT_NIFTY_RISK = new BigDecimal("10");
+    private static final BigDecimal DEFAULT_CRUDE_RISK = new BigDecimal("30");
 
     private static final LocalTime CRUDE_START = LocalTime.of(16, 0);
     private static final LocalTime NIFTY_SQUARE_OFF = LocalTime.of(15, 20);
@@ -61,52 +55,64 @@ public class ShortStraddleService {
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
 
+    /**
+     * Main evaluation loop.
+     */
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
         String symUpper = symbol.toUpperCase();
-        
+
         // 1. Time Window Check
         if (symUpper.contains("CRUDE") && now.isBefore(CRUDE_START)) {
             log.debug("⏳ [{}][WAIT] Outside trading window. Starts at 16:00.", symUpper);
             return;
         }
 
+        // 2. Fetch Strategy Configuration from DB
+        Strategy strategy = strategyRepo.findByName(symUpper);
+        if (strategy == null) {
+            log.error("❌ [{}][CONFIG] Strategy record not found in STRATEGY table!", symUpper);
+            return;
+        }
+
         String uniqueName = "SHORT_STRADDLE_" + symUpper;
         List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(uniqueName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
-        // 2. Square-off Logic
+        // 3. Square-off Logic
         if (!activeOrders.isEmpty() && isSquareOffTime(symUpper, now)) {
             straddleRepository.findLatestByName(symbol).ifPresent(tick -> {
                 log.info("⏰ [{}][EOD] Square-off time reached. Closing positions.", symUpper);
-                closeAll(activeOrders, tick, "EOD_SQUARE_OFF");
+                closeAll(activeOrders, tick, "EOD_SQUARE_OFF", strategy);
             });
             return;
         }
 
         if (activeOrders.isEmpty()) {
-            // 3. Scanning Mode
+            // 4. Scanning Mode
             straddleRepository.findATMBySymbol(symbol).ifPresentOrElse(
-                tick -> processEntrySequence(symUpper, tick),
+                tick -> processEntrySequence(symUpper, tick, strategy),
                 () -> log.warn("⚠️ [{}][SCAN] No ATM data found in repository.", symUpper)
             );
         } else {
-            // 4. Monitoring Mode
+            // 5. Monitoring Mode
             BigDecimal tradedStrike = activeOrders.get(0).getStrike();
             straddleRepository.findLatestBySymbolAndStrike(symbol, tradedStrike).ifPresentOrElse(
-                tick -> processExitSequence(symUpper, tick, activeOrders),
-                () -> log.error("❌ [{}][MONITOR] Could not find price data for active strike: {}", symUpper, tradedStrike)
+                tick -> processExitSequence(symUpper, tick, activeOrders, strategy),
+                () -> log.error("❌ [{}][MONITOR] Data missing for active strike: {}", symUpper, tradedStrike)
             );
         }
     }
 
-    private void processEntrySequence(String symbol, StraddleIntraday tick) {
+    private void processEntrySequence(String symbol, StraddleIntraday tick, Strategy strategy) {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp);
-        BigDecimal maxAllowed = MAX_ENTRY_RISK.getOrDefault(symbol, new BigDecimal("10"));
+        
+        // Use DB value with hardcoded fallback
+        BigDecimal maxAllowed = strategy.getMaxEntryRisk() != null ? strategy.getMaxEntryRisk() : 
+                               (symbol.contains("NIFTY") ? DEFAULT_NIFTY_RISK : DEFAULT_CRUDE_RISK);
 
         if (cp.compareTo(cv) < 0) {
-            // Check if gap is within tight entry limits
             if (currentGap.compareTo(maxAllowed) <= 0) {
                 int count = hitCounters.merge(symbol, 1, Integer::sum);
                 log.info("🎯 [{}][SCAN] VALID HIT {}/{} | Strike: {} | Gap: {} (Max: {})", 
@@ -114,88 +120,83 @@ public class ShortStraddleService {
                         currentGap.setScale(2, RoundingMode.HALF_UP), maxAllowed);
 
                 if (count >= REQUIRED_CONSECUTIVE_HITS) {
-                    executeShortStraddle(symbol, tick, currentGap);
+                    executeShortStraddle(symbol, tick, currentGap, strategy);
                     hitCounters.put(symbol, 0); 
                 }
             } else {
-                // Requirement met (CP < CV) but Risk is too high
                 hitCounters.put(symbol, 0);
-                log.info("⏩ [{}][SCAN] Crossover active but Gap too wide (Gap: {} > Max: {}). Skipping to keep SL tight.", 
+                log.info("⏩ [{}][SCAN] Crossover active but Gap too wide (Gap: {} > Max: {}). Skipping.", 
                         symbol, currentGap.setScale(2, RoundingMode.HALF_UP), maxAllowed);
             }
         } else {
-            // Requirement NOT met (Premium still above VWAP)
             hitCounters.put(symbol, 0);
-            log.info("⏳ [{}][SCAN] Waiting for Crossover... (Premium: {} | VWAP: {})", 
-                    symbol, cp.setScale(2, RoundingMode.HALF_UP), cv.setScale(2, RoundingMode.HALF_UP));
+            if ("Y".equalsIgnoreCase(strategy.getEnableLogging())) {
+                log.info("⏳ [{}][SCAN] Waiting for Crossover... (Premium: {} | VWAP: {})", 
+                        symbol, cp.setScale(2, RoundingMode.HALF_UP), cv.setScale(2, RoundingMode.HALF_UP));
+            }
         }
     }
 
-    private void processExitSequence(String symbol, StraddleIntraday tick, List<Orders> activeOrders) {
+    private void processExitSequence(String symbol, StraddleIntraday tick, List<Orders> activeOrders, Strategy strategy) {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp);
         
         BigDecimal entryGap = activeOrders.get(0).getBreakeven();
-        BigDecimal ptsToCapture = TARGET_POINTS.getOrDefault(symbol, new BigDecimal("15"));
+        
+        // Use DB value for targetPoints
+        BigDecimal ptsToCapture = strategy.getTargetPoints() != null ? strategy.getTargetPoints() : 
+                                 (symbol.contains("NIFTY") ? DEFAULT_NIFTY_TARGET : DEFAULT_CRUDE_TARGET);
+        
         BigDecimal targetGap = (entryGap != null ? entryGap : BigDecimal.ZERO).add(ptsToCapture);
 
-        // LOGGING PROGRESS FOR THE USER
-        log.info("📊 [{}][MONITOR] Strike: {} | CP: {} | CV: {} | Gap: {} | Target: {} | SL Distance: {}",
-                symbol, tick.getStrike(), 
-                cp.setScale(2, RoundingMode.HALF_UP), 
-                cv.setScale(2, RoundingMode.HALF_UP),
-                currentGap.setScale(2, RoundingMode.HALF_UP),
-                targetGap.setScale(2, RoundingMode.HALF_UP),
+        log.info("📊 [{}][MONITOR] Strike: {} | CP: {} | Gap: {} | Target: {} | SL Distance: {}",
+                symbol, tick.getStrike(), cp.setScale(2, RoundingMode.HALF_UP), 
+                currentGap.setScale(2, RoundingMode.HALF_UP), targetGap.setScale(2, RoundingMode.HALF_UP),
                 cp.subtract(cv).abs().setScale(2, RoundingMode.HALF_UP));
 
         if (cp.compareTo(cv) >= 0) {
             log.info("🚨 [{}][EXIT] Stop Loss Triggered! CP ({}) crossed CV ({}).", symbol, cp, cv);
-            closeAll(activeOrders, tick, "STOP_LOSS_VWAP_CROSS");
+            closeAll(activeOrders, tick, "STOP_LOSS_VWAP_CROSS", strategy);
         } else if (currentGap.compareTo(targetGap) >= 0) {
             log.info("💰 [{}][EXIT] Target Reached! Gap {} >= Target {}.", symbol, currentGap, targetGap);
-            closeAll(activeOrders, tick, "TARGET_REACHED");
+            closeAll(activeOrders, tick, "TARGET_REACHED", strategy);
         }
     }
 
     @Transactional
-    protected void executeShortStraddle(String symbol, StraddleIntraday tick, BigDecimal entryGap) {
-        log.info("🚀 [{}][EXECUTE] Placing Short Straddle at Strike: {} with Entry Gap: {}", symbol, tick.getStrike(), entryGap);
+    protected void executeShortStraddle(String symbol, StraddleIntraday tick, BigDecimal entryGap, Strategy strategy) {
+        log.info("🚀 [{}][EXECUTE] Placing Short Straddle at Strike: {}", symbol, tick.getStrike());
         
         String cycleId = UUID.randomUUID().toString();
         String uniqueName = "SHORT_STRADDLE_" + symbol.toUpperCase();
-        Strategy strategy = strategyRepo.findByName(symbol.toUpperCase());
-        if (strategy == null) {
-            log.error("❌ [{}][EXECUTE] Strategy config not found in StrategyRepo!", symbol);
-            return;
-        }
-
         boolean isLive = "Y".equalsIgnoreCase(strategy.getLive());
-        BigDecimal ptsToCapture = TARGET_POINTS.getOrDefault(symbol.toUpperCase(), new BigDecimal("15"));
+
+        BigDecimal ptsToCapture = strategy.getTargetPoints() != null ? strategy.getTargetPoints() : 
+                                 (symbol.contains("NIFTY") ? DEFAULT_NIFTY_TARGET : DEFAULT_CRUDE_TARGET);
         BigDecimal targetValue = entryGap.add(ptsToCapture);
 
         processLeg(tick.getCeToken(), tick.getCeSymbol(), strategy, tick.getCePrice(), 
-                   tick.getStrike(), uniqueName, "CE", cycleId, entryGap, targetValue, isLive,symbol);
+                   tick.getStrike(), uniqueName, "CE", cycleId, entryGap, targetValue, isLive, symbol);
 
         processLeg(tick.getPeToken(), tick.getPeSymbol(), strategy, tick.getPePrice(), 
-                   tick.getStrike(), uniqueName, "PE", cycleId, entryGap, targetValue, isLive,symbol);
+                   tick.getStrike(), uniqueName, "PE", cycleId, entryGap, targetValue, isLive, symbol);
 
         telegramService.sendMessage(buildEntryMsg(symbol, tick.getStrike(), tick.getCePrice(), tick.getPePrice(), entryGap, ptsToCapture));
     }
 
-    // Existing helper methods remain unchanged...
-    // (closeAll, processLeg, saveOrder, isSquareOffTime, buildEntryMsg, buildExitMsg)
-
     @Transactional
-    protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason) {
+    protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategy) {
         String symbol = tick.getName().toUpperCase();
-        Strategy strategy = strategyRepo.findByName(symbol);
         boolean isLive = strategy != null && "Y".equalsIgnoreCase(strategy.getLive());
 
         BigDecimal totalEntry = BigDecimal.ZERO;
         BigDecimal totalExit = BigDecimal.ZERO;
 
         for (Orders order : activeOrders) {
+            // Safety Check: Idempotency
+            if (order.getActive() == STATUS_INACTIVE) continue;
+
             try {
                 if (isLive) {
                     String tokenToExit = "CE".equals(order.getOptionType()) ? tick.getCeToken() : tick.getPeToken();
@@ -279,7 +280,7 @@ public class ShortStraddleService {
             📊 **Combined** : **%.2f**
             📉 **Gap to VWAP**: %.2f
             
-            🎯 **Target** : +%s Points
+            🎯 **Target** : +%.2f Points
             ⏰ **Time** : %s
             🟢 *Monitoring for VWAP crossover SL...*
             """, sym, strike, ce, pe, ce.add(pe), gap, tgt, t);

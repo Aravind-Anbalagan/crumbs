@@ -1,10 +1,17 @@
 package com.crumbs.trade.entity;
 
-import jakarta.persistence.*;
+import java.math.BigDecimal;
+
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Data
 @NoArgsConstructor
@@ -68,4 +75,10 @@ public class Strategy {
     
     @Column(name = "enable_logging")
     private String enableLogging = "N"; // Default to "N" (no logging)
+    
+    @Column(name = "target_points") // Replaces your static TARGET_POINTS
+    private BigDecimal targetPoints;
+
+    @Column(name = "max_entry_risk") // Replaces your static MAX_ENTRY_RISK
+    private BigDecimal maxEntryRisk;
 }
