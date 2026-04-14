@@ -93,4 +93,7 @@ public class Strategy {
     
     @Column(name = "slPoints") //
     private BigDecimal slPoints;
+    
+    @Column(name = "max_daily_trades")
+    private int maxDailyTrades;
 }
