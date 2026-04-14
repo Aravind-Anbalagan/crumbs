@@ -62,9 +62,9 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     List<Orders> findByNameContainingIgnoreCase(String namePart);
     
  // 🔥 ADD THIS METHOD TO FIX THE ERROR
-    @Query("SELECT COUNT(o) FROM Orders o WHERE o.symbol = :symbol " +
-           "AND o.signal = :signal AND o.createdOn >= :startOfDay")
-    long countTradesToday(@Param("symbol") String symbol, 
-                          @Param("signal") String signal, 
-                          @Param("startOfDay") LocalDateTime startOfDay);
+    @Query("SELECT COUNT(o) FROM Orders o WHERE o.name = :name " +
+    	       "AND o.signal = :signal AND o.createdOn >= :startOfDay")
+    	long countLegsToday(@Param("name") String name, 
+    	                    @Param("signal") String signal, 
+    	                    @Param("startOfDay") LocalDateTime startOfDay);
 }

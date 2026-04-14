@@ -64,12 +64,17 @@ public class ShortStraddleService {
         if (strategy == null) return;
 
         LocalDateTime startOfDay = LocalDateTime.now().with(LocalTime.MIN);
-        long totalLegsToday = ordersRepository.countTradesToday(symUpper, STRATEGY_SIGNAL, startOfDay);
-        long straddlesUsed = totalLegsToday / 2; 
+        // 1. Fetch total legs from DB
+        long totalLegs = ordersRepository.countLegsToday(uniqueName, STRATEGY_SIGNAL, startOfDay);
+
+        // 2. Convert legs to Straddle units
+        long straddlesUsed = totalLegs / 2; 
+
+        // 3. Compare against DB-configured limit
         int maxAllowed = strategy.getMaxDailyTrades() > 0 ? strategy.getMaxDailyTrades() : 3;
 
         // 2. Scoreboard Pulse Log: Visible daily progress
-        log.info("⏱️ [{}][EVAL] Pulse @ {} | Trades Today: {}/{}", 
+        log.info("⏱️ [{}][EVAL] Pulse @ {} | Straddles Today: {}/{}", 
                 symUpper, now.format(DateTimeFormatter.ofPattern("HH:mm:ss")), straddlesUsed, maxAllowed);
 
         if (symUpper.contains("CRUDE") && now.isBefore(CRUDE_START)) {
