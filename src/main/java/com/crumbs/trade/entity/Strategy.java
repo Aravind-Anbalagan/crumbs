@@ -81,4 +81,10 @@ public class Strategy {
 
     @Column(name = "max_entry_risk") // Replaces your static MAX_ENTRY_RISK
     private BigDecimal maxEntryRisk;
+    
+    @Column(name = "entry_hits_required")
+    private int entryHitsRequired = 3;
+
+    @Column(name = "exit_hits_required")
+    private int exitHitsRequired = 3;
 }
