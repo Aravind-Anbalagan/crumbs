@@ -87,4 +87,7 @@ public class Strategy {
 
     @Column(name = "exit_hits_required")
     private int exitHitsRequired = 3;
+    
+    @Column(name = "quantity")
+    private int quantity;
 }

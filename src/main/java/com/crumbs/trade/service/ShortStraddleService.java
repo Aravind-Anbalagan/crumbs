@@ -198,7 +198,10 @@ public class ShortStraddleService {
             t.setExch_seg(strategy.getExchange());
             t.setStrike(strike);
             t.setName(name);
-
+            // 🔥 NEW: Set quantity from DB configuration
+            // Fallback to 1 if the DB value is 0 or null
+            int qty = strategy.getQuantity() > 0 ? strategy.getQuantity() : 1;
+            t.setQuantity(qty);
             try {
                 orderService.orderPlaceWithToken(t, uniqueName, "SELL", true);
             } catch (Exception | SmartAPIException e) {
@@ -213,7 +216,7 @@ public class ShortStraddleService {
                 order.setActive(STATUS_ACTIVE);
                 order.setName(uniqueName);
             }
-
+            order.setQuantity(qty);
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type);
             order.setTradeCycleId(cycleId);
