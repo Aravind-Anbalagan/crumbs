@@ -56,13 +56,19 @@ public class ShortStraddleService {
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
 
     /**
-     * Main Entry Point
+     * Main Entry Point - Runs every minute via Scheduler
      */
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
         String symUpper = symbol.toUpperCase();
 
-        if (symUpper.contains("CRUDE") && now.isBefore(CRUDE_START)) return;
+        // HEARTBEAT LOG: Confirmation that the scheduler is alive and running
+        log.info("⏱️ [{}][EVAL] Scheduler pulse at {}. Checking state...", symUpper, now.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
+
+        if (symUpper.contains("CRUDE") && now.isBefore(CRUDE_START)) {
+            log.info("⏳ [{}][WAIT] Outside trading window. CRUDE starts at 16:00.", symUpper);
+            return;
+        }
 
         Strategy strategy = strategyRepo.findByName(symUpper);
         if (strategy == null) {
@@ -73,22 +79,29 @@ public class ShortStraddleService {
         String uniqueName = "SHORT_STRADDLE_" + symUpper;
         List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(uniqueName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
-        // 1. Square-off Logic
-        if (!activeOrders.isEmpty() && isSquareOffTime(symUpper, now)) {
-            straddleRepository.findLatestByName(symbol).ifPresent(tick -> 
-                closeAll(activeOrders, tick, "EOD_SQUARE_OFF", strategy));
-            return;
-        }
+        if (!activeOrders.isEmpty()) {
+            // MODE LOG: Monitoring
+            log.info("🔍 [{}][MODE] Active trade detected. Monitoring for Exit.", symUpper);
+            
+            if (isSquareOffTime(symUpper, now)) {
+                straddleRepository.findLatestByName(symbol).ifPresent(tick -> 
+                    closeAll(activeOrders, tick, "EOD_SQUARE_OFF", strategy));
+                return;
+            }
 
-        if (activeOrders.isEmpty()) {
-            // 2. Scanning Mode
-            straddleRepository.findATMBySymbol(symbol).ifPresent(tick -> 
-                processEntrySequence(symUpper, tick, strategy));
-        } else {
-            // 3. Monitoring Mode
             BigDecimal tradedStrike = activeOrders.get(0).getStrike();
-            straddleRepository.findLatestBySymbolAndStrike(symbol, tradedStrike).ifPresent(tick -> 
-                processExitSequence(symUpper, tick, activeOrders, strategy));
+            straddleRepository.findLatestBySymbolAndStrike(symbol, tradedStrike).ifPresentOrElse(
+                tick -> processExitSequence(symUpper, tick, activeOrders, strategy),
+                () -> log.error("❌ [{}][MONITOR] Price data missing for active strike: {}", symUpper, tradedStrike)
+            );
+        } else {
+            // MODE LOG: Scanning
+            log.info("📡 [{}][MODE] No active trade. Scanning for Entry conditions...", symUpper);
+            
+            straddleRepository.findATMBySymbol(symbol).ifPresentOrElse(
+                tick -> processEntrySequence(symUpper, tick, strategy),
+                () -> log.warn("⚠️ [{}][SCAN] No ATM data found in DB. Check your data feeder!", symUpper)
+            );
         }
     }
 
@@ -100,12 +113,18 @@ public class ShortStraddleService {
         BigDecimal maxAllowed = strategy.getMaxEntryRisk() != null ? strategy.getMaxEntryRisk() : 
                                (symbol.contains("NIFTY") ? DEFAULT_NIFTY_RISK : DEFAULT_CRUDE_RISK);
 
+        // DATA LOG: Every minute visibility of CP, CV, and the Gap
+        log.info("📊 [{}][SCAN] Strike: {} | Premium: {} | VWAP: {} | Gap: {} | Limit: {}", 
+                symbol, tick.getStrike(), 
+                cp.setScale(2, RoundingMode.HALF_UP), 
+                cv.setScale(2, RoundingMode.HALF_UP),
+                currentGap.setScale(2, RoundingMode.HALF_UP),
+                maxAllowed);
+
         if (cp.compareTo(cv) < 0) {
             if (currentGap.compareTo(maxAllowed) <= 0) {
                 int count = hitCounters.merge(symbol, 1, Integer::sum);
-                log.info("🎯 [{}][SCAN] HIT {}/{} | Strike: {} | Gap: {} | Max: {}", 
-                        symbol, count, REQUIRED_CONSECUTIVE_HITS, tick.getStrike(), 
-                        currentGap.setScale(2, RoundingMode.HALF_UP), maxAllowed);
+                log.info("🎯 [{}][HIT] VALID CROSSOVER! Consecutive Hit: {}/{}", symbol, count, REQUIRED_CONSECUTIVE_HITS);
 
                 if (count >= REQUIRED_CONSECUTIVE_HITS) {
                     executeShortStraddle(symbol, tick, currentGap, strategy);
@@ -113,11 +132,11 @@ public class ShortStraddleService {
                 }
             } else {
                 hitCounters.put(symbol, 0);
-                log.info("⏩ [{}][SCAN] Crossover active but Gap too wide ({} > {}).", 
-                        symbol, currentGap.setScale(2, RoundingMode.HALF_UP), maxAllowed);
+                log.info("⏩ [{}][SCAN] Crossover active but Gap is too wide (Risk Cap). Counter Reset.", symbol);
             }
         } else {
             hitCounters.put(symbol, 0);
+            log.info("⏳ [{}][SCAN] Premium still above VWAP. Waiting for Crossover...", symbol);
         }
     }
 
@@ -132,18 +151,22 @@ public class ShortStraddleService {
         
         BigDecimal targetGap = (entryGap != null ? entryGap : BigDecimal.ZERO).add(ptsToCapture);
 
+        log.info("📊 [{}][MONITOR] Strike: {} | CP: {} | CV: {} | Gap: {} | Target: {}",
+                symbol, tick.getStrike(), cp.setScale(2, RoundingMode.HALF_UP), cv.setScale(2, RoundingMode.HALF_UP),
+                currentGap.setScale(2, RoundingMode.HALF_UP), targetGap.setScale(2, RoundingMode.HALF_UP));
+
         if (cp.compareTo(cv) >= 0) {
-            log.info("🚨 [{}][EXIT] SL Triggered! CP ({}) >= CV ({}).", symbol, cp, cv);
+            log.info("🚨 [{}][EXIT] Stop Loss Triggered! CP ({}) crossed back above CV ({}).", symbol, cp, cv);
             closeAll(activeOrders, tick, "STOP_LOSS_VWAP_CROSS", strategy);
         } else if (currentGap.compareTo(targetGap) >= 0) {
-            log.info("💰 [{}][EXIT] Target Reached! Gap {} >= Target {}.", symbol, currentGap, targetGap);
+            log.info("💰 [{}][EXIT] Target Reached! Current Gap ({}) >= Target Gap ({}).", symbol, currentGap, targetGap);
             closeAll(activeOrders, tick, "TARGET_REACHED", strategy);
         }
     }
 
     @Transactional
     protected void executeShortStraddle(String symbol, StraddleIntraday tick, BigDecimal entryGap, Strategy strategy) {
-        log.info("🚀 [{}][EXECUTE] Triggering Short Straddle at Strike: {}", symbol, tick.getStrike());
+        log.info("🚀 [{}][EXECUTE] Initializing trade cycle for Strike: {}", symbol, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
         String uniqueName = "SHORT_STRADDLE_" + symbol.toUpperCase();
 
@@ -171,18 +194,18 @@ public class ShortStraddleService {
             t.setStrike(strike);
             t.setName(name);
 
-            // 1. Trigger Generic Order (Enables Broker Execution)
+            // 1. Broker Execution attempt (Via Generic Service)
             try {
                 orderService.orderPlaceWithToken(t, uniqueName, "SELL", true);
             } catch (Exception | SmartAPIException e) {
-                log.warn("⚠️ [{}][LEG] Broker failed for {}. Continuing for Paper Tracking.", name, type);
+                log.warn("⚠️ [{}][LEG] Broker execution failed for {}. Continuing for Paper Tracking.", name, type);
             }
 
-            // 2. Find and Enrich existing row to prevent Dual Entry
+            // 2. Find-and-Update Enrichment Logic
             Orders order = ordersRepository.findByTokenAndActive(tokenStr, STATUS_ACTIVE);
             
             if (order == null) {
-                log.info("ℹ️ [{}][LEG] Creating manual record for {}", name, type);
+                log.info("ℹ️ [{}][LEG] Creating manual record for tracking: {}", name, type);
                 order = new Orders();
                 order.setToken(tokenStr);
                 order.setSymbol(symbol);
@@ -190,7 +213,7 @@ public class ShortStraddleService {
                 order.setName(uniqueName);
             }
 
-            // Update Metadata
+            // Update Metadata - ensures correct columns are filled even if Generic service missed them
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type);
             order.setTradeCycleId(cycleId);
@@ -218,14 +241,14 @@ public class ShortStraddleService {
         for (Orders order : activeOrders) {
             if (order.getActive() == STATUS_INACTIVE) continue;
             try {
-                // 1. Trigger Generic Exit
+                // 1. Broker Exit attempt
                 try {
                     orderService.exitActiveTradeByToken(order.getToken(), order.getName());
                 } catch (Exception | SmartAPIException e) {
-                    log.warn("⚠️ [{}][EXIT] Broker exit failed for {}. Closing DB record.", symbol, order.getOptionType());
+                    log.warn("⚠️ [{}][EXIT] Broker exit failed for {}. Closing DB record anyway.", symbol, order.getOptionType());
                 }
 
-                // 2. Finalize DB Record
+                // 2. Finalize Record
                 BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
                 totalEntry = totalEntry.add(order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO);
                 totalExit = totalExit.add(exitPrice);
@@ -235,12 +258,12 @@ public class ShortStraddleService {
                 order.setClosedOn(LocalDateTime.now());
                 order.setTradePhase(PHASE_EXIT);
                 order.setStatus(STATUS_CLOSED);
-                order.setActive(STATUS_INACTIVE); // Stop monitoring
+                order.setActive(STATUS_INACTIVE); // End tracking
                 
                 ordersRepository.save(order);
 
             } catch (Exception e) {
-                log.error("❌ [{}][EXIT] Error closing order: {}", symbol, e.getMessage());
+                log.error("❌ [{}][EXIT] Error closing order record: {}", symbol, e.getMessage());
             }
         }
         telegramService.sendMessage(buildExitMsg(symbol, tick.getStrike(), totalEntry, totalExit, reason));
