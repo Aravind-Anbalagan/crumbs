@@ -189,7 +189,7 @@
                 `;
             });
 
-            container.innerHTML = cardsHtml || `<div style="text-align:center; padding:3rem; color:var(--text-dim)">Waiting for data...</div>`;
+            container.innerHTML = cardsHtml || `<div style="text-align:center; padding:3rem; color:var(--text-dim)">No data Found...</div>`;
             
             document.getElementById('stat-count').innerText = Object.keys(groups).length;
             document.getElementById('stat-points').innerText = overallPts.toFixed(2);

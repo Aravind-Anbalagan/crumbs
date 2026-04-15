@@ -88,7 +88,8 @@ public class ShortStraddleService {
             // If DB shows 1 leg (like orphaned 2452 or 2453), close it immediately.
             if (activeOrders.size() != 2) {
                 log.error("🚨 [{}][SAFETY] Imbalance! Found {} legs. Cleaning up orphan.", tradeName, activeOrders.size());
-                straddleRepository.findLatestByName(baseSymbol).ifPresent(tick -> 
+                BigDecimal tradedStrike = activeOrders.get(0).getStrike();
+                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
                     closeAll(activeOrders, tick, "ORPHAN_LEG_CLEANUP", strategy));
                 return;
             }
@@ -96,7 +97,8 @@ public class ShortStraddleService {
             // --- MONITORING MODE ---
             if (isSquareOffTime(baseSymbol, now)) {
                 log.info("🕒 [{}][EXIT] Square-off reached.", tradeName);
-                straddleRepository.findLatestByName(baseSymbol).ifPresent(tick -> 
+                BigDecimal tradedStrike = activeOrders.get(0).getStrike();
+                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
                     closeAll(activeOrders, tick, "EOD_SQUARE_OFF", strategy));
                 return;
             }
@@ -258,6 +260,7 @@ public class ShortStraddleService {
         }
     }
 
+  
     @Transactional
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategy) {
         String tradeName = strategy.getName();
@@ -278,25 +281,35 @@ public class ShortStraddleService {
                 }
 
                 BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
-                totalEntry = totalEntry.add(order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO);
+                
+                // MATH: Ensure your Entity maps getAskPrice to "askprice" column
+                BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
+                
+                totalEntry = totalEntry.add(entryPrice);
                 totalExit = totalExit.add(exitPrice);
 
                 order.setExitPrice(exitPrice);
-                order.setPl(order.getAskPrice() != null ? order.getAskPrice().subtract(exitPrice) : BigDecimal.ZERO);
+                order.setPl(entryPrice.subtract(exitPrice));
                 order.setClosedOn(LocalDateTime.now());
                 order.setTradePhase(PHASE_EXIT);
                 order.setStatus(STATUS_CLOSED);
                 order.setActive(STATUS_INACTIVE);
                 ordersRepository.save(order);
+                
             } catch (Exception e) {
                 log.error("❌ [{}][EXIT] Internal error: {}", tradeName, e.getMessage());
             }
         }
         
+        // Only ONE Telegram message sent here
         if (allSuccess && activeOrders.size() == 2) {
-            BigDecimal pnl = totalEntry.subtract(totalExit);
-            telegramService.sendMessage(String.format("%s **EXIT: %s**\nReason: %s\nPnL: **%.2f pts**", 
-                    pnl.signum() >= 0 ? "✅" : "❌", tradeName, reason, pnl));
+            BigDecimal finalPnL = totalEntry.subtract(totalExit);
+            String emoji = finalPnL.signum() >= 0 ? "✅" : "❌";
+            
+            telegramService.sendMessage(String.format(
+                "%s **EXIT: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **%.2f pts**", 
+                emoji, tradeName, reason, totalEntry, totalExit, finalPnL
+            ));
         }
     }
 
