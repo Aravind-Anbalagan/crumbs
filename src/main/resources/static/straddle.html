@@ -276,7 +276,10 @@
             <label style="color:#94a3b8">Expiry</label><select id="expiry-select"></select>
             <label style="color:#94a3b8">CE</label><select id="ce-strike-select"></select>
             <label style="color:#94a3b8">PE</label><select id="pe-strike-select"></select>
-
+<div style="display:flex; align-items:center; gap:4px; margin-left:8px;">
+    <input type="checkbox" id="sync-strike-check" style="cursor:pointer">
+    <label for="sync-strike-check" style="color:#94a3b8; font-size:12px; cursor:pointer">Strike Sync</label>
+</div>
             <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
 
             <div class="last-update">
@@ -1472,21 +1475,41 @@ function calculateDiff(prem, vwap) {
             loadInitialData();
         });
 
-        document.getElementById('ce-strike-select').addEventListener('change', (e) => {
-            API_PARAMS.ceStrike = String(e.target.value);
-            console.log('CE Strike changed to:', API_PARAMS.ceStrike); // Debug log
-            isInitialLoad = true; // Reset to fit content for new data
-            lastUpdateTimestamp = null; // Reset timestamp for new data
-            loadInitialData();
-        });
+        const ceSelect = document.getElementById('ce-strike-select');
+    const peSelect = document.getElementById('pe-strike-select');
+    const syncCheck = document.getElementById('sync-strike-check');
 
-        document.getElementById('pe-strike-select').addEventListener('change', (e) => {
-            API_PARAMS.peStrike = String(e.target.value);
-            console.log('PE Strike changed to:', API_PARAMS.peStrike); // Debug log
-            isInitialLoad = true; // Reset to fit content for new data
-            lastUpdateTimestamp = null; // Reset timestamp for new data
-            loadInitialData();
-        });
+    ceSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        API_PARAMS.ceStrike = String(val);
+        
+        // If sync is checked, update PE select and params
+        if (syncCheck.checked) {
+            peSelect.value = val;
+            API_PARAMS.peStrike = String(val);
+        }
+
+        console.log('CE Strike changed to:', API_PARAMS.ceStrike);
+        isInitialLoad = true; 
+        lastUpdateTimestamp = null;
+        loadInitialData();
+    });
+
+    peSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        API_PARAMS.peStrike = String(val);
+        
+        // If sync is checked, update CE select and params
+        if (syncCheck.checked) {
+            ceSelect.value = val;
+            API_PARAMS.ceStrike = String(val);
+        }
+
+        console.log('PE Strike changed to:', API_PARAMS.peStrike);
+        isInitialLoad = true;
+        lastUpdateTimestamp = null;
+        loadInitialData();
+    });
     }
 
     async function updateIncrementalData() {
