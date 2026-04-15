@@ -884,7 +884,7 @@ public class StraddleIntradayService {
 	    List<StraddlePremiumDto> list = new ArrayList<>();
 
 	    BigDecimal step  = BigDecimal.valueOf(interval);
-	    BigDecimal range = BigDecimal.valueOf(300);   // ±500
+	    BigDecimal range = BigDecimal.valueOf(600);   // ±500
 
 	    BigDecimal start = atmStrike.subtract(range);
 	    BigDecimal end   = atmStrike.add(range);
