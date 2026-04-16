@@ -307,9 +307,10 @@ public class ShortStraddleService {
             if (order == null) {
                 order = new Orders();
                 order.setToken(tokenStr); order.setSymbol(symbol);
-                order.setActive(STATUS_ACTIVE); order.setName(tradeName);
+                order.setSymbol(symbol);
+               
             }
-
+            order.setActive(STATUS_ACTIVE); order.setName(tradeName);
             order.setQuantity(t.getQuantity()); 
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type); 
