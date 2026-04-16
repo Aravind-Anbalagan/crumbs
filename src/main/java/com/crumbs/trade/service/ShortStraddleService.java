@@ -132,16 +132,16 @@ public class ShortStraddleService {
 
         // 1. Break down the conditions independently
         boolean isCpBelowCv = cp.compareTo(cv) < 0;
-        boolean isGapAcceptable = currentGap.compareTo(safeDistance) >= 0;
+        boolean isGapAcceptable = currentGap.compareTo(safeDistance) <= 0;
 
         // 2. Generate explicit statuses for BOTH rules
         String trendStatus = isCpBelowCv ? "✅ VALID (CP < CV)" : "⏳ WAITING (CP > CV)";
-        String distStatus = isGapAcceptable ? String.format("✅ SAFE (Gap %.2f >= Floor %.2f)", currentGap, safeDistance) 
-                                            : String.format("🚫 UNSAFE (Gap %.2f < Floor %.2f)", currentGap, safeDistance);
+        String distStatus = isGapAcceptable ? String.format("✅ SAFE (Gap %.2f <= Max Risk %.2f)", currentGap, safeDistance) 
+                : String.format("🚫 UNSAFE (Gap %.2f > Max Risk %.2f)", currentGap, safeDistance);
 
         // 3. Print the explicit Dual-Status SCANNING LOG
-        log.info("🔍 [{}] SCANNING | CP: {} | CV: {} | Gap: {}", 
-                 tradeName, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
+        log.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}", 
+                tradeName, tick.getStrike(), cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
         log.info("🚦 ENTRY RULES -> [Trend: {}] | [Distance: {}]", trendStatus, distStatus);
 
         // 4. Hit Tracker & Execution Logic
