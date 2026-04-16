@@ -362,6 +362,7 @@ public class ShortStraddleService {
                 order.setTradePhase(PHASE_EXIT);
                 order.setStatus(STATUS_CLOSED);
                 order.setActive(STATUS_INACTIVE);
+                order.setExitReason(reason);
                 ordersRepository.save(order); // DB tracks all activity
                 
             } catch (Exception e) {

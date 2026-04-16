@@ -74,5 +74,8 @@ public class Orders {
     
     @Column(name = "target", precision = 12, scale = 2)
     private BigDecimal target;
+    
+    @Column(name = "exit_reason")
+    private String exitReason;
   
 }
