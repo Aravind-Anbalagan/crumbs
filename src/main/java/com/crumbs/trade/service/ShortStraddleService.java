@@ -123,20 +123,31 @@ public class ShortStraddleService {
     private void processEntrySequence(String tradeName, StraddleIntraday tick, Strategy strategyConfig, Strategy sourceConfig) {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
-        BigDecimal currentGap = cv.subtract(cp);
-        BigDecimal maxAllowed = strategyConfig.getMaxEntryRisk(); 
+        BigDecimal currentGap = cv.subtract(cp); 
+        
+        // Treat the config as the Minimum Safe Distance (Default to 0 if null)
+        BigDecimal safeDistance = strategyConfig.getMaxEntryRisk() != null ? strategyConfig.getMaxEntryRisk() : BigDecimal.ZERO; 
         int reqHits = strategyConfig.getEntryHitsRequired() > 0 ? strategyConfig.getEntryHitsRequired() : 3;
 
-        // 🔍 SCANNING LOG
+        // 1. Break down the conditions independently
+        boolean isCpBelowCv = cp.compareTo(cv) < 0;
+        boolean isGapAcceptable = currentGap.compareTo(safeDistance) >= 0;
+
+        // 2. Generate explicit statuses for BOTH rules
+        String trendStatus = isCpBelowCv ? "✅ VALID (CP < CV)" : "⏳ WAITING (CP > CV)";
+        String distStatus = isGapAcceptable ? String.format("✅ SAFE (Gap %.2f >= Floor %.2f)", currentGap, safeDistance) 
+                                            : String.format("🚫 UNSAFE (Gap %.2f < Floor %.2f)", currentGap, safeDistance);
+
+        // 3. Print the explicit Dual-Status SCANNING LOG
         log.info("🔍 [{}] SCANNING | CP: {} | CV: {} | Gap: {}", 
                  tradeName, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
+        log.info("🚦 ENTRY RULES -> [Trend: {}] | [Distance: {}]", trendStatus, distStatus);
 
-        // Entry Condition: CP < CV AND Gap is not more than configured pts
-        if (cp.compareTo(cv) < 0 && (maxAllowed == null || currentGap.compareTo(maxAllowed) <= 0)) {
+        // 4. Hit Tracker & Execution Logic
+        if (isCpBelowCv && isGapAcceptable) {
             int count = hitCounters.merge(tradeName + "_ENTRY", 1, Integer::sum);
             
-            // ⏳ HIT TRACKER LOG
-            log.info("⏳ [{}] ENTRY HIT DETECTED! ({}/{}) | Waiting for confirmation...", tradeName, count, reqHits);
+            log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) consecutive hits.", tradeName, count, reqHits);
             
             if (count >= reqHits) {
                 log.info("⚡ [{}] ALL HITS MET! Triggering execution...", tradeName);
@@ -146,10 +157,9 @@ public class ShortStraddleService {
         } else {
             int previousCount = hitCounters.getOrDefault(tradeName + "_ENTRY", 0);
             if (previousCount > 0) {
-                // 🔄 RESET LOG
-                log.info("🔄 [{}] ENTRY RESET. VWAP conditions lost before hitting {}.", tradeName, reqHits);
+                log.info("🔄 [{}] STREAK BROKEN! Hit counter reset from ({}/{}) back to 0.", tradeName, previousCount, reqHits);
             }
-            hitCounters.put(tradeName + "_ENTRY", 0); // Reset if condition breaks
+            hitCounters.put(tradeName + "_ENTRY", 0); // Reset if any condition breaks
         }
     }
 
