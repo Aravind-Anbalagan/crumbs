@@ -1,5 +1,6 @@
 package com.crumbs.trade.scheduler;
 
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.ShortStraddleService;
 import lombok.RequiredArgsConstructor;
@@ -8,7 +9,7 @@ import org.springframework.scheduling.annotation.Schedules;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor // Automatically handles constructor injection for final fields
+@RequiredArgsConstructor 
 public class ShortStraddleScheduler {
 
     private final ShortStraddleService shortStraddleService;
@@ -16,11 +17,11 @@ public class ShortStraddleScheduler {
 
     private static final String STRATEGY_NAME = "SHORT_STRADDLE";
 
-    // ==================== NIFTY (9:20:10 AM - 3:21:10 PM) ====================
+    // ==================== NIFTY (9:20:10 AM - 3:30:10 PM) ====================
     @Schedules({
         @Scheduled(cron = "10 20-59 9 * * MON-FRI", zone = "Asia/Kolkata"),
         @Scheduled(cron = "10 * 10-14 * * MON-FRI", zone = "Asia/Kolkata"),
-        @Scheduled(cron = "10 0-21 15 * * MON-FRI", zone = "Asia/Kolkata") 
+        @Scheduled(cron = "10 0-30 15 * * MON-FRI", zone = "Asia/Kolkata") // Buffer extended to 3:30 PM
     })
     public void straddleNifty() {
         executeIfActive(() -> shortStraddleService.evaluate("NIFTY"));
@@ -44,9 +45,11 @@ public class ShortStraddleScheduler {
         }
     }
 
-    private boolean isActive(String strategy) {
-        // Safe check for null and status value
-        return strategyRepo.findByName(strategy) != null && 
-               "Y".equalsIgnoreCase(strategyRepo.findByName(strategy).getActive());
+    /**
+     * Optimized: Queries the database only once per pulse.
+     */
+    private boolean isActive(String strategyName) {
+        Strategy strategy = strategyRepo.findByName(strategyName);
+        return strategy != null && "Y".equalsIgnoreCase(strategy.getActive());
     }
 }
