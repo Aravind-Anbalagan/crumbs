@@ -293,7 +293,7 @@ public class ShortStraddleService {
                 try {
                     log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...", tradeName, type);
                     // Pass strategyConfig.getName() ("SHORT_STRADDLE") so Angel API doesn't crash
-                    orderService.orderPlaceWithToken(t, sourceConfig.getName(), "SELL", true);
+                    orderService.orderPlaceWithToken(t, strategyConfig.getName(), "SELL", true);
                 } catch (Exception | SmartAPIException e) {
                     log.error("⚠️ [{}][LEG] Broker failed for {}. Reason: {}", tradeName, type, e.getMessage());
                     return null; // Return null so executeShortStraddle triggers partial rollback
@@ -344,7 +344,7 @@ public class ShortStraddleService {
                     try {
                         // Pass "SHORT_STRADDLE" to the exit service
                     	String sourceName = order.getName().replace("SHORT_STRADDLE_", "");
-                    	orderService.exitActiveTradeByToken(order.getToken(), sourceName);
+                    	orderService.exitActiveTradeByToken(order.getToken(), strategyConfig.getName());
                     } catch (Exception | SmartAPIException e) {
                         allSuccess = false;
                         log.error("❌ [{}][EXIT] Broker failed to close {}: {}", strategyConfig.getName(), order.getOptionType(), e.getMessage());
