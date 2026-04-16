@@ -346,7 +346,7 @@ public class ShortStraddleService {
                     try {
                         // Pass "SHORT_STRADDLE" to the exit service
                     	String sourceName = order.getName().replace("SHORT_STRADDLE_", "");
-                    	orderService.exitActiveTradeByToken(order.getToken(), order.getName());
+                    	orderService.exitActiveTradeByToken(order.getToken(), sourceConfig.getName());
                     } catch (Exception | SmartAPIException e) {
                         allSuccess = false;
                         log.error("❌ [{}][EXIT] Broker failed to close {}: {}", sourceConfig.getName(), order.getOptionType(), e.getMessage());

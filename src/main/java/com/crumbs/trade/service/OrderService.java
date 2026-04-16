@@ -210,10 +210,10 @@ public class OrderService {
     // EXIT BY TOKEN  (straddle use case — two legs share same strategy name,
     //                 identified uniquely by their token)
     // =========================================================================
-    public void exitActiveTradeByToken(String token, String strategyName)
+    public void exitActiveTradeByToken(String token, String sourceName)
             throws IOException, SmartAPIException {
 
-        Strategy strategy    = strategyRepo.findByName(strategyName);
+        Strategy strategy    = strategyRepo.findByName(sourceName);
         Orders   activeTrade = ordersRepo.findByTokenAndActive(token, 1);
 
         if (activeTrade == null) {
