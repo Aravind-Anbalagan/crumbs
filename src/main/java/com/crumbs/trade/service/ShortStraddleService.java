@@ -33,8 +33,10 @@ public class ShortStraddleService {
     
     // --- Rule 1: Strict Timeframes ---
     private static final LocalTime NIFTY_START = LocalTime.of(9, 20);
+    private static final LocalTime NIFTY_ENTRY_CUTOFF = LocalTime.of(15, 0);
     private static final LocalTime NIFTY_SQUARE_OFF = LocalTime.of(15, 20);
     private static final LocalTime CRUDE_START = LocalTime.of(16, 0);
+    private static final LocalTime CRUDE_ENTRY_CUTOFF = LocalTime.of(23, 0); // 🛑 NEW: No Crude entries after 11:00 PM
     private static final LocalTime CRUDE_SQUARE_OFF = LocalTime.of(23, 20);
 
     private static final int STATUS_ACTIVE = 1;
@@ -43,6 +45,8 @@ public class ShortStraddleService {
     private static final String STATUS_CLOSED = "CLOSED";
     private static final String PHASE_ENTRY = "ENTRY";
     private static final String PHASE_EXIT = "EXIT";
+    
+    
 
     private final ShortStraddleRepository straddleRepository;
     private final OrderRepository ordersRepository;
@@ -113,7 +117,14 @@ public class ShortStraddleService {
                 log.info("🛑 [{}] Max daily trades reached ({}/{}). Stopping scans.", tradeName, straddlesUsed, maxAllowed);
                 return;
             }
-
+            
+         // 🛑 NEW CUTOFF LOGIC: Block new entries if past the cutoff time
+            if (!isWithinEntryWindow(baseSymbol, now)) {
+                // We use debug/trace level logging here so we don't spam the console every second until square-off
+                log.debug("⏳ [{}] Entry window closed for today. Waiting for EOD.", tradeName);
+                return;
+            }
+         // If time is valid, scan for entry
             straddleRepository.findATMBySymbol(baseSymbol).ifPresent(tick -> 
                 processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
             );
@@ -333,7 +344,7 @@ public class ShortStraddleService {
     }
 
     // --- Rule 6, 8, 9: DB tracking, Exits, and Telegram ---
-    @Transactional
+    
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy sourceConfig) {
         BigDecimal totalEntry = BigDecimal.ZERO;
         BigDecimal totalExit = BigDecimal.ZERO;
@@ -345,7 +356,6 @@ public class ShortStraddleService {
                 if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
                     try {
                         // Pass "SHORT_STRADDLE" to the exit service
-                    	String sourceName = order.getName().replace("SHORT_STRADDLE_", "");
                     	orderService.exitActiveTradeByToken(order.getToken(), sourceConfig.getName());
                     } catch (Exception | SmartAPIException e) {
                         allSuccess = false;
@@ -393,5 +403,11 @@ public class ShortStraddleService {
         if ("NIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(NIFTY_SQUARE_OFF);
         if (symbol.contains("CRUDE")) return !now.isBefore(CRUDE_SQUARE_OFF);
         return false;
+    }
+    
+    private boolean isWithinEntryWindow(String symbol, LocalTime now) {
+        if ("NIFTY".equalsIgnoreCase(symbol)) return now.isBefore(NIFTY_ENTRY_CUTOFF);
+        if (symbol.contains("CRUDE")) return now.isBefore(CRUDE_ENTRY_CUTOFF);
+        return true; 
     }
 }
