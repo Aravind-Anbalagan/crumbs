@@ -184,14 +184,21 @@ public class StrategyService {
             logger.info("⏰ EOD Exit triggered for CPR Strategy");
 
             if (skipCPRTakeStraddle.get()) {
-                // ✅ Exit straddle legs
                 cprStraddleService.exitAllStraddlePositions();
             }
 
-            // ✅ Always exit any open directional CPR trade regardless of day type
-            orderService.exitActiveTrade(AppConstant.CPR_STRATEGY);
+            // 🟢 UPDATED: Fetch LTP and pass to exit method
+            Orders activeTrade = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
+            if (activeTrade != null) {
+                Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
+                SmartConnect sc = angelOne.signIn();
+                BigDecimal currentPrice = angelOneService.getcurrentPrice(
+                        sc, strategy.getExchange(), strategy.getTradingsymbol(), strategy.getToken(), "ltp");
+                
+                exitCurrentTrade("EOD_SQUARE_OFF", currentPrice != null ? currentPrice : BigDecimal.ZERO);
+            }
 
-        } catch (Exception | SmartAPIException e) {
+        } catch (Exception e) {
             logger.error("❌ Error during EOD CPR exit", e);
         }
     }
@@ -350,7 +357,7 @@ public class StrategyService {
 
         if (buySLTriggered) {
             logger.info("🛑 BUY SL Hit @ {} | first5Low={}", price, first5Low);
-            exitCurrentTrade();
+            exitCurrentTrade("BUY_SL_HIT", price);
             buySLHit.set(true);
             cprBuyTradeTaken.set(true);
             logger.info("🔒 BUY blocked for today. SELL side still open.");
@@ -359,7 +366,7 @@ public class StrategyService {
 
         if (sellSLTriggered) {
             logger.info("🛑 SELL SL Hit @ {} | first5High={}", price, first5High);
-            exitCurrentTrade();
+            exitCurrentTrade("SELL_SL_HIT", price);
             sellSLHit.set(true);
             cprSellTradeTaken.set(true);
             logger.info("🔒 SELL blocked for today. BUY side still open.");
@@ -388,7 +395,7 @@ public class StrategyService {
             if ("BUY".equals(signal)) {
                 if (cprBuyTradeTaken.get()) { logger.info("🚫 CPR BUY already taken today."); return; }
                 if (buySLHit.get())         { logger.info("🚫 BUY SL already hit today.");     return; }
-                if (oppositeActive)         { logger.info("🔄 Reversing SELL → BUY"); exitCurrentTrade(); }
+                if (oppositeActive) { logger.info("🔄 Reversing SELL → BUY"); exitCurrentTrade("SIGNAL_REVERSAL", currentPrice); }
                 logger.info("🔥 CPR BUY signal → orderPlace()");
                 orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "BUY",
                         buildOrderMeta(currentPrice, first5High, first5Low,
@@ -398,7 +405,7 @@ public class StrategyService {
             } else if ("SELL".equals(signal)) {
                 if (cprSellTradeTaken.get()) { logger.info("🚫 CPR SELL already taken today."); return; }
                 if (sellSLHit.get())         { logger.info("🚫 SELL SL already hit today.");    return; }
-                if (oppositeActive)          { logger.info("🔄 Reversing BUY → SELL"); exitCurrentTrade(); }
+                if (oppositeActive) { logger.info("🔄 Reversing BUY → SELL"); exitCurrentTrade("SIGNAL_REVERSAL", currentPrice); }
                 logger.info("🔥 CPR SELL signal → orderPlace()");
                 orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "SELL",
                         buildOrderMeta(currentPrice, first5High, first5Low,
@@ -441,9 +448,40 @@ public class StrategyService {
     // =========================================================================
     // EXIT CURRENT TRADE
     // =========================================================================
-    private void exitCurrentTrade() {
+ // =========================================================================
+    // EXIT CURRENT TRADE (Upgraded with DB Tracking)
+    // =========================================================================
+    private void exitCurrentTrade(String reason, BigDecimal exitPrice) {
         try {
+            Orders activeTrade = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
+            if (activeTrade == null) return;
+
+            // 1. Call the broker to close the position
             orderService.exitActiveTrade(AppConstant.CPR_STRATEGY);
+
+            // 2. Perform DB Updates
+            BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
+            
+            // Calculate Directional PnL
+            BigDecimal pnl;
+            if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
+                pnl = exitPrice.subtract(entryPrice); // Long: Exit - Entry
+            } else {
+                pnl = entryPrice.subtract(exitPrice); // Short: Entry - Exit
+            }
+
+            activeTrade.setExitPrice(exitPrice);
+            activeTrade.setPl(pnl);
+            activeTrade.setClosedOn(LocalDateTime.now());
+            activeTrade.setStatus("CLOSED");
+            activeTrade.setActive(0);
+            activeTrade.setExitReason(reason);
+
+            orderRepository.save(activeTrade);
+            
+            logger.info("✅ [{}][EXIT] Reason: {} | Entry: {} | Exit: {} | PnL: {}", 
+                    AppConstant.CPR_STRATEGY, reason, entryPrice, exitPrice, pnl);
+
         } catch (Exception | SmartAPIException e) {
             logger.error("❌ Error exiting CPR trade", e);
         }

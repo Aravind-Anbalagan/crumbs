@@ -26,9 +26,10 @@ public interface ShortStraddleRepository extends JpaRepository<StraddleIntraday,
     
  // Find the record where strike is closest to spot (ATM)
     @Query(value = "SELECT * FROM straddle_intraday " +
-                   "WHERE name = :name " +
-                   "ORDER BY ABS(spot - strike) ASC, trade_timestamp DESC " +
-                   "LIMIT 1", nativeQuery = true)
+            "WHERE name = :name " +
+            "AND trade_timestamp >= NOW() - INTERVAL '2 minutes' " + 
+            "ORDER BY ABS(spot - strike) ASC, trade_timestamp DESC " +
+            "LIMIT 1", nativeQuery = true)
     Optional<StraddleIntraday> findATMBySymbol(@Param("name") String name);
 
     // Find the latest tick for a specific strike (to monitor active trade)
