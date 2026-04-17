@@ -203,19 +203,31 @@ public class ShortStraddleService {
         int currentSlHits = hitCounters.getOrDefault(tradeName + "_EXIT", 0);
         boolean isHitsMet = currentSlHits >= reqSlHits;
 
-        // =========================================================================
+     // =========================================================================
         // 📊 USER-FRIENDLY MONITORING DASHBOARD
         // =========================================================================
+        BigDecimal tradedStrike = activeOrders.get(0).getStrike();
         String tradeStatus = currentGap.compareTo(entryGap) >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
         String cushionSign = currentGap.compareTo(entryGap) >= 0 ? "+" : "";
         BigDecimal currentPnL = currentGap.subtract(entryGap);
         
         String defenseMode = isPointSlConfigured ? "🛡️ [TWO SHIELDS: Trend + Price]" : "🛡️ [SINGLE SHIELD: Trend Only]";
         String vStatus = isVwapCrossover ? "⚠️ CROSSOVER (" + currentSlHits + "/" + reqSlHits + ")" : "✅ STABLE";
-        String pStatus = !isPointSlConfigured ? "⚪ DISABLED" : (isPointSlBreached ? "🚨 BREACHED" : "✅ SECURE");
+        
+        // 🛑 NEW: Detailed Price Shield Status
+        String pStatus;
+        if (!isPointSlConfigured) {
+            pStatus = "⚪ DISABLED";
+        } else {
+            BigDecimal slFloor = entryGap.subtract(slPoints);
+            pStatus = isPointSlBreached 
+                    ? String.format("🚨 BREACHED (Gap %.2f <= Floor %.2f)", currentGap, slFloor) 
+                    : String.format("✅ SECURE (Gap %.2f > Floor %.2f | Configured SL: %s pts)", currentGap, slFloor, slPoints);
+        }
 
         log.info("================================================================================");
-        log.info("📊 [{}] Status: {} | Floating PnL: {}{} pts", tradeName, tradeStatus, cushionSign, currentPnL.setScale(2, RoundingMode.HALF_UP));
+        // 🛑 NEW: Added Strike to the main status line
+        log.info("📊 [{}] Strike: {} | Status: {} | Floating PnL: {}{} pts", tradeName, tradedStrike, tradeStatus, cushionSign, currentPnL.setScale(2, RoundingMode.HALF_UP));
         log.info("🎯 GOAL: {} pts gap | Distance: {} pts to go", targetGap.setScale(2, RoundingMode.HALF_UP), distToTarget.setScale(2, RoundingMode.HALF_UP));
         log.info("{}", defenseMode);
         log.info("🛡️ SHIELD STATUS -> [Trend: {}] | [Price: {}]", vStatus, pStatus);
@@ -245,7 +257,7 @@ public class ShortStraddleService {
 
     // Notice: NO @Transactional here to prevent DB connection locks during live network calls
     protected void executeShortStraddle(String tradeName, StraddleIntraday tick, BigDecimal entryGap, Strategy strategyConfig, Strategy sourceConfig) {
-        log.info("🚀 [{}][EXECUTE] Opening positions.", tradeName);
+    	log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
         BigDecimal targetValue = entryGap.add(sourceConfig.getTargetPoints());
 
@@ -298,8 +310,8 @@ public class ShortStraddleService {
             t.setQuantity(sourceConfig.getQuantity()); // Quantity strictly from SOURCE
 
             // Mandatory logging of attributes
-            log.info("📝 [{}][{}] Preparing -> Symbol: {}, Token: {}, Exchange: {}, Qty: {}", 
-                    tradeName, type, t.getSymbol(), t.getToken(), t.getExch_seg(), t.getQuantity());
+            log.info("📝 [{}][{}] Preparing -> Strike: {}, Symbol: {}, Token: {}, Exchange: {}, Qty: {}", 
+                    tradeName, type, strike, t.getSymbol(), t.getToken(), t.getExch_seg(), t.getQuantity());
 
             if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
                 try {
