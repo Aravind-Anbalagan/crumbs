@@ -1,5 +1,7 @@
 package com.crumbs.trade.entity;
 
+import java.time.Instant;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -10,7 +12,7 @@ import lombok.Data;
 
 @Data
 @Entity
-@Table(name = "BROKERS")
+@Table(name = "brokers")
 public class Brokers {
 	@Id
 	@Column(name="id", nullable = false, unique = true)
@@ -30,4 +32,9 @@ public class Brokers {
 	String totpsecret;
 	@Column(name="requestcode")
     String requestcode;
+	@Column(name="apitoken", length = 1000) // Tokens can be long
+    String apitoken;
+
+    @Column(name="tokentimestamp")
+    Instant tokentimestamp;
 }

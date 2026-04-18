@@ -92,7 +92,7 @@ public class StrangleController {
 		token.setTransactionType("S");
 		token.setQuantity(100);
 		String url = "https://piconnect.flattrade.in/PiConnectTP/PlaceOrder";
-		APIResponse apiResponse=flatTradeService.callFlatTrade(setJDataForOrder(token), key, url);
+		//APIResponse apiResponse=flatTradeService.callFlatTrade(setJDataForOrder(token), key, url);
 		
 		//flatTradeService.placeOrder();
 	}
