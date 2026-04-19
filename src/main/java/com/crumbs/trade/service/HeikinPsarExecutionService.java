@@ -109,7 +109,7 @@ public class HeikinPsarExecutionService {
                     from, to,
                     strategyRepo.findByName(NIFTY).getTradingsymbol()
             );
-            chartService.monitorSignal(NIFTY, EXCHANGE_NFO, false, 0);
+            //chartService.monitorSignal(NIFTY, EXCHANGE_NFO, false, 0);
         }
 
         // Option Chain analysis
@@ -138,7 +138,7 @@ public class HeikinPsarExecutionService {
                     from, to,
                     strategyRepo.findByName(CRUDEOILM).getTradingsymbol()
             );
-            chartService.monitorSignal(CRUDEOILM, EXCHANGE_MCX, false, 0);
+            //chartService.monitorSignal(CRUDEOILM, EXCHANGE_MCX, false, 0);
         }
 
         // MCX Support/Resistance

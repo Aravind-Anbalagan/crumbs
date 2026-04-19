@@ -68,19 +68,19 @@ public class HeikinPsarScheduler {
 
     // ------------------- ORDER MONITOR -------------------
 
-    @Scheduled(cron = "*/10 * * * * MON-FRI")
+    //@Scheduled(cron = "*/10 * * * * MON-FRI")
     public void monitorOrders() {
         runSafely(TAG_ORDER_MON, () -> executionService.monitorExecutedOrders());
     }
 
     // ------------------- EXIT -------------------
 
-    @Scheduled(cron = "0 20 15 ? * MON-FRI", zone = ZONE)
+    //@Scheduled(cron = "0 20 15 ? * MON-FRI", zone = ZONE)
     public void nfoExit() {
         runSafely(TAG_NIFTY_EXIT, () -> executionService.exit(SYMBOL_NIFTY, EXCH_NFO));
     }
 
-    @Scheduled(cron = "0 20 23 ? * MON-FRI", zone = ZONE)
+    //@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = ZONE)
     public void mcxExit() {
         // Keeping CRUDEOILM here as per your original logic for MCX exit
         runSafely(TAG_MCX_EXIT, () -> executionService.exit(SYMBOL_CRUDEOILM, EXCH_MCX));
