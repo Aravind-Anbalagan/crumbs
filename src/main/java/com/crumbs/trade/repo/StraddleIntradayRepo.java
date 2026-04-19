@@ -193,4 +193,7 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
             LocalDateTime start,
             LocalDateTime end
     );
+
+	List<StraddleIntraday> findByNameAndTimestampBetweenOrderByTimestampAsc(
+			String name, LocalDateTime start, LocalDateTime end);
 }

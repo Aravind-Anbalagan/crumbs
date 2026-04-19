@@ -732,7 +732,7 @@ public class ChartService {
             Token flatToken = new Token();
             flatToken.setExch_seg(token.getExch_seg());     flatToken.setSymbol(token.getSymbol());
             flatToken.setTransactionType(flatTradeType);    flatToken.setQuantity(token.getQuantity());
-            flatTradeService.PlaceOrderInFlatTrade(flatToken);
+            //flatTradeService.PlaceOrderInFlatTrade(flatToken);
         } catch (Exception e) {
             logger.error("Error placing order in FlatTrade: {}", e.getMessage());
         }

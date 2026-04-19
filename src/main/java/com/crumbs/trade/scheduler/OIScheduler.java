@@ -33,7 +33,7 @@ public class OIScheduler {
         @Scheduled(cron = "5 0-45 23 * * MON-FRI", zone = "Asia/Kolkata")
     })
     public void oiCrude() {
-        process("CRUDEOIL");
+        process("CRUDEOILM");
     }
 
 
