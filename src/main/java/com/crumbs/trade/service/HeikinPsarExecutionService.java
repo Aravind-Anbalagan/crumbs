@@ -1,6 +1,5 @@
 package com.crumbs.trade.service;
 
-
 import java.io.IOException;
 import java.util.List;
 import com.crumbs.trade.dto.ChartDataDTO;
@@ -21,8 +20,33 @@ import jakarta.mail.internet.AddressException;
 @Service
 public class HeikinPsarExecutionService {
 
-    private static final Logger logger =
-            LogManager.getLogger(HeikinPsarExecutionService.class);
+    private static final Logger logger = LogManager.getLogger(HeikinPsarExecutionService.class);
+
+    // ================= CONFIGURATION CONSTANTS =================
+    // Symbols & Names
+    private static final String NIFTY = "NIFTY";
+    private static final String VIX = "VIX";
+    private static final String CRUDEOILM = "CRUDEOILM";
+    private static final String SILVERM = "SILVERM";
+    private static final String NIFTY_OI = "NIFTY_OI";
+    
+    // Exchanges
+    private static final String EXCHANGE_NSE = "NSE";
+    private static final String EXCHANGE_NFO = "NFO";
+    private static final String EXCHANGE_MCX = "MCX";
+    
+    // Timeframes
+    private static final String TF_FIVE_MIN = "FIVE_MINUTE";
+    private static final String TF_ONE_MIN = "ONE_MINUTE";
+    
+    // Strategy Flags
+    private static final String STRAT_HEIKIN_PSAR = "HEIKIN-PSAR";
+    private static final String STRAT_VIX = "VIX";
+    private static final String STRAT_NIFTY_INDEX = "NIFTY_INDEX";
+    private static final String STRAT_SR = "SR";
+    
+    // Status
+    private static final String ACTIVE_YES = "Y";
 
     @Autowired private ChartService chartService;
     @Autowired private StrategyRepo strategyRepo;
@@ -33,23 +57,29 @@ public class HeikinPsarExecutionService {
 
     // ================= CORE EXECUTIONS =================
 
+    /**
+     * Entry point for Nifty-related strategy logic.
+     */
     public void commonExecutionNifty() {
         try {
             executeNiftyInternal();
         } catch (SmartAPIException e) {
-            logApiError("NIFTY", e);
+            logApiError(NIFTY, e);
         } catch (Exception e) {
-            logGeneralError("NIFTY", e);
+            logGeneralError(NIFTY, e);
         }
     }
 
+    /**
+     * Entry point for MCX (Crude Oil) related strategy logic.
+     */
     public void commonExecutionMcx() {
         try {
             executeMcxInternal();
         } catch (SmartAPIException e) {
-            logApiError("SILVERM", e);
+            logApiError(CRUDEOILM, e);
         } catch (Exception e) {
-            logGeneralError("SILVERM", e);
+            logGeneralError(CRUDEOILM, e);
         }
     }
 
@@ -58,67 +88,74 @@ public class HeikinPsarExecutionService {
     private void executeNiftyInternal()
             throws SmartAPIException, IOException, AddressException, MessagingException {
 
-        String from = chartService.getDate("FROM", "NSE",1);
-        String to   = chartService.getDate("TO", "NSE",1);
+        String from = chartService.getDate("FROM", EXCHANGE_NSE, 1);
+        String to   = chartService.getDate("TO", EXCHANGE_NSE, 1);
 
         vixRepo.deleteAll();
 
-        if (isActive("VIX")) {
+        // Process VIX if active
+        if (isActive(STRAT_VIX)) {
             chartService.readChartData(
-                    "FIVE_MINUTE", "NSE", false, "VIX",
+                    TF_FIVE_MIN, EXCHANGE_NSE, false, VIX,
                     from, to,
-                    strategyRepo.findByName("VIX").getTradingsymbol()
+                    strategyRepo.findByName(VIX).getTradingsymbol()
             );
         }
 
-        if (isActive("HEIKIN-PSAR")) {
+        // Process Heikin-PSAR Strategy
+        if (isActive(STRAT_HEIKIN_PSAR)) {
             chartService.readChartData(
-                    "FIVE_MINUTE", "NFO", false, "NIFTY",
+                    TF_FIVE_MIN, EXCHANGE_NFO, false, NIFTY,
                     from, to,
-                    strategyRepo.findByName("NIFTY").getTradingsymbol()
+                    strategyRepo.findByName(NIFTY).getTradingsymbol()
             );
-            chartService.monitorSignal("NIFTY", "NFO", false, 0);
+            chartService.monitorSignal(NIFTY, EXCHANGE_NFO, false, 0);
         }
 
-        if (isActive("NIFTY_INDEX")) {
-            oiService.getOptionChain("NIFTY_OI");
+        // Option Chain analysis
+        if (isActive(STRAT_NIFTY_INDEX)) {
+            oiService.getOptionChain(NIFTY_OI);
         }
 
-        if (isActive("SR")) {
-            ChartDataDTO dto = srService.analyzeIntraday("NIFTY", "FIVE_MINUTE");
-            //srService.saveLevels("NIFTY", "FIVE_MINUTE", dto);
+        // Support/Resistance Analysis
+        if (isActive(STRAT_SR)) {
+            srService.analyzeIntraday(NIFTY, TF_FIVE_MIN);
         }
     }
 
     private void executeMcxInternal()
             throws SmartAPIException, IOException, AddressException, MessagingException {
 
-        String from = chartService.getDate("FROM", "MCX",1);
-        String to   = chartService.getDate("TO", "MCX",1);
+        String from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
+        String to   = chartService.getDate("TO", EXCHANGE_MCX, 1);
 
         vixRepo.deleteAll();
 
-        if (isActive("HEIKIN-PSAR")) {
+        // Process MCX Heikin-PSAR
+        if (isActive(STRAT_HEIKIN_PSAR)) {
             chartService.readChartData(
-                    "ONE_MINUTE", "MCX", false, "CRUDEOIL",
+                    TF_ONE_MIN, EXCHANGE_MCX, false, CRUDEOILM,
                     from, to,
-                    strategyRepo.findByName("CRUDEOIL").getTradingsymbol()
+                    strategyRepo.findByName(CRUDEOILM).getTradingsymbol()
             );
-            chartService.monitorSignal("CRUDEOIL", "MCX", false, 0);
+            chartService.monitorSignal(CRUDEOILM, EXCHANGE_MCX, false, 0);
         }
 
-        if (isActive("SR")) {
-            ChartDataDTO dto = srService.analyzeIntraday("CRUDEOIL", "FIVE_MINUTE");
-           // srService.saveLevels("CRUDEOIL", "FIVE_MINUTE", dto);
+        // MCX Support/Resistance
+        if (isActive(STRAT_SR)) {
+            srService.analyzeIntraday(CRUDEOILM, TF_FIVE_MIN);
         }
     }
 
     // ================= ORDER MONITOR =================
 
+    /**
+     * Periodically called to check status of executed trades.
+     */
     public void monitorExecutedOrders() {
         try {
-            check("NIFTY", "NFO");
-            check("SILVERM", "MCX");
+            check(NIFTY, EXCHANGE_NFO);
+            check(SILVERM, EXCHANGE_MCX);
         } catch (Exception e) {
             logger.error("❌ Error monitoring executed orders", e);
         }
@@ -135,6 +172,9 @@ public class HeikinPsarExecutionService {
 
     // ================= EXIT =================
 
+    /**
+     * Forced exit logic for EOD or specific conditions.
+     */
     public void exit(String symbol, String exchange) {
         try {
             chartService.exitFromTrade(symbol, exchange);
@@ -147,7 +187,7 @@ public class HeikinPsarExecutionService {
 
     private boolean isActive(String name) {
         Strategy s = strategyRepo.findByName(name);
-        return s != null && "Y".equalsIgnoreCase(s.getActive());
+        return s != null && ACTIVE_YES.equalsIgnoreCase(s.getActive());
     }
 
     private void logApiError(String tag, SmartAPIException e) {
