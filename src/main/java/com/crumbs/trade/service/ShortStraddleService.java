@@ -257,8 +257,8 @@ public class ShortStraddleService {
 
         // 2. Dual-Shield SL Logic
         // If point SL is configured, BOTH shields must break. If not configured, only Trend shield must break.
-        if ((!isPointSlConfigured || isPointSlBreached) && isHitsMet) {
-            String reason = isPointSlConfigured ? "DOUBLE_SHIELD_SL_BREACHED" : "VWAP_TREND_SL_BREACHED";
+        if (isHitsMet || (isPointSlConfigured && isPointSlBreached)) {
+            String reason = isHitsMet ? "TREND_SL_MET" : "PRICE_SL_BREACHED";
             log.warn("🚨 [{}][EXIT] STOP LOSS TRIGGERED! Reason: {}", tradeName, reason);
             closeAll(activeOrders, tick, reason, sourceConfig);
             hitCounters.put(tradeName + "_EXIT", 0);
@@ -327,7 +327,7 @@ public class ShortStraddleService {
 					log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...",
 							tradeName, type);
 					orderService.orderPlaceWithToken(t,
-							strategyConfig.getName(), "SELL", true);
+							tradeName, "SELL", true);
 				} catch (Exception | SmartAPIException e) {
 					log.error("⚠️ [{}][LEG] Broker failed for {}. Reason: {}",
 							tradeName, type, e.getMessage());
@@ -386,10 +386,10 @@ public class ShortStraddleService {
                 if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
                     try {
                         // Pass "SHORT_STRADDLE" to the exit service
-                    	orderService.exitActiveTradeByToken(order.getToken(), sourceConfig.getName());
+                    	orderService.exitActiveTradeByToken(order.getToken(), order.getName());
                     } catch (Exception | SmartAPIException e) {
                         allSuccess = false;
-                        log.error("❌ [{}][EXIT] Broker failed to close {}: {}", sourceConfig.getName(), order.getOptionType(), e.getMessage());
+                        log.error("❌ [{}][EXIT] Broker failed to close {}: {}", order.getName(), order.getOptionType(), e.getMessage());
                     }
                 }
 
@@ -409,7 +409,7 @@ public class ShortStraddleService {
                 ordersRepository.save(order); // DB tracks all activity
                 
             } catch (Exception e) {
-                log.error("❌ [{}][EXIT] DB error closing leg: {}", sourceConfig.getName(), e.getMessage());
+                log.error("❌ [{}][EXIT] DB error closing leg: {}", order.getName(), e.getMessage());
             }
         }
         
