@@ -55,7 +55,8 @@ public class ShortStraddleService {
     private final TelegramService telegramService;
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
-
+ // Tracks the last strike price evaluated to ensure consecutive hits stay on the same strike
+    private final ConcurrentHashMap<String, BigDecimal> lastSeenStrikes = new ConcurrentHashMap<>();
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
         
@@ -135,43 +136,52 @@ public class ShortStraddleService {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp); 
-        
-        // Treat the config as the Minimum Safe Distance (Default to 0 if null)
-     // 🟢 PULL FROM SOURCE
+        BigDecimal currentStrike = tick.getStrike(); // Capture current strike
+
         BigDecimal safeDistance = sourceConfig.getMaxEntryRisk() != null ? sourceConfig.getMaxEntryRisk() : BigDecimal.ZERO; 
         int reqHits = sourceConfig.getEntryHitsRequired() > 0 ? sourceConfig.getEntryHitsRequired() : 3;
 
-        // 1. Break down the conditions independently
         boolean isCpBelowCv = cp.compareTo(cv) < 0;
         boolean isGapAcceptable = currentGap.compareTo(safeDistance) <= 0;
 
-        // 2. Generate explicit statuses for BOTH rules
-        String trendStatus = isCpBelowCv ? "✅ VALID (CP < CV)" : "⏳ WAITING (CP > CV)";
-        String distStatus = isGapAcceptable ? String.format("✅ SAFE (Gap %.2f <= Max Risk %.2f)", currentGap, safeDistance) 
-                : String.format("🚫 UNSAFE (Gap %.2f > Max Risk %.2f)", currentGap, safeDistance);
-
-        // 3. Print the explicit Dual-Status SCANNING LOG
         log.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}", 
-                tradeName, tick.getStrike(), cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
-        log.info("🚦 ENTRY RULES -> [Trend: {}] | [Distance: {}]", trendStatus, distStatus);
+                tradeName, currentStrike, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
 
-        // 4. Hit Tracker & Execution Logic
         if (isCpBelowCv && isGapAcceptable) {
-            int count = hitCounters.merge(tradeName + "_ENTRY", 1, Integer::sum);
             
-            log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) consecutive hits.", tradeName, count, reqHits);
+            // =========================================================
+            // 🚨 STRIKE CONSISTENCY CHECK (NEW)
+            // =========================================================
+            String strikeKey = tradeName + "_STRIKE";
+            BigDecimal lastStrike = lastSeenStrikes.get(strikeKey);
+            
+            if (lastStrike != null && lastStrike.compareTo(currentStrike) != 0) {
+                log.warn("🔄 [{}] STRIKE MOVED: {} -> {}. Resetting hits to 1.", tradeName, lastStrike, currentStrike);
+                hitCounters.put(tradeName + "_ENTRY", 1); 
+            } else {
+                hitCounters.merge(tradeName + "_ENTRY", 1, Integer::sum);
+            }
+            
+            lastSeenStrikes.put(strikeKey, currentStrike);
+            
+            int count = hitCounters.getOrDefault(tradeName + "_ENTRY", 0);
+            log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) on Strike: {}", tradeName, count, reqHits, currentStrike);
             
             if (count >= reqHits) {
-                log.info("⚡ [{}] ALL HITS MET! Triggering execution...", tradeName);
+                log.info("⚡ [{}] ALL HITS MET! Triggering execution at {}", tradeName, currentStrike);
                 executeShortStraddle(tradeName, tick, currentGap, strategyConfig, sourceConfig);
-                hitCounters.put(tradeName + "_ENTRY", 0); // Reset after entry
+                
+                // Clean state after successful entry
+                hitCounters.put(tradeName + "_ENTRY", 0); 
+                lastSeenStrikes.remove(strikeKey);
             }
         } else {
-            int previousCount = hitCounters.getOrDefault(tradeName + "_ENTRY", 0);
-            if (previousCount > 0) {
-                log.info("🔄 [{}] STREAK BROKEN! Hit counter reset from ({}/{}) back to 0.", tradeName, previousCount, reqHits);
+            // Condition Broken: Wipe history for this tradeName
+            if (hitCounters.getOrDefault(tradeName + "_ENTRY", 0) > 0) {
+                log.info("🔄 [{}] CONDITIONS LOST. Resetting hit counter.", tradeName);
             }
-            hitCounters.put(tradeName + "_ENTRY", 0); // Reset if any condition breaks
+            hitCounters.put(tradeName + "_ENTRY", 0); 
+            lastSeenStrikes.remove(tradeName + "_STRIKE");
         }
     }
 
@@ -262,12 +272,12 @@ public class ShortStraddleService {
         BigDecimal targetValue = entryGap.add(sourceConfig.getTargetPoints());
 
         // Process CE Leg
-        Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), sourceConfig, sourceConfig, tick.getCePrice(), 
-                   tick.getStrike(), tradeName, "CE", cycleId, entryGap, targetValue);
+        Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), strategyConfig, sourceConfig, tick.getCePrice(), 
+                tick.getStrike(), tradeName, "CE", cycleId, entryGap, targetValue);
 
         // Process PE Leg
-        Orders peOrder = processLeg(tick.getPeToken(), tick.getPeSymbol(), sourceConfig, sourceConfig, tick.getPePrice(), 
-                   tick.getStrike(), tradeName, "PE", cycleId, entryGap, targetValue);
+        Orders peOrder = processLeg(tick.getPeToken(), tick.getPeSymbol(), strategyConfig, sourceConfig, tick.getPePrice(), 
+                tick.getStrike(), tradeName, "PE", cycleId, entryGap, targetValue);
 
         boolean ceSuccess = ceOrder != null;
         boolean peSuccess = peOrder != null;
@@ -295,65 +305,73 @@ public class ShortStraddleService {
     }
 
     // --- Rule 7 & 8: Live vs Paper DB Tracking ---
-    private Orders processLeg(String tokenStr, String symbol, Strategy strategyConfig, Strategy sourceConfig, BigDecimal price, 
-                                BigDecimal strike, String tradeName, String type, String cycleId, 
-                                BigDecimal gap, BigDecimal targetValue) {
-        try {
-            Token t = new Token();
-            t.setToken(tokenStr); 
-            t.setSymbol(symbol); 
-            t.setStrike(strike); 
-            t.setName(tradeName); 
-            
-            // --- ARCHITECTURE MAPPING ---
-            t.setExch_seg(sourceConfig.getExchange()); // Exchange strictly from SOURCE
-            t.setQuantity(sourceConfig.getQuantity()); // Quantity strictly from SOURCE
+	private Orders processLeg(String tokenStr, String symbol,
+			Strategy strategyConfig, Strategy sourceConfig, BigDecimal price,
+			BigDecimal strike, String tradeName, String type, String cycleId,
+			BigDecimal gap, BigDecimal targetValue) {
+		try {
+			Token t = new Token();
+			t.setToken(tokenStr);
+			t.setSymbol(symbol);
+			t.setStrike(strike);
+			t.setName(tradeName);
+			t.setExch_seg(sourceConfig.getExchange());
+			t.setQuantity(sourceConfig.getQuantity());
 
-            // Mandatory logging of attributes
-            log.info("📝 [{}][{}] Preparing -> Strike: {}, Symbol: {}, Token: {}, Exchange: {}, Qty: {}", 
-                    tradeName, type, strike, t.getSymbol(), t.getToken(), t.getExch_seg(), t.getQuantity());
+			log.info(
+					"📝 [{}][{}] Preparing -> Strike: {}, Symbol: {}, Token: {}",
+					tradeName, type, strike, symbol, tokenStr);
 
-            if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
-                try {
-                    log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...", tradeName, type);
-                    // Pass strategyConfig.getName() ("SHORT_STRADDLE") so Angel API doesn't crash
-                    orderService.orderPlaceWithToken(t, strategyConfig.getName(), "SELL", true);
-                } catch (Exception | SmartAPIException e) {
-                    log.error("⚠️ [{}][LEG] Broker failed for {}. Reason: {}", tradeName, type, e.getMessage());
-                    return null; // Return null so executeShortStraddle triggers partial rollback
-                }
-            } else {
-                log.info("📄 [{}][{}] PAPER MODE: Monitor via DB.", tradeName, type);
-            }
+			if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
+				try {
+					log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...",
+							tradeName, type);
+					orderService.orderPlaceWithToken(t,
+							strategyConfig.getName(), "SELL", true);
+				} catch (Exception | SmartAPIException e) {
+					log.error("⚠️ [{}][LEG] Broker failed for {}. Reason: {}",
+							tradeName, type, e.getMessage());
+					return null;
+				}
+			}
 
-            // Save to DB regardless of live/paper (as long as it didn't fail the live broker check)
-            Orders order = ordersRepository.findByTokenAndActive(tokenStr, STATUS_ACTIVE);
-            if (order == null) {
-                order = new Orders();
-                order.setToken(tokenStr);
-                order.setSymbol(symbol);
-               
-            }
-            order.setActive(STATUS_ACTIVE); order.setName(tradeName);
-            order.setQuantity(t.getQuantity()); 
-            order.setSignal(STRATEGY_SIGNAL);
-            order.setOptionType(type); 
-            order.setTradeCycleId(cycleId);
-            order.setBreakeven(gap); 
-            order.setTarget(targetValue); 
-            order.setAskPrice(price); 
-            order.setStrike(strike);
-            order.setStatus(STATUS_OPEN); 
-            order.setTradePhase(PHASE_ENTRY);
-            order.setCreatedOn(LocalDateTime.now());
-            
-            return ordersRepository.save(order);
+			// =========================================================
+			// 🛡️ STRATEGY ISOLATION LOOKUP (FIXED)
+			// =========================================================
+			// We use tradeName + Token to ensure we don't grab "CPR-STRADDLE"
+			// rows
+			Orders order = ordersRepository.findByNameAndTokenAndActive(
+					tradeName, tokenStr, STATUS_ACTIVE).orElse(new Orders());
 
-        } catch (Exception e) {
-            log.error("❌ [{}][LEG] Database/System error for {}: {}", tradeName, type, e.getMessage());
-            return null;
-        }
-    }
+			if (order.getId() == null) {
+				order.setToken(tokenStr);
+				order.setSymbol(symbol);
+				order.setCreatedOn(LocalDateTime.now());
+			}
+
+			// Set mandatory identification fields
+			order.setName(tradeName);
+			order.setSignal(STRATEGY_SIGNAL);
+
+			order.setActive(STATUS_ACTIVE);
+			order.setQuantity(t.getQuantity());
+			order.setOptionType(type);
+			order.setTradeCycleId(cycleId);
+			order.setBreakeven(gap);
+			order.setTarget(targetValue);
+			order.setAskPrice(price);
+			order.setStrike(strike);
+			order.setStatus(STATUS_OPEN);
+			order.setTradePhase(PHASE_ENTRY);
+
+			return ordersRepository.save(order);
+
+		} catch (Exception e) {
+			log.error("❌ [{}][LEG] DB/System error for {}: {}", tradeName, type,
+					e.getMessage());
+			return null;
+		}
+	}
 
     // --- Rule 6, 8, 9: DB tracking, Exits, and Telegram ---
     

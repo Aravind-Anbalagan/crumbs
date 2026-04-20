@@ -67,4 +67,5 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     	long countLegsToday(@Param("name") String name, 
     	                    @Param("signal") String signal, 
     	                    @Param("startOfDay") LocalDateTime startOfDay);
+    Optional<Orders> findByNameAndTokenAndActive(String name, String token, Integer active);
 }
