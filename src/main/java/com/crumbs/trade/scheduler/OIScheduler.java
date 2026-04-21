@@ -44,7 +44,7 @@ public class OIScheduler {
     })
     public void oiCrude() {
         if (isOiFlowActive()) {
-            process("CRUDEOILM");
+            process("CRUDEOIL");
         }
     }
 
