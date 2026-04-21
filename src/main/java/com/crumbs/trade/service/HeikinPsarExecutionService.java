@@ -2,6 +2,8 @@ package com.crumbs.trade.service;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
+
 import com.crumbs.trade.dto.ChartDataDTO;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.LevelRepository;
@@ -88,28 +90,30 @@ public class HeikinPsarExecutionService {
     private void executeNiftyInternal()
             throws SmartAPIException, IOException, AddressException, MessagingException {
 
-        String from = chartService.getDate("FROM", EXCHANGE_NSE, 1);
-        String to   = chartService.getDate("TO", EXCHANGE_NSE, 1);
+    	// 1. Get the current time for the 'TO' parameter
+        String to = chartService.getDate("TO", EXCHANGE_NSE, 1);
+        String from;
 
-        vixRepo.deleteAll();
+        // 2. Check the database for the last fetched candle
+        Optional<Vix> lastRecord = vixRepo.findFirstByNameOrderByTimestampDesc(NIFTY);
 
-        // Process VIX if active
-        if (isActive(STRAT_VIX)) {
-            chartService.readChartData(
-                    TF_FIVE_MIN, EXCHANGE_NSE, false, VIX,
-                    from, to,
-                    strategyRepo.findByName(VIX).getTradingsymbol()
-            );
+        if (lastRecord.isPresent()) {
+            // Start from the last known candle's timestamp. 
+            // This ensures if the last candle was incomplete, it gets updated.
+            from = lastRecord.get().getTimestamp(); 
+        } else {
+            // Fallback: If the DB is completely empty (e.g., first run of the day), 
+            // fetch from the morning open.
+            from = chartService.getDate("FROM", EXCHANGE_NSE, 1);
         }
 
         // Process Heikin-PSAR Strategy
         if (isActive(STRAT_HEIKIN_PSAR)) {
             chartService.readChartData(
                     TF_FIVE_MIN, EXCHANGE_NFO, false, NIFTY,
-                    from, to,
+                    from, to, // Now 'from' is dynamic!
                     strategyRepo.findByName(NIFTY).getTradingsymbol()
             );
-            //chartService.monitorSignal(NIFTY, EXCHANGE_NFO, false, 0);
         }
 /*
         // Option Chain analysis
@@ -127,26 +131,27 @@ public class HeikinPsarExecutionService {
     private void executeMcxInternal()
             throws SmartAPIException, IOException, AddressException, MessagingException {
 
-        String from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
-        String to   = chartService.getDate("TO", EXCHANGE_MCX, 1);
+        // 1. Get current time for 'TO'
+        String to = chartService.getDate("TO", EXCHANGE_MCX, 1);
+        String from;
 
-        vixRepo.deleteAll();
+        // 2. Check the database for the last fetched CRUDEOIL candle
+        Optional<Vix> lastRecord = vixRepo.findFirstByNameOrderByTimestampDesc(CRUDEOIL);
+
+        if (lastRecord.isPresent()) {
+            from = lastRecord.get().getTimestamp();
+        } else {
+            from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
+        }
 
         // Process MCX Heikin-PSAR
         if (isActive(STRAT_HEIKIN_PSAR)) {
             chartService.readChartData(
-                    TF_ONE_MIN, EXCHANGE_MCX, false, CRUDEOIL,
+                    TF_FIVE_MIN, EXCHANGE_MCX, false, CRUDEOIL,
                     from, to,
                     strategyRepo.findByName(CRUDEOIL).getTradingsymbol()
             );
-            //chartService.monitorSignal(CRUDEOILM, EXCHANGE_MCX, false, 0);
         }
-/*
-        // MCX Support/Resistance
-        if (isActive(STRAT_SR)) {
-            srService.analyzeIntraday(CRUDEOILM, TF_FIVE_MIN);
-        }
-        */
     }
 
     // ================= ORDER MONITOR =================

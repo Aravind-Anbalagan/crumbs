@@ -331,14 +331,35 @@ public class ChartService {
         if (indexes == null) return;
 
         if ("HEIKIN_PSAR".equalsIgnoreCase(tableName)) {
-            JSONArray responseArray = getJsonDetails(indexes, fromDate, toDate, timeFrame);
-            if (responseArray == null) return;
-            List<Vix> batch = new ArrayList<>();
-            responseArray.forEach(item -> {
-                OHLC ohlc = getOHLC((JSONArray) item);
-                if (ohlc != null) batch.add(buildVix(ohlc, name));
-            });
-            if (!batch.isEmpty()) vixRepo.saveAll(batch);
+        	JSONArray responseArray = getJsonDetails(indexes, fromDate, toDate, timeFrame);
+        	if (responseArray == null) return;
+
+        	List<Vix> batchToSave = new ArrayList<>();
+
+        	responseArray.forEach(item -> {
+        	    OHLC ohlc = getOHLC((JSONArray) item);
+        	    if (ohlc != null) {
+        	        // 1. Check if this exact timestamp already exists in DB
+        	        Optional<Vix> existingVix = vixRepo.findByTimestampAndName(ohlc.getTimestamp(), name);
+        	        
+        	        if (existingVix.isPresent()) {
+        	            // 2. UPDATE existing (because the 5-min candle might have finalized)
+        	            Vix dbVix = existingVix.get();
+        	            dbVix.setClose(ohlc.getClose());
+        	            dbVix.setHigh(ohlc.getHigh());
+        	            dbVix.setLow(ohlc.getLow());
+        	            dbVix.setVolume(ohlc.getVolume());
+        	            batchToSave.add(dbVix);
+        	        } else {
+        	            // 3. INSERT new
+        	            batchToSave.add(buildVix(ohlc, name));
+        	        }
+        	    }
+        	});
+
+        	if (!batchToSave.isEmpty()) {
+        	    vixRepo.saveAll(batchToSave); 
+        	}
 
         } else {
             String cacheKey = name + "_" + timeFrame;
