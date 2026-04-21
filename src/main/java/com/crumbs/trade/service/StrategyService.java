@@ -442,6 +442,7 @@ public class StrategyService {
                 ? ("NORMAL".equals(marketType) ? lowerBand : first5Low)
                 : ("NORMAL".equals(marketType) ? upperBand : first5High));
         meta.setEntryTime(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        meta.setEntryPrice(currentPrice);
         return meta;
     }
 
