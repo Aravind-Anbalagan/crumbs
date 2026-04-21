@@ -26,7 +26,7 @@ public class HeikinPsarExecutionService {
     // Symbols & Names
     private static final String NIFTY = "NIFTY";
     private static final String VIX = "VIX";
-    private static final String CRUDEOILM = "CRUDEOILM";
+    private static final String CRUDEOIL = "CRUDEOIL";
     private static final String SILVERM = "SILVERM";
     private static final String NIFTY_OI = "NIFTY_OI";
     
@@ -77,9 +77,9 @@ public class HeikinPsarExecutionService {
         try {
             executeMcxInternal();
         } catch (SmartAPIException e) {
-            logApiError(CRUDEOILM, e);
+            logApiError(CRUDEOIL, e);
         } catch (Exception e) {
-            logGeneralError(CRUDEOILM, e);
+            logGeneralError(CRUDEOIL, e);
         }
     }
 
@@ -111,7 +111,7 @@ public class HeikinPsarExecutionService {
             );
             //chartService.monitorSignal(NIFTY, EXCHANGE_NFO, false, 0);
         }
-
+/*
         // Option Chain analysis
         if (isActive(STRAT_NIFTY_INDEX)) {
             oiService.getOptionChain(NIFTY_OI);
@@ -121,6 +121,7 @@ public class HeikinPsarExecutionService {
         if (isActive(STRAT_SR)) {
             srService.analyzeIntraday(NIFTY, TF_FIVE_MIN);
         }
+        */
     }
 
     private void executeMcxInternal()
@@ -134,17 +135,18 @@ public class HeikinPsarExecutionService {
         // Process MCX Heikin-PSAR
         if (isActive(STRAT_HEIKIN_PSAR)) {
             chartService.readChartData(
-                    TF_ONE_MIN, EXCHANGE_MCX, false, CRUDEOILM,
+                    TF_ONE_MIN, EXCHANGE_MCX, false, CRUDEOIL,
                     from, to,
-                    strategyRepo.findByName(CRUDEOILM).getTradingsymbol()
+                    strategyRepo.findByName(CRUDEOIL).getTradingsymbol()
             );
             //chartService.monitorSignal(CRUDEOILM, EXCHANGE_MCX, false, 0);
         }
-
+/*
         // MCX Support/Resistance
         if (isActive(STRAT_SR)) {
             srService.analyzeIntraday(CRUDEOILM, TF_FIVE_MIN);
         }
+        */
     }
 
     // ================= ORDER MONITOR =================

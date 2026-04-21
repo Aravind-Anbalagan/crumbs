@@ -24,7 +24,7 @@ public class HeikinPsarScheduler {
     
     // Symbols/Tags
     private static final String SYMBOL_NIFTY = "NIFTY";
-    private static final String SYMBOL_CRUDEOILM = "CRUDEOILM"; // Used for MCX Exit
+    private static final String SYMBOL_CRUDEOIL = "CRUDEOIL"; // Used for MCX Exit
     
     // Exchanges
     private static final String EXCH_NFO = "NFO";
@@ -32,7 +32,7 @@ public class HeikinPsarScheduler {
     
     // Execution Tags (for logging)
     private static final String TAG_NIFTY_EXEC = "NIFTY-EXEC";
-    private static final String TAG_CRUDE_EXEC = "CRUDEOILM-EXEC";
+    private static final String TAG_CRUDE_EXEC = "CRUDEOIL-EXEC";
     private static final String TAG_ORDER_MON = "ORDER-MONITOR";
     private static final String TAG_NIFTY_EXIT = "NIFTY-EXIT";
     private static final String TAG_MCX_EXIT   = "MCX-EXIT";
@@ -83,7 +83,7 @@ public class HeikinPsarScheduler {
     //@Scheduled(cron = "0 20 23 ? * MON-FRI", zone = ZONE)
     public void mcxExit() {
         // Keeping CRUDEOILM here as per your original logic for MCX exit
-        runSafely(TAG_MCX_EXIT, () -> executionService.exit(SYMBOL_CRUDEOILM, EXCH_MCX));
+        runSafely(TAG_MCX_EXIT, () -> executionService.exit(SYMBOL_CRUDEOIL, EXCH_MCX));
     }
 
     // ------------------- HEARTBEAT -------------------
