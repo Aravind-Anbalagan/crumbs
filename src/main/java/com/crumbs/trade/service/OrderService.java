@@ -206,23 +206,24 @@ public class OrderService {
         placeFinalOrder(sc, token, strategy, 0, null);
     }
 
+ // =========================================================================
+    // EXIT BY TOKEN (Safe for Cross-Strategy Token Collisions)
     // =========================================================================
-    // EXIT BY TOKEN  (straddle use case — two legs share same strategy name,
-    //                 identified uniquely by their token)
-    // =========================================================================
-    public void exitActiveTradeByToken(String token, String sourceName)
+    public void exitActiveTradeByToken(String token, String sourceName, String tradeName)
             throws IOException, SmartAPIException {
 
-        Strategy strategy    = strategyRepo.findByName(sourceName);
-        Orders   activeTrade = ordersRepo.findByTokenAndActive(token, 1);
+        // 1. Get Live/Paper status using the base source (e.g., "NIFTY")
+        Strategy strategy = strategyRepo.findByName(sourceName);
+        
+        // 2. Isolate the exact order using the specific strategy name (e.g., "SHORT_STRADDLE_NIFTY")
+        Orders activeTrade = ordersRepo.findByNameAndTokenAndActive(tradeName, token, 1).orElse(null);
 
         if (activeTrade == null) {
-            logger.info("No active trade for token -> {}", token);
+            logger.info("No active trade for token -> {} under strategy -> {}", token, tradeName);
             return;
         }
 
-        logger.info("Exiting trade by token -> {} | symbol={}",
-                token, activeTrade.getSymbol());
+        logger.info("Exiting trade by token -> {} | symbol={}", token, activeTrade.getSymbol());
 
         if ("Y".equalsIgnoreCase(strategy.getLive())) {
             placeExitOrder(activeTrade);

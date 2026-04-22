@@ -305,78 +305,74 @@ public class ShortStraddleService {
     }
 
     // --- Rule 7 & 8: Live vs Paper DB Tracking ---
-	private Orders processLeg(String tokenStr, String symbol,
-			Strategy strategyConfig, Strategy sourceConfig, BigDecimal price,
-			BigDecimal strike, String tradeName, String type, String cycleId,
-			BigDecimal gap, BigDecimal targetValue) {
-		try {
-			Token t = new Token();
-			t.setToken(tokenStr);
-			t.setSymbol(symbol);
-			t.setStrike(strike);
-			t.setName(tradeName);
-			t.setExch_seg(sourceConfig.getExchange());
-			t.setQuantity(sourceConfig.getQuantity());
+    private Orders processLeg(String tokenStr, String symbol,
+            Strategy strategyConfig, Strategy sourceConfig, BigDecimal price,
+            BigDecimal strike, String tradeName, String type, String cycleId,
+            BigDecimal gap, BigDecimal targetValue) {
+        try {
+            Token t = new Token();
+            t.setToken(tokenStr);
+            t.setSymbol(symbol);
+            t.setStrike(strike);
+            t.setName(sourceConfig.getName()); // Pass base name (e.g., "NIFTY")
+            t.setExch_seg(sourceConfig.getExchange());
+            t.setQuantity(sourceConfig.getQuantity());
 
-			log.info("📝 [{}][{}] Preparing -> Source: {}, Symbol: {}, Token: {}, Strike: {}, Qty: {}",
-                    tradeName, 
-                    type, 
-                    sourceConfig.getName(), 
-                    symbol, 
-                    tokenStr, 
-                    strike, 
-                    sourceConfig.getQuantity());
+            log.info(
+                    "📝 [{}][{}] Preparing -> Source: {}, Symbol: {}, Token: {}, Strike: {}, Qty: {}",
+                    tradeName, type, sourceConfig.getName(), symbol, tokenStr, strike, sourceConfig.getQuantity());
 
-			if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
-				try {
-					log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...",
-							sourceConfig.getName(), type);
-					orderService.orderPlaceWithToken(t,
-							sourceConfig.getName(), "SELL", true);
-				} catch (Exception | SmartAPIException e) {
-					log.error("⚠️ [{}][LEG] Broker failed for {}. Reason: {}",
-							sourceConfig.getName(), type, e.getMessage());
-					return null;
-				}
-			}
+            // =========================================================
+            // 1. GLOBAL EXECUTION & DB INSERT
+            // =========================================================
+            try {
+                if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
+                    log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...", tradeName, type);
+                }
+                
+                // Call global service. This executes the trade AND inserts a row named "NIFTY"
+                orderService.orderPlaceWithToken(t, sourceConfig.getName(), "SELL", true);
+                
+            } catch (Exception | SmartAPIException e) {
+                log.error("⚠️ [{}][LEG] Broker/Global insert failed for {}. Reason: {}",
+                        tradeName, type, e.getMessage());
+                return null; // Stop execution if global service fails
+            }
 
-			// =========================================================
-			// 🛡️ STRATEGY ISOLATION LOOKUP (FIXED)
-			// =========================================================
-			// We use tradeName + Token to ensure we don't grab "CPR-STRADDLE"
-			// rows
-			Orders order = ordersRepository.findByNameAndTokenAndActive(
-					tradeName, tokenStr, STATUS_ACTIVE).orElse(new Orders());
+            // =========================================================
+            // 2. FETCH AND UPGRADE STRATEGY ROW
+            // =========================================================
+            // Fetch the row OrderService JUST created (it was saved under "NIFTY" or "CRUDEOIL")
+            Orders order = ordersRepository.findByNameAndTokenAndActive(
+                    sourceConfig.getName(), tokenStr, STATUS_ACTIVE).orElse(null);
 
-			if (order.getId() == null) {
-				order.setToken(tokenStr);
-				order.setSymbol(symbol);
-				order.setCreatedOn(LocalDateTime.now());
-			}
+            if (order == null) {
+                log.error("❌ [{}][LEG] Critical Error: Global Order row not found after insertion for Token: {}", tradeName, tokenStr);
+                return null;
+            }
 
-			// Set mandatory identification fields
-			order.setName(tradeName);
-			order.setSignal(STRATEGY_SIGNAL);
+            // Take ownership of the row by changing its name to your specific strategy
+            order.setName(tradeName); // Overwrites "NIFTY" with "SHORT_STRADDLE_NIFTY"
+            order.setSignal(STRATEGY_SIGNAL);
 
-			order.setActive(STATUS_ACTIVE);
-			order.setQuantity(t.getQuantity());
-			order.setOptionType(type);
-			order.setTradeCycleId(cycleId);
-			order.setBreakeven(gap);
-			order.setTarget(targetValue);
-			order.setAskPrice(price);
-			order.setStrike(strike);
-			order.setStatus(STATUS_OPEN);
-			order.setTradePhase(PHASE_ENTRY);
+            // Append all strategy-specific metadata
+            order.setOptionType(type);
+            order.setTradeCycleId(cycleId);
+            order.setBreakeven(gap);
+            order.setTarget(targetValue);
+            order.setAskPrice(price);
+            order.setStrike(strike);
+            order.setStatus(STATUS_OPEN);
+            order.setTradePhase(PHASE_ENTRY);
 
-			return ordersRepository.save(order);
+            // Hibernate performs an UPDATE because the row already has a primary key ID
+            return ordersRepository.save(order);
 
-		} catch (Exception e) {
-			log.error("❌ [{}][LEG] DB/System error for {}: {}", tradeName, type,
-					e.getMessage());
-			return null;
-		}
-	}
+        } catch (Exception e) {
+            log.error("❌ [{}][LEG] System error during row upgrade for {}: {}", tradeName, type, e.getMessage());
+            return null;
+        }
+    }
 
     // --- Rule 6, 8, 9: DB tracking, Exits, and Telegram ---
     
@@ -391,7 +387,12 @@ public class ShortStraddleService {
                 if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
                     try {
                         // Pass "SHORT_STRADDLE" to the exit service
-                    	orderService.exitActiveTradeByToken(order.getToken(), order.getName());
+                    	// Pass BOTH names to perfectly isolate the exit
+                        orderService.exitActiveTradeByToken(
+                                order.getToken(), 
+                                sourceConfig.getName(), // "NIFTY" for broker config
+                                order.getName()         // "SHORT_STRADDLE_NIFTY" for DB lookup
+                        );
                     } catch (Exception | SmartAPIException e) {
                         allSuccess = false;
                         log.error("❌ [{}][EXIT] Broker failed to close {}: {}", order.getName(), order.getOptionType(), e.getMessage());
