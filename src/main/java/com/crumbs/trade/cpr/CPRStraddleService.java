@@ -264,7 +264,7 @@ public class CPRStraddleService {
                     // FIX: CPR_STRADDLE_STRATEGY — exits only the straddle CE leg,
                     //      never touches the directional CPR trade
                     orderService.exitActiveTradeByToken(
-                            atmDto.getCeToken().getToken(), AppConstant.CPR_STRADDLE_STRATEGY);
+                            atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                     ceSLHit.set(true);
                     logger.info("CE leg closed. PE continues.");
                     return;
@@ -287,7 +287,7 @@ public class CPRStraddleService {
                     // FIX: CPR_STRADDLE_STRATEGY — exits only the straddle PE leg,
                     //      never touches the directional CPR trade
                     orderService.exitActiveTradeByToken(
-                            atmDto.getPeToken().getToken(), AppConstant.CPR_STRADDLE_STRATEGY);
+                            atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                     peSLHit.set(true);
                     logger.info("PE leg closed. CE continues.");
                     return;
@@ -308,8 +308,8 @@ public class CPRStraddleService {
 
             if (ceLegPlaced.get() && !ceSLHit.get()) {
                 // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-                orderService.exitActiveTradeByToken(
-                        atmDto.getCeToken().getToken(), AppConstant.CPR_STRADDLE_STRATEGY);
+            	orderService.exitActiveTradeByToken(
+                        atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 logger.info("CE leg EOD exit done.");
             } else if (!ceLegPlaced.get()) {
                 logger.info("CE leg was never placed — skipping.");
@@ -319,8 +319,8 @@ public class CPRStraddleService {
 
             if (peLegPlaced.get() && !peSLHit.get()) {
                 // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-                orderService.exitActiveTradeByToken(
-                        atmDto.getPeToken().getToken(), AppConstant.CPR_STRADDLE_STRATEGY);
+            	orderService.exitActiveTradeByToken(
+                        atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 logger.info("PE leg EOD exit done.");
             } else if (!peLegPlaced.get()) {
                 logger.info("PE leg was never placed — skipping.");
@@ -341,15 +341,15 @@ public class CPRStraddleService {
         try {
             if (ceLegPlaced.get() && !ceSLHit.get()) {
                 // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-                orderService.exitActiveTradeByToken(
-                        atmDto.getCeToken().getToken(), AppConstant.CPR_STRADDLE_STRATEGY);
+            	orderService.exitActiveTradeByToken(
+                        atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 ceSLHit.set(true);
                 logger.info("CE leg closed.");
             }
             if (peLegPlaced.get() && !peSLHit.get()) {
                 // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-                orderService.exitActiveTradeByToken(
-                        atmDto.getPeToken().getToken(), AppConstant.CPR_STRADDLE_STRATEGY);
+            	orderService.exitActiveTradeByToken(
+                        atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 peSLHit.set(true);
                 logger.info("PE leg closed.");
             }
