@@ -17,6 +17,7 @@ import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -100,7 +101,7 @@ public class ChartService {
     // JSON / candle data fetch
     // =========================================================
 
-	public JSONArray getJsonDetails(Indexes indexes, String fromDate, String toDate, String timeFrame) {
+    public JSONArray getJsonDetails(Indexes indexes, String fromDate, String toDate, String timeFrame) {
 
 		int maxRetries = 3;
 		long delay = 1000;
@@ -117,15 +118,21 @@ public class ChartService {
 				requestObject.put("fromdate", fromDate);
 				requestObject.put("todate", toDate);
 
-// ✅ DIRECT ARRAY (your SDK behavior)
+				// ✅ DIRECT ARRAY (your SDK behavior)
 				JSONArray data = smartConnect.candleData(requestObject);
 
-				if (data == null || data.length() == 0) {
+				// 1. Rate Limit Check: If null, THROW exception to trigger the retry loop
+				if (data == null) {
+					throw new RuntimeException("API returned null (Possible Rate Limit hit)");
+				}
+
+				// 2. Empty Data Check: Genuinely no trades. Return empty without retrying.
+				if (data.length() == 0) {
 					logger.warn("Empty candle data for {}", indexes.getName());
 					return new JSONArray(); // never null
 				}
 
-// 🔥 DEBUG (keep temporarily)
+				// 🔥 DEBUG (keep temporarily)
 				logger.info("Candles count for {}: {}", indexes.getName(), data.length());
 
 				return data;
@@ -149,7 +156,7 @@ public class ChartService {
 			}
 		}
 
-// ✅ NEVER return null
+		// ✅ NEVER return null
 		return new JSONArray();
 	}
 
@@ -332,34 +339,39 @@ public class ChartService {
 
         if ("HEIKIN_PSAR".equalsIgnoreCase(tableName)) {
         	JSONArray responseArray = getJsonDetails(indexes, fromDate, toDate, timeFrame);
-        	if (responseArray == null) return;
+            if (responseArray == null) return;
 
-        	List<Vix> batchToSave = new ArrayList<>();
+            // ✅ FIX 1: Use a Map to deduplicate the payload before hitting the DB
+            Map<String, Vix> batchMap = new HashMap<>();
 
-        	responseArray.forEach(item -> {
-        	    OHLC ohlc = getOHLC((JSONArray) item);
-        	    if (ohlc != null) {
-        	        // 1. Check if this exact timestamp already exists in DB
-        	        Optional<Vix> existingVix = vixRepo.findByTimestampAndName(ohlc.getTimestamp(), name);
-        	        
-        	        if (existingVix.isPresent()) {
-        	            // 2. UPDATE existing (because the 5-min candle might have finalized)
-        	            Vix dbVix = existingVix.get();
-        	            dbVix.setClose(ohlc.getClose());
-        	            dbVix.setHigh(ohlc.getHigh());
-        	            dbVix.setLow(ohlc.getLow());
-        	            dbVix.setVolume(ohlc.getVolume());
-        	            batchToSave.add(dbVix);
-        	        } else {
-        	            // 3. INSERT new
-        	            batchToSave.add(buildVix(ohlc, name));
-        	        }
-        	    }
-        	});
+            responseArray.forEach(item -> {
+                OHLC ohlc = getOHLC((JSONArray) item);
+                if (ohlc != null) {
+                    String ts = ohlc.getTimestamp();
 
-        	if (!batchToSave.isEmpty()) {
-        	    vixRepo.saveAll(batchToSave); 
-        	}
+                    // Check the Map FIRST to see if we already processed this timestamp in the current loop
+                    Vix dbVix = batchMap.get(ts);
+
+                    if (dbVix == null) {
+                        // ✅ FIX 2: Query DB using the timeframe to prevent 5m/15m collisions
+                        Optional<Vix> existingVix = vixRepo.findByTimestampAndNameAndTimeframe(ts, name, timeFrame);
+                        dbVix = existingVix.orElseGet(() -> buildVix(ohlc, name, timeFrame));
+                    }
+
+                    // Update the object with the latest tick data
+                    dbVix.setClose(ohlc.getClose());
+                    dbVix.setHigh(ohlc.getHigh());
+                    dbVix.setLow(ohlc.getLow());
+                    dbVix.setVolume(ohlc.getVolume());
+
+                    // Put the updated object back into the Map
+                    batchMap.put(ts, dbVix);
+                }
+            });
+
+            if (!batchMap.isEmpty()) {
+                vixRepo.saveAll(batchMap.values()); 
+            }
 
         } else {
             String cacheKey = name + "_" + timeFrame;
@@ -416,15 +428,25 @@ public class ChartService {
         return pi;
     }
 
-    private Vix buildVix(OHLC ohlc, String name) {
+ // Updated method to include timeframe
+    private Vix buildVix(OHLC ohlc, String name, String timeFrame) {
         Vix vix = new Vix();
         vix.setTimestamp(ohlc.getTimestamp());
-        vix.setClose(ohlc.getClose()); vix.setHigh(ohlc.getHigh());
-        vix.setOpen(ohlc.getOpen());   vix.setLow(ohlc.getLow());
-        vix.setName(name); vix.setVolume(ohlc.getVolume()); vix.setRange(ohlc.getRange());
-        // ✅ was: taskService.getPriceType(...)
+        vix.setClose(ohlc.getClose());
+        vix.setHigh(ohlc.getHigh());
+        vix.setOpen(ohlc.getOpen());
+        vix.setLow(ohlc.getLow());
+        vix.setName(name);
+        vix.setVolume(ohlc.getVolume());
+        vix.setRange(ohlc.getRange());
         vix.setType(priceUtilService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
+        vix.setTimeframe(timeFrame); // ✅ CRITICAL: Save the timeframe
         return vix;
+    }
+
+    // Overload to maintain compatibility with your legacy saveCandleData method
+    private Vix buildVix(OHLC ohlc, String name) {
+        return buildVix(ohlc, name, null);
     }
 
     // =========================================================

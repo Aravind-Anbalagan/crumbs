@@ -122,7 +122,11 @@ public class PriceUtilService {
         if (time.equalsIgnoreCase("FROM")) {
             result = " " + checkDigit(hour) + ":" + checkDigit(adjusted.getMinute());
             if (" 09:20".equalsIgnoreCase(result)) result = " 15:25";
-        }else if (time.equalsIgnoreCase("TO"))
+        }else if (time.equalsIgnoreCase("TO") && type.equalsIgnoreCase("MCX"))
+        {
+        	return " 23:30";
+        }
+        else if (time.equalsIgnoreCase("TO"))
         {
         	return " 15:30";
         }

@@ -33,4 +33,6 @@ public interface VixRepo extends JpaRepository<Vix, Long> {
 	// Finds the newest candle based on your timestamp column
 	 Optional<Vix> findFirstByNameOrderByTimestampDesc(String name);
 	 Optional<Vix> findByTimestampAndName(String timestamp, String name);
+	// Inside VixRepo.java
+	 Optional<Vix> findByTimestampAndNameAndTimeframe(String timestamp, String name, String timeframe);
 }

@@ -139,7 +139,7 @@ public class HeikinPsarExecutionService {
         Optional<Vix> lastRecord = vixRepo.findFirstByNameOrderByTimestampDesc(CRUDEOIL);
 
         if (lastRecord.isPresent()) {
-            from = lastRecord.get().getTimestamp();
+            from = ChartService.formatDateTime(lastRecord.get().getTimestamp());
         } else {
             from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
         }

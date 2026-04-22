@@ -57,10 +57,10 @@ public class HeikinPsarScheduler {
     // ------------------- CRUDEOILM (MCX) -------------------
 
     @Schedules({
-        // 16:00 – 22:59 → every minute (as per your cron "5 *")
-        @Scheduled(cron = "5 * 16-22 * * MON-FRI", zone = ZONE),
-        // 23:00 – 23:15
-        @Scheduled(cron = "5 0-15 23 * * MON-FRI", zone = ZONE)
+        // 16:00 – 22:55 → every 5 minutes at the 5th second
+        @Scheduled(cron = "5 */5 16-22 * * MON-FRI", zone = ZONE),
+        // 23:00 – 23:30 → every 5 minutes at the 5th second
+        @Scheduled(cron = "5 0-30/5 23 * * MON-FRI", zone = ZONE)
     })
     public void runCrudeOilM() {
         runSafely(TAG_CRUDE_EXEC, () -> executionService.commonExecutionMcx());
