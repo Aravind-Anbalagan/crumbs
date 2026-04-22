@@ -318,19 +318,24 @@ public class ShortStraddleService {
 			t.setExch_seg(sourceConfig.getExchange());
 			t.setQuantity(sourceConfig.getQuantity());
 
-			log.info(
-					"📝 [{}][{}] Preparing -> Strike: {}, Symbol: {}, Token: {}",
-					tradeName, type, strike, symbol, tokenStr);
+			log.info("📝 [{}][{}] Preparing -> Source: {}, Symbol: {}, Token: {}, Strike: {}, Qty: {}",
+                    tradeName, 
+                    type, 
+                    sourceConfig.getName(), 
+                    symbol, 
+                    tokenStr, 
+                    strike, 
+                    sourceConfig.getQuantity());
 
 			if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
 				try {
 					log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...",
-							tradeName, type);
+							sourceConfig.getName(), type);
 					orderService.orderPlaceWithToken(t,
-							tradeName, "SELL", true);
+							sourceConfig.getName(), "SELL", true);
 				} catch (Exception | SmartAPIException e) {
 					log.error("⚠️ [{}][LEG] Broker failed for {}. Reason: {}",
-							tradeName, type, e.getMessage());
+							sourceConfig.getName(), type, e.getMessage());
 					return null;
 				}
 			}
