@@ -15,13 +15,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.crumbs.trade.broker.Samco;
 import com.crumbs.trade.entity.Vix;
 import com.crumbs.trade.repo.ResultVixRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
 import com.crumbs.trade.service.ChartService;
 import com.crumbs.trade.service.FlatTradeService;
+import com.crumbs.trade.service.HeikinPsarExecutionService;
 import com.crumbs.trade.service.TaskService;
+import com.crumbs.trade.utility.SamcoSessionManager;
 
 @CrossOrigin(origins = "*")
 @RestController
@@ -47,14 +50,42 @@ public class BackTestController {
 	
 	@Autowired
     private FlatTradeService flatTradeService;
+	
+	@Autowired
+	private SamcoSessionManager sessionManager;
+	
+	@Autowired
+	private Samco samco;
+	
+	@Autowired
+	private HeikinPsarExecutionService heikinPsarExecutionService;
 
 	@GetMapping(value = "/HeikinPsar")
 	public String monitorNifty() throws SmartAPIException, Exception {
-		
-		String key = flatTradeService.getTokenForFlatTrade();
-		logger.debug("Key: {}",key);
-		String fromDate = "2025-10-23 12:50";
-		String toDate = "2025-10-24 15:25";
+		heikinPsarExecutionService.commonExecutionMcx();
+		//String key = flatTradeService.getTokenForFlatTrade();
+		//logger.debug("Key: {}",key);
+		// 1. Define or calculate your inputs
+//		String sessionToken = samco.getSamcoSession(); // Assuming you grabbed this earlier
+//		String symbol = "NIFTY26APRFUT";   // Updated symbol from Scrip Master
+//		String exchange = "NFO";                // Updated exchange segment from Scrip Master
+		String fromDate = "2026-04-24 09:00:00"; 
+		String toDate = "2026-04-24 23:30:00";  
+//		String interval = "5";
+//
+//		// 2. Call the method (just the variable names!)
+//		String candleData = samco.getIntradayCandleData(
+//		    sessionToken, 
+//		    symbol, 
+//		    exchange, 
+//		    fromDate, 
+//		    toDate, 
+//		    interval
+//		);
+//
+//		// 3. Print or parse the result
+//		System.out.println(candleData);
+	
 		vixRepo.deleteAll();
 		resultVixRepo.deleteAll();
 		//List<String> times = generateTimes(fromDate, toDate);

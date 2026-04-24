@@ -31,6 +31,7 @@ public class HeikinPsarExecutionService {
     private static final String CRUDEOIL = "CRUDEOIL";
     private static final String SILVERM = "SILVERM";
     private static final String NIFTY_OI = "NIFTY_OI";
+    private static final String SAMCO_CRUDEOIL = "SAMCO_CRUDEOIL";
     
     // Exchanges
     private static final String EXCHANGE_NSE = "NSE";
@@ -40,7 +41,7 @@ public class HeikinPsarExecutionService {
     // Timeframes
     private static final String TF_FIVE_MIN = "FIVE_MINUTE";
     private static final String TF_ONE_MIN = "ONE_MINUTE";
-    
+    private static final int FIVE_MIN = 5;
     // Strategy Flags
     private static final String STRAT_HEIKIN_PSAR = "HEIKIN-PSAR";
     private static final String STRAT_VIX = "VIX";
@@ -145,12 +146,17 @@ public class HeikinPsarExecutionService {
         }
 
         // Process MCX Heikin-PSAR
-        if (isActive(STRAT_HEIKIN_PSAR)) {
-            chartService.readChartData(
-                    TF_FIVE_MIN, EXCHANGE_MCX, false, CRUDEOIL,
-                    from, to,
-                    strategyRepo.findByName(CRUDEOIL).getTradingsymbol()
-            );
+           if (isActive(STRAT_HEIKIN_PSAR)) { 
+        	Strategy strategy = strategyRepo.findByName(SAMCO_CRUDEOIL);
+        	if(strategy!=null)
+        	{
+        		 chartService.readChartData(
+                         TF_FIVE_MIN, strategy.getExchange(), false, CRUDEOIL,
+                         from, to,
+                         strategyRepo.findByName(CRUDEOIL).getTradingsymbol()
+                 ,"SAMCO");
+        	}
+           
         }
     }
 

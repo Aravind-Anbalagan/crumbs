@@ -16,9 +16,11 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -293,5 +295,69 @@ public class Samco {
         BigDecimal ltp = new BigDecimal(quotes.getJSONObject(0).getString("lastTradePrice"));
         logger.info("LTP fetched: {}", ltp);
         return ltp;
+    }
+    
+   
+    /**
+     * Fetches Intraday OHLC Candle Data directly via REST to support custom timeframes.
+     * Supported intervals: "1", "5", "10", "15", "30", "60"
+     */
+    public String getIntradayCandleData(String sessionToken, String symbol, String exchange, 
+                                        String fromDate, String toDate, String interval) {
+        
+        // 1. Log the exact raw inputs being passed into the method
+        logger.info("Initiating Samco Candle fetch -> Symbol: {}, Exchange: {}, From: {}, To: {}, Interval: {}", 
+                    symbol, exchange, fromDate, toDate, interval);
+
+        try {
+            // Dynamically build and securely encode URL parameters
+            StringBuilder queryParams = new StringBuilder();
+            queryParams.append("?symbolName=").append(URLEncoder.encode(symbol, StandardCharsets.UTF_8));
+            
+            if (exchange != null && !exchange.trim().isEmpty()) {
+                queryParams.append("&exchange=").append(URLEncoder.encode(exchange, StandardCharsets.UTF_8));
+            }
+            if (fromDate != null && !fromDate.trim().isEmpty()) {
+                // CRITICAL FIX: Replace '+' with '%20' for Samco's strict URL parser
+                queryParams.append("&fromDate=").append(URLEncoder.encode(fromDate, StandardCharsets.UTF_8).replace("+", "%20"));
+            }
+            if (toDate != null && !toDate.trim().isEmpty()) {
+                // CRITICAL FIX: Replace '+' with '%20' for Samco's strict URL parser
+                queryParams.append("&toDate=").append(URLEncoder.encode(toDate, StandardCharsets.UTF_8).replace("+", "%20"));
+            }
+            if (interval != null && !interval.trim().isEmpty()) {
+                queryParams.append("&interval=").append(URLEncoder.encode(interval, StandardCharsets.UTF_8));
+            }
+
+            String endpoint = BASE_URL + "/intraday/candleData" + queryParams.toString();
+
+            // 2. Log the final URL. If it breaks, copy this exact string to Postman/Browser
+            logger.info("🚀 Constructed Samco URL: {}", endpoint);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .header("Accept", "application/json")
+                    .header("x-session-token", sessionToken) 
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                // 3. Log the exact error body returned by Samco
+                logger.error("❌ Samco API HTTP {} Error. Body: {}", response.statusCode(), response.body());
+                throw new RuntimeException("HTTP " + response.statusCode() + " from candle API: " + response.body());
+            }
+
+            // 4. Log success with the payload size
+            logger.info("✅ Successfully fetched {}-min candles for {}:{}. Response length: {} chars", 
+                        interval, exchange, symbol, response.body().length());
+            
+            return response.body(); 
+
+        } catch (Exception e) {
+            logger.error("💥 REST getIntradayCandleData failed for {}: {}", symbol, e.getMessage());
+            throw new RuntimeException("REST getIntradayCandleData failed for " + symbol, e);
+        }
     }
 }
