@@ -590,7 +590,7 @@ public class AngelOneService {
 			
 		} catch (Exception e) {
 			result = false;
-			logger.error("Error while creating order");
+			logger.error("Error while creating order" + e.getMessage());
 		}
 
 		return token;
