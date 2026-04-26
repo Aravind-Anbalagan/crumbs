@@ -1,6 +1,8 @@
 package com.crumbs.trade.service;
 
 import java.io.IOException;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,7 +45,7 @@ public class HeikinPsarExecutionService {
     private static final String TF_ONE_MIN = "ONE_MINUTE";
     private static final int FIVE_MIN = 5;
     // Strategy Flags
-    private static final String STRAT_HEIKIN_PSAR = "HEIKIN-PSAR";
+    private static final String STRAT_HEIKIN_PSAR = "MARKET_TREND";
     private static final String STRAT_VIX = "VIX";
     private static final String STRAT_NIFTY_INDEX = "NIFTY_INDEX";
     private static final String STRAT_SR = "SR";
@@ -144,9 +146,11 @@ public class HeikinPsarExecutionService {
         } else {
             from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
         }
-
+         from = "2026-04-23 20:25:00";
+         to = "2026-04-24 23:30:00";
         // Process MCX Heikin-PSAR
-           if (isActive(STRAT_HEIKIN_PSAR)) { 
+           //if (isActive(STRAT_HEIKIN_PSAR)) { 
+         if (true) { 
         	Strategy strategy = strategyRepo.findByName(SAMCO_CRUDEOIL);
         	if(strategy!=null)
         	{
@@ -199,6 +203,13 @@ public class HeikinPsarExecutionService {
     // ================= UTIL =================
 
     private boolean isActive(String name) {
+        // 1. Check if today is a weekend. If so, return false immediately.
+        DayOfWeek today = LocalDate.now().getDayOfWeek();
+        if (today == DayOfWeek.SATURDAY || today == DayOfWeek.SUNDAY) {
+            return false;
+        }
+
+        // 2. If it's a weekday, proceed with the original logic
         Strategy s = strategyRepo.findByName(name);
         return s != null && ACTIVE_YES.equalsIgnoreCase(s.getActive());
     }

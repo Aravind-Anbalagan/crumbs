@@ -4,8 +4,6 @@ import java.math.BigDecimal;
 
 import jakarta.persistence.*;
 
-
-
 @lombok.Data
 @Entity
 @Table(name = "vix")
@@ -55,5 +53,15 @@ public class Vix {
 	// Optional: if you plan to store signal (e.g. "BUY"/"SELL")
 	private String vwapSignal;
 
+	// =========================================================
+	// NEW: Dual EMA Crossover Strategy Fields
+	// =========================================================
+	@Column(name="fastEma", precision = 19, scale = 8)
+	BigDecimal fastEma;
 
+	@Column(name="slowEma", precision = 19, scale = 8)
+	BigDecimal slowEma;
+
+	@Column(name="crossoverEvent")
+	String crossoverEvent;
 }

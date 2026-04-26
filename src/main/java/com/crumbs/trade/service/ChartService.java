@@ -99,7 +99,7 @@ public class ChartService {
     private static final String BUY  = "BUY";
     private static final String SELL = "SELL";
 
-  
+    
     public OHLC getOHLC(JSONArray ohlcArray) {
         OHLC ohlc = new OHLC();
         ohlc.setTimestamp(String.valueOf(ohlcArray.getString(0)));
@@ -116,22 +116,14 @@ public class ChartService {
     // Date helpers
     // =========================================================
 
-    /**
-     * Calculate FROM / TO dates for API requests.
-     *
-     * ✅ Previously called taskService.getHourAndMinutes()
-     *    Now calls priceUtilService.getHourAndMinutes() directly.
-     */
     public String getDate(String timeline, String type, int interval) {
         LocalDate today = LocalDate.now();
         LocalDate lastWorkingDay = NSEWorkingDays.getLastWorkingDay(today);
 
         if (timeline.equalsIgnoreCase("FROM")) {
-            // ✅ was: taskService.getHourAndMinutes(timeline, 5, type)
             return lastWorkingDay.toString()
                     .concat(priceUtilService.getHourAndMinutes(timeline, 5, type));
         } else {
-            // ✅ was: taskService.getHourAndMinutes(timeline, interval, type)
             return new SimpleDateFormat("yyyy-MM-dd").format(new Date())
                     .concat(priceUtilService.getHourAndMinutes(timeline, interval, type));
         }
@@ -164,12 +156,6 @@ public class ChartService {
     }
 
     // =========================================================
-    // Main chart pipeline
-    // =========================================================
-
-  
-
-    // =========================================================
     // Candle update helpers
     // =========================================================
 
@@ -189,7 +175,19 @@ public class ChartService {
             switch (candleType.toUpperCase()) {
                 case "PSAR"        -> vix.setPsar(c.getSignal());
                 case "HEIKINACHI"  -> { vix.setHeikinachi(c.getSignal()); vix.setCandleType(c.getCandleType()); }
-                case "MA"          -> { vix.setSmoothma(c.getSmoothMA()); vix.setMasignal(c.getMasignal()); }
+                case "MA"          -> { 
+                    vix.setSmoothma(c.getSmoothMA()); 
+                    vix.setMasignal(c.getMasignal()); 
+                    // 🚀 The critical handoff:
+                    vix.setFastEma(c.getFastEma());
+                    vix.setSlowEma(c.getSlowEma());
+                    vix.setCrossoverEvent(c.getCrossoverEvent());
+                    
+                    // Debug check to confirm data exists right before DB save
+                    if (c.getFastEma() != null) {
+                        logger.info("Saving EMA -> ID: {}, Fast: {}, Event: {}", c.getId(), c.getFastEma(), c.getCrossoverEvent());
+                    }
+                }
                 case "SUPER_TREND" -> { vix.setSuperTrend(c.getSuperTrend()); vix.setSupertrendSignal(c.getSuperTrendSignal()); }
                 case "VWAP"        -> { vix.setVwap(c.getVwap()); vix.setVwapSignal(c.getSignal()); }
             }
@@ -208,7 +206,13 @@ public class ChartService {
             Vix vix = vixOptional.get();
             if      (candleType.equalsIgnoreCase("PSAR"))        vix.setPsar(candleStick.getSignal());
             else if (candleType.equalsIgnoreCase("HEIKINACHI"))  { vix.setHeikinachi(candleStick.getSignal()); vix.setCandleType(candleStick.getCandleType()); }
-            else if (candleType.equalsIgnoreCase("MA"))          { vix.setSmoothma(candleStick.getSmoothMA()); vix.setMasignal(candleStick.getMasignal()); }
+            else if (candleType.equalsIgnoreCase("MA"))          { 
+                vix.setSmoothma(candleStick.getSmoothMA()); 
+                vix.setMasignal(candleStick.getMasignal()); 
+                vix.setFastEma(candleStick.getFastEma());
+                vix.setSlowEma(candleStick.getSlowEma());
+                vix.setCrossoverEvent(candleStick.getCrossoverEvent());
+            }
             else if (candleType.equalsIgnoreCase("SUPER_TREND")) { vix.setSuperTrend(candleStick.getSuperTrend()); vix.setSupertrendSignal(candleStick.getSuperTrendSignal()); }
             else if (candleType.equalsIgnoreCase("VWAP"))        { vix.setVwap(candleStick.getVwap()); vix.setVwapSignal(candleStick.getSignal()); }
             vixRepo.save(vix);
@@ -219,22 +223,14 @@ public class ChartService {
     // Token / strategy resolution
     // =========================================================
 
-    /**
-     * ✅ Previously called taskService.getStrategyDetails() + taskService.getChart()
-     *    Now delegates directly to StrategyHelperService.
-     */
     public Strategy getTokenDetails(String name, String exchange) {
-        // ✅ was: taskService.getStrategyDetails(name, exchange)
         StrategyDTO strategyModified = strategyHelperService.getStrategyDetails(name, exchange);
-        // ✅ was: taskService.getChart(...)
         Strategy strategy = strategyHelperService.getChart(
                 strategyModified.getSymbol(),
                 strategyModified.getTradingsymbol(),
                 strategyModified.getLive());
         return strategy;
     }
-
-  
 
     private void updateLatestCandle(Indexes indexes, String type, String cacheKey, String timeFrame) {
         int intervalMinutes = SRService.TimeFrame.valueOf(timeFrame).getCandleMinutes();
@@ -259,13 +255,11 @@ public class ChartService {
         pi.setClose(ohlc.getClose()); pi.setHigh(ohlc.getHigh());
         pi.setOpen(ohlc.getOpen());   pi.setLow(ohlc.getLow());
         pi.setName(name); pi.setVolume(ohlc.getVolume()); pi.setRange(ohlc.getRange());
-        // ✅ was: taskService.getPriceType(...)
         pi.setType(priceUtilService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
         pi.setExchange(exchange);
         return pi;
     }
 
- // Updated method to include timeframe
     private Vix buildVix(OHLC ohlc, String name, String timeFrame) {
         Vix vix = new Vix();
         vix.setTimestamp(ohlc.getTimestamp());
@@ -277,11 +271,10 @@ public class ChartService {
         vix.setVolume(ohlc.getVolume());
         vix.setRange(ohlc.getRange());
         vix.setType(priceUtilService.getPriceType(ohlc.getOpen(), ohlc.getClose()));
-        vix.setTimeframe(timeFrame); // ✅ CRITICAL: Save the timeframe
+        vix.setTimeframe(timeFrame); 
         return vix;
     }
 
-    // Overload to maintain compatibility with your legacy saveCandleData method
     private Vix buildVix(OHLC ohlc, String name) {
         return buildVix(ohlc, name, null);
     }
@@ -291,12 +284,12 @@ public class ChartService {
     // =========================================================
 
     public void saveCandleData(OHLC ohlc, String name) {
-        Vix vix = buildVix(ohlc, name);   // reuse builder
+        Vix vix = buildVix(ohlc, name);   
         vixRepo.save(vix);
     }
 
     public void saveCandleData_Index(OHLC ohlc, String name, String exchange) {
-        PricesIndex pi = buildPricesIndex(ohlc, name, exchange);   // reuse builder
+        PricesIndex pi = buildPricesIndex(ohlc, name, exchange);   
         pricesIndexRepo.save(pi);
     }
 
@@ -306,22 +299,32 @@ public class ChartService {
         return utcDateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
     }
 
-    // =========================================================
-    // Vix → Candlestick list
+ // =========================================================
+    // Vix → Candlestick list (WITH STRICT CHRONOLOGICAL SORTING)
     // =========================================================
 
     public List<Candlestick> getValuesAsList(String name) {
         List<Vix> vixList = vixRepo.findByName(name);
         List<Candlestick> candlesticksList = new ArrayList<>();
+        
         if (vixList != null && !vixList.isEmpty()) {
             for (Vix item : vixList) {
                 Candlestick candlestick = new Candlestick(
                         item.getOpen(), item.getHigh(), item.getLow(), item.getClose(),
                         item.getId(), null, null, null);
                 candlestick.setVolume(item.getVolume() != null ? item.getVolume() : BigDecimal.ZERO);
+                
+                // 🚀 CRITICAL: We must transfer the timestamp to sort the list
+                candlestick.setTimestamp(item.getTimestamp()); 
+                
                 candlesticksList.add(candlestick);
             }
         }
+        
+        // 🚀 THE FIX: Force strict chronological order before handing to calculators
+        // This permanently fixes repetitive crossovers and mathematically secures all EMAs, PSAR, and HA.
+        candlesticksList.sort(java.util.Comparator.comparing(Candlestick::getTimestamp));
+        
         return candlesticksList;
     }
 
@@ -548,7 +551,6 @@ public class ChartService {
 
     public Token triggerEntryOrder(Strategy strategy, String type, ResultVix resultVix, boolean tradeFlag)
             throws AddressException, MessagingException, IOException {
-        // ✅ was: taskService.getStrategyDetails(strategy.getName(), strategy.getExchange())
         StrategyDTO strategyModified = strategyHelperService.getStrategyDetails(strategy.getName(), strategy.getExchange());
         strategyModified = getNameAndTradingSymbol(strategyModified, type);
         return placeOrder(strategyModified, type, "B", tradeFlag);
@@ -759,12 +761,10 @@ public class ChartService {
     // JSON / Candle Data Fetch & Routing (100% Backward Compatible)
     // =========================================================
 
-    // ✅ ORIGINAL METHOD: Preserved so no existing code breaks. Defaults to AngelOne.
     public JSONArray getJsonDetails(Indexes indexes, String fromDate, String toDate, String timeFrame) {
         return getJsonDetails("ANGELONE", indexes, fromDate, toDate, timeFrame);
     }
 
-    // ✅ NEW OVERLOADED METHOD: Routes traffic based on the broker flag.
     public JSONArray getJsonDetails(String broker, Indexes indexes, String fromDate, String toDate, String timeFrame) {
         if ("SAMCO".equalsIgnoreCase(broker)) {
             return getSamcoJsonDetails(indexes, fromDate, toDate, timeFrame);
@@ -773,21 +773,16 @@ public class ChartService {
         }
     }
 
- // ✅ Samco Adapter: Translates Samco's payload and filters broker bloat
     private JSONArray getSamcoJsonDetails(Indexes indexes, String fromDate, String toDate, String timeFrame) {
         try {
             String sessionToken = samco.getSamcoSession();
             int intervalMinutes = SRService.TimeFrame.valueOf(timeFrame).getCandleMinutes();
             String interval = String.valueOf(intervalMinutes);
 
-            // Samco strictly requires seconds "yyyy-MM-dd HH:mm:ss"
             String safeFromDate = fromDate.length() == 16 ? fromDate + ":00" : fromDate;
             String safeToDate = toDate.length() == 16 ? toDate + ":00" : toDate;
 
-            // Parse requested From Date to filter out Samco's extra data
             LocalDateTime requestFromTime = LocalDateTime.parse(safeFromDate, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-
-            // Map MCX to MFO for Samco's internal database
             String samcoExchange = indexes.getExchange();
 
             String samcoResponse = samco.getIntradayCandleData(
@@ -805,12 +800,8 @@ public class ChartService {
                         
                         LocalDateTime ldt = LocalDateTime.parse(c.getString("dateTime"), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-                        // 🛑 BROKER QUIRK FILTER: Skip any candles older than our requested fromDate
-                        if (ldt.isBefore(requestFromTime)) {
-                            continue; 
-                        }
+                        if (ldt.isBefore(requestFromTime)) continue; 
 
-                        // Transform Samco time string to AngelOne ISO Offset format
                         OffsetDateTime odt = ldt.atOffset(ZoneOffset.ofHoursMinutes(5, 30));
                         
                         JSONArray arr = new JSONArray();
@@ -831,11 +822,10 @@ public class ChartService {
 
         } catch (Exception e) {
             logger.error("Samco Adapter Failed for {}: {}", indexes.getName(), e.getMessage());
-            return new JSONArray(); // Never return null
+            return new JSONArray(); 
         }
     }
 
-    // ✅ Renamed Original Method: Contains your exact, unmodified AngelOne retry logic
     private JSONArray getAngelOneJsonDetails(Indexes indexes, String fromDate, String toDate, String timeFrame) {
         int maxRetries = 3;
         long delay = 1000;
@@ -865,36 +855,32 @@ public class ChartService {
         return new JSONArray();
     }
 
-
     // =========================================================
     // Overloaded Chart Pipeline Methods (Zero Breakage Guarantee)
     // =========================================================
 
-    // ✅ ORIGINAL METHOD: Preserved. Defaults to AngelOne.
     public String readChartData(String timeFrame, String type, boolean testflag, String name,
                                 String fromDate, String toDate, String symbol) throws SmartAPIException {
         return readChartData(timeFrame, type, testflag, name, fromDate, toDate, symbol, "ANGELONE");
     }
 
-    // ✅ NEW OVERLOADED METHOD: Accepts broker flag.
     public String readChartData(String timeFrame, String type, boolean testflag, String name,
                                 String fromDate, String toDate, String symbol, String broker) throws SmartAPIException {
         try {
-			Indexes indexes = new Indexes();
-			Strategy strategy = new Strategy();
-			if ("ANGELONE".equalsIgnoreCase(broker)) {
-				indexes = indexesRepo.findByNameAndSymbol(name, symbol);
-				strategy = getTokenDetails(name, type);
-			}
-			else
-			{
-				indexes.setSymbol(symbol);
-				indexes.setExchange(type);
-				strategy.setName(symbol);
-			}
+            Indexes indexes = new Indexes();
+            Strategy strategy = new Strategy();
+            if ("ANGELONE".equalsIgnoreCase(broker)) {
+                indexes = indexesRepo.findByNameAndSymbol(name, symbol);
+                strategy = getTokenDetails(name, type);
+            }
+            else
+            {
+                indexes.setSymbol(symbol);
+                indexes.setExchange(type);
+                strategy.setName(symbol);
+            }
 
             if (strategy.getName() != null) {
-                // Pass broker down to readCandle
                 readCandle(indexes, type, testflag, timeFrame, name, fromDate, toDate, "HEIKIN_PSAR", broker);
 
                 List<Candlestick> heikinAshiList = heikinAshiIndicator.calculateHeikinAshiCandles(getValuesAsList(name));
@@ -905,7 +891,9 @@ public class ChartService {
                 if (pSARList == null || pSARList.isEmpty()) return "No PSAR Data Found";
                 updateCandleData(pSARList, "PSAR");
 
-                List<Candlestick> maCandleList = movingAvgWithSMASmoothing.getMovingAverage(getValuesAsList(name));
+                // 🚀 NEW: Correctly using getMovingAvgWithPreviousDaySeed for Dual EMA Crossover
+                List<Candlestick> allCandles = getValuesAsList(name);
+                List<Candlestick> maCandleList = movingAvgWithSMASmoothing.getMovingAvgWithPreviousDaySeed(allCandles, new ArrayList<>());
                 if (maCandleList != null && !maCandleList.isEmpty()) updateCandleData(maCandleList, "MA");
 
                 List<Candlestick> superTrendList = superTrendIndicator.calculateSuperTrend(getValuesAsList(name));
@@ -923,20 +911,16 @@ public class ChartService {
         return "Completed";
     }
 
-    // ✅ ORIGINAL METHOD: Preserved. Defaults to AngelOne.
     public void readCandle(Indexes indexes, String type, boolean testflag, String timeFrame, String name,
                            String fromDate, String toDate, String tableName) {
         readCandle(indexes, type, testflag, timeFrame, name, fromDate, toDate, tableName, "ANGELONE");
     }
 
-    // ✅ NEW OVERLOADED METHOD: Accepts broker flag.
- // ✅ NEW OVERLOADED METHOD: Accepts broker flag.
     public void readCandle(Indexes indexes, String type, boolean testflag, String timeFrame, String name,
                            String fromDate, String toDate, String tableName, String broker) {
         if (indexes == null) return;
 
         if ("HEIKIN_PSAR".equalsIgnoreCase(tableName)) {
-            // Fetch routed through broker
             JSONArray responseArray = getJsonDetails(broker, indexes, fromDate, toDate, timeFrame);
             if (responseArray == null) return;
 
@@ -958,12 +942,19 @@ public class ChartService {
                 }
             });
 
-            if (!batchMap.isEmpty()) vixRepo.saveAll(batchMap.values());
+         // Inside your readCandle method
+            if (!batchMap.isEmpty()) {
+                try {
+                    vixRepo.saveAll(batchMap.values());
+                    logger.info("✅ BatchMap saved successfully!");
+                } catch (Exception e) {
+                    logger.error("🚨 DB INSERTION CRASH: {}", e.getMessage(), e);
+                }
+            }
 
         } else {
             String cacheKey = name + "_" + timeFrame;
             if (candleCache.isLoadedToday(cacheKey)) {
-                // ✅ FIX 1: Pass the dynamic fromDate and toDate down to the cache updater
                 updateLatestCandle(indexes, type, cacheKey, timeFrame, broker, fromDate, toDate);
             } else {
                 JSONArray responseArray = getJsonDetails(broker, indexes, fromDate, toDate, timeFrame);
@@ -979,15 +970,12 @@ public class ChartService {
         }
     }
 
-    // ✅ FIX 2: Accept fromDate/toDate and loop through the entire array
     private void updateLatestCandle(Indexes indexes, String type, String cacheKey, String timeFrame, String broker, String fromDate, String toDate) {
         logger.info("🕯 [INCREMENTAL] Fetching candles for {} | from={} to={}", cacheKey, fromDate, toDate);
         
         JSONArray responseArray = getJsonDetails(broker, indexes, fromDate, toDate, timeFrame);
         if (responseArray == null || responseArray.isEmpty()) return;
         
-        // Loop through all returned candles! 
-        // If the scheduler missed 15 minutes, this safely processes all 3 missed 5-minute candles.
         responseArray.forEach(item -> {
             OHLC ohlc = getOHLC((JSONArray) item);
             if (ohlc != null) {
@@ -996,4 +984,6 @@ public class ChartService {
             }
         });
     }
+    
+    
 }

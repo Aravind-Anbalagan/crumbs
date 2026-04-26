@@ -35,4 +35,6 @@ public interface VixRepo extends JpaRepository<Vix, Long> {
 	 Optional<Vix> findByTimestampAndName(String timestamp, String name);
 	// Inside VixRepo.java
 	 Optional<Vix> findByTimestampAndNameAndTimeframe(String timestamp, String name, String timeframe);
+	// Fetch latest X candles for the chart
+	    List<Vix> findTop200ByNameAndTimeframeOrderByTimestampDesc(String name, String timeframe);
 }

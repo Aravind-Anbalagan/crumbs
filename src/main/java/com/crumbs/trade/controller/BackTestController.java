@@ -69,7 +69,7 @@ public class BackTestController {
 //		String sessionToken = samco.getSamcoSession(); // Assuming you grabbed this earlier
 //		String symbol = "NIFTY26APRFUT";   // Updated symbol from Scrip Master
 //		String exchange = "NFO";                // Updated exchange segment from Scrip Master
-		String fromDate = "2026-04-24 09:00:00"; 
+		String fromDate = "2026-04-24 23:00:00"; 
 		String toDate = "2026-04-24 23:30:00";  
 //		String interval = "5";
 //
@@ -85,7 +85,7 @@ public class BackTestController {
 //
 //		// 3. Print or parse the result
 //		System.out.println(candleData);
-	
+	/*
 		vixRepo.deleteAll();
 		resultVixRepo.deleteAll();
 		//List<String> times = generateTimes(fromDate, toDate);
@@ -99,8 +99,8 @@ public class BackTestController {
 				Vix vix = vixList.get(i);
 				chartService.lookForExecutedOrder("NIFTY","NFO",vix,true);
 			}
-		}
-		return result;
+		}*/
+		return "Completed";
 	}
 	
     public static List<String> generateTimes(String fromDateStr, String toDateStr) {

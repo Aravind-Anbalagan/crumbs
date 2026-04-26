@@ -117,7 +117,7 @@ public class OrderService {
 
         Strategy strategy = strategyRepo.findByName(strategyName);
         if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
-
+        token.setQuantity(strategy.getQuantity());
         // ------------------------------------------------------------------
         // 1. Check active trade — same guard as existing orderPlace
         // ------------------------------------------------------------------

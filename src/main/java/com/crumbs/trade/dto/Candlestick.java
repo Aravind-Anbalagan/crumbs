@@ -16,10 +16,19 @@ public class Candlestick {
     public String candleType;
     private String timestamp;
     public BigDecimal vwap;
+    
+    // Legacy Moving Average / SuperTrend fields
     public BigDecimal smoothMA;
-    public String masignal;
     public BigDecimal superTrend;
     public String superTrendSignal;
+    
+    // Dual EMA Crossover Fields
+    public BigDecimal fastEma;
+    public BigDecimal slowEma;
+    public String masignal; 
+
+    // 🚀 NEW: Tracks the exact point of intersection (e.g., "BUY_CROSS", "SELL_CROSS", "NONE")
+    public String crossoverEvent;
 
     public Candlestick() {}
 
@@ -50,7 +59,7 @@ public class Candlestick {
         this.candleType = candleType;
     }
 
-    // ✅ Copy constructor — fixes Candlestick(Candlestick) undefined issue
+    // ✅ Copy constructor — securely transfers all state, including the new trigger events
     public Candlestick(Candlestick other) {
         if (other == null) return;
         this.id = other.getId();
@@ -65,8 +74,13 @@ public class Candlestick {
         this.timestamp = other.getTimestamp();
         this.vwap = other.getVwap();
         this.smoothMA = other.getSmoothMA();
-        this.masignal = other.getMasignal();
         this.superTrend = other.getSuperTrend();
         this.superTrendSignal = other.getSuperTrendSignal();
+        
+        // Ensure EMA crossover states are perfectly copied
+        this.fastEma = other.getFastEma();
+        this.slowEma = other.getSlowEma();
+        this.masignal = other.getMasignal();
+        this.crossoverEvent = other.getCrossoverEvent();
     }
 }
