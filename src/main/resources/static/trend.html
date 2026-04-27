@@ -7,13 +7,13 @@
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root {
-            /* Defaulting to Terminal Dark Mode */
             --bg-color: #131722;
             --text-color: #d1d4dc;
             --header-bg: #1e222d;
             --border-color: #2b2b43;
             --btn-bg: #2b2b43;
             --btn-hover: #363a45;
+            --accent-blue: #2962FF;
         }
 
         body.light-mode {
@@ -33,7 +33,6 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            transition: background-color 0.3s, color 0.3s;
             display: flex;
             flex-direction: column;
             height: 100vh;
@@ -48,30 +47,10 @@
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
-            flex-wrap: wrap;
             gap: 10px;
         }
 
-        #header h2 { margin: 0; font-size: 1.3rem; letter-spacing: 0.5px; }
-        
-        .live-badge {
-            background-color: #ef5350;
-            color: white;
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            vertical-align: middle;
-            margin-left: 8px;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .controls { display: flex; align-items: center; gap: 12px; }
 
         .toggle-group {
             display: flex;
@@ -82,11 +61,9 @@
             border-radius: 4px;
             border: 1px solid var(--border-color);
             font-size: 0.85rem;
-            flex-wrap: wrap;
         }
 
         .toggle-group label { display: flex; align-items: center; cursor: pointer; gap: 6px; font-weight: 500; }
-        .divider { width: 1px; height: 16px; background-color: var(--border-color); margin: 0 4px; }
 
         .controls select, .controls button {
             background: var(--btn-bg);
@@ -96,212 +73,154 @@
             border-radius: 4px;
             cursor: pointer;
             font-weight: 600;
-            transition: background-color 0.2s;
         }
-        
-        .controls button:hover, .controls select:hover { background: var(--btn-hover); }
 
-        #chart-container { flex-grow: 1; width: 100%; position: relative; }
+        /* --- Chart & Overlay Logic --- */
+        #chart-wrapper {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+        }
+
+        #chart-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        #chart-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(19, 23, 34, 0.8);
+            z-index: 10;
+            color: #ef5350;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        input[type="radio"] { accent-color: var(--accent-blue); cursor: pointer; }
         
-        /* Strategy Legend Colors */
-        .color-vwap { color: #ff9800; font-weight: bold; }
-        .color-fast { color: #2962FF; font-weight: bold; }
-        .color-slow { color: #FF6D00; font-weight: bold; }
+        .color-vwap { color: #ff9800; }
+        .color-fast { color: #2962FF; }
+        .color-slow { color: #FF6D00; }
     </style>
 </head>
 <body>
 
     <div id="header">
-        <h2>⚡ Crumbs Terminal <span class="live-badge">LIVE</span></h2>
+        <h2>⚡ Crumbs Terminal</h2>
         
         <div class="toggle-group">
             <label class="color-vwap"><input type="checkbox" id="toggle-vwap" checked onchange="applyToggles()"> VWAP</label>
-            <div class="divider"></div>
             <label class="color-fast"><input type="checkbox" id="toggle-fast-ema" checked onchange="applyToggles()"> Fast EMA</label>
             <label class="color-slow"><input type="checkbox" id="toggle-slow-ema" checked onchange="applyToggles()"> Slow EMA</label>
-            <div class="divider"></div>
-            <label><input type="checkbox" id="toggle-crossovers" checked onchange="applyToggles()"> 🎯 Execution Signals</label>
+            <label><input type="checkbox" id="toggle-crossovers" checked onchange="applyToggles()"> 🎯 Signals</label>
         </div>
 
         <div class="controls">
+            <div class="toggle-group">
+                <label><input type="radio" name="symbol-select" value="NIFTY" checked onchange="updateChart()"> NIFTY</label>
+                <label><input type="radio" name="symbol-select" value="CRUDEOIL" onchange="updateChart()"> CRUDEOIL</label>
+            </div>
+
             <select id="select-chart-type" onchange="applyToggles()">
                 <option value="candle">Candlesticks</option>
-                <option value="line">Line Chart (Close)</option>
+                <option value="line">Line (Close)</option>
             </select>
-            <select id="select-symbol" onchange="updateChart()">
-                <option value="CRUDEOIL">CRUDEOIL</option>
-                <option value="NIFTY">NIFTY</option>
-            </select>
-            <button id="btn-refresh" onclick="updateChart()">🔄 Sync Data</button>
-            <button id="btn-theme-toggle" onclick="toggleTheme()">☀️ Light Mode</button>
+            
+            <button onclick="updateChart()">🔄 Sync</button>
         </div>
     </div>
 
-    <div id="chart-container"></div>
+    <div id="chart-wrapper">
+        <div id="chart-overlay">
+            <div id="overlay-message">Searching for data...</div>
+        </div>
+        <div id="chart-container"></div>
+    </div>
 
     <script>
         const AppState = {
             chart: null,
             series: { candle: null, priceLine: null, vwap: null, fastEma: null, slowEma: null },
-            isDarkMode: true, 
-            data: { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } },
-            themes: {
-                light: {
-                    layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#191919' },
-                    grid: { vertLines: { color: '#e1e3ea' }, horzLines: { color: '#e1e3ea' } }
-                },
-                dark: {
-                    layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
-                    grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } }
-                }
-            }
+            data: { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } }
         };
 
         function initApp() {
-            try {
-                if (typeof LightweightCharts === 'undefined') throw new Error("Library failed to load.");
-                setupChart();
-                window.addEventListener('resize', handleResize);
-                updateChart();
-            } catch (error) {
-                console.error("❌ Initialization Failed:", error);
-            }
+            setupChart();
+            window.addEventListener('resize', () => {
+                const wrapper = document.getElementById('chart-wrapper');
+                AppState.chart.resize(wrapper.clientWidth, wrapper.clientHeight);
+            });
+            updateChart();
         }
 
         function setupChart() {
             const container = document.getElementById('chart-container');
+            const wrapper = document.getElementById('chart-wrapper');
             
             AppState.chart = LightweightCharts.createChart(container, {
-                width: container.clientWidth,
-                height: container.clientHeight,
-                layout: AppState.themes.dark.layout,
-                grid: AppState.themes.dark.grid,
-                timeScale: { 
-                    timeVisible: true, 
-                    secondsVisible: false 
-                },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+                width: wrapper.clientWidth,
+                height: wrapper.clientHeight,
+                layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
+                grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } },
+                timeScale: { timeVisible: true }
             });
 
-            AppState.series.candle = AppState.chart.addCandlestickSeries({
-                upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-                wickUpColor: '#26a69a', wickDownColor: '#ef5350'
-            });
-
-            AppState.series.priceLine = AppState.chart.addLineSeries({ 
-                color: '#ffffff', lineWidth: 2, title: 'Close Price', visible: false 
-            });
-            
-            AppState.series.vwap = AppState.chart.addLineSeries({ 
-                color: '#ff9800', lineWidth: 2, title: 'VWAP' 
-            });
-
-            AppState.series.fastEma = AppState.chart.addLineSeries({ 
-                color: '#2962FF', lineWidth: 2, title: 'Fast EMA' 
-            });
-
-            AppState.series.slowEma = AppState.chart.addLineSeries({ 
-                color: '#FF6D00', lineWidth: 2, title: 'Slow EMA' 
-            });
+            AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350' });
+            AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#ffffff', visible: false });
+            AppState.series.vwap = AppState.chart.addLineSeries({ color: '#ff9800', lineWidth: 2 });
+            AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#2962FF', lineWidth: 2 });
+            AppState.series.slowEma = AppState.chart.addLineSeries({ color: '#FF6D00', lineWidth: 2 });
         }
 
-        function handleResize() {
-            if (AppState.chart) {
-                const container = document.getElementById('chart-container');
-                AppState.chart.resize(container.clientWidth, container.clientHeight);
-            }
+        function showOverlay(msg) {
+            const overlay = document.getElementById('chart-overlay');
+            const messageEl = document.getElementById('overlay-message');
+            messageEl.innerText = msg;
+            overlay.style.display = 'flex';
         }
 
-        function toggleTheme() {
-            AppState.isDarkMode = !AppState.isDarkMode;
-            if (AppState.isDarkMode) {
-                document.body.classList.remove('light-mode');
-                document.getElementById('btn-theme-toggle').innerText = '☀️ Light Mode';
-                AppState.chart.applyOptions(AppState.themes.dark);
-            } else {
-                document.body.classList.add('light-mode');
-                document.getElementById('btn-theme-toggle').innerText = '🌙 Dark Mode';
-                AppState.chart.applyOptions(AppState.themes.light);
-            }
+        function hideOverlay() {
+            document.getElementById('chart-overlay').style.display = 'none';
         }
 
-        async function fetchRawChartData(symbol, timeframe) {
-           const apiUrl = `/api/v1/market-trend/chart-data?symbol=${symbol}&timeframe=${timeframe}`;
-            const response = await fetch(apiUrl);
-            if (!response.ok) throw new Error(`API response was not OK. Status: ${response.status}`);
-            return await response.json();
-        }
-
-        function processChartData(rawData) {
-            AppState.data = { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } };
-
-            rawData.forEach(item => {
-                // 🚀 Strict IST Timezone Enforcement
-                const date = new Date(item.timestamp);
-                const utcUnixTime = Math.floor(date.getTime() / 1000); // Pure UTC in seconds
-                
-                // Add exactly 5 hours and 30 minutes (19800 seconds) to force IST on the chart's X-Axis
-                const istUnixTime = utcUnixTime + 19800; 
-
-                // Core OHLC Data
-                if (item.close != null) {
-                    AppState.data.priceLine.push({ time: istUnixTime, value: item.close });
-                    
-                    AppState.data.candles.push({ 
-                        time: istUnixTime, 
-                        open: item.open, 
-                        high: item.high, 
-                        low: item.low, 
-                        close: item.close 
-                    });
-                }
-                
-                // Strategy Indicators
-                if (item.vwap) AppState.data.vwap.push({ time: istUnixTime, value: item.vwap });
-                if (item.fastEma) AppState.data.fastEma.push({ time: istUnixTime, value: item.fastEma });
-                if (item.slowEma) AppState.data.slowEma.push({ time: istUnixTime, value: item.slowEma });
-
-                // 🎯 Exact EMA Crossover Execution Markers
-                if (item.crossoverEvent === 'BUY_CROSS') {
-                    AppState.data.markers.crossovers.push({ 
-                        time: istUnixTime, position: 'belowBar', color: '#26a69a', shape: 'arrowUp', text: 'BUY', size: 2 
-                    });
-                } else if (item.crossoverEvent === 'SELL_CROSS') {
-                    AppState.data.markers.crossovers.push({ 
-                        time: istUnixTime, position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: 'SELL', size: 2 
-                    });
-                }
-            });
-        }
-
-        function applyToggles() {
-            const isLineMode = document.getElementById('select-chart-type').value === 'line';
-            AppState.series.candle.applyOptions({ visible: !isLineMode });
-            AppState.series.priceLine.applyOptions({ visible: isLineMode });
-
-            AppState.series.vwap.applyOptions({ visible: document.getElementById('toggle-vwap').checked });
-            AppState.series.fastEma.applyOptions({ visible: document.getElementById('toggle-fast-ema').checked });
-            AppState.series.slowEma.applyOptions({ visible: document.getElementById('toggle-slow-ema').checked });
-
-            let activeMarkers = [];
-            if (document.getElementById('toggle-crossovers').checked) {
-                activeMarkers = activeMarkers.concat(AppState.data.markers.crossovers);
-            }
-
-            activeMarkers.sort((a, b) => a.time - b.time);
-
-            AppState.series.candle.setMarkers(isLineMode ? [] : activeMarkers);
-            AppState.series.priceLine.setMarkers(isLineMode ? activeMarkers : []);
+        function clearChart() {
+            AppState.series.candle.setData([]);
+            AppState.series.priceLine.setData([]);
+            AppState.series.vwap.setData([]);
+            AppState.series.fastEma.setData([]);
+            AppState.series.slowEma.setData([]);
+            AppState.series.candle.setMarkers([]);
         }
 
         async function updateChart() {
-            const symbol = document.getElementById('select-symbol').value;
-            try {
-                const rawData = await fetchRawChartData(symbol, "FIVE_MINUTE");
-                if (rawData.length === 0) return;
-                
-                processChartData(rawData);
+            const symbol = document.querySelector('input[name="symbol-select"]:checked').value;
+            
+            // 1. Immediately Clear & Show Loading
+            clearChart();
+            showOverlay(`Fetching ${symbol} data...`);
 
+            try {
+                const response = await fetch(`/api/v1/market-trend/chart-data?symbol=${symbol}&timeframe=FIVE_MINUTE`);
+                const rawData = await response.json();
+
+                // 2. Comprehensive Empty Check
+                if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
+                    showOverlay(`🚫 No data found for ${symbol}`);
+                    return;
+                }
+
+                // 3. Process & Display
+                hideOverlay();
+                processData(rawData);
+                
                 AppState.series.candle.setData(AppState.data.candles);
                 AppState.series.priceLine.setData(AppState.data.priceLine);
                 AppState.series.vwap.setData(AppState.data.vwap);
@@ -310,9 +229,44 @@
                 
                 applyToggles();
                 AppState.chart.timeScale().fitContent();
+
             } catch (error) {
-                console.error("❌ Data Update Failed:", error);
+                console.error(error);
+                showOverlay(`⚠️ Error syncing ${symbol} data`);
             }
+        }
+
+        function processData(rawData) {
+            AppState.data = { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } };
+            rawData.forEach(item => {
+                const time = Math.floor(new Date(item.timestamp).getTime() / 1000) + 19800; 
+                if (item.close) {
+                    AppState.data.candles.push({ time, open: item.open, high: item.high, low: item.low, close: item.close });
+                    AppState.data.priceLine.push({ time, value: item.close });
+                }
+                if (item.vwap) AppState.data.vwap.push({ time, value: item.vwap });
+                if (item.fastEma) AppState.data.fastEma.push({ time, value: item.fastEma });
+                if (item.slowEma) AppState.data.slowEma.push({ time, value: item.slowEma });
+                
+                if (item.crossoverEvent === 'BUY_CROSS') {
+                    AppState.data.markers.crossovers.push({ time, position: 'belowBar', color: '#26a69a', shape: 'arrowUp', text: 'BUY' });
+                } else if (item.crossoverEvent === 'SELL_CROSS') {
+                    AppState.data.markers.crossovers.push({ time, position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: 'SELL' });
+                }
+            });
+        }
+
+        function applyToggles() {
+            const isLine = document.getElementById('select-chart-type').value === 'line';
+            AppState.series.candle.applyOptions({ visible: !isLine });
+            AppState.series.priceLine.applyOptions({ visible: isLine });
+            AppState.series.vwap.applyOptions({ visible: document.getElementById('toggle-vwap').checked });
+            AppState.series.fastEma.applyOptions({ visible: document.getElementById('toggle-fast-ema').checked });
+            AppState.series.slowEma.applyOptions({ visible: document.getElementById('toggle-slow-ema').checked });
+
+            const markers = document.getElementById('toggle-crossovers').checked ? AppState.data.markers.crossovers : [];
+            AppState.series.candle.setMarkers(isLine ? [] : markers);
+            AppState.series.priceLine.setMarkers(isLine ? markers : []);
         }
 
         document.addEventListener('DOMContentLoaded', initApp);

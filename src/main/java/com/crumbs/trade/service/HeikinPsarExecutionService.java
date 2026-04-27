@@ -116,7 +116,7 @@ public class HeikinPsarExecutionService {
                     TF_FIVE_MIN, EXCHANGE_NFO, false, NIFTY,
                     from, to, // Now 'from' is dynamic!
                     strategyRepo.findByName(NIFTY).getTradingsymbol()
-            );
+                    ,"SAMCO");
         }
 /*
         // Option Chain analysis
@@ -146,11 +146,9 @@ public class HeikinPsarExecutionService {
         } else {
             from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
         }
-         from = "2026-04-23 20:25:00";
-         to = "2026-04-24 23:30:00";
+       
         // Process MCX Heikin-PSAR
-           //if (isActive(STRAT_HEIKIN_PSAR)) { 
-         if (true) { 
+           if (isActive(STRAT_HEIKIN_PSAR)) {  
         	Strategy strategy = strategyRepo.findByName(SAMCO_CRUDEOIL);
         	if(strategy!=null)
         	{

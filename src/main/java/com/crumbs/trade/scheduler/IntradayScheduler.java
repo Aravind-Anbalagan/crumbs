@@ -17,8 +17,10 @@ import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Indicator;
 import com.crumbs.trade.entity.IntradayTrade;
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.IntradayTradeRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.ChartService;
 import com.crumbs.trade.service.IntradayExecutionService;
 
@@ -37,7 +39,8 @@ public class IntradayScheduler {
     private final IndexesRepo indexesRepo;         // ✅ was @Autowired field
     private final ChartService chartService;       // ✅ was @Autowired field
     private final IntradayTradeRepo intradayTradeRepo; // ✅ needed for EOD square-off
-
+    private final StrategyRepo strategyRepo;
+    private static final String STRATEGY_NAME = "EQUITY_INTRADAY";
     // 🔥 TEST MODE (10 sec)
     // @Scheduled(fixedRate = 10000)
 
@@ -45,7 +48,9 @@ public class IntradayScheduler {
     @Scheduled(cron = "0 */3 9-15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runIntradayEngine() {
 
-     
+		if (!isActive(STRATEGY_NAME)) {
+			return;
+		}
         LocalTime now = LocalTime.now();
 
         // 🔒 strict control
@@ -101,7 +106,9 @@ public class IntradayScheduler {
     //            Without this, open positions persist overnight and corrupt next-day logic
     @Scheduled(cron = "0 20 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void eodSquareOff() {
-
+    	if (!isActive(STRATEGY_NAME)) {
+			return;
+		}
         logger.info("⏰ EOD Square-Off Started");
 
         try {
@@ -254,5 +261,22 @@ public class IntradayScheduler {
 
         logger.debug("Parsed {} candles for {}", candles.size(), symbol);
         return candles;
+    }
+
+    /**
+     * Helper to wrap the execution with an activity check.
+     */
+    private void executeIfActive(Runnable tradeLogic) {
+        if (isActive(STRATEGY_NAME)) {
+            tradeLogic.run();
+        }
+    }
+
+    /**
+     * Optimized: Queries the database only once per pulse.
+     */
+    private boolean isActive(String strategyName) {
+        Strategy strategy = strategyRepo.findByName(strategyName);
+        return strategy != null && "Y".equalsIgnoreCase(strategy.getActive());
     }
 }
