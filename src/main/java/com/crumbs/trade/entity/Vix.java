@@ -52,6 +52,8 @@ public class Vix {
 	private BigDecimal vwap;
 	// Optional: if you plan to store signal (e.g. "BUY"/"SELL")
 	private String vwapSignal;
+	@Column(name = "signal")
+    private String signal; // This will store "BUY", "SELL", or null
 
 	// =========================================================
 	// NEW: Dual EMA Crossover Strategy Fields

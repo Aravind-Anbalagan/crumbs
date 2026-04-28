@@ -19,4 +19,5 @@ public class MarketTrendChartDTO {
     private BigDecimal slowEma;
     private String crossoverEvent; // 🎯 This is your EMA Execution Signal
     private String masignal; 
+    private String signal;
 }

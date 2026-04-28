@@ -75,7 +75,14 @@
             font-weight: 600;
         }
 
-        /* --- Chart & Overlay Logic --- */
+        #theme-btn { 
+            padding: 7px 12px; 
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
         #chart-wrapper {
             flex-grow: 1;
             position: relative;
@@ -89,11 +96,8 @@
 
         #chart-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: none; /* Hidden by default */
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none; 
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -101,10 +105,9 @@
             z-index: 10;
             color: #ef5350;
             font-weight: bold;
-            font-size: 1.1rem;
         }
 
-        input[type="radio"] { accent-color: var(--accent-blue); cursor: pointer; }
+        input[type="radio"], input[type="checkbox"] { accent-color: var(--accent-blue); cursor: pointer; }
         
         .color-vwap { color: #ff9800; }
         .color-fast { color: #2962FF; }
@@ -124,9 +127,11 @@
         </div>
 
         <div class="controls">
+            <button id="theme-btn" onclick="toggleTheme()" title="Switch Light/Dark Mode">🌓 Theme</button>
+
             <div class="toggle-group">
-                <label><input type="radio" name="symbol-select" value="NIFTY" checked onchange="updateChart()"> NIFTY</label>
-                <label><input type="radio" name="symbol-select" value="CRUDEOIL" onchange="updateChart()"> CRUDEOIL</label>
+                <label><input type="radio" name="symbol-select" id="sym-nifty" value="NIFTY" onchange="updateChart()"> NIFTY</label>
+                <label><input type="radio" name="symbol-select" id="sym-crude" value="CRUDEOIL" onchange="updateChart()"> CRUDEOIL</label>
             </div>
 
             <select id="select-chart-type" onchange="applyToggles()">
@@ -153,11 +158,31 @@
         };
 
         function initApp() {
+            const now = new Date();
+            const hour = now.getHours();
+            
+            // Logic: 9 AM to 4 PM (16:00)
+            const isDaytime = (hour >= 9 && hour < 16);
+
+            // Set default theme based on time
+            if (isDaytime) {
+                document.body.classList.add('light-mode');
+            }
+
+            // Set default symbol based on time
+            if (isDaytime) {
+                document.getElementById('sym-nifty').checked = true;
+            } else {
+                document.getElementById('sym-crude').checked = true;
+            }
+
             setupChart();
+            
             window.addEventListener('resize', () => {
                 const wrapper = document.getElementById('chart-wrapper');
-                AppState.chart.resize(wrapper.clientWidth, wrapper.clientHeight);
+                if (AppState.chart) AppState.chart.resize(wrapper.clientWidth, wrapper.clientHeight);
             });
+
             updateChart();
         }
 
@@ -168,16 +193,38 @@
             AppState.chart = LightweightCharts.createChart(container, {
                 width: wrapper.clientWidth,
                 height: wrapper.clientHeight,
-                layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
-                grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } },
                 timeScale: { timeVisible: true }
             });
 
+            syncChartColors();
+
             AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350' });
-            AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#ffffff', visible: false });
+            AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#2962FF', visible: false });
             AppState.series.vwap = AppState.chart.addLineSeries({ color: '#ff9800', lineWidth: 2 });
             AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#2962FF', lineWidth: 2 });
             AppState.series.slowEma = AppState.chart.addLineSeries({ color: '#FF6D00', lineWidth: 2 });
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            syncChartColors();
+        }
+
+        function syncChartColors() {
+            const isLight = document.body.classList.contains('light-mode');
+            const themeCfg = {
+                background: isLight ? '#ffffff' : '#131722',
+                text: isLight ? '#191919' : '#d1d4dc',
+                grid: isLight ? '#f0f3fa' : '#2b2b43'
+            };
+
+            AppState.chart.applyOptions({
+                layout: { background: { type: 'solid', color: themeCfg.background }, textColor: themeCfg.text },
+                grid: { vertLines: { color: themeCfg.grid }, horzLines: { color: themeCfg.grid } }
+            });
+
+            const overlay = document.getElementById('chart-overlay');
+            overlay.style.backgroundColor = isLight ? 'rgba(255,255,255,0.8)' : 'rgba(19,23,34,0.8)';
         }
 
         function showOverlay(msg) {
@@ -192,18 +239,13 @@
         }
 
         function clearChart() {
-            AppState.series.candle.setData([]);
-            AppState.series.priceLine.setData([]);
-            AppState.series.vwap.setData([]);
-            AppState.series.fastEma.setData([]);
-            AppState.series.slowEma.setData([]);
+            Object.values(AppState.series).forEach(s => s && s.setData([]));
             AppState.series.candle.setMarkers([]);
         }
 
         async function updateChart() {
             const symbol = document.querySelector('input[name="symbol-select"]:checked').value;
             
-            // 1. Immediately Clear & Show Loading
             clearChart();
             showOverlay(`Fetching ${symbol} data...`);
 
@@ -211,13 +253,11 @@
                 const response = await fetch(`/api/v1/market-trend/chart-data?symbol=${symbol}&timeframe=FIVE_MINUTE`);
                 const rawData = await response.json();
 
-                // 2. Comprehensive Empty Check
                 if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
                     showOverlay(`🚫 No data found for ${symbol}`);
                     return;
                 }
 
-                // 3. Process & Display
                 hideOverlay();
                 processData(rawData);
                 

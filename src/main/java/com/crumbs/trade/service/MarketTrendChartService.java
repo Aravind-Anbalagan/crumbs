@@ -227,12 +227,38 @@ public class MarketTrendChartService {
     public List<MarketTrendChartDTO> getMarketTrendData(String symbol, String timeframe) {
         List<Vix> records = vixRepo.findTop200ByNameAndTimeframeOrderByTimestampDesc(symbol, timeframe);
         if (records == null || records.isEmpty()) return new ArrayList<>();
-        List<MarketTrendChartDTO> dtoList = records.stream().map(v -> new MarketTrendChartDTO(
-                v.getTimestamp(), v.getOpen(), v.getHigh(), v.getLow(), v.getClose(),
-                v.getVwap(), v.getFastEma(), v.getSlowEma(),
-                v.getCrossoverEvent(), v.getMasignal()
-        )).collect(Collectors.toList());
-        dtoList.sort(Comparator.comparing(MarketTrendChartDTO::getTimestamp));
-        return dtoList;
+
+        return records.stream().map(v -> new MarketTrendChartDTO(
+                v.getTimestamp(), 
+                v.getOpen(), 
+                v.getHigh(), 
+                v.getLow(), 
+                v.getClose(),
+                v.getVwap(), 
+                v.getFastEma(), 
+                v.getSlowEma(),
+                v.getCrossoverEvent(), 
+                v.getMasignal(),
+                v.getSignal() // 👈 Just pull the value saved in the DB
+        ))
+        .sorted(Comparator.comparing(MarketTrendChartDTO::getTimestamp))
+        .collect(Collectors.toList());
+    }
+    
+ // Logic to run BEFORE saving to the DB
+    public void processAndSaveVix(Vix vix) {
+        String crossover = vix.getCrossoverEvent();
+        BigDecimal close = vix.getClose();
+        BigDecimal vwap = vix.getVwap();
+
+        if ("BUY_CROSS".equals(crossover) && close.compareTo(vwap) > 0) {
+            vix.setSignal("BUY");
+        } else if ("SELL_CROSS".equals(crossover) && close.compareTo(vwap) < 0) {
+            vix.setSignal("SELL");
+        } else {
+            vix.setSignal(null); // Keep it clean if conditions aren't met
+        }
+
+        vixRepo.save(vix);
     }
 }
