@@ -257,8 +257,11 @@ public class ShortStraddleService {
 
         // 2. Dual-Shield SL Logic
         // If point SL is configured, BOTH shields must break. If not configured, only Trend shield must break.
-        if (isHitsMet || (isPointSlConfigured && isPointSlBreached)) {
-            String reason = isHitsMet ? "TREND_SL_MET" : "PRICE_SL_BREACHED";
+        // Logic: If Price SL is configured, wait for BOTH. Otherwise, just use Trend.
+        boolean shouldExit = isPointSlConfigured ? (isHitsMet && isPointSlBreached) : isHitsMet;
+
+        if (shouldExit) {
+            String reason = isPointSlConfigured ? "DUAL_SHIELD_BREACH" : "TREND_SL_MET";
             log.warn("🚨 [{}][EXIT] STOP LOSS TRIGGERED! Reason: {}", tradeName, reason);
             closeAll(activeOrders, tick, reason, sourceConfig);
             hitCounters.put(tradeName + "_EXIT", 0);
