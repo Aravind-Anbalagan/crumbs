@@ -221,10 +221,13 @@ public class ShortStraddleService {
         String cushionSign = currentGap.compareTo(entryGap) >= 0 ? "+" : "";
         BigDecimal currentPnL = currentGap.subtract(entryGap);
         
-        String defenseMode = isPointSlConfigured ? "🛡️ [TWO SHIELDS: Trend + Price]" : "🛡️ [SINGLE SHIELD: Trend Only]";
         String vStatus = isVwapCrossover ? "⚠️ CROSSOVER (" + currentSlHits + "/" + reqSlHits + ")" : "✅ STABLE";
         
-        // 🛑 NEW: Detailed Price Shield Status
+        String defenseMode = isPointSlConfigured 
+                ? "🛡️ [MODE: DUAL SHIELD (Trend AND Price Required)]" 
+                : "🛡️ [MODE: SINGLE SHIELD (Trend-Only)]";
+        
+        // 🛑 NEW: Detailed Price Shield Status handling both modes
         String pStatus;
         if (!isPointSlConfigured) {
             pStatus = "⚪ DISABLED";
@@ -240,7 +243,7 @@ public class ShortStraddleService {
         log.info("📊 [{}] Strike: {} | Status: {} | Floating PnL: {}{} pts", tradeName, tradedStrike, tradeStatus, cushionSign, currentPnL.setScale(2, RoundingMode.HALF_UP));
         log.info("🎯 GOAL: {} pts gap | Distance: {} pts to go", targetGap.setScale(2, RoundingMode.HALF_UP), distToTarget.setScale(2, RoundingMode.HALF_UP));
         log.info("{}", defenseMode);
-        log.info("🛡️ SHIELD STATUS -> [Trend: {}] | [Price: {}]", vStatus, pStatus);
+        log.info("🛡️ SHIELD STATUS -> [Trend: {}] && [Price: {}]", vStatus, pStatus);
         log.info("================================================================================");
 
         // =========================================================================
@@ -256,7 +259,6 @@ public class ShortStraddleService {
         }
 
         // 2. Dual-Shield SL Logic
-        // If point SL is configured, BOTH shields must break. If not configured, only Trend shield must break.
         // Logic: If Price SL is configured, wait for BOTH. Otherwise, just use Trend.
         boolean shouldExit = isPointSlConfigured ? (isHitsMet && isPointSlBreached) : isHitsMet;
 

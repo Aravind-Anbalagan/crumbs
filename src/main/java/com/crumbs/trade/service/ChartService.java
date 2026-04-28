@@ -185,7 +185,7 @@ public class ChartService {
                     
                     // Debug check to confirm data exists right before DB save
                     if (c.getFastEma() != null) {
-                        logger.info("Saving EMA -> ID: {}, Fast: {}, Event: {}", c.getId(), c.getFastEma(), c.getCrossoverEvent());
+                        //logger.info("Saving EMA -> ID: {}, Fast: {}, Event: {}", c.getId(), c.getFastEma(), c.getCrossoverEvent());
                     }
                 }
                 case "SUPER_TREND" -> { vix.setSuperTrend(c.getSuperTrend()); vix.setSupertrendSignal(c.getSuperTrendSignal()); }

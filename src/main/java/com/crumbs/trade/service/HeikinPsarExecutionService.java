@@ -28,7 +28,7 @@ public class HeikinPsarExecutionService {
 
     // ================= CONFIGURATION CONSTANTS =================
     // Symbols & Names
-    private static final String NIFTY = "NIFTY";
+    private static final String NIFTY = "SAMCO_NIFTY";
     private static final String VIX = "VIX";
     private static final String CRUDEOIL = "CRUDEOIL";
     private static final String SILVERM = "SILVERM";
