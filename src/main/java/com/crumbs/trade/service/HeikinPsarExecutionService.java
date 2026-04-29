@@ -3,6 +3,8 @@ package com.crumbs.trade.service;
 import java.io.IOException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
@@ -101,9 +103,16 @@ public class HeikinPsarExecutionService {
         Optional<Vix> lastRecord = vixRepo.findFirstByNameOrderByTimestampDesc(NIFTY);
 
         if (lastRecord.isPresent()) {
-            // Start from the last known candle's timestamp. 
+        	// Start from the last known candle's timestamp. 
             // This ensures if the last candle was incomplete, it gets updated.
-            from = lastRecord.get().getTimestamp(); 
+            
+            String rawTimestamp = lastRecord.get().getTimestamp(); // "2026-04-29T09:15:00+05:30"
+            
+            // Define the desired format
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+            
+            // Parse the ISO string and format it
+            from = OffsetDateTime.parse(rawTimestamp).format(formatter); 
         } else {
             // Fallback: If the DB is completely empty (e.g., first run of the day), 
             // fetch from the morning open.
