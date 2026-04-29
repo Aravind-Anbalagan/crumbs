@@ -29,7 +29,7 @@ public class Candlestick {
 
     // 🚀 NEW: Tracks the exact point of intersection (e.g., "BUY_CROSS", "SELL_CROSS", "NONE")
     public String crossoverEvent;
-
+    public String combinedSignal;
     public Candlestick() {}
 
     // Original constructor
