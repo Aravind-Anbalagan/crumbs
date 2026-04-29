@@ -19,8 +19,8 @@ public class MarketTrendScheduler {
 
     private static final String NIFTY_PLACEHOLDER  = "MARKET_TREND_NIFTY";
     private static final String CRUDE_PLACEHOLDER  = "MARKET_TREND_CRUDEOIL";
-    private static final String SYMBOL_NIFTY       = "NIFTY";
-    private static final String SYMBOL_CRUDE       = "CRUDEOIL";
+    private static final String SYMBOL_NIFTY       = "SAMCO_NIFTY";
+    private static final String SYMBOL_CRUDE       = "SAMCO_CRUDEOIL";
     private static final String TIME_ZONE          = "Asia/Kolkata";
 
     private final MarketTrendChartService chartService;

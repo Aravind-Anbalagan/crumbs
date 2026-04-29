@@ -77,77 +77,93 @@ public class OIAnalysisService {
 	}
 
 	// 🔥 CORE LOGIC (Optimized performance: 1 DB query instead of 100+)
-	public List<OIChartDTO> processAllStrikes(String name) {
+	// 🔥 CORE LOGIC (Optimized DB queries with Early-Market Safety)
+		public List<OIChartDTO> processAllStrikes(String name) {
 
-		LocalDate today = LocalDate.now(IST);
-		LocalDateTime start = today.atStartOfDay();
-		LocalDateTime end = today.atTime(23, 59, 59);
+			LocalDate today = LocalDate.now(IST);
+			LocalDateTime start = today.atStartOfDay();
+			LocalDateTime end = today.atTime(23, 59, 59);
 
-		// 1. Fetch all records for the instrument today in one go
-		List<StraddleIntraday> allRows = repo.findByNameAndTimestampBetweenOrderByTimestampAsc(name, start, end);
+			// 1. Fetch all records for the instrument today in one go
+			List<StraddleIntraday> allRows = repo.findByNameAndTimestampBetweenOrderByTimestampAsc(name, start, end);
 
-		if (allRows.isEmpty())
-			return Collections.emptyList();
+			if (allRows.isEmpty())
+				return Collections.emptyList();
 
-		// 2. Identify Latest Spot and ATM Step Logic
-		StraddleIntraday latest = allRows.get(allRows.size() - 1);
-		BigDecimal spot = latest.getSpot();
-		
-		// Fixed: Now correctly identifies CRUDEOILM
-		int step = getStrikeStep(name);
-		BigDecimal atmStrike = calculateATM(spot, step);
-
-		// 3. Group by Strike price in-memory to preserve logic for every strike
-		Map<BigDecimal, List<StraddleIntraday>> groupedByStrike = allRows.stream()
-				.collect(Collectors.groupingBy(StraddleIntraday::getStrike));
-
-		List<OIChartDTO> result = new ArrayList<>();
-
-		groupedByStrike.forEach((strike, rows) -> {
+			// 2. Identify Latest Spot and ATM Step Logic
+			StraddleIntraday latest = allRows.get(allRows.size() - 1);
+			BigDecimal spot = latest.getSpot();
 			
-			// Ensuring we have enough data (5 for base + 3 for current)
-			if (rows.size() < 8) return; 
+			int step = getStrikeStep(name);
+			BigDecimal atmStrike = calculateATM(spot, step);
 
-			// ---------- BASE (First 5 records of the day) ----------
-			List<StraddleIntraday> baseRows = rows.subList(0, 5);
-			
-			// ---------- CURRENT (Last 3 records of the day) ----------
-			List<StraddleIntraday> lastRows = rows.subList(rows.size() - 3, rows.size());
+			// 3. Group by Strike price in-memory
+			Map<BigDecimal, List<StraddleIntraday>> groupedByStrike = allRows.stream()
+					.collect(Collectors.groupingBy(StraddleIntraday::getStrike));
 
-			LocalDateTime timestamp = lastRows.get(lastRows.size() - 1).getTimestamp();
+			List<OIChartDTO> result = new ArrayList<>();
 
-			// Calculations (Averages)
-			BigDecimal baseCe = avg(baseRows, true);
-			BigDecimal basePe = avg(baseRows, false);
-			BigDecimal baseCeOi = avgOi(baseRows, true);
-			BigDecimal basePeOi = avgOi(baseRows, false);
+			groupedByStrike.forEach((strike, rows) -> {
+				
+				int totalRows = rows.size();
 
-			BigDecimal currentCe = avg(lastRows, true);
-			BigDecimal currentPe = avg(lastRows, false);
-			BigDecimal currentCeOi = avgOi(lastRows, true);
-			BigDecimal currentPeOi = avgOi(lastRows, false);
+				// Fallback: Need at least 2 data points to calculate momentum
+				if (totalRows < 2) return; 
 
-			// Calculations (Changes)
-			BigDecimal ceOiChange = currentCeOi.subtract(baseCeOi);
-			BigDecimal peOiChange = currentPeOi.subtract(basePeOi);
-			BigDecimal ceLtpChange = currentCe.subtract(baseCe);
-			BigDecimal peLtpChange = currentPe.subtract(basePe);
+				int baseSize;
+				int currentSize;
 
-			BigDecimal cePct = percent(currentCe, baseCe);
-			BigDecimal pePct = percent(currentPe, basePe);
-			
-			boolean isATM = strike.compareTo(atmStrike) == 0;
+				// 🔥 STANDARD LOGIC (Once 8+ rows are available after ~9:23 AM)
+				if (totalRows >= 8) {
+					baseSize = 5;
+					currentSize = 3;
+				} 
+				// 🌅 EARLY-MARKET LOGIC (For the first ~7 minutes of the day)
+				else {
+					baseSize = totalRows / 2; 
+					currentSize = totalRows - baseSize; 
+				}
 
-			result.add(new OIChartDTO(timestamp, strike,
-					currentCeOi, currentPeOi,
-					ceOiChange, peOiChange,
-					currentCe, currentPe,
-					ceLtpChange, peLtpChange,
-					cePct, pePct, isATM));
-		});
+				// ---------- BASE ----------
+				List<StraddleIntraday> baseRows = rows.subList(0, baseSize);
+				
+				// ---------- CURRENT ----------
+				List<StraddleIntraday> lastRows = rows.subList(totalRows - currentSize, totalRows);
 
-		return result;
-	}
+				LocalDateTime timestamp = lastRows.get(lastRows.size() - 1).getTimestamp();
+
+				// Calculations (Averages)
+				BigDecimal baseCe = avg(baseRows, true);
+				BigDecimal basePe = avg(baseRows, false);
+				BigDecimal baseCeOi = avgOi(baseRows, true);
+				BigDecimal basePeOi = avgOi(baseRows, false);
+
+				BigDecimal currentCe = avg(lastRows, true);
+				BigDecimal currentPe = avg(lastRows, false);
+				BigDecimal currentCeOi = avgOi(lastRows, true);
+				BigDecimal currentPeOi = avgOi(lastRows, false);
+
+				// Calculations (Changes)
+				BigDecimal ceOiChange = currentCeOi.subtract(baseCeOi);
+				BigDecimal peOiChange = currentPeOi.subtract(basePeOi);
+				BigDecimal ceLtpChange = currentCe.subtract(baseCe);
+				BigDecimal peLtpChange = currentPe.subtract(basePe);
+
+				BigDecimal cePct = percent(currentCe, baseCe);
+				BigDecimal pePct = percent(currentPe, basePe);
+				
+				boolean isATM = strike.compareTo(atmStrike) == 0;
+
+				result.add(new OIChartDTO(timestamp, strike,
+						currentCeOi, currentPeOi,
+						ceOiChange, peOiChange,
+						currentCe, currentPe,
+						ceLtpChange, peLtpChange,
+						cePct, pePct, isATM));
+			});
+
+			return result;
+		}
 
 	// Logic Fix: Handles CRUDEOILM and NIFTY variants
 	private int getStrikeStep(String name) {
