@@ -47,7 +47,7 @@ public class HeikinPsarExecutionService {
     private static final String TF_ONE_MIN = "ONE_MINUTE";
     private static final int FIVE_MIN = 5;
     // Strategy Flags
-    private static final String STRAT_HEIKIN_PSAR = "MARKET_TREND";
+    private static final String STRAT_HEIKIN_PSAR = "HEIKIN_ACHI";
     private static final String STRAT_VIX = "VIX";
     private static final String STRAT_NIFTY_INDEX = "NIFTY_INDEX";
     private static final String STRAT_SR = "SR";
