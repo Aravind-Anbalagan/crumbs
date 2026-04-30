@@ -50,6 +50,25 @@
             gap: 10px;
         }
 
+        .title-wrapper { display: flex; align-items: center; gap: 10px; margin: 0; }
+        .title-wrapper h2 { margin: 0; font-size: 1.3rem; }
+
+        .live-dot { 
+            width: 10px; height: 10px; border-radius: 50%; 
+            background: #ef5350; display: inline-block; 
+            transition: background 0.3s;
+        }
+        .live-dot.connected { 
+            background: #26a69a; 
+            box-shadow: 0 0 8px #26a69a; 
+            animation: pulse 1.5s infinite; 
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
         .controls { display: flex; align-items: center; gap: 12px; }
 
         .toggle-group {
@@ -117,7 +136,10 @@
 <body>
 
     <div id="header">
-        <h2>⚡ Crumbs Terminal</h2>
+        <div class="title-wrapper">
+            <h2>⚡ Crumbs Terminal</h2>
+            <span id="live-dot" class="live-dot" title="SSE Disconnected"></span>
+        </div>
         
         <div class="toggle-group">
             <label class="color-vwap"><input type="checkbox" id="toggle-vwap" checked onchange="applyToggles()"> VWAP</label>
@@ -151,10 +173,21 @@
     </div>
 
     <script>
+        // --- Core App State ---
         const AppState = {
             chart: null,
             series: { candle: null, priceLine: null, vwap: null, fastEma: null, slowEma: null },
             data: { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } }
+        };
+
+        // --- SSE Stream State ---
+        const StreamState = {
+            source: null,
+            iKeyCurrent: null,
+            iKeyCache: {},
+            pendingTicks: [],
+            TF_SECS: 300, // 5 minutes in seconds
+            IST_OFFSET: 19800
         };
 
         function initApp() {
@@ -164,13 +197,9 @@
             // Logic: 9 AM to 4 PM (16:00)
             const isDaytime = (hour >= 9 && hour < 16);
 
-            // Set default theme based on time
+            // Set default theme and symbol based on time
             if (isDaytime) {
                 document.body.classList.add('light-mode');
-            }
-
-            // Set default symbol based on time
-            if (isDaytime) {
                 document.getElementById('sym-nifty').checked = true;
             } else {
                 document.getElementById('sym-crude').checked = true;
@@ -183,7 +212,9 @@
                 if (AppState.chart) AppState.chart.resize(wrapper.clientWidth, wrapper.clientHeight);
             });
 
+            // Start initial data fetch and connect SSE stream
             updateChart();
+            connectSSE();
         }
 
         function setupChart() {
@@ -250,6 +281,7 @@
             showOverlay(`Fetching ${symbol} data...`);
 
             try {
+                // Fetch historical API
                 const response = await fetch(`/api/v1/market-trend/chart-data?symbol=${symbol}&timeframe=FIVE_MINUTE`);
                 const rawData = await response.json();
 
@@ -270,6 +302,9 @@
                 applyToggles();
                 AppState.chart.timeScale().fitContent();
 
+                // Hook up the SSE stream specifically for this newly selected symbol
+                resolveStreamKey(symbol);
+
             } catch (error) {
                 console.error(error);
                 showOverlay(`⚠️ Error syncing ${symbol} data`);
@@ -279,7 +314,7 @@
         function processData(rawData) {
             AppState.data = { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } };
             rawData.forEach(item => {
-                const time = Math.floor(new Date(item.timestamp).getTime() / 1000) + 19800; 
+                const time = Math.floor(new Date(item.timestamp).getTime() / 1000) + StreamState.IST_OFFSET; 
                 if (item.close) {
                     AppState.data.candles.push({ time, open: item.open, high: item.high, low: item.low, close: item.close });
                     AppState.data.priceLine.push({ time, value: item.close });
@@ -288,9 +323,9 @@
                 if (item.fastEma) AppState.data.fastEma.push({ time, value: item.fastEma });
                 if (item.slowEma) AppState.data.slowEma.push({ time, value: item.slowEma });
                 
-                if (item.crossoverEvent === 'BUY_CROSS') {
+                if (item.signal === 'BUY') {
                     AppState.data.markers.crossovers.push({ time, position: 'belowBar', color: '#26a69a', shape: 'arrowUp', text: 'BUY' });
-                } else if (item.crossoverEvent === 'SELL_CROSS') {
+                } else if (item.signal === 'SELL') {
                     AppState.data.markers.crossovers.push({ time, position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: 'SELL' });
                 }
             });
@@ -307,6 +342,119 @@
             const markers = document.getElementById('toggle-crossovers').checked ? AppState.data.markers.crossovers : [];
             AppState.series.candle.setMarkers(isLine ? [] : markers);
             AppState.series.priceLine.setMarkers(isLine ? markers : []);
+        }
+
+        // ==========================================
+        //         LIVE SSE STREAM LOGIC
+        // ==========================================
+
+        async function getInstrumentKey(name) {
+            if (StreamState.iKeyCache[name]) return StreamState.iKeyCache[name];
+            try {
+                const res = await fetch(`/api/websocket/instrument/key?name=${encodeURIComponent(name)}`);
+                const data = await res.json();
+                const key = data.key || data.instrumentKey || null;
+                if (key) StreamState.iKeyCache[name] = key;
+                return key;
+            } catch (e) {
+                console.error('[KEY ERROR]', name, e);
+                return null;
+            }
+        }
+
+        async function resolveStreamKey(name) {
+            StreamState.iKeyCurrent = null;
+            const key = await getInstrumentKey(name);
+            StreamState.iKeyCurrent = key;
+            
+            if (StreamState.pendingTicks.length) {
+                StreamState.pendingTicks.forEach(applyTick);
+                StreamState.pendingTicks.length = 0;
+            }
+        }
+
+        function connectSSE() {
+            if (StreamState.source) { StreamState.source.close(); StreamState.source = null; }
+            
+            StreamState.source = new EventSource('/api/stream/market');
+            
+            StreamState.source.onopen = () => {
+                document.getElementById('live-dot').className = 'live-dot connected';
+                document.getElementById('live-dot').title = 'SSE Connected (Live)';
+            };
+
+            StreamState.source.onerror = () => {
+                document.getElementById('live-dot').className = 'live-dot';
+                document.getElementById('live-dot').title = 'Reconnecting...';
+                StreamState.source.close();
+                StreamState.source = null;
+                setTimeout(connectSSE, 3000); // Try reconnecting
+            };
+
+            StreamState.source.addEventListener('ltp', e => {
+                let d; 
+                try { d = JSON.parse(e.data); } catch (ex) { return; }
+                
+                if (!d || d.price == null) return;
+                
+                const price = +d.price;
+                const tickKey = d.key ? String(d.key) : null;
+                
+                if (!isFinite(price) || price <= 0) return;
+                
+                if (tickKey && !StreamState.iKeyCurrent) { 
+                    StreamState.pendingTicks.push({ price, tickKey }); 
+                    return; 
+                }
+                
+                // Only process ticks for the currently selected instrument
+                if (tickKey !== StreamState.iKeyCurrent) return;
+                
+                applyTick(price);
+            });
+        }
+
+        function applyTick(priceOrObj) {
+            const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
+            const candles = AppState.data.candles;
+            
+            if (!candles.length || !AppState.series.candle) return;
+
+            const last = candles[candles.length - 1];
+            const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
+            const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
+
+            if (barFloor > last.time) {
+                // Time crossed into a new 5-minute candle
+                const nc = { time: barFloor, open: price, high: price, low: price, close: price };
+                candles.push(nc);
+                AppState.data.priceLine.push({ time: barFloor, value: price });
+                
+                try {
+                    AppState.series.candle.update(nc);
+                    AppState.series.priceLine.update({ time: barFloor, value: price });
+                } catch(e) { console.warn('Chart update failed', e); }
+            } else {
+                // Update the current active candle
+                const upd = {
+                    time: last.time,
+                    open: +last.open,
+                    high: Math.max(+last.high, price),
+                    low: Math.min(+last.low, price),
+                    close: price
+                };
+                
+                candles[candles.length - 1] = upd;
+                AppState.data.priceLine[AppState.data.priceLine.length - 1] = { time: last.time, value: price };
+
+                // Only issue an update to the chart UI if the actual values changed
+                if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
+                    try {
+                        AppState.series.candle.update(upd);
+                        AppState.series.priceLine.update({ time: last.time, value: price });
+                    } catch(e) {}
+                }
+            }
         }
 
         document.addEventListener('DOMContentLoaded', initApp);
