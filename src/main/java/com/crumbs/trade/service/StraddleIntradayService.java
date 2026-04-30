@@ -1543,15 +1543,8 @@ public class StraddleIntradayService {
 	    
 	    while (attempt < MAX_RETRY_ATTEMPTS) {
 	        try {
-	            // Rate limiting: wait if needed
-	            long now = System.currentTimeMillis();
-	            long timeSinceLastCall = now - lastCandleApiCall;
-	            
-	            if (timeSinceLastCall < CANDLE_API_DELAY_MS) {
-	                long waitTime = CANDLE_API_DELAY_MS - timeSinceLastCall;
-	                logger.debug("Rate limiting: waiting {}ms before candle API call", waitTime);
-	                Thread.sleep(waitTime);
-	            }
+	        	// ✅ Replace old rate limit logic with this single thread-safe call
+	            enforceRateLimit();
 	            
 	            LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
 	            
@@ -1579,7 +1572,7 @@ public class StraddleIntradayService {
 	            req.put("todate", toDate);
 
 	            JSONArray result = smartConnect.candleData(req);
-	            lastCandleApiCall = System.currentTimeMillis();
+	           
 	            
 	            // ✅ ADDED: Log actual response for debugging
 	            if (result == null) {
@@ -2672,5 +2665,19 @@ public class StraddleIntradayService {
 	    } catch (Exception e) {
 	        logger.error("❌ VWAP warm-up failed for {}", name, e);
 	    }
+	}
+	
+	private synchronized void enforceRateLimit() throws InterruptedException {
+	    long now = System.currentTimeMillis();
+	    long timeSinceLastCall = now - lastCandleApiCall;
+
+	    if (timeSinceLastCall < CANDLE_API_DELAY_MS) {
+	        long waitTime = CANDLE_API_DELAY_MS - timeSinceLastCall;
+	        logger.debug("Rate limiting: waiting {}ms to respect API limits", waitTime);
+	        Thread.sleep(waitTime);
+	    }
+	    
+	    // Update the timestamp immediately so the next thread in line calculates the delay correctly
+	    lastCandleApiCall = System.currentTimeMillis();
 	}
 }
