@@ -362,9 +362,13 @@
             }
         }
 
-        async function resolveStreamKey(name) {
+        async function resolveStreamKey(symbol) {
             StreamState.iKeyCurrent = null;
-            const key = await getInstrumentKey(name);
+            
+            // Map SAMCO_NIFTY to exactly 'NIFTY' for the WebSocket backend
+            const wsSymbol = symbol === 'SAMCO_NIFTY' ? 'NIFTY' : symbol;
+            
+            const key = await getInstrumentKey(wsSymbol);
             StreamState.iKeyCurrent = key;
             
             if (StreamState.pendingTicks.length) {

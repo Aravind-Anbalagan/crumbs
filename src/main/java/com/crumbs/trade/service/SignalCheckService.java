@@ -348,8 +348,10 @@ public class SignalCheckService {
 		String level;
 		if (currentPrice.compareTo(expiryOHLC.high) > 0) {
 			level = "ABOVE";
+			indicator.setBuysl(expiryOHLC.low);
 		} else if (currentPrice.compareTo(expiryOHLC.low) < 0) {
 			level = "BELOW";
+			indicator.setSellsl(expiryOHLC.high);
 		} else {
 			level = "RANGE";
 		}
