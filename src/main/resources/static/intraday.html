@@ -843,25 +843,63 @@ function connectSSE(){
   });
 }
 function applyTick(priceOrObj){
-  const price=typeof priceOrObj==='object'?priceOrObj.price:priceOrObj;
-  updatePricePanel(price); ssePrevPrice=price;
-  if(!candleSeries||!lastCandles.length)return;
-  const last=lastCandles[lastCandles.length-1];
-  const tfSec=TF_SECS[selectedTimeFrame]||300;
-  const nowIST=Math.floor(Date.now()/1000)+IST_OFFSET;
-  const barFloor=Math.floor(nowIST/tfSec)*tfSec;
-  if(barFloor>last.time){
-    const nc={time:barFloor,open:price,high:price,low:price,close:price,volume:0};
-    try{candleSeries.update(nc);volumeSeries.update({time:barFloor,value:0,color:'rgba(38,166,154,.5)'});lastCandles.push(nc);}catch(e){}
+  const price = Number(typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj);
+  if(isNaN(price) || price <= 0) return;
+  
+  updatePricePanel(price); 
+  ssePrevPrice = price;
+  
+  if(!candleSeries || !lastCandles.length) return;
+  
+  const last = lastCandles[lastCandles.length-1];
+  
+  // STRICT PARSING: Force everything to Numbers. 
+  // If undefined/NaN slips through, fallback to the current price or 0.
+  const lTime  = Number(last.time);
+  const lOpen  = Number(last.open) || price;
+  const lHigh  = Number(last.high) || price;
+  const lLow   = Number(last.low) || price;
+  const lClose = Number(last.close) || price;
+  const lVol   = Number(last.volume) || 0; // Prevent 'undefined' volume crashes
+  
+  if(isNaN(lTime)) return; // Safety exit
+
+  const tfSec = TF_SECS[selectedTimeFrame] || 300;
+  const nowIST = Math.floor(Date.now() / 1000) + IST_OFFSET;
+  const barFloor = Math.floor(nowIST / tfSec) * tfSec;
+  
+  if(barFloor > lTime){
+    // New Candle
+    const nc = {time: barFloor, open: price, high: price, low: price, close: price, volume: 0};
+    try {
+      candleSeries.update(nc);
+      volumeSeries.update({time: barFloor, value: 0, color: 'rgba(38,166,154,.5)'});
+      lastCandles.push(nc);
+    } catch(e) { console.warn("Tick new candle error:", e); }
     return;
   }
-  const upd={time:last.time,open:+last.open,high:Math.max(+last.high,price),low:Math.min(+last.low,price),close:price,volume:+last.volume||0};
-  if(upd.close===+last.close&&upd.high===+last.high&&upd.low===+last.low)return;
-  try{
+  
+  // Update Existing Candle
+  const upd = {
+    time: lTime,
+    open: lOpen,
+    high: Math.max(lHigh, price),
+    low: Math.min(lLow, price),
+    close: price,
+    volume: lVol 
+  };
+  
+  if(upd.close === lClose && upd.high === lHigh && upd.low === lLow) return;
+  
+  try {
     candleSeries.update(upd);
-    volumeSeries.update({time:upd.time,value:upd.volume,color:upd.close>=upd.open?'rgba(38,166,154,.5)':'rgba(239,83,80,.5)'});
-    lastCandles[lastCandles.length-1]=upd;
-  }catch(e){}
+    volumeSeries.update({
+      time: upd.time, 
+      value: upd.volume, // Guaranteed to be a number now
+      color: upd.close >= upd.open ? 'rgba(38,166,154,.5)' : 'rgba(239,83,80,.5)'
+    });
+    lastCandles[lastCandles.length-1] = upd;
+  } catch(e) { console.warn("Tick update error:", e); }
 }
 
 // ── Price Panel ───────────────────────────────────────────────
@@ -895,8 +933,14 @@ function refreshPricePanel(){
 // ── Chart ─────────────────────────────────────────────────────
 function initChart(){
   if(chart)return;
+  
+  // 🚨 THE FIX: Fallback dimensions if clientWidth is somehow 0
+  const w = chartEl.clientWidth || (window.innerWidth - 32);
+  const h = chartEl.clientHeight || (window.innerHeight - 32);
+  
   chart=LightweightCharts.createChart(chartEl,{
-    width:chartEl.clientWidth,height:chartEl.clientHeight,
+    width: w,
+    height: h,
     layout:{backgroundColor:'#fff',textColor:'#000'},
     rightPriceScale:{borderVisible:false,scaleMargins:{top:.1,bottom:.2}},
     timeScale:{timeVisible:true,rightOffset:30,barSpacing:6,minBarSpacing:3,borderColor:'#d1d4dc'},
@@ -911,6 +955,7 @@ function initChart(){
       return String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0');
     }}
   });
+  
   candleSeries=chart.addCandlestickSeries({upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,wickUpColor:'#26a69a',wickDownColor:'#ef5350'});
   volumeSeries=chart.addHistogramSeries({color:'rgba(38,166,154,.5)',priceFormat:{type:'volume'},priceScaleId:'volume',scaleMargins:{top:.9,bottom:0},overlay:true,lineWidth:1,visible:chkVolume.checked});
   chartEl.addEventListener('click',onChartClick);
@@ -930,11 +975,28 @@ function destroyChart(){
   }
   chartReady=false;
 }
-function vc(c){return +c.close>=+c.open?'rgba(38,166,154,.5)':'rgba(239,83,80,.5)';}
+function vc(c) { return Number(c.close) >= Number(c.open) ? 'rgba(38,166,154,.5)' : 'rgba(239,83,80,.5)'; }
 function updateChart(data){
   if(!data||!data.candles||!data.candles.length)return;
   lastData=data;
-  const candles=data.candles;
+  
+  // 🚨 THE FIX: Filter out identical timestamps and force numbers
+  const seenTimes = new Set();
+  const candles = [];
+  for (const c of data.candles) {
+    const t = Number(c.time);
+    if (isNaN(t) || seenTimes.has(t)) continue;
+    seenTimes.add(t);
+    candles.push({
+      time: t,
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+      volume: Number(c.volume) || 0
+    });
+  }
+  candles.sort((a, b) => a.time - b.time);
   syncLayers(data);
   if(isFirstLoad){
     candleSeries.setData(candles);
@@ -992,14 +1054,27 @@ function showToast(msg){
 async function refresh(firstLoad){
   if(idleScreen) idleScreen.style.display='none';
   if(firstLoad){
-    loaderEl.style.display='flex';chartEl.style.display='none';errorEl.style.display='none';
-    retryCount=0;loaderText.textContent='Loading chart data…';retryEl.textContent='';
+    loaderEl.style.display='flex';
+    chartEl.style.display='none';
+    errorEl.style.display='none';
+    retryCount=0;
+    loaderText.textContent='Loading chart data…';
+    retryEl.textContent='';
   }
   try{
     const data=await fetchData();
+    
+    // 🚨 THE FIX: Show the chart container BEFORE initializing and updating.
+    // This ensures clientWidth and clientHeight are strictly > 0.
+    chartEl.style.display='block'; 
+    
     if(!chart)initChart();
     updateChart(data);
-    loaderEl.style.display='none';errorEl.style.display='none';chartEl.style.display='block';retryCount=0;
+    
+    loaderEl.style.display='none';
+    errorEl.style.display='none';
+    retryCount=0;
+    
     if(firstLoad)setTimeout(()=>{if(chart)chart.resize(chartEl.clientWidth,chartEl.clientHeight);},50);
   }catch(e){
     if(firstLoad&&retryCount<MAX_RETRY){
