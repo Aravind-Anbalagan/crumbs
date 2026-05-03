@@ -360,4 +360,64 @@ public class Samco {
             throw new RuntimeException("REST getIntradayCandleData failed for " + symbol, e);
         }
     }
+
+    /**
+     * Fetches Option Chain Data (CE or PE) directly via REST.
+     * Evaluated and used to map multidimensional greeks/premiums for strategy logic.
+     */
+	public String getOptionChain(String sessionToken, String exchange,
+			String symbol, String expiryDate, String strikePrice,
+			String optionType) {
+
+		logger.info(
+				"Initiating Samco Option Chain fetch -> Exchange: {}, Symbol: {}, Expiry: {}, Strike: {}, Type: {}",
+				exchange, symbol, expiryDate, strikePrice, optionType);
+
+		try {
+			StringBuilder queryParams = new StringBuilder();
+			// 2. Use the dynamic exchange variable instead of hardcoded "NFO"
+			queryParams.append("?exchange=").append(
+					URLEncoder.encode(exchange, StandardCharsets.UTF_8));
+			queryParams.append("&searchSymbolName=")
+					.append(URLEncoder.encode(symbol, StandardCharsets.UTF_8));
+			if (strikePrice != null && !strikePrice.trim().isEmpty()) {
+				queryParams.append("&strikePrice=").append(
+						URLEncoder.encode(strikePrice, StandardCharsets.UTF_8));
+			}
+            if (optionType != null && !optionType.trim().isEmpty()) {
+                queryParams.append("&optionType=").append(URLEncoder.encode(optionType, StandardCharsets.UTF_8));
+            }
+            if (expiryDate != null && !expiryDate.trim().isEmpty()) {
+                queryParams.append("&expiryDate=").append(URLEncoder.encode(expiryDate, StandardCharsets.UTF_8));
+            }
+
+            String endpoint = BASE_URL + "/option/optionChain" + queryParams.toString();
+
+            logger.info("🔗 Constructed Option Chain URL: {}", endpoint);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .header("Accept", "application/json")
+                    .header("x-session-token", sessionToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                logger.error("❌ Samco API HTTP {} Error on Option Chain. Body: {}", response.statusCode(), response.body());
+                throw new RuntimeException("HTTP " + response.statusCode() + " from option chain API: " + response.body());
+            }
+
+            logger.info("✅ Successfully fetched Option Chain for {}:{}:{}. Response length: {} chars", 
+                        symbol, strikePrice, optionType, response.body().length());
+            
+            // Returns raw JSON string to be mapped to OptionChainDetail DTOs by the caller
+            return response.body(); 
+
+        } catch (Exception e) {
+            logger.error("💥 REST getOptionChain failed for {}: {}", symbol, e.getMessage());
+            throw new RuntimeException("REST getOptionChain failed for " + symbol, e);
+        }
+    }
 }
