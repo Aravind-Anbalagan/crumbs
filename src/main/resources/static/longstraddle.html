@@ -115,9 +115,8 @@
 
 <script>
     // System Constants
-    const HOST_URL = "http://localhost:8080";
-    const API_GROUPED = `${HOST_URL}/api/straddle/grouped`;
-    const BASE_CHART_URL = `${HOST_URL}/api/v1/chart`;
+    const API_GROUPED = '/api/straddle/grouped';
+    const BASE_CHART_URL = '/api/v1/chart';
 
     // Global State
     let groupedData = {}; 
@@ -367,7 +366,7 @@
 
         try {
             const urlParams = `symbol=${symbol}&ceStrike=${strike}&peStrike=${strike}`;
-            logDebug(`Fetching historical data: /api/v1/chart/historical?${urlParams}`);
+            logDebug(`Fetching historical data: ${BASE_CHART_URL}/historical?${urlParams}`);
             const res = await fetch(`${BASE_CHART_URL}/historical?${urlParams}`);
             
             if (!res.ok) throw new Error(`Historical data fetch failed with HTTP ${res.status}`);
