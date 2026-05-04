@@ -49,7 +49,7 @@ public class StrategyService {
     // =========================================================================
     private static final int GAP_THRESHOLD_POINTS   = 50;  // pts diff open vs pivot → gap day
     private static final int FIRST_CANDLE_BUFFER    = 5;   // buffer added to first 5-min high/low
-    private static final int BIG_CANDLE_THRESHOLD   = 150; // pts — if first candle range > this → straddle day
+    private static final int BIG_CANDLE_THRESHOLD   = 100; // pts — if first candle range > this → straddle day
     private static final int BREAKOUT_CONFIRM_TICKS = 5;   // consecutive 1-min ticks to confirm breakout
 
     // =========================================================================
