@@ -25,6 +25,7 @@ import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
+import com.crumbs.trade.entity.OptionsGreeks;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.AlertRepo;
@@ -35,6 +36,7 @@ import com.crumbs.trade.repo.IntradayTradeRepo;
 import com.crumbs.trade.repo.LevelRepository;
 import com.crumbs.trade.repo.OIRepo;
 import com.crumbs.trade.repo.OIResultRepo;
+import com.crumbs.trade.repo.OptionsGreeksRepo;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.PreMarketAnalysisRepo;
 import com.crumbs.trade.repo.PredictionHistoryRepo;
@@ -145,6 +147,7 @@ public class AngelOneService {
 	@Autowired OIResultRepo oiResultRepo;
 	@Autowired IntradayTradeRepo intradayTradeRepo;
 	@Autowired LevelRepository levelRepository;
+	@Autowired OptionsGreeksRepo optionsGreeksRepo;
 	
 	/*
 	 * Get current price
@@ -247,6 +250,7 @@ public class AngelOneService {
 		oiResultRepo.deleteAll();
 		intradayTradeRepo.deleteAll();
 		levelRepository.deleteAll();
+		optionsGreeksRepo.deleteAll();
 		}
 	/*
 	 * Get current price

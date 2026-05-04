@@ -5,24 +5,43 @@
     <title>Crumbs | CrudeOil & Nifty Straddle Engine</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        :root { --bg: #0b0e11; --card: #151921; --border: #2a2e39; --text: #d1d4dc; }
-        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 10px; overflow: hidden; }
+        :root { 
+            --bg: #0b0e11; 
+            --card: #151921; 
+            --border: #2a2e39; 
+            --text: #d1d4dc; 
+        }
+        
+        body.light-mode {
+            --bg: #f0f3fa; 
+            --card: #ffffff; 
+            --border: #e2e8f0; 
+            --text: #1e293b; 
+        }
+
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 10px; overflow: hidden; transition: background-color 0.3s, color 0.3s; }
         
         .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 5px 10px 5px; }
         .controls { display: flex; gap: 8px; align-items: center; }
+        .controls-right { display: flex; gap: 8px; align-items: center; }
         
         select {
             background: var(--card); color: var(--text); border: 1px solid var(--border);
             padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 12px;
             font-weight: bold; outline: none; cursor: pointer; appearance: auto;
+            transition: background-color 0.3s, border-color 0.3s, color 0.3s;
         }
         select:focus { border-color: #2962ff; }
         
-        .reset-btn { background: #2962ff; color: white; border: none; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .btn { border: none; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; display: flex; align-items: center; justify-content: center;}
+        .reset-btn { background: #2962ff; color: white; }
         .reset-btn:hover { background: #1e4bd8; }
+        
+        .theme-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 14px; padding: 4px 8px; }
+        .theme-btn:hover { background: var(--border); }
 
         .dashboard { display: flex; flex-direction: column; gap: 6px; height: calc(98vh - 40px); }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; flex: 1; display: flex; flex-direction: column; padding: 6px 12px; min-height: 0; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; flex: 1; display: flex; flex-direction: column; padding: 6px 12px; min-height: 0; transition: background-color 0.3s, border-color 0.3s; }
 
         .pane-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; }
         .pane-title { font-size: 10px; font-weight: bold; color: #848e9c; text-transform: uppercase; letter-spacing: 1px; }
@@ -31,16 +50,17 @@
         .live-dot { height: 8px; width: 8px; background-color: #444; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .live-active { background-color: #00ff88; box-shadow: 0 0 8px #00ff88; }
 
-        #loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
-        .spinner { width: 30px; height: 30px; border: 3px solid #232731; border-top: 3px solid #2962ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        #loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; transition: background-color 0.3s;}
+        .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top: 3px solid #2962ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px;}
+        
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
 <div id="loader">
-    <div class="spinner"></div>
-    <div id="loader-msg" style="margin-top:12px; font-size:10px; color:#555; letter-spacing: 1px;">INITIALIZING APP...</div>
+    <div class="spinner" id="loader-spinner"></div>
+    <div id="loader-msg" style="font-size:12px; color:var(--text); letter-spacing: 1px; font-weight: bold;">INITIALIZING APP...</div>
 </div>
 
 <div class="top-bar">
@@ -48,7 +68,10 @@
         <select id="sel-symbol" onchange="handleSymbolChange()"></select>
         <select id="sel-strike" onchange="loadSelectedChart()"></select>
     </div>
-    <button class="reset-btn" onclick="resetZoom()">FIT ALL / RESET ZOOM</button>
+    <div class="controls-right">
+        <button class="btn theme-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle Light/Dark Mode">☀️</button>
+        <button class="btn reset-btn" onclick="resetZoom()">FIT ALL / RESET ZOOM</button>
+    </div>
 </div>
 
 <div class="dashboard">
@@ -65,6 +88,14 @@
             <span id="val-d" style="color: #ff9800; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
         </div>
         <div id="chart-d" class="chart-div"></div>
+    </div>
+    <!-- NEW NET GAMMA CARD -->
+    <div class="card">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-g" class="live-dot"></span>Net Gamma</span>
+            <span id="val-g" style="color: #f44336; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
+        </div>
+        <div id="chart-g" class="chart-div"></div>
     </div>
     <div class="card">
         <div class="pane-header">
@@ -94,11 +125,44 @@
     let isSyncing = false;
     let isHydrated = false;
     let lastKnownTime = 0;
+    let isDarkMode = true;
 
-    // Chart Configuration (IST Timezone)
-    const opt = {
-        layout: { background: { color: '#151921' }, textColor: '#d1d4dc', fontSize: 11 },
-        grid: { vertLines: { color: '#1c2128' }, horzLines: { color: '#1c2128' } },
+    function logDebug(step, detail = "") { console.log(`[DEBUG] ${step}`, detail); }
+
+    function killLoaderWithError(msg) {
+        document.getElementById('loader-spinner').style.display = 'none';
+        const msgEl = document.getElementById('loader-msg');
+        msgEl.innerText = "CRASH: " + msg;
+        msgEl.style.color = '#ff5252'; 
+    }
+
+    // --- THEME ENGINE ---
+    function getChartThemeOptions() {
+        return {
+            layout: { 
+                background: { color: isDarkMode ? '#151921' : '#ffffff' }, 
+                textColor: isDarkMode ? '#d1d4dc' : '#1e293b' 
+            },
+            grid: { 
+                vertLines: { color: isDarkMode ? '#1c2128' : '#f1f5f9' }, 
+                horzLines: { color: isDarkMode ? '#1c2128' : '#f1f5f9' } 
+            },
+            timeScale: { borderColor: isDarkMode ? '#2a2e39' : '#e2e8f0' },
+            rightPriceScale: { borderColor: isDarkMode ? '#2a2e39' : '#e2e8f0' }
+        };
+    }
+
+    function toggleTheme() {
+        isDarkMode = !isDarkMode;
+        document.body.classList.toggle('light-mode', !isDarkMode);
+        document.getElementById('theme-toggle').innerText = isDarkMode ? '☀️' : '🌙';
+        const themeOpts = getChartThemeOptions();
+        Object.values(charts).forEach(c => c.applyOptions(themeOpts));
+    }
+
+    // Chart Initial Configuration
+    const baseOpt = {
+        layout: { fontSize: 11 },
         localization: {
             timeFormatter: (time) => {
                 const date = new Date(time * 1000);
@@ -106,7 +170,7 @@
             }
         },
         timeScale: { 
-            timeVisible: true, secondsVisible: true, borderColor: '#2a2e39', shiftVisibleRangeOnNewBar: true,
+            timeVisible: true, secondsVisible: true, shiftVisibleRangeOnNewBar: true,
             tickMarkFormatter: (time, tickMarkType) => {
                 const date = new Date(time * 1000);
                 switch (tickMarkType) {
@@ -120,25 +184,29 @@
             }
         },
         crosshair: { mode: 0 },
-        rightPriceScale: { borderColor: '#2a2e39', autoScale: true }
+        rightPriceScale: { autoScale: true }
     };
 
-    // Initialize Charts
+    const opt = { ...baseOpt, ...getChartThemeOptions() };
+
+    // Initialize Charts (Added Gamma 'g')
     const charts = {
         p: LightweightCharts.createChart(document.getElementById('chart-p'), opt),
         d: LightweightCharts.createChart(document.getElementById('chart-d'), opt),
+        g: LightweightCharts.createChart(document.getElementById('chart-g'), opt),
         t: LightweightCharts.createChart(document.getElementById('chart-t'), opt),
         iv: LightweightCharts.createChart(document.getElementById('chart-iv'), opt)
     };
 
+    // Initialize Series (Added Gamma 'g')
     const series = {
         p: charts.p.addAreaSeries({ lineColor: '#2962ff', topColor: 'rgba(41,98,255,0.15)', bottomColor: 'transparent', lineWidth: 2 }),
         d: charts.d.addLineSeries({ color: '#ff9800', lineWidth: 2 }),
+        g: charts.g.addLineSeries({ color: '#f44336', lineWidth: 2 }), 
         t: charts.t.addLineSeries({ color: '#9c27b0', lineWidth: 2 }),
         iv: charts.iv.addLineSeries({ color: '#00c076', lineWidth: 2 })
     };
 
-    // Logical Syncing across all panes
     function getSyncHandler(callerId) {
         return (logicalRange) => {
             if (!isHydrated || isSyncing || !logicalRange) return;
@@ -166,102 +234,110 @@
 
     async function initApp() {
         try {
-            const res = await fetch(API_GROUPED);
-            const rawData = await res.json();
+            logDebug("Application Boot Sequence Started.");
+            let res = await fetch(API_GROUPED);
             
-            // NORMALIZATION FIX: Prevents "0" symbol errors by strictly mapping arrays and objects
+            const textData = await res.text();
+            if (!res.ok) { killLoaderWithError(`Server Error HTTP ${res.status}`); return; }
+
+            let rawData = JSON.parse(textData);
             groupedData = {};
+            
             if (Array.isArray(rawData)) {
                 rawData.forEach(item => {
-                    if (typeof item === 'object') {
-                        if (item.symbol) {
-                            groupedData[item.symbol] = item.strikes || item.expiries || item.data || [];
-                        } else {
-                            Object.assign(groupedData, item);
+                    if (item.name && item.expiries) {
+                        const expiryKeys = Object.keys(item.expiries);
+                        if (expiryKeys.length > 0) {
+                            groupedData[item.name] = {
+                                strikes: item.expiries[expiryKeys[0]],
+                                atmStrike: item.atmStrike
+                            };
                         }
                     }
                 });
-            } else if (typeof rawData === 'object') {
-                groupedData = rawData;
             }
 
+            logDebug("Data Normalized successfully.", `Found symbols: ${Object.keys(groupedData).join(", ")}`);
             populateSymbols();
         } catch (e) {
-            console.error("Failed to load grouped metadata:", e);
-            document.getElementById('loader-msg').innerText = "ERROR LOADING METADATA";
+            killLoaderWithError("Unexpected critical error.");
+            logDebug("FATAL UNEXPECTED ERROR:", e.stack || e.message);
         }
     }
 
     function populateSymbols() {
-        const symbols = Object.keys(groupedData);
-        const sel = document.getElementById('sel-symbol');
-        sel.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
-        
-        if (symbols.length > 0) {
-            // TIME-BASED ROUTING LOGIC (IST)
+        try {
+            const symbols = Object.keys(groupedData || {});
+            
+            if (symbols.length === 0) {
+                killLoaderWithError("API returned empty data.");
+                return;
+            }
+
+            const sel = document.getElementById('sel-symbol');
+            sel.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+            
             const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
             const [istHour, istMinute] = formatter.format(new Date()).split(':').map(Number);
-            const timeVal = (istHour * 100) + istMinute; // e.g., 9:15 AM = 915, 4:00 PM = 1600
+            const timeVal = (istHour * 100) + istMinute; 
 
-            let targetSymbol = symbols[0]; // Fallback
-            
+            let targetSymbol = symbols[0]; 
             if (timeVal >= 915 && timeVal <= 1530) {
                 targetSymbol = "NIFTY";
             } else if (timeVal >= 1600 && timeVal <= 2330) {
                 targetSymbol = "CRUDEOIL";
             }
 
-            // Ensure our target actually exists in the API response before selecting it
             if (symbols.includes(targetSymbol)) {
                 sel.value = targetSymbol;
             } else if (symbols.includes("NIFTY")) {
-                sel.value = "NIFTY"; // Hard fallback to NIFTY just in case
+                sel.value = "NIFTY"; 
             }
 
+            logDebug(`Auto-selected target symbol: ${sel.value}`);
             handleSymbolChange();
+
+        } catch (e) {
+            killLoaderWithError("UI Population Error");
+            logDebug("FATAL ERROR in populateSymbols:", e.message);
         }
     }
 
     function handleSymbolChange() {
-        const sym = document.getElementById('sel-symbol').value;
-        const symbolData = groupedData[sym] || {};
-        
-        let rawStrikes = [];
-        
-        if (Array.isArray(symbolData)) {
-            rawStrikes = symbolData;
-        } else {
-            const expiries = Object.keys(symbolData);
-            if (expiries.length > 0) {
-                rawStrikes = symbolData[expiries[0]];
-            }
-        }
-        
-        let strikes = [];
-        if (Array.isArray(rawStrikes)) {
-            strikes = [...rawStrikes]; 
-        } else if (rawStrikes && typeof rawStrikes === 'object') {
-            strikes = Object.keys(rawStrikes);
-        } else if (typeof rawStrikes === 'string') {
-            strikes = [rawStrikes];
-        }
-
-        // GUARD FIX: Strip out non-numeric entries so "CRUDEOIL" can't become a strike price
-        strikes = strikes.filter(s => !isNaN(parseFloat(s)));
-
-        strikes.sort((a, b) => parseFloat(a) - parseFloat(b));
-        
-        const sel = document.getElementById('sel-strike');
-        sel.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
-        
-        if (strikes.length > 0) {
-            // PROXY FOR ATM: Pick the middle strike in the sorted array
-            const atmIndex = Math.floor(strikes.length / 2);
-            sel.selectedIndex = atmIndex;
+        try {
+            const sym = document.getElementById('sel-symbol').value;
+            const symbolData = groupedData[sym];
             
-            loadSelectedChart();
-        } else {
-            series.p.setData([]); series.d.setData([]); series.t.setData([]); series.iv.setData([]);
+            if (!symbolData || !symbolData.strikes) {
+                killLoaderWithError(`No strike data found for ${sym}`);
+                return;
+            }
+
+            let strikes = [...symbolData.strikes];
+            strikes.sort((a, b) => parseFloat(a) - parseFloat(b));
+            
+            logDebug(`Extracted Strikes for ${sym}`, `Count: ${strikes.length}`);
+
+            const sel = document.getElementById('sel-strike');
+            sel.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
+            
+            if (strikes.length > 0) {
+                if (symbolData.atmStrike && strikes.includes(symbolData.atmStrike)) {
+                    sel.value = symbolData.atmStrike;
+                    logDebug(`Selected exact ATM strike from API: ${sel.value}`);
+                } else {
+                    const atmIndex = Math.floor(strikes.length / 2);
+                    sel.selectedIndex = atmIndex;
+                    logDebug(`Selected fallback median strike: ${sel.value}`);
+                }
+                
+                loadSelectedChart();
+            } else {
+                killLoaderWithError(`Strike array is empty for ${sym}`);
+            }
+        } catch (e) {
+            killLoaderWithError("Strike calculation error");
+            logDebug("FATAL ERROR in handleSymbolChange:", e.message);
         }
     }
 
@@ -272,6 +348,7 @@
     async function loadSelectedChart() {
         document.getElementById('loader').style.display = 'flex';
         document.getElementById('loader-msg').innerText = "LOADING CHART DATA...";
+        document.getElementById('loader-spinner').style.display = 'block';
         
         if (activeSSE) {
             activeSSE.close();
@@ -281,47 +358,63 @@
         const symbol = document.getElementById('sel-symbol').value;
         const strike = document.getElementById('sel-strike').value;
 
-        // Reset state
         isHydrated = false;
         lastKnownTime = 0;
         document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
-        updateUI({ combinedPremium: 0, ceDelta: 0, peDelta: 0, ceTheta: 0, peTheta: 0, ceIv: 0, peIv: 0 });
+        
+        // Reset UI with Gamma included
+        updateUI({ combinedPremium: 0, ceDelta: 0, peDelta: 0, ceGamma: 0, peGamma: 0, ceTheta: 0, peTheta: 0, ceIv: 0, peIv: 0 });
 
         try {
             const urlParams = `symbol=${symbol}&ceStrike=${strike}&peStrike=${strike}`;
+            logDebug(`Fetching historical data: /api/v1/chart/historical?${urlParams}`);
             const res = await fetch(`${BASE_CHART_URL}/historical?${urlParams}`);
+            
+            if (!res.ok) throw new Error(`Historical data fetch failed with HTTP ${res.status}`);
+            
             const data = await res.json();
+            logDebug(`Received historical data`, `Rows returned: ${data ? data.length : 0}`);
 
             if (data && data.length > 0) {
                 data.sort((a,b) => a.time - b.time);
 
-                const pD = [], dD = [], tD = [], ivD = [];
+                const pD = [], dD = [], gD = [], tD = [], ivD = [];
                 data.forEach(d => {
                     pD.push({ time: d.time, value: d.combinedPremium });
                     dD.push({ time: d.time, value: d.ceDelta + d.peDelta });
+                    gD.push({ time: d.time, value: (d.ceGamma || 0) + (d.peGamma || 0) }); // Gamma fallback to 0
                     tD.push({ time: d.time, value: d.ceTheta + d.peTheta });
                     ivD.push({ time: d.time, value: (d.ceIv + d.peIv) / 2 });
                 });
 
                 series.p.setData(pD);
                 series.d.setData(dD);
+                series.g.setData(gD); // Load Gamma Data
                 series.t.setData(tD);
                 series.iv.setData(ivD);
 
                 lastKnownTime = data[data.length - 1].time;
                 updateUI(data[data.length - 1]);
             } else {
-                series.p.setData([]); series.d.setData([]); series.t.setData([]); series.iv.setData([]);
+                series.p.setData([]); series.d.setData([]); series.g.setData([]); series.t.setData([]); series.iv.setData([]);
             }
 
             isHydrated = true;
             resetZoom();
+            
+            logDebug("Establishing Live Stream connection...");
             connectStream(urlParams);
 
         } catch(e) {
-            console.error(e);
+            killLoaderWithError("FAILED TO LOAD CHART DATA.");
+            logDebug("FATAL ERROR in loadSelectedChart:", e.message);
         } finally {
-            setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 500);
+            if (isHydrated) {
+                logDebug("App initialized successfully. Hiding loader.");
+                setTimeout(() => { 
+                    document.getElementById('loader').style.display = 'none'; 
+                }, 1000);
+            }
         }
     }
 
@@ -337,6 +430,7 @@
                 
                 series.p.update({ time: ts, value: d.combinedPremium });
                 series.d.update({ time: ts, value: d.ceDelta + d.peDelta });
+                series.g.update({ time: ts, value: (d.ceGamma || 0) + (d.peGamma || 0) }); // Update Gamma
                 series.t.update({ time: ts, value: d.ceTheta + d.peTheta });
                 series.iv.update({ time: ts, value: (d.ceIv + d.peIv) / 2 });
 
@@ -353,6 +447,7 @@
     function updateUI(d) {
         document.getElementById('val-p').innerText = (d.combinedPremium || 0).toFixed(2);
         document.getElementById('val-d').innerText = ((d.ceDelta || 0) + (d.peDelta || 0)).toFixed(4);
+        document.getElementById('val-g').innerText = ((d.ceGamma || 0) + (d.peGamma || 0)).toFixed(4); // Display Gamma
         document.getElementById('val-t').innerText = ((d.ceTheta || 0) + (d.peTheta || 0)).toFixed(2);
         document.getElementById('val-iv').innerText = (((d.ceIv || 0) + (d.peIv || 0))/2).toFixed(2) + "%";
     }

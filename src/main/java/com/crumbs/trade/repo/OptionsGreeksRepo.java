@@ -2,6 +2,7 @@ package com.crumbs.trade.repo;
 
 import com.crumbs.trade.entity.OptionsGreeks;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,10 @@ import java.util.Optional;
 @Repository
 public interface OptionsGreeksRepo extends JpaRepository<OptionsGreeks, Long> {
 
+	@Modifying
+	@Query("delete from OptionsGreeks o")
+	void deleteAll();
+	
     // --- ADD THIS METHOD DECLARATION ---
     // This tells the Java compiler that this method exists, and Spring Boot 
     // will automatically generate the SQL for it at runtime.
