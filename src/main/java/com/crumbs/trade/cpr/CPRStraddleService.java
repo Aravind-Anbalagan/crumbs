@@ -35,7 +35,7 @@ public class CPRStraddleService {
     // =========================================================================
     // CONSTANTS
     // =========================================================================
-    private static final BigDecimal SL_MULTIPLIER         = new BigDecimal("1.65");
+    private static final BigDecimal SL_MULTIPLIER          = new BigDecimal("1.65");
     private static final int        BREAKOUT_CONFIRM_TICKS = 5;
 
     // =========================================================================
@@ -49,10 +49,6 @@ public class CPRStraddleService {
 
     // =========================================================================
     // INTRADAY STATE
-    //
-    // Written once in placeStraddle(), then only read by monitorStraddleSL().
-    // volatile is sufficient — the AtomicBoolean guards ensure the monitor
-    // never runs before placement completes.
     // =========================================================================
     private volatile BigDecimal ceEntryPremium = null;
     private volatile BigDecimal peEntryPremium = null;
@@ -61,7 +57,7 @@ public class CPRStraddleService {
     private volatile BigDecimal first5High     = null;
     private volatile BigDecimal first5Low      = null;
 
-    // Trend-confirm counters — only accessed from the single scheduler thread
+    // Trend-confirm counters
     private int ceBreakoutCount  = 0;
     private int peBreakdownCount = 0;
 
@@ -80,7 +76,7 @@ public class CPRStraddleService {
     // =========================================================================
     // STEP 1 — PLACE STRADDLE  (called once at 09:20 on big-candle days)
     // =========================================================================
-    public void placeStraddle(SmartConnect sc, BigDecimal ltp,
+    public void placeStraddle(SmartConnect sc, BigDecimal ltp, 
                               BigDecimal first5High, BigDecimal first5Low) {
 
         if (straddlePlaced.get()) {
@@ -93,7 +89,6 @@ public class CPRStraddleService {
             this.first5Low  = first5Low;
             logger.info("5-min levels stored → first5High={} first5Low={}", first5High, first5Low);
 
-            // NOTE: findByName("NIFTY") fetches option strategy config — not an order lookup
             Strategy optionStrategy = strategyRepo.findByName("NIFTY");
             if (optionStrategy == null) {
                 logger.error("Strategy NIFTY not found — cannot place straddle.");
@@ -104,7 +99,7 @@ public class CPRStraddleService {
                     AppConstant.CPR_STRATEGY, optionStrategy, ltp);
             logger.info("LTP={} → ATM Strike={}", ltp, atmStrike);
 
-            List<StraddlePremiumDto> strikeList =
+            List<StraddlePremiumDto> strikeList = 
                     straddleIntradayService.buildStraddleDtos(atmStrike, 50)
                             .stream()
                             .filter(dto -> dto.getStrikePrice().compareTo(atmStrike) == 0)
@@ -143,12 +138,9 @@ public class CPRStraddleService {
                     atmStrike, ceEntryPremium, ceSLPrice, peEntryPremium, peSLPrice);
 
             // ── Place CE leg ──────────────────────────────────────────────────
-            // FIX: CPR_STRADDLE_STRATEGY ("CPR-STRADDLE") isolates straddle orders
-            //      from directional CPR orders ("CPR") so findByNameAndActive("CPR")
-            //      in StrategyService never returns a straddle leg by mistake.
             try {
                 orderService.orderPlaceWithToken(
-                        buildToken(atmDto.getCeToken(),atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
+                        buildToken(atmDto.getCeToken(), atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
                 ceLegPlaced.set(true);
                 logger.info("CE leg placed → {}", atmDto.getCeToken().getSymbol());
             } catch (Exception | SmartAPIException e) {
@@ -158,7 +150,7 @@ public class CPRStraddleService {
             // ── Place PE leg ──────────────────────────────────────────────────
             try {
                 orderService.orderPlaceWithToken(
-                        buildToken(atmDto.getPeToken(),atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
+                        buildToken(atmDto.getPeToken(), atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
                 peLegPlaced.set(true);
                 logger.info("PE leg placed → {}", atmDto.getPeToken().getSymbol());
             } catch (Exception | SmartAPIException e) {
@@ -181,18 +173,15 @@ public class CPRStraddleService {
 
     // =========================================================================
     // STEP 2 — MONITOR SL  (called every 1 min, 09:21 → 15:19)
-    //
-    // TWO SL types per leg:
-    //   Premium SL : option price >= entry × 1.65  → exit BOTH legs
-    //   Trend SL   : Nifty outside first5H/L for BREAKOUT_CONFIRM_TICKS
-    //                consecutive ticks             → exit THAT leg only
     // =========================================================================
     public void monitorStraddleSL() throws SmartAPIException {
 
-        if (!straddlePlaced.get()) {
-            logger.warn("Straddle not placed — skipping monitor.");
+        // Safety net to prevent orphaned leg monitoring issues
+        if (!ceLegPlaced.get() && !peLegPlaced.get()) {
+            logger.debug("No straddle legs placed — skipping monitor.");
             return;
         }
+
         if (ceSLHit.get() && peSLHit.get()) {
             logger.debug("Both legs already closed — nothing to monitor.");
             return;
@@ -206,7 +195,6 @@ public class CPRStraddleService {
 
             SmartConnect sc = angelOne.signIn();
 
-            // NOTE: findByName(CPR_STRATEGY) fetches option strategy config — not an order lookup
             Strategy optionStrategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
             if (optionStrategy == null) {
                 logger.warn("Option strategy not found — skipping.");
@@ -234,7 +222,7 @@ public class CPRStraddleService {
                     niftyLtp, first5High, first5Low,
                     ceBreakoutCount, peBreakdownCount);
 
-            // ── Update trend-confirm counters ─────────────────────────────────
+            // ── Update trend-confirm counters (Kept intact, but exit logic removed) ──
             if (niftyLtp != null && first5High != null && first5Low != null) {
                 if (niftyLtp.compareTo(first5High) > 0) {
                     ceBreakoutCount++;
@@ -248,48 +236,24 @@ public class CPRStraddleService {
                 }
             }
 
-            // ── CE SL check ───────────────────────────────────────────────────
+            // ── CE SL check (Only Premium SL exits both legs) ──────────────────
             if (ceLegPlaced.get() && !ceSLHit.get()) {
                 boolean premiumSL = ceCurrent != null && ceCurrent.compareTo(ceSLPrice) >= 0;
-                boolean trendSL   = ceBreakoutCount >= BREAKOUT_CONFIRM_TICKS;
 
                 if (premiumSL) {
                     logger.info("CE Premium SL hit! current={} >= SL={} — exiting BOTH legs.", ceCurrent, ceSLPrice);
                     exitBothLegs("CE Premium SL hit");
                     return;
                 }
-                if (trendSL) {
-                    logger.info("CE Trend SL hit! Nifty above first5High={} for {} ticks — exiting CE leg only.",
-                            first5High, ceBreakoutCount);
-                    // FIX: CPR_STRADDLE_STRATEGY — exits only the straddle CE leg,
-                    //      never touches the directional CPR trade
-                    orderService.exitActiveTradeByToken(
-                            atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
-                    ceSLHit.set(true);
-                    logger.info("CE leg closed. PE continues.");
-                    return;
-                }
             }
 
-            // ── PE SL check ───────────────────────────────────────────────────
+            // ── PE SL check (Only Premium SL exits both legs) ──────────────────
             if (peLegPlaced.get() && !peSLHit.get()) {
                 boolean premiumSL = peCurrent != null && peCurrent.compareTo(peSLPrice) >= 0;
-                boolean trendSL   = peBreakdownCount >= BREAKOUT_CONFIRM_TICKS;
 
                 if (premiumSL) {
                     logger.info("PE Premium SL hit! current={} >= SL={} — exiting BOTH legs.", peCurrent, peSLPrice);
                     exitBothLegs("PE Premium SL hit");
-                    return;
-                }
-                if (trendSL) {
-                    logger.info("PE Trend SL hit! Nifty below first5Low={} for {} ticks — exiting PE leg only.",
-                            first5Low, peBreakdownCount);
-                    // FIX: CPR_STRADDLE_STRATEGY — exits only the straddle PE leg,
-                    //      never touches the directional CPR trade
-                    orderService.exitActiveTradeByToken(
-                            atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
-                    peSLHit.set(true);
-                    logger.info("PE leg closed. CE continues.");
                     return;
                 }
             }
@@ -307,8 +271,7 @@ public class CPRStraddleService {
             logger.info("EOD Straddle exit triggered.");
 
             if (ceLegPlaced.get() && !ceSLHit.get()) {
-                // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-            	orderService.exitActiveTradeByToken(
+                orderService.exitActiveTradeByToken(
                         atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 logger.info("CE leg EOD exit done.");
             } else if (!ceLegPlaced.get()) {
@@ -318,8 +281,7 @@ public class CPRStraddleService {
             }
 
             if (peLegPlaced.get() && !peSLHit.get()) {
-                // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-            	orderService.exitActiveTradeByToken(
+                orderService.exitActiveTradeByToken(
                         atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 logger.info("PE leg EOD exit done.");
             } else if (!peLegPlaced.get()) {
@@ -340,15 +302,13 @@ public class CPRStraddleService {
         logger.info("{} — closing both legs.", reason);
         try {
             if (ceLegPlaced.get() && !ceSLHit.get()) {
-                // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-            	orderService.exitActiveTradeByToken(
+                orderService.exitActiveTradeByToken(
                         atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 ceSLHit.set(true);
                 logger.info("CE leg closed.");
             }
             if (peLegPlaced.get() && !peSLHit.get()) {
-                // FIX: CPR_STRADDLE_STRATEGY — scoped exit, directional trade unaffected
-            	orderService.exitActiveTradeByToken(
+                orderService.exitActiveTradeByToken(
                         atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
                 peSLHit.set(true);
                 logger.info("PE leg closed.");
@@ -360,17 +320,6 @@ public class CPRStraddleService {
 
     // =========================================================================
     // SAVE TO DB
-    //
-    // Same CPR table, distinct name = CPR_STRADDLE_STRATEGY ("CPR-STRADDLE").
-    // getCPRStrategySignal() calls cprRepo.findByName(CPR_STRATEGY) so it
-    // never picks up this row.
-    //
-    // Column mapping:
-    //   pivot  → ATM strike
-    //   high   → CE entry premium
-    //   top    → CE SL price  (entry × 1.65)
-    //   low    → PE entry premium
-    //   bottom → PE SL price  (entry × 1.65)
     // =========================================================================
     private void saveStraddleToDB(BigDecimal atmStrike) {
         try {
@@ -422,8 +371,7 @@ public class CPRStraddleService {
         return value == null || value.compareTo(BigDecimal.ZERO) <= 0;
     }
 
-    /** Copies token fields into a fresh Token DTO to avoid mutating shared state */
-    private Token buildToken(Token source,BigDecimal strike) {
+    private Token buildToken(Token source, BigDecimal strike) {
         Token t = new Token();
         t.setToken(source.getToken());
         t.setSymbol(source.getSymbol());
