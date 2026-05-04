@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -21,32 +22,35 @@ public class OptionsGreeks {
     private LocalDateTime timestamp;
 
     @Column(name = "symbol", nullable = false)
-    private String symbol; // Base symbol: NIFTY / CRUDEOIL
+    private String symbol; 
 
     @Column(name = "trading_symbol")
-    private String tradingSymbol; // Full symbol: NIFTY07MAY2624100CE
+    private String tradingSymbol; 
 
     @Column(name = "token")
-    private String token; // The numeric instrument token
+    private String token; 
 
     @Column(name = "expiry_date", nullable = false)
     private String expiryDate;
 
-    @Column(name = "strike_price", nullable = false)
-    private String strikePrice;
+    // STRIKE is money, use BigDecimal
+    @Column(name = "strike_price", nullable = false, precision = 10, scale = 4)
+    private BigDecimal strikePrice;
 
     @Column(name = "option_type", nullable = false, length = 5)
     private String optionType; 
 
-    @Column(name = "spot_price")
-    private Double spotPrice;
+    // SPOT is money, use BigDecimal
+    @Column(name = "spot_price", precision = 10, scale = 4)
+    private BigDecimal spotPrice;
 
-    @Column(name = "last_traded_price")
-    private Double ltp;
+    // LTP is money, use BigDecimal
+    @Column(name = "last_traded_price", precision = 10, scale = 4)
+    private BigDecimal ltp;
 
+    // GREEKS & IV are math, use Double
     @Column(name = "implied_volatility")
     private Double impliedVolatility;
-
     private Double delta;
     private Double gamma;
     private Double theta;

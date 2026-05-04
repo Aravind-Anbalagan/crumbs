@@ -43,7 +43,15 @@ public class GreekStrategyService {
     private SamcoSessionManager sessionManager;
 
     private double getStrikeGap(String symbol) {
-        return symbol.toUpperCase().contains("CRUDEOIL") ? 100.0 : 50.0;
+        String safeSymbol = symbol.toUpperCase();
+        
+        // Future-proofing for broader indexes
+        if (safeSymbol.contains("BANKNIFTY") || safeSymbol.contains("SENSEX")) {
+            return 100.0;
+        }
+        
+        // NIFTY and CRUDEOIL both operate on 50-point intervals
+        return 50.0;
     }
 
     private int getTrackingRange(String symbol) {
@@ -73,7 +81,8 @@ public class GreekStrategyService {
                     sessionManager.getSession(), strategy.getExchange(), symbol, strategy.getExpiry(), null, null
             );
 
-            saveOptionRangeToDb(fullChainJson, spotPrice.doubleValue(), atmStrike - range, atmStrike + range);
+         // Change this line in ingestAtmChain:
+            saveOptionRangeToDb(fullChainJson, spotPrice, atmStrike - range, atmStrike + range);
 
         } catch (Exception e) {
             logger.error("🚨 [INGEST FAILURE] {}: {}", strategyName, e.getMessage());
@@ -99,16 +108,28 @@ public class GreekStrategyService {
             String symbol = strategy.getSymbol(); // "NIFTY"
             BigDecimal spotPrice = getLiveSpotPrice(strategy, sessionManager.getSession());
             
+         // 1. Calculate the ATM Strike as a numeric value
             double strikeGap = getStrikeGap(symbol);
-            long atmStrike = Math.round(spotPrice.doubleValue() / strikeGap) * (long)strikeGap;
-            String formattedAtmStrike = String.format("%.4f", (double) atmStrike);
+            long atmStrikeLong = Math.round(spotPrice.doubleValue() / strikeGap) * (long)strikeGap;
 
-            // 3. Retrieve latest Greeks (Matching by the stripped symbol "NIFTY")
-            Optional<OptionsGreeks> latestCeOpt = optionsGreeksRepo.findTopBySymbolAndStrikePriceAndOptionTypeOrderByTimestampDesc(symbol, formattedAtmStrike, "CE");
-            Optional<OptionsGreeks> latestPeOpt = optionsGreeksRepo.findTopBySymbolAndStrikePriceAndOptionTypeOrderByTimestampDesc(symbol, formattedAtmStrike, "PE");
+            // 2. Convert to BigDecimal (matching your Entity and Repo types)
+            BigDecimal strikeLookup = BigDecimal.valueOf(atmStrikeLong).setScale(4);
+
+            // 3. Query the Repository using the BigDecimal object
+            Optional<OptionsGreeks> latestCeOpt = optionsGreeksRepo.findTopBySymbolAndStrikePriceAndOptionTypeOrderByTimestampDesc(
+                symbol, 
+                strikeLookup, 
+                "CE"
+            );
+
+            Optional<OptionsGreeks> latestPeOpt = optionsGreeksRepo.findTopBySymbolAndStrikePriceAndOptionTypeOrderByTimestampDesc(
+                symbol, 
+                strikeLookup, 
+                "PE"
+            );
 
             if (latestCeOpt.isEmpty() || latestPeOpt.isEmpty()) {
-                logger.warn("⚠️ [DATA MISSING] No ATM data for {} at strike {}", symbol, formattedAtmStrike);
+                logger.warn("⚠️ [DATA MISSING] No ATM data for {} at strike {}", symbol, strikeLookup);
                 return;
             }
 
@@ -136,40 +157,50 @@ public class GreekStrategyService {
         }
     }
 
-    private void saveOptionRangeToDb(String jsonResponse, double spotPrice, long lowerBound, long upperBound) {
+    private void saveOptionRangeToDb(String jsonResponse, BigDecimal spotPrice, long lowerBound, long upperBound) {
         try {
             SamcoOptionChainResponse response = objectMapper.readValue(jsonResponse, SamcoOptionChainResponse.class);
             if ("Success".equalsIgnoreCase(response.status()) && response.optionChainDetails() != null) {
                 List<OptionsGreeks> batchToSave = new ArrayList<>();
 
                 for (var detail : response.optionChainDetails()) {
-                    double currentStrike = Double.parseDouble(detail.strikePrice());
+                    // Keep strike as BigDecimal for the Entity
+                    BigDecimal currentStrike = new BigDecimal(detail.strikePrice());
 
-                    if (currentStrike >= lowerBound && currentStrike <= upperBound) {
+                    if (currentStrike.longValue() >= lowerBound && currentStrike.longValue() <= upperBound) {
                         OptionsGreeks log = new OptionsGreeks();
                         log.setTimestamp(LocalDateTime.now());
-                        log.setSymbol(detail.underLyingSymbol()); // Stores "NIFTY"
-                        log.setTradingSymbol(detail.tradingSymbol()); 
-                        log.setToken(detail.instrumentToken());       
+                        log.setSymbol(detail.underLyingSymbol());
+                        log.setTradingSymbol(detail.tradingSymbol());
+                        log.setToken(detail.instrumentToken());
                         log.setExpiryDate(detail.expiryDate());
-                        log.setStrikePrice(detail.strikePrice()); 
+                        
+                        // Matches your new BigDecimal Entity field
+                        log.setStrikePrice(currentStrike); 
                         log.setOptionType(detail.optionType());
-                        log.setSpotPrice(spotPrice);
-                        log.setLtp(parseDoubleSafely(detail.lastTradedPrice()));
+                        
+                        // Matches your new BigDecimal Entity field
+                        log.setSpotPrice(spotPrice); 
+                        
+                        // Matches your new BigDecimal Entity field
+                        log.setLtp(new BigDecimal(detail.lastTradedPrice())); 
+
+                        // Greeks remain Doubles as per our math rule
                         log.setImpliedVolatility(parseDoubleSafely(detail.impliedVolatility()));
                         log.setDelta(parseDoubleSafely(detail.delta()));
                         log.setGamma(parseDoubleSafely(detail.gamma()));
                         log.setTheta(parseDoubleSafely(detail.theta()));
                         log.setVega(parseDoubleSafely(detail.vega()));
+                        
                         log.setBestBids(objectMapper.writeValueAsString(detail.bestBids()));
                         log.setBestAsks(objectMapper.writeValueAsString(detail.bestAsks()));
 
-                        batchToSave.add(log); 
+                        batchToSave.add(log);
                     }
                 }
                 if (!batchToSave.isEmpty()) {
                     optionsGreeksRepo.saveAll(batchToSave);
-                    logger.info("💾 [DB] Saved {} option records for {}", batchToSave.size(), batchToSave.get(0).getSymbol());
+                    logger.info("💾 [DB] Saved {} option records", batchToSave.size());
                 }
             }
         } catch (Exception e) {

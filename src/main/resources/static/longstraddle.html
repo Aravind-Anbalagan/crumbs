@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crumbs | CrudeOil & Nifty Straddle Engine</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root { --bg: #0b0e11; --card: #151921; --border: #2a2e39; --text: #d1d4dc; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 10px; overflow: hidden; }
+        
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 5px 10px 5px; }
+        .controls { display: flex; gap: 8px; align-items: center; }
+        
+        select {
+            background: var(--card); color: var(--text); border: 1px solid var(--border);
+            padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 12px;
+            font-weight: bold; outline: none; cursor: pointer; appearance: auto;
+        }
+        select:focus { border-color: #2962ff; }
+        
+        .reset-btn { background: #2962ff; color: white; border: none; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .reset-btn:hover { background: #1e4bd8; }
+
+        .dashboard { display: flex; flex-direction: column; gap: 6px; height: calc(98vh - 40px); }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; flex: 1; display: flex; flex-direction: column; padding: 6px 12px; min-height: 0; }
+
+        .pane-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; }
+        .pane-title { font-size: 10px; font-weight: bold; color: #848e9c; text-transform: uppercase; letter-spacing: 1px; }
+        .chart-div { flex-grow: 1; width: 100%; }
+
+        .live-dot { height: 8px; width: 8px; background-color: #444; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .live-active { background-color: #00ff88; box-shadow: 0 0 8px #00ff88; }
+
+        #loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+        .spinner { width: 30px; height: 30px; border: 3px solid #232731; border-top: 3px solid #2962ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <div id="loader-msg" style="margin-top:12px; font-size:10px; color:#555; letter-spacing: 1px;">INITIALIZING APP...</div>
+</div>
+
+<div class="top-bar">
+    <div class="controls">
+        <select id="sel-symbol" onchange="handleSymbolChange()"></select>
+        <select id="sel-strike" onchange="loadSelectedChart()"></select>
+    </div>
+    <button class="reset-btn" onclick="resetZoom()">FIT ALL / RESET ZOOM</button>
+</div>
+
+<div class="dashboard">
+    <div class="card">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-p" class="live-dot"></span>Combined Premium</span>
+            <span id="val-p" style="color: #2962ff; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
+        </div>
+        <div id="chart-p" class="chart-div"></div>
+    </div>
+    <div class="card">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-d" class="live-dot"></span>Net Delta</span>
+            <span id="val-d" style="color: #ff9800; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
+        </div>
+        <div id="chart-d" class="chart-div"></div>
+    </div>
+    <div class="card">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-t" class="live-dot"></span>Net Theta</span>
+            <span id="val-t" style="color: #9c27b0; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
+        </div>
+        <div id="chart-t" class="chart-div"></div>
+    </div>
+    <div class="card">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-iv" class="live-dot"></span>Avg Implied Volatility</span>
+            <span id="val-iv" style="color: #00c076; font-family: monospace; font-size: 13px; font-weight: bold;">0.00%</span>
+        </div>
+        <div id="chart-iv" class="chart-div"></div>
+    </div>
+</div>
+
+<script>
+    // System Constants
+    const HOST_URL = "http://localhost:8080";
+    const API_GROUPED = `${HOST_URL}/api/straddle/grouped`;
+    const BASE_CHART_URL = `${HOST_URL}/api/v1/chart`;
+
+    // Global State
+    let groupedData = {}; 
+    let activeSSE = null; 
+    let isSyncing = false;
+    let isHydrated = false;
+    let lastKnownTime = 0;
+
+    // Chart Configuration (IST Timezone)
+    const opt = {
+        layout: { background: { color: '#151921' }, textColor: '#d1d4dc', fontSize: 11 },
+        grid: { vertLines: { color: '#1c2128' }, horzLines: { color: '#1c2128' } },
+        localization: {
+            timeFormatter: (time) => {
+                const date = new Date(time * 1000);
+                return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium', hour12: false });
+            }
+        },
+        timeScale: { 
+            timeVisible: true, secondsVisible: true, borderColor: '#2a2e39', shiftVisibleRangeOnNewBar: true,
+            tickMarkFormatter: (time, tickMarkType) => {
+                const date = new Date(time * 1000);
+                switch (tickMarkType) {
+                    case 0: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' });
+                    case 1: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short' });
+                    case 2: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric' });
+                    case 3: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+                    case 4: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    default: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+                }
+            }
+        },
+        crosshair: { mode: 0 },
+        rightPriceScale: { borderColor: '#2a2e39', autoScale: true }
+    };
+
+    // Initialize Charts
+    const charts = {
+        p: LightweightCharts.createChart(document.getElementById('chart-p'), opt),
+        d: LightweightCharts.createChart(document.getElementById('chart-d'), opt),
+        t: LightweightCharts.createChart(document.getElementById('chart-t'), opt),
+        iv: LightweightCharts.createChart(document.getElementById('chart-iv'), opt)
+    };
+
+    const series = {
+        p: charts.p.addAreaSeries({ lineColor: '#2962ff', topColor: 'rgba(41,98,255,0.15)', bottomColor: 'transparent', lineWidth: 2 }),
+        d: charts.d.addLineSeries({ color: '#ff9800', lineWidth: 2 }),
+        t: charts.t.addLineSeries({ color: '#9c27b0', lineWidth: 2 }),
+        iv: charts.iv.addLineSeries({ color: '#00c076', lineWidth: 2 })
+    };
+
+    // Logical Syncing across all panes
+    function getSyncHandler(callerId) {
+        return (logicalRange) => {
+            if (!isHydrated || isSyncing || !logicalRange) return;
+            isSyncing = true;
+            Object.keys(charts).forEach(id => {
+                if (id !== callerId) {
+                    try { charts[id].timeScale().setVisibleLogicalRange(logicalRange); } catch (e) {}
+                }
+            });
+            isSyncing = false;
+        };
+    }
+
+    Object.keys(charts).forEach(id => {
+        charts[id].timeScale().subscribeVisibleLogicalRangeChange(getSyncHandler(id));
+    });
+
+    function resetZoom() {
+        Object.values(charts).forEach(c => c.timeScale().fitContent());
+    }
+
+    // ==========================================
+    // DATA FETCHING & UI POPULATION
+    // ==========================================
+
+    async function initApp() {
+        try {
+            const res = await fetch(API_GROUPED);
+            const rawData = await res.json();
+            
+            // NORMALIZATION FIX: Prevents "0" symbol errors by strictly mapping arrays and objects
+            groupedData = {};
+            if (Array.isArray(rawData)) {
+                rawData.forEach(item => {
+                    if (typeof item === 'object') {
+                        if (item.symbol) {
+                            groupedData[item.symbol] = item.strikes || item.expiries || item.data || [];
+                        } else {
+                            Object.assign(groupedData, item);
+                        }
+                    }
+                });
+            } else if (typeof rawData === 'object') {
+                groupedData = rawData;
+            }
+
+            populateSymbols();
+        } catch (e) {
+            console.error("Failed to load grouped metadata:", e);
+            document.getElementById('loader-msg').innerText = "ERROR LOADING METADATA";
+        }
+    }
+
+    function populateSymbols() {
+        const symbols = Object.keys(groupedData);
+        const sel = document.getElementById('sel-symbol');
+        sel.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+        
+        if (symbols.length > 0) {
+            // TIME-BASED ROUTING LOGIC (IST)
+            const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+            const [istHour, istMinute] = formatter.format(new Date()).split(':').map(Number);
+            const timeVal = (istHour * 100) + istMinute; // e.g., 9:15 AM = 915, 4:00 PM = 1600
+
+            let targetSymbol = symbols[0]; // Fallback
+            
+            if (timeVal >= 915 && timeVal <= 1530) {
+                targetSymbol = "NIFTY";
+            } else if (timeVal >= 1600 && timeVal <= 2330) {
+                targetSymbol = "CRUDEOIL";
+            }
+
+            // Ensure our target actually exists in the API response before selecting it
+            if (symbols.includes(targetSymbol)) {
+                sel.value = targetSymbol;
+            } else if (symbols.includes("NIFTY")) {
+                sel.value = "NIFTY"; // Hard fallback to NIFTY just in case
+            }
+
+            handleSymbolChange();
+        }
+    }
+
+    function handleSymbolChange() {
+        const sym = document.getElementById('sel-symbol').value;
+        const symbolData = groupedData[sym] || {};
+        
+        let rawStrikes = [];
+        
+        if (Array.isArray(symbolData)) {
+            rawStrikes = symbolData;
+        } else {
+            const expiries = Object.keys(symbolData);
+            if (expiries.length > 0) {
+                rawStrikes = symbolData[expiries[0]];
+            }
+        }
+        
+        let strikes = [];
+        if (Array.isArray(rawStrikes)) {
+            strikes = [...rawStrikes]; 
+        } else if (rawStrikes && typeof rawStrikes === 'object') {
+            strikes = Object.keys(rawStrikes);
+        } else if (typeof rawStrikes === 'string') {
+            strikes = [rawStrikes];
+        }
+
+        // GUARD FIX: Strip out non-numeric entries so "CRUDEOIL" can't become a strike price
+        strikes = strikes.filter(s => !isNaN(parseFloat(s)));
+
+        strikes.sort((a, b) => parseFloat(a) - parseFloat(b));
+        
+        const sel = document.getElementById('sel-strike');
+        sel.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
+        
+        if (strikes.length > 0) {
+            // PROXY FOR ATM: Pick the middle strike in the sorted array
+            const atmIndex = Math.floor(strikes.length / 2);
+            sel.selectedIndex = atmIndex;
+            
+            loadSelectedChart();
+        } else {
+            series.p.setData([]); series.d.setData([]); series.t.setData([]); series.iv.setData([]);
+        }
+    }
+
+    // ==========================================
+    // CHART LOADING & STREAMING
+    // ==========================================
+
+    async function loadSelectedChart() {
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('loader-msg').innerText = "LOADING CHART DATA...";
+        
+        if (activeSSE) {
+            activeSSE.close();
+            activeSSE = null;
+        }
+
+        const symbol = document.getElementById('sel-symbol').value;
+        const strike = document.getElementById('sel-strike').value;
+
+        // Reset state
+        isHydrated = false;
+        lastKnownTime = 0;
+        document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
+        updateUI({ combinedPremium: 0, ceDelta: 0, peDelta: 0, ceTheta: 0, peTheta: 0, ceIv: 0, peIv: 0 });
+
+        try {
+            const urlParams = `symbol=${symbol}&ceStrike=${strike}&peStrike=${strike}`;
+            const res = await fetch(`${BASE_CHART_URL}/historical?${urlParams}`);
+            const data = await res.json();
+
+            if (data && data.length > 0) {
+                data.sort((a,b) => a.time - b.time);
+
+                const pD = [], dD = [], tD = [], ivD = [];
+                data.forEach(d => {
+                    pD.push({ time: d.time, value: d.combinedPremium });
+                    dD.push({ time: d.time, value: d.ceDelta + d.peDelta });
+                    tD.push({ time: d.time, value: d.ceTheta + d.peTheta });
+                    ivD.push({ time: d.time, value: (d.ceIv + d.peIv) / 2 });
+                });
+
+                series.p.setData(pD);
+                series.d.setData(dD);
+                series.t.setData(tD);
+                series.iv.setData(ivD);
+
+                lastKnownTime = data[data.length - 1].time;
+                updateUI(data[data.length - 1]);
+            } else {
+                series.p.setData([]); series.d.setData([]); series.t.setData([]); series.iv.setData([]);
+            }
+
+            isHydrated = true;
+            resetZoom();
+            connectStream(urlParams);
+
+        } catch(e) {
+            console.error(e);
+        } finally {
+            setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 500);
+        }
+    }
+
+    function connectStream(urlParams) {
+        activeSSE = new EventSource(`${BASE_CHART_URL}/stream?${urlParams}`);
+        
+        activeSSE.onmessage = (event) => {
+            const d = JSON.parse(event.data);
+            const ts = Number(d.time);
+
+            if (ts > lastKnownTime) {
+                lastKnownTime = ts;
+                
+                series.p.update({ time: ts, value: d.combinedPremium });
+                series.d.update({ time: ts, value: d.ceDelta + d.peDelta });
+                series.t.update({ time: ts, value: d.ceTheta + d.peTheta });
+                series.iv.update({ time: ts, value: (d.ceIv + d.peIv) / 2 });
+
+                updateUI(d);
+                document.querySelectorAll('.live-dot').forEach(dot => dot.classList.add('live-active'));
+            }
+        };
+
+        activeSSE.onerror = (e) => {
+            document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
+        }
+    }
+
+    function updateUI(d) {
+        document.getElementById('val-p').innerText = (d.combinedPremium || 0).toFixed(2);
+        document.getElementById('val-d').innerText = ((d.ceDelta || 0) + (d.peDelta || 0)).toFixed(4);
+        document.getElementById('val-t').innerText = ((d.ceTheta || 0) + (d.peTheta || 0)).toFixed(2);
+        document.getElementById('val-iv').innerText = (((d.ceIv || 0) + (d.peIv || 0))/2).toFixed(2) + "%";
+    }
+
+    window.addEventListener('resize', () => {
+        Object.values(charts).forEach(c => {
+            const parent = c.chartElement().parentElement;
+            c.applyOptions({ width: parent.clientWidth, height: parent.clientHeight });
+        });
+    });
+
+    initApp();
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 
@@ -19,50 +19,61 @@ public class GreekStrategyEngine {
     private static final Logger log = LoggerFactory.getLogger(GreekStrategyEngine.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     
-    private final ObjectMapper objectMapper; // Used to parse the JSON string columns for Bids/Asks
+    private final ObjectMapper objectMapper;
 
-    private static final double MAX_BID_ASK_SPREAD = 2.0; 
+    // Adjusted to Percentage (1.5%) instead of a hardcoded 2.0 value
+    private static final double MAX_SLIPPAGE_PERCENT = 0.015; 
     private static final double EDGE_DISCOUNT_THRESHOLD = 0.85; 
 
     public boolean evaluateEntry(OptionsGreeks callData, OptionsGreeks putData) {
         
         try {
-            double spotPrice = callData.getSpotPrice();
+            // FIX: Convert BigDecimal to double for math library compatibility
+            double spotPrice = callData.getSpotPrice().doubleValue();
             
-            // 1. Average the IV (Convert percentage to decimal)
+            // 1. Average the IV
             double averageIvDecimal = ((callData.getImpliedVolatility() + putData.getImpliedVolatility()) / 2.0) / 100.0;
 
-            // 2. Calculate DTE
-            LocalDate expiryDate = LocalDate.parse(callData.getExpiryDate(), DATE_FORMATTER);
-            long dte = ChronoUnit.DAYS.between(LocalDate.now(), expiryDate);
-            double effectiveDte = (dte == 0) ? 0.5 : (double) dte;
+            // 2. High-Precision DTE Calculation (Minutes based)
+            // Note: callData.getExpiryDate() is String, we assume it's YYYY-MM-DD
+            // We set expiry time to 15:30 (Market Close) for precise decay math
+            LocalDateTime expiryDateTime = LocalDateTime.parse(callData.getExpiryDate() + "T15:30:00");
+            long minutesToExpiry = ChronoUnit.MINUTES.between(LocalDateTime.now(), expiryDateTime);
+            
+            // Convert minutes to fractional years (1440 mins/day * 365 days)
+            double effectiveDteYears = Math.max(minutesToExpiry, 30) / (1440.0 * 365.0); 
 
-            // 3. Calculate 1 Standard Deviation Expected Move
-            double expectedMove = spotPrice * averageIvDecimal * Math.sqrt(effectiveDte / 365.0);
+            // 3. 1-SD Expected Move Calculation
+            double expectedMove = spotPrice * averageIvDecimal * Math.sqrt(effectiveDteYears);
 
-            // 4. Extract Top of Book (L2) Pricing from the JSON Text Columns
+            // 4. Extract Top of Book Pricing
             double callAsk = extractTopDepthPrice(callData.getBestAsks());
             double callBid = extractTopDepthPrice(callData.getBestBids());
             double putAsk  = extractTopDepthPrice(putData.getBestAsks());
             double putBid  = extractTopDepthPrice(putData.getBestBids());
 
-            // 5. Slippage Protection
-            double callSpread = callAsk - callBid;
-            double putSpread = putAsk - putBid;
+            // 5. Dynamic Slippage Protection (Percentage Based)
+            double totalStraddleCost = callAsk + putAsk;
+            double callSpreadPct = (callAsk - callBid) / callAsk;
+            double putSpreadPct = (putAsk - putBid) / putAsk;
 
-            if (callSpread > MAX_BID_ASK_SPREAD || putSpread > MAX_BID_ASK_SPREAD) {
-                log.warn("STANDBY: Spreads too wide. CE Spread: {}, PE Spread: {}", callSpread, putSpread);
+            if (callSpreadPct > MAX_SLIPPAGE_PERCENT || putSpreadPct > MAX_SLIPPAGE_PERCENT) {
+                log.warn("STANDBY: Spreads too wide. CE: {}%, PE: {}%", 
+                          String.format("%.2f", callSpreadPct * 100), 
+                          String.format("%.2f", putSpreadPct * 100));
                 return false;
             }
 
-            // 6. The Edge Calculation
-            double combinedAskCost = callAsk + putAsk;
+            // 6. Edge Calculation
             double requiredDiscountPrice = expectedMove * EDGE_DISCOUNT_THRESHOLD;
 
-            log.info("Expected Move: {}, Straddle Cost: {}, Target Price: {}", 
-                     expectedMove, combinedAskCost, requiredDiscountPrice);
+            log.info("{} | ExpMove: {} | Cost: {} | Target: {}", 
+                     callData.getSymbol(),
+                     String.format("%.2f", expectedMove), 
+                     String.format("%.2f", totalStraddleCost), 
+                     String.format("%.2f", requiredDiscountPrice));
 
-            return combinedAskCost < requiredDiscountPrice;
+            return totalStraddleCost < requiredDiscountPrice;
 
         } catch (Exception e) {
             log.error("Math engine failed during edge calculation: {}", e.getMessage());
@@ -70,15 +81,11 @@ public class GreekStrategyEngine {
         }
     }
 
-    /**
-     * Helper to extract the highest/lowest price from the JSON String stored in the DB
-     */
     private double extractTopDepthPrice(String depthJson) {
         try {
             if (depthJson == null || depthJson.isEmpty()) return 0.0;
             JsonNode rootArray = objectMapper.readTree(depthJson);
             if (rootArray.isArray() && !rootArray.isEmpty()) {
-                // Gets the first element in the depth array (Top Bid or Top Ask)
                 return rootArray.get(0).get("price").asDouble();
             }
         } catch (Exception e) {
