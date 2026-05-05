@@ -195,12 +195,21 @@ public class ShortStraddleService {
         BigDecimal targetGap = entryGap.add(sourceConfig.getTargetPoints());
         BigDecimal distToTarget = targetGap.subtract(currentGap);
 
-        // Shield 2: Price SL definitions
+        // =========================================================================
+        // 🛑 NEW: DYNAMIC PRICE SL (Based on current CP and CV)
+        // =========================================================================
         BigDecimal slPoints = sourceConfig.getSlPoints();
         boolean isPointSlConfigured = slPoints != null && slPoints.compareTo(BigDecimal.ZERO) > 0;
-        boolean isPointSlBreached = isPointSlConfigured && (currentGap.compareTo(entryGap.subtract(slPoints)) <= 0);
+        
+        // Calculate how much CP has exceeded CV
+        BigDecimal cpSurplusOverCv = cp.subtract(cv); 
+        
+        // SL is breached if CP is greater than CV by at least slPoints
+        boolean isPointSlBreached = isPointSlConfigured && (cpSurplusOverCv.compareTo(slPoints) >= 0);
 
-        // Shield 1: Trend SL definitions (VWAP Crossover)
+        // =========================================================================
+        // ⚠️ TREND SL (Consecutive VWAP Crossovers) - UNTOUCHED
+        // =========================================================================
         boolean isVwapCrossover = cp.compareTo(cv) > 0;
         int reqSlHits = sourceConfig.getExitHitsRequired() > 0 ? sourceConfig.getExitHitsRequired() : 3;
         
@@ -213,8 +222,8 @@ public class ShortStraddleService {
         int currentSlHits = hitCounters.getOrDefault(tradeName + "_EXIT", 0);
         boolean isHitsMet = currentSlHits >= reqSlHits;
 
-     // =========================================================================
-        // 📊 USER-FRIENDLY MONITORING DASHBOARD
+        // =========================================================================
+        // 📊 COMPACT MONITORING DASHBOARD (Restored format with CP/CV)
         // =========================================================================
         BigDecimal tradedStrike = activeOrders.get(0).getStrike();
         String tradeStatus = currentGap.compareTo(entryGap) >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
@@ -227,19 +236,16 @@ public class ShortStraddleService {
                 ? "🛡️ [MODE: DUAL SHIELD (Trend AND Price Required)]" 
                 : "🛡️ [MODE: SINGLE SHIELD (Trend-Only)]";
         
-        // 🛑 NEW: Detailed Price Shield Status handling both modes
         String pStatus;
         if (!isPointSlConfigured) {
             pStatus = "⚪ DISABLED";
         } else {
-            BigDecimal slFloor = entryGap.subtract(slPoints);
             pStatus = isPointSlBreached 
-                    ? String.format("🚨 BREACHED (Gap %.2f <= Floor %.2f)", currentGap, slFloor) 
-                    : String.format("✅ SECURE (Gap %.2f > Floor %.2f | Configured SL: %s pts)", currentGap, slFloor, slPoints);
+                    ? String.format("🚨 BREACHED (CP %.2f >= CV %.2f + SL %.2f)", cp, cv, slPoints) 
+                    : String.format("✅ SECURE (CP %.2f < CV %.2f + SL %.2f | Configured SL: %.2f pts)", cp, cv, slPoints, slPoints);
         }
 
         log.info("================================================================================");
-        // 🛑 NEW: Added Strike to the main status line
         log.info("📊 [{}] Strike: {} | Status: {} | Floating PnL: {}{} pts", tradeName, tradedStrike, tradeStatus, cushionSign, currentPnL.setScale(2, RoundingMode.HALF_UP));
         log.info("🎯 GOAL: {} pts gap | Distance: {} pts to go", targetGap.setScale(2, RoundingMode.HALF_UP), distToTarget.setScale(2, RoundingMode.HALF_UP));
         log.info("{}", defenseMode);
@@ -259,7 +265,6 @@ public class ShortStraddleService {
         }
 
         // 2. Dual-Shield SL Logic
-        // Logic: If Price SL is configured, wait for BOTH. Otherwise, just use Trend.
         boolean shouldExit = isPointSlConfigured ? (isHitsMet && isPointSlBreached) : isHitsMet;
 
         if (shouldExit) {
