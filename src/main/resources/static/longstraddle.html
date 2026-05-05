@@ -40,8 +40,15 @@
         .theme-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 14px; padding: 4px 8px; }
         .theme-btn:hover { background: var(--border); }
 
-        .dashboard { display: flex; flex-direction: column; gap: 6px; height: calc(98vh - 40px); }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; flex: 1; display: flex; flex-direction: column; padding: 6px 12px; min-height: 0; transition: background-color 0.3s, border-color 0.3s; }
+        /* TABS CSS */
+        .tabs { display: flex; gap: 8px; padding: 0 5px 10px 5px; }
+        .tab-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 12px; font-family: inherit; }
+        .tab-btn.active { background: #2962ff; color: white; border-color: #2962ff; }
+        .tab-btn:hover:not(.active) { background: var(--border); }
+
+        /* DASHBOARD CSS UPDATED FOR TABS */
+        .dashboard { display: flex; flex-direction: column; gap: 6px; height: calc(100vh - 120px); }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; display: none; flex-direction: column; padding: 6px 12px; height: 100%; transition: background-color 0.3s, border-color 0.3s; }
 
         .pane-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; }
         .pane-title { font-size: 10px; font-weight: bold; color: #848e9c; text-transform: uppercase; letter-spacing: 1px; }
@@ -74,37 +81,45 @@
     </div>
 </div>
 
+<!-- TAB NAVIGATION -->
+<div class="tabs">
+    <button class="tab-btn active" id="btn-tab-p" onclick="openTab('p')">Combined Premium</button>
+    <button class="tab-btn" id="btn-tab-d" onclick="openTab('d')">Net Delta</button>
+    <button class="tab-btn" id="btn-tab-g" onclick="openTab('g')">Net Gamma</button>
+    <button class="tab-btn" id="btn-tab-t" onclick="openTab('t')">Net Theta</button>
+    <button class="tab-btn" id="btn-tab-iv" onclick="openTab('iv')">Avg IV</button>
+</div>
+
 <div class="dashboard">
-    <div class="card">
+    <div class="card" id="card-p" style="display: flex;">
         <div class="pane-header">
             <span class="pane-title"><span id="dot-p" class="live-dot"></span>Combined Premium</span>
             <span id="val-p" style="color: #2962ff; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
         </div>
         <div id="chart-p" class="chart-div"></div>
     </div>
-    <div class="card">
+    <div class="card" id="card-d">
         <div class="pane-header">
             <span class="pane-title"><span id="dot-d" class="live-dot"></span>Net Delta</span>
             <span id="val-d" style="color: #ff9800; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
         </div>
         <div id="chart-d" class="chart-div"></div>
     </div>
-    <!-- NEW NET GAMMA CARD -->
-    <div class="card">
+    <div class="card" id="card-g">
         <div class="pane-header">
             <span class="pane-title"><span id="dot-g" class="live-dot"></span>Net Gamma</span>
             <span id="val-g" style="color: #f44336; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
         </div>
         <div id="chart-g" class="chart-div"></div>
     </div>
-    <div class="card">
+    <div class="card" id="card-t">
         <div class="pane-header">
             <span class="pane-title"><span id="dot-t" class="live-dot"></span>Net Theta</span>
             <span id="val-t" style="color: #9c27b0; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
         </div>
         <div id="chart-t" class="chart-div"></div>
     </div>
-    <div class="card">
+    <div class="card" id="card-iv">
         <div class="pane-header">
             <span class="pane-title"><span id="dot-iv" class="live-dot"></span>Avg Implied Volatility</span>
             <span id="val-iv" style="color: #00c076; font-family: monospace; font-size: 13px; font-weight: bold;">0.00%</span>
@@ -114,17 +129,52 @@
 </div>
 
 <script>
-    // System Constants
     const API_GROUPED = '/api/straddle/grouped';
     const BASE_CHART_URL = '/api/v1/chart';
 
-    // Global State
     let groupedData = {}; 
     let activeSSE = null; 
     let isSyncing = false;
     let isHydrated = false;
     let lastKnownTime = 0;
     let isDarkMode = true;
+    let activeTab = 'p'; 
+
+    // Custom Data Range Tracker
+    let dataExtremes = {
+        p: { min: Infinity, max: -Infinity },
+        d: { min: Infinity, max: -Infinity },
+        g: { min: Infinity, max: -Infinity },
+        t: { min: Infinity, max: -Infinity },
+        iv: { min: Infinity, max: -Infinity }
+    };
+
+    function resetExtremes() {
+        Object.keys(dataExtremes).forEach(k => {
+            dataExtremes[k] = { min: Infinity, max: -Infinity };
+        });
+    }
+
+    function updateExtreme(key, val) {
+        if (val < dataExtremes[key].min) dataExtremes[key].min = val;
+        if (val > dataExtremes[key].max) dataExtremes[key].max = val;
+    }
+
+    // This forces the chart to accurately frame negative (and positive) bounds based purely on math
+    function createAutoscaleProvider(key) {
+        return () => {
+            const ex = dataExtremes[key];
+            if (ex.min === Infinity || ex.max === -Infinity) return null;
+            const range = ex.max - ex.min;
+            const pad = range === 0 ? (Math.abs(ex.min) * 0.1 || 1) : range * 0.15; // 15% Padding
+            return {
+                priceRange: {
+                    minValue: ex.min - pad,
+                    maxValue: ex.max + pad,
+                }
+            };
+        };
+    }
 
     function logDebug(step, detail = "") { console.log(`[DEBUG] ${step}`, detail); }
 
@@ -135,7 +185,33 @@
         msgEl.style.color = '#ff5252'; 
     }
 
-    // --- THEME ENGINE ---
+    function openTab(tabId) {
+        document.querySelectorAll('.card').forEach(c => c.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+        document.getElementById(`card-${tabId}`).style.display = 'flex';
+        document.getElementById(`btn-tab-${tabId}`).classList.add('active');
+
+        activeTab = tabId;
+        resizeActiveChart();
+        
+        setTimeout(() => {
+            if (charts[activeTab]) charts[activeTab].timeScale().fitContent();
+        }, 20);
+    }
+
+    function resizeActiveChart() {
+        const chartDiv = document.getElementById(`chart-${activeTab}`);
+        if (chartDiv && charts[activeTab]) {
+            charts[activeTab].applyOptions({ width: chartDiv.clientWidth, height: chartDiv.clientHeight });
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        resizeActiveChart();
+        resetZoom(); 
+    });
+
     function getChartThemeOptions() {
         return {
             layout: { 
@@ -159,7 +235,6 @@
         Object.values(charts).forEach(c => c.applyOptions(themeOpts));
     }
 
-    // Chart Initial Configuration
     const baseOpt = {
         layout: { fontSize: 11 },
         localization: {
@@ -188,7 +263,6 @@
 
     const opt = { ...baseOpt, ...getChartThemeOptions() };
 
-    // Initialize Charts (Added Gamma 'g')
     const charts = {
         p: LightweightCharts.createChart(document.getElementById('chart-p'), opt),
         d: LightweightCharts.createChart(document.getElementById('chart-d'), opt),
@@ -197,13 +271,13 @@
         iv: LightweightCharts.createChart(document.getElementById('chart-iv'), opt)
     };
 
-    // Initialize Series (Added Gamma 'g')
+    // Note the added autoscaleInfoProvider which hooks into our custom mathematical boundary logic
     const series = {
-        p: charts.p.addAreaSeries({ lineColor: '#2962ff', topColor: 'rgba(41,98,255,0.15)', bottomColor: 'transparent', lineWidth: 2 }),
-        d: charts.d.addLineSeries({ color: '#ff9800', lineWidth: 2 }),
-        g: charts.g.addLineSeries({ color: '#f44336', lineWidth: 2 }), 
-        t: charts.t.addLineSeries({ color: '#9c27b0', lineWidth: 2 }),
-        iv: charts.iv.addLineSeries({ color: '#00c076', lineWidth: 2 })
+        p: charts.p.addAreaSeries({ lineColor: '#2962ff', topColor: 'rgba(41,98,255,0.15)', bottomColor: 'transparent', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('p') }),
+        d: charts.d.addLineSeries({ color: '#ff9800', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('d') }),
+        g: charts.g.addLineSeries({ color: '#f44336', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('g') }), 
+        t: charts.t.addLineSeries({ color: '#9c27b0', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('t') }),
+        iv: charts.iv.addLineSeries({ color: '#00c076', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('iv') })
     };
 
     function getSyncHandler(callerId) {
@@ -224,18 +298,16 @@
     });
 
     function resetZoom() {
-        Object.values(charts).forEach(c => c.timeScale().fitContent());
+        if (charts[activeTab]) {
+            charts[activeTab].timeScale().fitContent();
+        }
     }
 
-    // ==========================================
-    // DATA FETCHING & UI POPULATION
-    // ==========================================
-
     async function initApp() {
+        setTimeout(resizeActiveChart, 100);
+
         try {
-            logDebug("Application Boot Sequence Started.");
             let res = await fetch(API_GROUPED);
-            
             const textData = await res.text();
             if (!res.ok) { killLoaderWithError(`Server Error HTTP ${res.status}`); return; }
 
@@ -256,22 +328,16 @@
                 });
             }
 
-            logDebug("Data Normalized successfully.", `Found symbols: ${Object.keys(groupedData).join(", ")}`);
             populateSymbols();
         } catch (e) {
             killLoaderWithError("Unexpected critical error.");
-            logDebug("FATAL UNEXPECTED ERROR:", e.stack || e.message);
         }
     }
 
     function populateSymbols() {
         try {
             const symbols = Object.keys(groupedData || {});
-            
-            if (symbols.length === 0) {
-                killLoaderWithError("API returned empty data.");
-                return;
-            }
+            if (symbols.length === 0) return killLoaderWithError("API returned empty data.");
 
             const sel = document.getElementById('sel-symbol');
             sel.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -287,19 +353,11 @@
                 targetSymbol = "CRUDEOIL";
             }
 
-            if (symbols.includes(targetSymbol)) {
-                sel.value = targetSymbol;
-            } else if (symbols.includes("NIFTY")) {
-                sel.value = "NIFTY"; 
-            }
+            if (symbols.includes(targetSymbol)) { sel.value = targetSymbol; } 
+            else if (symbols.includes("NIFTY")) { sel.value = "NIFTY"; }
 
-            logDebug(`Auto-selected target symbol: ${sel.value}`);
             handleSymbolChange();
-
-        } catch (e) {
-            killLoaderWithError("UI Population Error");
-            logDebug("FATAL ERROR in populateSymbols:", e.message);
-        }
+        } catch (e) { killLoaderWithError("UI Population Error"); }
     }
 
     function handleSymbolChange() {
@@ -307,15 +365,10 @@
             const sym = document.getElementById('sel-symbol').value;
             const symbolData = groupedData[sym];
             
-            if (!symbolData || !symbolData.strikes) {
-                killLoaderWithError(`No strike data found for ${sym}`);
-                return;
-            }
+            if (!symbolData || !symbolData.strikes) return killLoaderWithError(`No strike data found for ${sym}`);
 
             let strikes = [...symbolData.strikes];
             strikes.sort((a, b) => parseFloat(a) - parseFloat(b));
-            
-            logDebug(`Extracted Strikes for ${sym}`, `Count: ${strikes.length}`);
 
             const sel = document.getElementById('sel-strike');
             sel.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -323,26 +376,15 @@
             if (strikes.length > 0) {
                 if (symbolData.atmStrike && strikes.includes(symbolData.atmStrike)) {
                     sel.value = symbolData.atmStrike;
-                    logDebug(`Selected exact ATM strike from API: ${sel.value}`);
                 } else {
                     const atmIndex = Math.floor(strikes.length / 2);
                     sel.selectedIndex = atmIndex;
-                    logDebug(`Selected fallback median strike: ${sel.value}`);
                 }
                 
                 loadSelectedChart();
-            } else {
-                killLoaderWithError(`Strike array is empty for ${sym}`);
-            }
-        } catch (e) {
-            killLoaderWithError("Strike calculation error");
-            logDebug("FATAL ERROR in handleSymbolChange:", e.message);
-        }
+            } else { killLoaderWithError(`Strike array is empty for ${sym}`); }
+        } catch (e) { killLoaderWithError("Strike calculation error"); }
     }
-
-    // ==========================================
-    // CHART LOADING & STREAMING
-    // ==========================================
 
     async function loadSelectedChart() {
         document.getElementById('loader').style.display = 'flex';
@@ -359,38 +401,40 @@
 
         isHydrated = false;
         lastKnownTime = 0;
+        resetExtremes(); // Critical: Clear mathematical boundaries on new load
         document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
-        
-        // Reset UI with Gamma included
         updateUI({ combinedPremium: 0, ceDelta: 0, peDelta: 0, ceGamma: 0, peGamma: 0, ceTheta: 0, peTheta: 0, ceIv: 0, peIv: 0 });
 
         try {
             const urlParams = `symbol=${symbol}&ceStrike=${strike}&peStrike=${strike}`;
-            logDebug(`Fetching historical data: ${BASE_CHART_URL}/historical?${urlParams}`);
             const res = await fetch(`${BASE_CHART_URL}/historical?${urlParams}`);
             
             if (!res.ok) throw new Error(`Historical data fetch failed with HTTP ${res.status}`);
-            
             const data = await res.json();
-            logDebug(`Received historical data`, `Rows returned: ${data ? data.length : 0}`);
 
             if (data && data.length > 0) {
                 data.sort((a,b) => a.time - b.time);
 
                 const pD = [], dD = [], gD = [], tD = [], ivD = [];
+                
+                // Pre-process Data boundaries BEFORE loading the chart
                 data.forEach(d => {
-                    pD.push({ time: d.time, value: d.combinedPremium });
-                    dD.push({ time: d.time, value: d.ceDelta + d.peDelta });
-                    gD.push({ time: d.time, value: (d.ceGamma || 0) + (d.peGamma || 0) }); // Gamma fallback to 0
-                    tD.push({ time: d.time, value: d.ceTheta + d.peTheta });
-                    ivD.push({ time: d.time, value: (d.ceIv + d.peIv) / 2 });
+                    const vP = d.combinedPremium;
+                    const vD = d.ceDelta + d.peDelta;
+                    const vG = (d.ceGamma || 0) + (d.peGamma || 0);
+                    const vT = d.ceTheta + d.peTheta;
+                    const vIV = (d.ceIv + d.peIv) / 2;
+
+                    updateExtreme('p', vP); updateExtreme('d', vD); updateExtreme('g', vG); updateExtreme('t', vT); updateExtreme('iv', vIV);
+
+                    pD.push({ time: d.time, value: vP });
+                    dD.push({ time: d.time, value: vD });
+                    gD.push({ time: d.time, value: vG });
+                    tD.push({ time: d.time, value: vT });
+                    ivD.push({ time: d.time, value: vIV });
                 });
 
-                series.p.setData(pD);
-                series.d.setData(dD);
-                series.g.setData(gD); // Load Gamma Data
-                series.t.setData(tD);
-                series.iv.setData(ivD);
+                series.p.setData(pD); series.d.setData(dD); series.g.setData(gD); series.t.setData(tD); series.iv.setData(ivD);
 
                 lastKnownTime = data[data.length - 1].time;
                 updateUI(data[data.length - 1]);
@@ -399,21 +443,15 @@
             }
 
             isHydrated = true;
-            resetZoom();
+            resizeActiveChart();
+            setTimeout(() => resetZoom(), 50);
             
-            logDebug("Establishing Live Stream connection...");
             connectStream(urlParams);
 
         } catch(e) {
             killLoaderWithError("FAILED TO LOAD CHART DATA.");
-            logDebug("FATAL ERROR in loadSelectedChart:", e.message);
         } finally {
-            if (isHydrated) {
-                logDebug("App initialized successfully. Hiding loader.");
-                setTimeout(() => { 
-                    document.getElementById('loader').style.display = 'none'; 
-                }, 1000);
-            }
+            if (isHydrated) { setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 1000); }
         }
     }
 
@@ -427,11 +465,20 @@
             if (ts > lastKnownTime) {
                 lastKnownTime = ts;
                 
-                series.p.update({ time: ts, value: d.combinedPremium });
-                series.d.update({ time: ts, value: d.ceDelta + d.peDelta });
-                series.g.update({ time: ts, value: (d.ceGamma || 0) + (d.peGamma || 0) }); // Update Gamma
-                series.t.update({ time: ts, value: d.ceTheta + d.peTheta });
-                series.iv.update({ time: ts, value: (d.ceIv + d.peIv) / 2 });
+                const vP = d.combinedPremium;
+                const vD = d.ceDelta + d.peDelta;
+                const vG = (d.ceGamma || 0) + (d.peGamma || 0);
+                const vT = d.ceTheta + d.peTheta;
+                const vIV = (d.ceIv + d.peIv) / 2;
+
+                // Continuously track boundaries on stream 
+                updateExtreme('p', vP); updateExtreme('d', vD); updateExtreme('g', vG); updateExtreme('t', vT); updateExtreme('iv', vIV);
+
+                series.p.update({ time: ts, value: vP });
+                series.d.update({ time: ts, value: vD });
+                series.g.update({ time: ts, value: vG });
+                series.t.update({ time: ts, value: vT });
+                series.iv.update({ time: ts, value: vIV });
 
                 updateUI(d);
                 document.querySelectorAll('.live-dot').forEach(dot => dot.classList.add('live-active'));
@@ -446,17 +493,10 @@
     function updateUI(d) {
         document.getElementById('val-p').innerText = (d.combinedPremium || 0).toFixed(2);
         document.getElementById('val-d').innerText = ((d.ceDelta || 0) + (d.peDelta || 0)).toFixed(4);
-        document.getElementById('val-g').innerText = ((d.ceGamma || 0) + (d.peGamma || 0)).toFixed(4); // Display Gamma
+        document.getElementById('val-g').innerText = ((d.ceGamma || 0) + (d.peGamma || 0)).toFixed(4);
         document.getElementById('val-t').innerText = ((d.ceTheta || 0) + (d.peTheta || 0)).toFixed(2);
         document.getElementById('val-iv').innerText = (((d.ceIv || 0) + (d.peIv || 0))/2).toFixed(2) + "%";
     }
-
-    window.addEventListener('resize', () => {
-        Object.values(charts).forEach(c => {
-            const parent = c.chartElement().parentElement;
-            c.applyOptions({ width: parent.clientWidth, height: parent.clientHeight });
-        });
-    });
 
     initApp();
 </script>
