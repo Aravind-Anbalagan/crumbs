@@ -1,6 +1,7 @@
 package com.crumbs.trade.service;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Strategy;
@@ -20,6 +21,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -53,6 +55,7 @@ public class ShortStraddleService {
     private final StrategyRepo strategyRepo;
     private final OrderService orderService;
     private final TelegramService telegramService;
+    private final AngelWebSocketService angelWebSocketService;
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
  // Tracks the last strike price evaluated to ensure consecutive hits stay on the same strike
@@ -126,9 +129,22 @@ public class ShortStraddleService {
                 return;
             }
          // If time is valid, scan for entry
-            straddleRepository.findATMBySymbol(baseSymbol).ifPresent(tick -> 
-                processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
-            );
+         // =========================================================
+            // 🎯 ENTRY SCAN: INDEX ATM FOR NIFTY / FUTURE ATM FOR CRUDE
+            // =========================================================
+            if ("NIFTY".equalsIgnoreCase(baseSymbol)) {
+                // 🚀 Call the new helper method
+                getNiftyIndexAtm(tradeName).ifPresent(atmStrike -> 
+                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick -> 
+                        processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
+                    )
+                );
+            } else {
+                // Original logic for CRUDEOIL or other symbols
+                straddleRepository.findATMBySymbol(baseSymbol).ifPresent(tick -> 
+                    processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
+                );
+            }
         }
     }
 
@@ -455,5 +471,29 @@ public class ShortStraddleService {
         if ("NIFTY".equalsIgnoreCase(symbol)) return now.isBefore(NIFTY_ENTRY_CUTOFF);
         if (symbol.contains("CRUDE")) return now.isBefore(CRUDE_ENTRY_CUTOFF);
         return true; 
+    }
+    /**
+     * Helper to fetch the live LTP for NIFTY_INDEX and calculate the nearest ATM strike.
+     */
+    private Optional<BigDecimal> getNiftyIndexAtm(String tradeName) {
+        Strategy indexConfig = strategyRepo.findByName("NIFTY_INDEX");
+        
+        if (indexConfig == null || indexConfig.getToken() == null) {
+            log.error("❌ [{}] NIFTY_INDEX config missing in DB. Cannot determine Index ATM.", tradeName);
+            return Optional.empty();
+        }
+
+        BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.NSE_CM, indexConfig.getToken());
+        
+        if (indexLtp == null || indexLtp.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("⚠️ [{}] NIFTY Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);
+            return Optional.empty();
+        }
+
+        // Nifty Step Size is 50. Round LTP to nearest 50 to get ATM Strike.
+        BigDecimal atmStrike = indexLtp.divide(new BigDecimal("50"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("50"));
+        log.debug("📉 [{}] NIFTY INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
+        
+        return Optional.of(atmStrike);
     }
 }

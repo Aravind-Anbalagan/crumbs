@@ -322,6 +322,13 @@ public class AngelWebSocketService {
             } else {
                 log.warn("CRUDEOIL strategy not found in DB");
             }
+            
+            Strategy nifty_index = strategyRepo.findByName("NIFTY_INDEX");
+            if (crude != null) {
+                subscribe(ExchangeType.NSE_CM, nifty_index.getToken());
+            } else {
+                log.warn("NIFTY_INDEX strategy not found in DB");
+            }
 
             log.info("Default instruments subscribed | Tokens in map: {}", subscribedTokens.keySet());
         } catch (Exception e) {
