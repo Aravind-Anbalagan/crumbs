@@ -842,7 +842,7 @@ function connectSSE(){
     applyTick(price);
   });
 }
-function applyTick(priceOrObj){
+function applyTick(priceOrObj) {
   const price = Number(typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj);
   if(isNaN(price) || price <= 0) return;
   
@@ -853,22 +853,42 @@ function applyTick(priceOrObj){
   
   const last = lastCandles[lastCandles.length-1];
   
-  // STRICT PARSING: Force everything to Numbers. 
-  // If undefined/NaN slips through, fallback to the current price or 0.
-  const lTime  = Number(last.time);
+  // STRICT PARSING: Force numerical values for OHLCV
+  // Leave time as is, because it might be a string ('YYYY-MM-DD') for ONE_DAY
+  const lTime  = last.time; 
   const lOpen  = Number(last.open) || price;
   const lHigh  = Number(last.high) || price;
   const lLow   = Number(last.low) || price;
   const lClose = Number(last.close) || price;
-  const lVol   = Number(last.volume) || 0; // Prevent 'undefined' volume crashes
-  
-  if(isNaN(lTime)) return; // Safety exit
+  const lVol   = Number(last.volume) || 0; 
 
   const tfSec = TF_SECS[selectedTimeFrame] || 300;
-  const nowIST = Math.floor(Date.now() / 1000) + IST_OFFSET;
-  const barFloor = Math.floor(nowIST / tfSec) * tfSec;
   
-  if(barFloor > lTime){
+  // 1. Get current pure UTC epoch in seconds
+  const nowUTC = Math.floor(Date.now() / 1000);
+  
+  // 2. Shift forward to IST to calculate the neat timeframe boundary, 
+  // then subtract it immediately back out to keep the core data in UTC.
+  let barFloor = Math.floor((nowUTC + IST_OFFSET) / tfSec) * tfSec - IST_OFFSET;
+
+  let isNewCandle = false;
+
+  // 3. Handle the Daily string requirement natively expected by Lightweight Charts
+  if (selectedTimeFrame === 'ONE_DAY') {
+    const d = new Date((nowUTC + IST_OFFSET) * 1000);
+    const yy = d.getUTCFullYear();
+    const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    barFloor = `${yy}-${mo}-${dd}`; 
+    
+    // Compare strings for Daily
+    isNewCandle = (barFloor !== lTime);
+  } else {
+    // Compare pure numbers for intraday
+    isNewCandle = (barFloor > Number(lTime));
+  }
+
+  if(isNewCandle){
     // New Candle
     const nc = {time: barFloor, open: price, high: price, low: price, close: price, volume: 0};
     try {
@@ -889,13 +909,14 @@ function applyTick(priceOrObj){
     volume: lVol 
   };
   
+  // Skip DOM/Chart update if nothing actually changed
   if(upd.close === lClose && upd.high === lHigh && upd.low === lLow) return;
   
   try {
     candleSeries.update(upd);
     volumeSeries.update({
       time: upd.time, 
-      value: upd.volume, // Guaranteed to be a number now
+      value: upd.volume,
       color: upd.close >= upd.open ? 'rgba(38,166,154,.5)' : 'rgba(239,83,80,.5)'
     });
     lastCandles[lastCandles.length-1] = upd;
@@ -932,35 +953,69 @@ function refreshPricePanel(){
 
 // ── Chart ─────────────────────────────────────────────────────
 function initChart(){
-  if(chart)return;
+  if(chart) return;
   
-  // 🚨 THE FIX: Fallback dimensions if clientWidth is somehow 0
   const w = chartEl.clientWidth || (window.innerWidth - 32);
   const h = chartEl.clientHeight || (window.innerHeight - 32);
   
-  chart=LightweightCharts.createChart(chartEl,{
+  chart = LightweightCharts.createChart(chartEl, {
     width: w,
     height: h,
-    layout:{backgroundColor:'#fff',textColor:'#000'},
-    rightPriceScale:{borderVisible:false,scaleMargins:{top:.1,bottom:.2}},
-    timeScale:{timeVisible:true,rightOffset:30,barSpacing:6,minBarSpacing:3,borderColor:'#d1d4dc'},
-    crosshair:{
-      mode:LightweightCharts.CrosshairMode.Normal,
-      vertLine:{width:1,color:'#758696',style:LightweightCharts.LineStyle.Dashed,labelBackgroundColor:'#4a5568'},
-      horzLine:{width:1,color:'#758696',style:LightweightCharts.LineStyle.Dashed,labelBackgroundColor:'#4a5568'},
+    layout: { backgroundColor: '#fff', textColor: '#000' },
+    rightPriceScale: { borderVisible: false, scaleMargins: { top: .1, bottom: .2 } },
+    
+    // 🚨 FIX 1: Add tickMarkFormatter to force the bottom axis to IST
+    timeScale: {
+      timeVisible: true,
+      rightOffset: 30,
+      barSpacing: 6,
+      minBarSpacing: 3,
+      borderColor: '#d1d4dc',
+      tickMarkFormatter: (time, tickMarkType) => {
+        // Convert pure UTC timestamp to IST display
+        const d = new Date((Number(time) + IST_OFFSET) * 1000);
+        const hh = String(d.getUTCHours()).padStart(2, '0');
+        const mm = String(d.getUTCMinutes()).padStart(2, '0');
+        
+        // Show Date for start of day/month, otherwise show Time
+        if (tickMarkType === LightweightCharts.TickMarkType.Year || 
+            tickMarkType === LightweightCharts.TickMarkType.Month || 
+            tickMarkType === LightweightCharts.TickMarkType.DayOfMonth) {
+          const dd = String(d.getUTCDate()).padStart(2, '0');
+          const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+          return `${dd}/${mo}`;
+        }
+        return `${hh}:${mm}`;
+      }
     },
-    grid:{vertLines:{visible:chkGrid.checked,color:'#eee'},horzLines:{visible:chkGrid.checked,color:'#eee'}},
-    localization:{timeFormatter(ts){
-      const d=new Date((ts+IST_OFFSET)*1000);
-      return String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0');
-    }}
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' },
+      horzLine: { width: 1, color: '#758696', style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#4a5568' },
+    },
+    grid: { vertLines: { visible: chkGrid.checked, color: '#eee' }, horzLines: { visible: chkGrid.checked, color: '#eee' } },
+    
+    // 🚨 FIX 2: Enhance timeFormatter for the floating crosshair label
+    localization: {
+      timeFormatter(ts) {
+        const d = new Date((Number(ts) + IST_OFFSET) * 1000);
+        const dd = String(d.getUTCDate()).padStart(2, '0');
+        const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const yy = d.getUTCFullYear();
+        const hh = String(d.getUTCHours()).padStart(2, '0');
+        const mm = String(d.getUTCMinutes()).padStart(2, '0');
+        
+        // Formats as: DD/MM/YYYY HH:MM
+        return `${dd}/${mo}/${yy} ${hh}:${mm}`;
+      }
+    }
   });
   
-  candleSeries=chart.addCandlestickSeries({upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,wickUpColor:'#26a69a',wickDownColor:'#ef5350'});
-  volumeSeries=chart.addHistogramSeries({color:'rgba(38,166,154,.5)',priceFormat:{type:'volume'},priceScaleId:'volume',scaleMargins:{top:.9,bottom:0},overlay:true,lineWidth:1,visible:chkVolume.checked});
-  chartEl.addEventListener('click',onChartClick);
+  candleSeries = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
+  volumeSeries = chart.addHistogramSeries({ color: 'rgba(38,166,154,.5)', priceFormat: { type: 'volume' }, priceScaleId: 'volume', scaleMargins: { top: .9, bottom: 0 }, overlay: true, lineWidth: 1, visible: chkVolume.checked });
+  chartEl.addEventListener('click', onChartClick);
   initSRCrosshair();
-  chartReady=true;
+  chartReady = true;
 }
 function destroyChart(){
   hideSRTooltip(); srRegistry={};
@@ -983,12 +1038,26 @@ function updateChart(data){
   // 🚨 THE FIX: Filter out identical timestamps and force numbers
   const seenTimes = new Set();
   const candles = [];
+  
   for (const c of data.candles) {
-    const t = Number(c.time);
+    let t = Number(c.time);
+    if (t > 10000000000) { t = Math.floor(t / 1000); } // Millisecond fallback
     if (isNaN(t) || seenTimes.has(t)) continue;
     seenTimes.add(t);
+
+    // 🚨 FIX 3: If timeframe is Daily, convert the timestamp into a string
+    let finalTime = t;
+    if (selectedTimeFrame === 'ONE_DAY') {
+       // Convert the IST boundary into a YYYY-MM-DD string
+       const d = new Date((t + IST_OFFSET) * 1000);
+       const yy = d.getUTCFullYear();
+       const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+       const dd = String(d.getUTCDate()).padStart(2, '0');
+       finalTime = `${yy}-${mo}-${dd}`; // String format is required by LC for daily bars
+    }
+
     candles.push({
-      time: t,
+      time: finalTime,
       open: Number(c.open),
       high: Number(c.high),
       low: Number(c.low),
