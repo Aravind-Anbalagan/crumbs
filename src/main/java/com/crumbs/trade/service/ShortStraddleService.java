@@ -224,7 +224,7 @@ public class ShortStraddleService {
         boolean isPointSlBreached = isPointSlConfigured && (cpSurplusOverCv.compareTo(slPoints) >= 0);
 
         // =========================================================================
-        // ⚠️ TREND SL (Consecutive VWAP Crossovers) - UNTOUCHED
+        // ⚠️ TREND SL (Consecutive VWAP Crossovers)
         // =========================================================================
         boolean isVwapCrossover = cp.compareTo(cv) > 0;
         int reqSlHits = sourceConfig.getExitHitsRequired() > 0 ? sourceConfig.getExitHitsRequired() : 3;
@@ -239,7 +239,7 @@ public class ShortStraddleService {
         boolean isHitsMet = currentSlHits >= reqSlHits;
 
         // =========================================================================
-        // 📊 COMPACT MONITORING DASHBOARD (Restored format with CP/CV)
+        // 📊 COMPACT MONITORING DASHBOARD
         // =========================================================================
         BigDecimal tradedStrike = activeOrders.get(0).getStrike();
         String tradeStatus = currentGap.compareTo(entryGap) >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
@@ -249,8 +249,8 @@ public class ShortStraddleService {
         String vStatus = isVwapCrossover ? "⚠️ CROSSOVER (" + currentSlHits + "/" + reqSlHits + ")" : "✅ STABLE";
         
         String defenseMode = isPointSlConfigured 
-                ? "🛡️ [MODE: DUAL SHIELD (Trend AND Price Required)]" 
-                : "🛡️ [MODE: SINGLE SHIELD (Trend-Only)]";
+                ? "🛡️ [MODE: MASTER PRICE SL (Trend hits tracked but not required)]" 
+                : "🛡️ [MODE: SINGLE SHIELD (Trend-Only Fallback)]";
         
         String pStatus;
         if (!isPointSlConfigured) {
@@ -280,11 +280,26 @@ public class ShortStraddleService {
             return;
         }
 
-        // 2. Dual-Shield SL Logic
-        boolean shouldExit = isPointSlConfigured ? (isHitsMet && isPointSlBreached) : isHitsMet;
+        // 2. Master Price SL Logic
+        boolean shouldExit = false;
+        String reason = "";
+
+        if (isPointSlConfigured) {
+            // Priority 1: If Price SL is hit, exit immediately.
+            // Priority 2: If Consecutive Hits are met, it waits here doing nothing until Price SL is breached.
+            if (isPointSlBreached) {
+                shouldExit = true;
+                reason = isHitsMet ? "TREND_AND_PRICE_SL_HIT" : "PRICE_SL_HARD_STOP";
+            }
+        } else {
+            // Fallback: If you forgot to configure SL points in the database
+            if (isHitsMet) {
+                shouldExit = true;
+                reason = "TREND_SL_MET_(NO_PRICE_SL_CONFIGURED)";
+            }
+        }
 
         if (shouldExit) {
-            String reason = isPointSlConfigured ? "DUAL_SHIELD_BREACH" : "TREND_SL_MET";
             log.warn("🚨 [{}][EXIT] STOP LOSS TRIGGERED! Reason: {}", tradeName, reason);
             closeAll(activeOrders, tick, reason, sourceConfig);
             hitCounters.put(tradeName + "_EXIT", 0);
