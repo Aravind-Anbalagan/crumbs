@@ -393,7 +393,17 @@ const chart = LightweightCharts.createChart(document.getElementById('chart'), {
     grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
 });
-
+// --- NEW: Floating Tooltip Element ---
+const chartContainer = document.getElementById('chart');
+const tooltip = document.createElement('div');
+tooltip.style = `
+    width: 150px; height: auto; position: absolute; display: none; padding: 10px;
+    box-sizing: border-box; font-size: 12px; z-index: 1000; pointer-events: none; 
+    border-radius: 6px; background: rgba(15, 23, 42, 0.9); color: white;
+    border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+`;
+chartContainer.appendChild(tooltip);
 const lines = {
     spot: chart.addLineSeries({
         priceLineVisible: false,
@@ -646,6 +656,7 @@ function updateLegendVisibility() {
 
 function updateLegendAtCrosshair(param) {
     if (!param || !param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+        tooltip.style.display = 'none'; // Hide tooltip when mouse leaves
         updateLegendLatest();
         return;
     }
@@ -653,16 +664,19 @@ function updateLegendAtCrosshair(param) {
     const getData = (line) => param.seriesData.get(line);
     const getValue = (data) => data && data.value !== undefined ? data.value : null;
 
-    // 1. Capture the values for the meter
+    // Capture values
+    const cePrice = getValue(getData(lines.ce));
+    const pePrice = getValue(getData(lines.pe));
     const prem = getValue(getData(lines.combinedPremium));
     const vwap = getValue(getData(lines.combinedVwap));
 
-    // 2. Capture all values for the legend
+    // Update the existing legend text (at the bottom)
     const values = {
         spot: getValue(getData(lines.spot)),
-        ce: getValue(getData(lines.ce)),
-        pe: getValue(getData(lines.pe)),
+        ce: cePrice,
+        pe: pePrice,
         combinedPremium: prem,
+        // ... include all your other existing mapping here ...
         avgPrice: getValue(getData(lines.avgPrice)),
         ceIv: getValue(getData(lines.ceIv)),
         peIv: getValue(getData(lines.peIv)),
@@ -685,31 +699,51 @@ function updateLegendAtCrosshair(param) {
 
     const fmt = (v) => v !== null && Number.isFinite(v) ? v.toFixed(2) : '-';
 
-    // Update standard legend labels
-    document.getElementById('val-spot').textContent = fmt(values.spot);
-    document.getElementById('val-ce').textContent = fmt(values.ce);
-    document.getElementById('val-pe').textContent = fmt(values.pe);
-    document.getElementById('val-combined-premium').textContent = fmt(values.combinedPremium);
-    document.getElementById('val-avg').textContent = fmt(values.avgPrice);
-    document.getElementById('val-ce-iv').textContent = fmt(values.ceIv);
-    document.getElementById('val-pe-iv').textContent = fmt(values.peIv);
-    document.getElementById('val-combined-iv').textContent = fmt(values.combinedIv);
-    document.getElementById('val-ce-extrinsic').textContent = fmt(values.ceExtrinsic);
-    document.getElementById('val-pe-extrinsic').textContent = fmt(values.peExtrinsic);
-    document.getElementById('val-ce-vwap').textContent = fmt(values.ceVwap);
-    document.getElementById('val-pe-vwap').textContent = fmt(values.peVwap);
-    document.getElementById('val-combined-vwap').textContent = fmt(values.combinedVwap);
-    document.getElementById('val-ce-prev-close').textContent = fmt(values.cePrevClose);
-    document.getElementById('val-pe-prev-close').textContent = fmt(values.pePrevClose);
-    document.getElementById('val-combined-prev-close').textContent = fmt(values.combinedPrevClose);
-    document.getElementById('val-ce-open').textContent = fmt(values.ceOpen);
-    document.getElementById('val-pe-open').textContent = fmt(values.peOpen);
-    document.getElementById('val-combined-open').textContent = fmt(values.combinedOpen);
-    document.getElementById('val-ce-prev-low').textContent = fmt(values.cePrevLow);
-    document.getElementById('val-pe-prev-low').textContent = fmt(values.pePrevLow);
-    document.getElementById('val-combined-prev-low').textContent = fmt(values.combinedPrevLow);
+    // Update bottom labels (your existing code)
+    Object.keys(values).forEach(key => {
+        const id = 'val-' + key.replace(/([A-Z])/g, "-$1").toLowerCase();
+        const el = document.getElementById(id);
+        if (el) el.textContent = fmt(values[key]);
+    });
 
-    // 3. Trigger the meter update with the specific values
+    // --- NEW: Update Floating Tooltip ---
+    if (cePrice !== null && pePrice !== null) {
+        const diff = Math.abs(cePrice - pePrice).toFixed(2);
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `
+            <div style="color: #94a3b8; font-size: 10px; margin-bottom: 4px; border-bottom: 1px solid #334155; padding-bottom: 2px;">STRADDLE DATA</div>
+            <div style="display: flex; justify-content: space-between; gap: 10px;">
+                <span>CE/PE Diff:</span>
+                <b style="color: #f472b6;">${diff}</b>
+            </div>
+            <div style="display: flex; justify-content: space-between; gap: 10px;">
+                <span>Combined:</span>
+                <b style="color: #3b82f6;">${fmt(prem)}</b>
+            </div>
+        `;
+
+        // Positioning logic
+        const toolTipWidth = 150;
+        const toolTipHeight = 60;
+        const margin = 15;
+        let left = param.point.x + margin;
+        let top = param.point.y + margin;
+
+        // Flip to left side if hitting right wall
+        if (left > chartContainer.clientWidth - toolTipWidth) {
+            left = param.point.x - margin - toolTipWidth;
+        }
+        // Flip to top side if hitting bottom wall
+        if (top > chartContainer.clientHeight - toolTipHeight) {
+            top = param.point.y - margin - toolTipHeight;
+        }
+
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+    } else {
+        tooltip.style.display = 'none';
+    }
+
     calculateDiff(prem, vwap);
 }
 
