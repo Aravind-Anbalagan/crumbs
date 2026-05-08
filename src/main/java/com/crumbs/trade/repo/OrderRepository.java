@@ -68,4 +68,5 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     	                    @Param("signal") String signal, 
     	                    @Param("startOfDay") LocalDateTime startOfDay);
     Optional<Orders> findByNameAndTokenAndActive(String name, String token, Integer active);
+    List<Orders> findAllByNameAndActive(String name, int active);
 }

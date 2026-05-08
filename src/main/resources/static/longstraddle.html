@@ -2,503 +2,384 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Crumbs | CrudeOil & Nifty Straddle Engine</title>
-    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crumbs Pro Terminal</title>
+    
+    <link rel="icon" href="data:,">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    
     <style>
-        :root { 
-            --bg: #0b0e11; 
-            --card: #151921; 
-            --border: #2a2e39; 
-            --text: #d1d4dc; 
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #e5e7eb;
+            --header-bg: #111827;
+            --border-color: #1f2937;
+            --loader-bg: rgba(13, 17, 23, 0.85);
+            --select-bg: #1f2937;
         }
-        
+
         body.light-mode {
-            --bg: #f0f3fa; 
-            --card: #ffffff; 
-            --border: #e2e8f0; 
-            --text: #1e293b; 
+            --bg-color: #ffffff;
+            --text-color: #111827;
+            --header-bg: #f3f4f6;
+            --border-color: #d1d5db;
+            --loader-bg: rgba(255, 255, 255, 0.85);
+            --select-bg: #e5e7eb;
         }
 
-        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 10px; overflow: hidden; transition: background-color 0.3s, color 0.3s; }
-        
-        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 5px 10px 5px; }
-        .controls { display: flex; gap: 8px; align-items: center; }
-        .controls-right { display: flex; gap: 8px; align-items: center; }
-        
-        select {
-            background: var(--card); color: var(--text); border: 1px solid var(--border);
-            padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 12px;
-            font-weight: bold; outline: none; cursor: pointer; appearance: auto;
-            transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+        body { 
+            background-color: var(--bg-color); 
+            color: var(--text-color); 
+            transition: background-color 0.3s, color 0.3s;
         }
-        select:focus { border-color: #2962ff; }
+
+        .theme-header { background-color: var(--header-bg); border-color: var(--border-color); transition: all 0.3s; }
+        .theme-border { border-color: var(--border-color); transition: border-color 0.3s; }
+        .theme-loader { background-color: var(--loader-bg); transition: background-color 0.3s; }
+        .theme-select { background-color: var(--select-bg); border-color: var(--border-color); color: var(--text-color); }
+
+        #chart-container { height: calc(100vh - 120px); width: 100%; }
         
-        .btn { border: none; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; display: flex; align-items: center; justify-content: center;}
-        .reset-btn { background: #2962ff; color: white; }
-        .reset-btn:hover { background: #1e4bd8; }
+        .loader { border-top-color: #3b82f6; animation: spinner 0.6s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        .theme-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 14px; padding: 4px 8px; }
-        .theme-btn:hover { background: var(--border); }
-
-        /* TABS CSS */
-        .tabs { display: flex; gap: 8px; padding: 0 5px 10px 5px; }
-        .tab-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 12px; font-family: inherit; }
-        .tab-btn.active { background: #2962ff; color: white; border-color: #2962ff; }
-        .tab-btn:hover:not(.active) { background: var(--border); }
-
-        /* DASHBOARD CSS UPDATED FOR TABS */
-        .dashboard { display: flex; flex-direction: column; gap: 6px; height: calc(100vh - 120px); }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; display: none; flex-direction: column; padding: 6px 12px; height: 100%; transition: background-color 0.3s, border-color 0.3s; }
-
-        .pane-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; }
-        .pane-title { font-size: 10px; font-weight: bold; color: #848e9c; text-transform: uppercase; letter-spacing: 1px; }
-        .chart-div { flex-grow: 1; width: 100%; }
-
-        .live-dot { height: 8px; width: 8px; background-color: #444; border-radius: 50%; display: inline-block; margin-right: 5px; }
-        .live-active { background-color: #00ff88; box-shadow: 0 0 8px #00ff88; }
-
-        #loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; transition: background-color 0.3s;}
-        .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top: 3px solid #2962ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px;}
-        
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .live-dot { 
+            width: 10px; height: 10px; border-radius: 50%; 
+            background: #ef5350; display: inline-block; 
+            transition: background 0.3s;
+        }
+        .live-dot.connected { 
+            background: #26a69a; 
+            box-shadow: 0 0 8px #26a69a; 
+            animation: pulse 1.5s infinite; 
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
     </style>
 </head>
-<body>
+<body class="overflow-hidden">
 
-<div id="loader">
-    <div class="spinner" id="loader-spinner"></div>
-    <div id="loader-msg" style="font-size:12px; color:var(--text); letter-spacing: 1px; font-weight: bold;">INITIALIZING APP...</div>
-</div>
+    <nav class="flex items-center justify-between px-6 py-3 theme-header border-b">
+        <div class="flex items-center space-x-8">
+            <div class="flex flex-col">
+                <span class="text-xs font-bold text-blue-500 tracking-widest uppercase">Crumbs Trade</span>
+                <div class="flex items-center gap-2">
+                    <span id="active-instrument-label" class="text-lg font-bold">NIFTY</span>
+                    <span id="live-dot" class="live-dot" title="SSE Disconnected"></span>
+                </div>
+            </div>
 
-<div class="top-bar">
-    <div class="controls">
-        <select id="sel-symbol" onchange="handleSymbolChange()"></select>
-        <select id="sel-strike" onchange="loadSelectedChart()"></select>
-    </div>
-    <div class="controls-right">
-        <button class="btn theme-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle Light/Dark Mode">☀️</button>
-        <button class="btn reset-btn" onclick="resetZoom()">FIT ALL / RESET ZOOM</button>
-    </div>
-</div>
+            <div class="flex theme-select p-1 rounded-md border theme-border">
+                <button onclick="changeInstrument('NIFTY')" id="btn-NIFTY" class="instr-btn px-4 py-1 text-sm rounded bg-blue-600 text-white font-semibold transition-colors">NIFTY</button>
+                <button onclick="changeInstrument('CRUDEOIL')" id="btn-CRUDEOIL" class="instr-btn px-4 py-1 text-sm rounded font-semibold transition-colors">CRUDE OIL</button>
+            </div>
 
-<!-- TAB NAVIGATION -->
-<div class="tabs">
-    <button class="tab-btn active" id="btn-tab-p" onclick="openTab('p')">Combined Premium</button>
-    <button class="tab-btn" id="btn-tab-d" onclick="openTab('d')">Net Delta</button>
-    <button class="tab-btn" id="btn-tab-g" onclick="openTab('g')">Net Gamma</button>
-    <button class="tab-btn" id="btn-tab-t" onclick="openTab('t')">Net Theta</button>
-    <button class="tab-btn" id="btn-tab-iv" onclick="openTab('iv')">Avg IV</button>
-</div>
-
-<div class="dashboard">
-    <div class="card" id="card-p" style="display: flex;">
-        <div class="pane-header">
-            <span class="pane-title"><span id="dot-p" class="live-dot"></span>Combined Premium</span>
-            <span id="val-p" style="color: #2962ff; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
+            <select id="timeFrame" onchange="handleTimeframeChange()" class="theme-select text-sm rounded px-3 py-1 outline-none focus:ring-1 focus:ring-blue-500 border">
+                <option value="ONE_MINUTE">1 Min</option>
+                <option value="FIVE_MINUTE" selected>5 Min</option>
+                <option value="FIFTEEN_MINUTE">15 Min</option>
+                <option value="ONE_HOUR">1 Hour</option>
+                <option value="ONE_DAY">1 Day</option>
+            </select>
+            
+            <button onclick="toggleTheme()" class="theme-select border px-3 py-1 rounded text-sm font-semibold hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all">
+                🌓 Theme
+            </button>
         </div>
-        <div id="chart-p" class="chart-div"></div>
-    </div>
-    <div class="card" id="card-d">
-        <div class="pane-header">
-            <span class="pane-title"><span id="dot-d" class="live-dot"></span>Net Delta</span>
-            <span id="val-d" style="color: #ff9800; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
+
+        <div class="flex items-center space-x-10">
+            <div class="text-right">
+                <p class="text-[10px] uppercase font-bold" style="color: #6b7280;">Active Position</p>
+                <p id="trade-status" class="text-sm font-mono font-bold text-gray-400">NONE</p>
+            </div>
+            <div class="theme-select px-4 py-1 rounded border">
+                <p class="text-[10px] uppercase font-bold text-center" style="color: #6b7280;">Live PnL</p>
+                <p id="pnl-val" class="text-xl font-mono font-bold text-gray-400">0.00</p>
+            </div>
         </div>
-        <div id="chart-d" class="chart-div"></div>
-    </div>
-    <div class="card" id="card-g">
-        <div class="pane-header">
-            <span class="pane-title"><span id="dot-g" class="live-dot"></span>Net Gamma</span>
-            <span id="val-g" style="color: #f44336; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
+    </nav>
+
+    <div class="flex h-full">
+        <div class="w-64 theme-header border-r theme-border p-4 flex flex-col gap-4">
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">Execution</label>
+                <button onclick="executeTrade('entry')" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded font-bold transition-all shadow-lg active:scale-95">
+                    LONG STRADDLE
+                </button>
+                <button onclick="executeTrade('exit')" class="w-full bg-rose-600 hover:bg-rose-500 text-white py-3 rounded font-bold transition-all shadow-lg active:scale-95">
+                    EXIT POSITION
+                </button>
+            </div>
+
+            <div class="flex flex-col flex-1 gap-2 min-h-0 pb-6">
+                <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">System Logs</label>
+                <div id="status-log" class="flex-1 text-[11px] font-mono theme-select border theme-border p-2 rounded overflow-y-auto">
+                    <div style="color: var(--text-color);">System ready...</div>
+                </div>
+            </div>
         </div>
-        <div id="chart-g" class="chart-div"></div>
-    </div>
-    <div class="card" id="card-t">
-        <div class="pane-header">
-            <span class="pane-title"><span id="dot-t" class="live-dot"></span>Net Theta</span>
-            <span id="val-t" style="color: #9c27b0; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
+
+        <div class="flex-1 relative">
+            <div id="loader" class="absolute inset-0 z-50 flex items-center justify-center theme-loader transition-opacity duration-300">
+                <div class="loader rounded-full border-4 theme-border h-12 w-12"></div>
+            </div>
+            <div id="chart-container"></div>
         </div>
-        <div id="chart-t" class="chart-div"></div>
     </div>
-    <div class="card" id="card-iv">
-        <div class="pane-header">
-            <span class="pane-title"><span id="dot-iv" class="live-dot"></span>Avg Implied Volatility</span>
-            <span id="val-iv" style="color: #00c076; font-family: monospace; font-size: 13px; font-weight: bold;">0.00%</span>
-        </div>
-        <div id="chart-iv" class="chart-div"></div>
-    </div>
-</div>
 
-<script>
-    const API_GROUPED = '/api/straddle/grouped';
-    const BASE_CHART_URL = '/api/v1/chart';
-
-    let groupedData = {}; 
-    let activeSSE = null; 
-    let isSyncing = false;
-    let isHydrated = false;
-    let lastKnownTime = 0;
-    let isDarkMode = true;
-    let activeTab = 'p'; 
-
-    // Custom Data Range Tracker
-    let dataExtremes = {
-        p: { min: Infinity, max: -Infinity },
-        d: { min: Infinity, max: -Infinity },
-        g: { min: Infinity, max: -Infinity },
-        t: { min: Infinity, max: -Infinity },
-        iv: { min: Infinity, max: -Infinity }
-    };
-
-    function resetExtremes() {
-        Object.keys(dataExtremes).forEach(k => {
-            dataExtremes[k] = { min: Infinity, max: -Infinity };
-        });
-    }
-
-    function updateExtreme(key, val) {
-        if (val < dataExtremes[key].min) dataExtremes[key].min = val;
-        if (val > dataExtremes[key].max) dataExtremes[key].max = val;
-    }
-
-    // This forces the chart to accurately frame negative (and positive) bounds based purely on math
-    function createAutoscaleProvider(key) {
-        return () => {
-            const ex = dataExtremes[key];
-            if (ex.min === Infinity || ex.max === -Infinity) return null;
-            const range = ex.max - ex.min;
-            const pad = range === 0 ? (Math.abs(ex.min) * 0.1 || 1) : range * 0.15; // 15% Padding
-            return {
-                priceRange: {
-                    minValue: ex.min - pad,
-                    maxValue: ex.max + pad,
-                }
-            };
+    <script>
+        const AppState = {
+            chart: null,
+            series: { candle: null },
+            data: { candles: [] },
+            srLines: [],
+            currentName: "NIFTY"
         };
-    }
 
-    function logDebug(step, detail = "") { console.log(`[DEBUG] ${step}`, detail); }
+        const StreamState = {
+            marketSource: null,
+            pnlSource: null,
+            reconnectTimeout: null, 
+            candlePollingInterval: null,
+            iKeyCurrent: null,
+            iKeyCache: {},
+            pendingTicks: [],
+            TF_SECS: 300, 
+            IST_OFFSET: 19800 // 5.5 hours for IST
+        };
 
-    function killLoaderWithError(msg) {
-        document.getElementById('loader-spinner').style.display = 'none';
-        const msgEl = document.getElementById('loader-msg');
-        msgEl.innerText = "CRASH: " + msg;
-        msgEl.style.color = '#ff5252'; 
-    }
-
-    function openTab(tabId) {
-        document.querySelectorAll('.card').forEach(c => c.style.display = 'none');
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-
-        document.getElementById(`card-${tabId}`).style.display = 'flex';
-        document.getElementById(`btn-tab-${tabId}`).classList.add('active');
-
-        activeTab = tabId;
-        resizeActiveChart();
-        
-        setTimeout(() => {
-            if (charts[activeTab]) charts[activeTab].timeScale().fitContent();
-        }, 20);
-    }
-
-    function resizeActiveChart() {
-        const chartDiv = document.getElementById(`chart-${activeTab}`);
-        if (chartDiv && charts[activeTab]) {
-            charts[activeTab].applyOptions({ width: chartDiv.clientWidth, height: chartDiv.clientHeight });
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            syncChartColors();
         }
-    }
 
-    window.addEventListener('resize', () => {
-        resizeActiveChart();
-        resetZoom(); 
-    });
+        function syncChartColors() {
+            if (!AppState.chart) return;
+            const isLight = document.body.classList.contains('light-mode');
+            AppState.chart.applyOptions({
+                layout: { textColor: isLight ? '#374151' : '#9ca3af' }, 
+                priceScale: { borderColor: isLight ? '#d1d5db' : '#374151' },
+                timeScale: { borderColor: isLight ? '#d1d5db' : '#374151' }
+            });
+        }
 
-    function getChartThemeOptions() {
-        return {
-            layout: { 
-                background: { color: isDarkMode ? '#151921' : '#ffffff' }, 
-                textColor: isDarkMode ? '#d1d4dc' : '#1e293b' 
-            },
-            grid: { 
-                vertLines: { color: isDarkMode ? '#1c2128' : '#f1f5f9' }, 
-                horzLines: { color: isDarkMode ? '#1c2128' : '#f1f5f9' } 
-            },
-            timeScale: { borderColor: isDarkMode ? '#2a2e39' : '#e2e8f0' },
-            rightPriceScale: { borderColor: isDarkMode ? '#2a2e39' : '#e2e8f0' }
-        };
-    }
+        function showLoader() { document.getElementById('loader').style.display = 'flex'; }
+        function hideLoader() { document.getElementById('loader').style.display = 'none'; }
 
-    function toggleTheme() {
-        isDarkMode = !isDarkMode;
-        document.body.classList.toggle('light-mode', !isDarkMode);
-        document.getElementById('theme-toggle').innerText = isDarkMode ? '☀️' : '🌙';
-        const themeOpts = getChartThemeOptions();
-        Object.values(charts).forEach(c => c.applyOptions(themeOpts));
-    }
+        function initApp() {
+            const hour = new Date().getHours();
+            if (hour >= 9 && hour < 16) document.body.classList.add('light-mode');
+            setupChart();
+            syncChartColors(); 
+            window.addEventListener('resize', () => {
+                const container = document.getElementById('chart-container');
+                if (AppState.chart) AppState.chart.applyOptions({ width: container.clientWidth });
+            });
+            changeInstrument('NIFTY'); 
+            startCandlePolling();
+        }
 
-    const baseOpt = {
-        layout: { fontSize: 11 },
-        localization: {
-            timeFormatter: (time) => {
-                const date = new Date(time * 1000);
-                return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium', hour12: false });
-            }
-        },
-        timeScale: { 
-            timeVisible: true, secondsVisible: true, shiftVisibleRangeOnNewBar: true,
-            tickMarkFormatter: (time, tickMarkType) => {
-                const date = new Date(time * 1000);
-                switch (tickMarkType) {
-                    case 0: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' });
-                    case 1: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short' });
-                    case 2: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric' });
-                    case 3: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
-                    case 4: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-                    default: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
-                }
-            }
-        },
-        crosshair: { mode: 0 },
-        rightPriceScale: { autoScale: true }
-    };
-
-    const opt = { ...baseOpt, ...getChartThemeOptions() };
-
-    const charts = {
-        p: LightweightCharts.createChart(document.getElementById('chart-p'), opt),
-        d: LightweightCharts.createChart(document.getElementById('chart-d'), opt),
-        g: LightweightCharts.createChart(document.getElementById('chart-g'), opt),
-        t: LightweightCharts.createChart(document.getElementById('chart-t'), opt),
-        iv: LightweightCharts.createChart(document.getElementById('chart-iv'), opt)
-    };
-
-    // Note the added autoscaleInfoProvider which hooks into our custom mathematical boundary logic
-    const series = {
-        p: charts.p.addAreaSeries({ lineColor: '#2962ff', topColor: 'rgba(41,98,255,0.15)', bottomColor: 'transparent', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('p') }),
-        d: charts.d.addLineSeries({ color: '#ff9800', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('d') }),
-        g: charts.g.addLineSeries({ color: '#f44336', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('g') }), 
-        t: charts.t.addLineSeries({ color: '#9c27b0', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('t') }),
-        iv: charts.iv.addLineSeries({ color: '#00c076', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('iv') })
-    };
-
-    function getSyncHandler(callerId) {
-        return (logicalRange) => {
-            if (!isHydrated || isSyncing || !logicalRange) return;
-            isSyncing = true;
-            Object.keys(charts).forEach(id => {
-                if (id !== callerId) {
-                    try { charts[id].timeScale().setVisibleLogicalRange(logicalRange); } catch (e) {}
+        function setupChart() {
+            const container = document.getElementById('chart-container');
+            AppState.chart = LightweightCharts.createChart(container, {
+                layout: { backgroundColor: 'transparent' }, 
+                grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                priceScale: { autoScale: true },
+                timeScale: { 
+                    timeVisible: true, 
+                    secondsVisible: false,
+                    barSpacing: 12, 
+                    rightOffset: 5
                 }
             });
-            isSyncing = false;
-        };
-    }
-
-    Object.keys(charts).forEach(id => {
-        charts[id].timeScale().subscribeVisibleLogicalRangeChange(getSyncHandler(id));
-    });
-
-    function resetZoom() {
-        if (charts[activeTab]) {
-            charts[activeTab].timeScale().fitContent();
+            AppState.series.candle = AppState.chart.addCandlestickSeries({
+                upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
+                wickUpColor: '#10b981', wickDownColor: '#ef4444'
+            });
         }
-    }
 
-    async function initApp() {
-        setTimeout(resizeActiveChart, 100);
+        function clearChart() {
+            if (AppState.series.candle) AppState.chart.removeSeries(AppState.series.candle);
+            AppState.series.candle = AppState.chart.addCandlestickSeries({
+                upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
+                wickUpColor: '#10b981', wickDownColor: '#ef4444'
+            });
+            AppState.srLines = [];
+            AppState.data.candles = [];
+        }
 
-        try {
-            let res = await fetch(API_GROUPED);
-            const textData = await res.text();
-            if (!res.ok) { killLoaderWithError(`Server Error HTTP ${res.status}`); return; }
+        function handleTimeframeChange() {
+            const val = document.getElementById('timeFrame').value;
+            const tfMap = { 'ONE_MINUTE': 60, 'FIVE_MINUTE': 300, 'FIFTEEN_MINUTE': 900, 'ONE_HOUR': 3600, 'ONE_DAY': 86400 };
+            StreamState.TF_SECS = tfMap[val] || 300; 
+            showLoader();
+            setTimeout(async () => { clearChart(); await loadData(false); }, 50);
+        }
 
-            let rawData = JSON.parse(textData);
-            groupedData = {};
-            
-            if (Array.isArray(rawData)) {
-                rawData.forEach(item => {
-                    if (item.name && item.expiries) {
-                        const expiryKeys = Object.keys(item.expiries);
-                        if (expiryKeys.length > 0) {
-                            groupedData[item.name] = {
-                                strikes: item.expiries[expiryKeys[0]],
-                                atmStrike: item.atmStrike
-                            };
-                        }
-                    }
+        async function changeInstrument(name) {
+            showLoader(); 
+            await new Promise(resolve => setTimeout(resolve, 50));
+            AppState.currentName = name;
+            document.getElementById('active-instrument-label').innerText = name;
+            document.querySelectorAll('.instr-btn').forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white');
+                b.style.color = 'var(--text-color)';
+            });
+            const activeBtn = document.getElementById(`btn-${name}`);
+            activeBtn.classList.add('bg-blue-600', 'text-white');
+            activeBtn.style.color = ''; 
+            clearChart(); 
+            await loadData(false);
+            resolveStreamKey(name);
+            startPnLStream();
+            connectMarketSSE(); 
+        }
+
+        async function loadData(isSilent = false) {
+            try {
+                const tf = document.getElementById('timeFrame').value;
+                const response = await fetch(`/api/intraday?timeFrame=${tf}&name=${AppState.currentName}`);
+                const payload = await response.json();
+                if (!payload || !payload.candles || payload.candles.length === 0) return;
+
+                const formattedData = payload.candles.map(d => {
+                    let ts = parseInt(d.time);
+                    // Standardize to seconds and apply IST offset
+                    if (ts > 10000000000) ts = Math.floor(ts / 1000); 
+                    return {
+                        time: ts + StreamState.IST_OFFSET, 
+                        open: parseFloat(d.open) || 0,
+                        high: parseFloat(d.high) || 0,
+                        low: parseFloat(d.low) || 0,
+                        close: parseFloat(d.close) || 0
+                    };
                 });
-            }
-
-            populateSymbols();
-        } catch (e) {
-            killLoaderWithError("Unexpected critical error.");
-        }
-    }
-
-    function populateSymbols() {
-        try {
-            const symbols = Object.keys(groupedData || {});
-            if (symbols.length === 0) return killLoaderWithError("API returned empty data.");
-
-            const sel = document.getElementById('sel-symbol');
-            sel.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
-            
-            const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
-            const [istHour, istMinute] = formatter.format(new Date()).split(':').map(Number);
-            const timeVal = (istHour * 100) + istMinute; 
-
-            let targetSymbol = symbols[0]; 
-            if (timeVal >= 915 && timeVal <= 1530) {
-                targetSymbol = "NIFTY";
-            } else if (timeVal >= 1600 && timeVal <= 2330) {
-                targetSymbol = "CRUDEOIL";
-            }
-
-            if (symbols.includes(targetSymbol)) { sel.value = targetSymbol; } 
-            else if (symbols.includes("NIFTY")) { sel.value = "NIFTY"; }
-
-            handleSymbolChange();
-        } catch (e) { killLoaderWithError("UI Population Error"); }
-    }
-
-    function handleSymbolChange() {
-        try {
-            const sym = document.getElementById('sel-symbol').value;
-            const symbolData = groupedData[sym];
-            
-            if (!symbolData || !symbolData.strikes) return killLoaderWithError(`No strike data found for ${sym}`);
-
-            let strikes = [...symbolData.strikes];
-            strikes.sort((a, b) => parseFloat(a) - parseFloat(b));
-
-            const sel = document.getElementById('sel-strike');
-            sel.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
-            
-            if (strikes.length > 0) {
-                if (symbolData.atmStrike && strikes.includes(symbolData.atmStrike)) {
-                    sel.value = symbolData.atmStrike;
-                } else {
-                    const atmIndex = Math.floor(strikes.length / 2);
-                    sel.selectedIndex = atmIndex;
-                }
-                
-                loadSelectedChart();
-            } else { killLoaderWithError(`Strike array is empty for ${sym}`); }
-        } catch (e) { killLoaderWithError("Strike calculation error"); }
-    }
-
-    async function loadSelectedChart() {
-        document.getElementById('loader').style.display = 'flex';
-        document.getElementById('loader-msg').innerText = "LOADING CHART DATA...";
-        document.getElementById('loader-spinner').style.display = 'block';
-        
-        if (activeSSE) {
-            activeSSE.close();
-            activeSSE = null;
+                formattedData.sort((a, b) => a.time - b.time);
+                AppState.data.candles = formattedData.filter((v, i, s) => i === s.findIndex((t) => (t.time === v.time)));
+                AppState.series.candle.setData(AppState.data.candles);
+                drawSR(payload.supportLevels, payload.resistanceLevels);
+            } catch (e) { if (!isSilent) logStatus("Error loading data."); } finally { if (!isSilent) hideLoader(); }
         }
 
-        const symbol = document.getElementById('sel-symbol').value;
-        const strike = document.getElementById('sel-strike').value;
+        function drawSR(supports, resistances) {
+            const config = (p, c, t) => ({ price: p, color: c, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: t });
+            if (supports) supports.forEach(s => AppState.srLines.push(AppState.series.candle.createPriceLine(config(s.price, '#10b981', 'SUPP'))));
+            if (resistances) resistances.forEach(r => AppState.srLines.push(AppState.series.candle.createPriceLine(config(r.price, '#ef4444', 'RES'))));
+        }
 
-        isHydrated = false;
-        lastKnownTime = 0;
-        resetExtremes(); // Critical: Clear mathematical boundaries on new load
-        document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
-        updateUI({ combinedPremium: 0, ceDelta: 0, peDelta: 0, ceGamma: 0, peGamma: 0, ceTheta: 0, peTheta: 0, ceIv: 0, peIv: 0 });
+        function startCandlePolling() {
+            clearInterval(StreamState.candlePollingInterval);
+            StreamState.candlePollingInterval = setInterval(() => { if (document.visibilityState === 'visible') loadData(true); }, 30000); 
+        }
 
-        try {
-            const urlParams = `symbol=${symbol}&ceStrike=${strike}&peStrike=${strike}`;
-            const res = await fetch(`${BASE_CHART_URL}/historical?${urlParams}`);
-            
-            if (!res.ok) throw new Error(`Historical data fetch failed with HTTP ${res.status}`);
-            const data = await res.json();
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') { loadData(true); startCandlePolling(); } 
+            else clearInterval(StreamState.candlePollingInterval);
+        });
 
-            if (data && data.length > 0) {
-                data.sort((a,b) => a.time - b.time);
+        async function getInstrumentKey(name) {
+            if (StreamState.iKeyCache[name]) return StreamState.iKeyCache[name];
+            try {
+                const res = await fetch(`/api/websocket/instrument/key?name=${encodeURIComponent(name)}`);
+                const data = await res.json();
+                const key = data.key || data.instrumentKey;
+                if (key) StreamState.iKeyCache[name] = key;
+                return key;
+            } catch (e) { return null; }
+        }
 
-                const pD = [], dD = [], gD = [], tD = [], ivD = [];
-                
-                // Pre-process Data boundaries BEFORE loading the chart
-                data.forEach(d => {
-                    const vP = d.combinedPremium;
-                    const vD = d.ceDelta + d.peDelta;
-                    const vG = (d.ceGamma || 0) + (d.peGamma || 0);
-                    const vT = d.ceTheta + d.peTheta;
-                    const vIV = (d.ceIv + d.peIv) / 2;
+        async function resolveStreamKey(symbol) {
+            StreamState.iKeyCurrent = null;
+            const key = await getInstrumentKey(symbol);
+            StreamState.iKeyCurrent = key;
+            if (StreamState.pendingTicks.length) {
+                StreamState.pendingTicks.forEach(applyTick);
+                StreamState.pendingTicks.length = 0;
+            }
+        }
 
-                    updateExtreme('p', vP); updateExtreme('d', vD); updateExtreme('g', vG); updateExtreme('t', vT); updateExtreme('iv', vIV);
+        function connectMarketSSE() {
+            if (StreamState.reconnectTimeout) clearTimeout(StreamState.reconnectTimeout);
+            if (StreamState.marketSource) StreamState.marketSource.close();
+            StreamState.marketSource = new EventSource('/api/stream/market');
+            StreamState.marketSource.onopen = () => document.getElementById('live-dot').className = 'live-dot connected';
+            StreamState.marketSource.onerror = () => {
+                document.getElementById('live-dot').className = 'live-dot';
+                StreamState.marketSource.close();
+                StreamState.reconnectTimeout = setTimeout(connectMarketSSE, 3000); 
+            };
+            StreamState.marketSource.addEventListener('ltp', e => {
+                let d; try { d = JSON.parse(e.data); } catch (ex) { return; }
+                if (!d || d.price == null) return;
+                const price = +d.price;
+                const tickKey = d.key ? String(d.key) : null;
+                if (tickKey && !StreamState.iKeyCurrent) { StreamState.pendingTicks.push({ price, tickKey }); return; }
+                if (tickKey !== StreamState.iKeyCurrent) return;
+                applyTick(price);
+            });
+        }
 
-                    pD.push({ time: d.time, value: vP });
-                    dD.push({ time: d.time, value: vD });
-                    gD.push({ time: d.time, value: vG });
-                    tD.push({ time: d.time, value: vT });
-                    ivD.push({ time: d.time, value: vIV });
-                });
+        function applyTick(price) {
+            const candles = AppState.data.candles;
+            if (!candles.length || !AppState.series.candle) return;
+            const last = candles[candles.length - 1];
+            // Apply IST offset to real-time math
+            const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
+            const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
 
-                series.p.setData(pD); series.d.setData(dD); series.g.setData(gD); series.t.setData(tD); series.iv.setData(ivD);
-
-                lastKnownTime = data[data.length - 1].time;
-                updateUI(data[data.length - 1]);
+            if (barFloor > last.time) {
+                const nc = { time: barFloor, open: price, high: price, low: price, close: price };
+                candles.push(nc);
+                try { AppState.series.candle.update(nc); } catch(e) {}
             } else {
-                series.p.setData([]); series.d.setData([]); series.g.setData([]); series.t.setData([]); series.iv.setData([]);
+                const upd = { time: last.time, open: +last.open, high: Math.max(+last.high, price), low: Math.min(+last.low, price), close: price };
+                candles[candles.length - 1] = upd;
+                if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
+                    try { AppState.series.candle.update(upd); } catch(e) {}
+                }
             }
-
-            isHydrated = true;
-            resizeActiveChart();
-            setTimeout(() => resetZoom(), 50);
-            
-            connectStream(urlParams);
-
-        } catch(e) {
-            killLoaderWithError("FAILED TO LOAD CHART DATA.");
-        } finally {
-            if (isHydrated) { setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 1000); }
         }
-    }
 
-    function connectStream(urlParams) {
-        activeSSE = new EventSource(`${BASE_CHART_URL}/stream?${urlParams}`);
-        
-        activeSSE.onmessage = (event) => {
-            const d = JSON.parse(event.data);
-            const ts = Number(d.time);
-
-            if (ts > lastKnownTime) {
-                lastKnownTime = ts;
-                
-                const vP = d.combinedPremium;
-                const vD = d.ceDelta + d.peDelta;
-                const vG = (d.ceGamma || 0) + (d.peGamma || 0);
-                const vT = d.ceTheta + d.peTheta;
-                const vIV = (d.ceIv + d.peIv) / 2;
-
-                // Continuously track boundaries on stream 
-                updateExtreme('p', vP); updateExtreme('d', vD); updateExtreme('g', vG); updateExtreme('t', vT); updateExtreme('iv', vIV);
-
-                series.p.update({ time: ts, value: vP });
-                series.d.update({ time: ts, value: vD });
-                series.g.update({ time: ts, value: vG });
-                series.t.update({ time: ts, value: vT });
-                series.iv.update({ time: ts, value: vIV });
-
-                updateUI(d);
-                document.querySelectorAll('.live-dot').forEach(dot => dot.classList.add('live-active'));
-            }
-        };
-
-        activeSSE.onerror = (e) => {
-            document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
+        function startPnLStream() {
+            if (StreamState.pnlSource) StreamState.pnlSource.close();
+            const pnlDisplay = document.getElementById('pnl-val');
+            StreamState.pnlSource = new EventSource(`/api/global/pnl/stream?name=${AppState.currentName}&type=STRADDLE`);
+            StreamState.pnlSource.addEventListener('pnl-update', (e) => {
+                const val = parseFloat(e.data);
+                pnlDisplay.innerText = val.toFixed(2);
+                pnlDisplay.className = `text-xl font-mono font-bold ${val > 0 ? 'text-green-500' : val < 0 ? 'text-red-500' : 'text-gray-400'}`;
+            });
+            StreamState.pnlSource.onerror = () => StreamState.pnlSource.close();
         }
-    }
 
-    function updateUI(d) {
-        document.getElementById('val-p').innerText = (d.combinedPremium || 0).toFixed(2);
-        document.getElementById('val-d').innerText = ((d.ceDelta || 0) + (d.peDelta || 0)).toFixed(4);
-        document.getElementById('val-g').innerText = ((d.ceGamma || 0) + (d.peGamma || 0)).toFixed(4);
-        document.getElementById('val-t').innerText = ((d.ceTheta || 0) + (d.peTheta || 0)).toFixed(2);
-        document.getElementById('val-iv').innerText = (((d.ceIv || 0) + (d.peIv || 0))/2).toFixed(2) + "%";
-    }
+        async function executeTrade(action) {
+            logStatus(`Executing ${action}...`);
+            const statusEl = document.getElementById('trade-status');
+            try {
+                const res = await fetch(`/api/global/${action}?name=${AppState.currentName}&type=STRADDLE`, { method: 'POST' });
+                const msg = await res.text();
+                logStatus(msg);
+                if(action === 'entry') {
+                    statusEl.innerText = 'STRADDLE';
+                    statusEl.className = 'text-sm font-mono font-bold text-green-500';
+                    startPnLStream();
+                } else {
+                    statusEl.innerText = 'NONE';
+                    statusEl.className = 'text-sm font-mono font-bold text-gray-400';
+                }
+            } catch (e) { logStatus("Trade failed."); }
+        }
 
-    initApp();
-</script>
+        function logStatus(msg) {
+            const div = document.getElementById('status-log');
+            div.innerHTML = `<div style="color: var(--text-color);">[${new Date().toLocaleTimeString()}] ${msg}</div>` + div.innerHTML;
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
 </body>
 </html>

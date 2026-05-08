@@ -341,4 +341,23 @@ public class AngelWebSocketService {
         DayOfWeek day = today.getDayOfWeek();
         return !(day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY);
     }
+    
+    public synchronized void unsubscribe(ExchangeType exchangeType, String token) {
+        String normalizedToken = normalizeToken(token);
+        String key = exchangeType.name() + "_" + normalizedToken;
+
+        if (!subscribedTokens.containsKey(key)) return;
+
+        TokenID tokenId = subscribedTokens.get(key);
+        Set<TokenID> tokenSet = new HashSet<>();
+        tokenSet.add(tokenId);
+
+        smartStreamTicker.unsubscribe(SmartStreamSubsMode.LTP, tokenSet);
+        
+        subscribedTokens.remove(key);
+        latestLtpMap.remove(key);
+        lastTickTime.remove(key);
+        
+        log.info("Unsubscribed successfully | {}", key);
+    }
 }

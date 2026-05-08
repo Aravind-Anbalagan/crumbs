@@ -237,16 +237,80 @@ public class FlatTradeService {
         }
     }
 
-    public void PlaceOrderInFlatTrade(Token token) throws Exception {
+    /**
+     * Updated to return the Order ID (norenordno) and handle errors without DTO dependency.
+     */
+    /**
+     * Updated to return the Token object with norenordno and price populated.
+     */
+    public Token PlaceOrderInFlatTrade(Token token) throws Exception {
         String key = getTokenForFlatTrade();
-        if (key != null) {
-            token.setSymbol(Utility.normalizeToken(token.getSymbol()));
-            String body = "jData=" + objectMapper.writeValueAsString(setJDataForOrder(token)) + "&jKey=" + key;
-            logger.info("[FLATTRADE-ORDER] Placing order for {}", token.getSymbol());
-            webClient.post().uri(BASE_URL + "/PlaceOrder")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED).bodyValue(body)
-                    .retrieve().bodyToMono(APIResponse.class).block();
+        if (key == null) return null;
+
+        token.setSymbol(Utility.normalizeToken(token.getSymbol()));
+        String body = "jData=" + objectMapper.writeValueAsString(setJDataForOrder(token)) + "&jKey=" + key;
+        
+        logger.info("[FLATTRADE-ORDER] Placing order for {}", token.getSymbol());
+
+        Map<String, Object> response = webClient.post().uri(BASE_URL + "/PlaceOrder")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .block();
+
+        if (response != null && "Ok".equalsIgnoreCase((String) response.get("stat"))) {
+            String orderId = (String) response.get("norenordno");
+            logger.info("[FLATTRADE-SUCCESS] Order Placed: {}", orderId);
+            
+            // Populate the token with Order ID and fetch execution price
+            token.setOrderId(orderId);
+            
+            // Optional: Immediately fetch execution price to stay consistent with AngelOneService
+            JSONObject details = getIndividualOrderDetails(orderId);
+            if (details != null && details.has("avgprc")) {
+                token.setPrice(details.getDouble("avgprc"));
+            }
+            
+            return token;
+        } else {
+            String error = (response != null) ? (String) response.get("emsg") : "Empty response";
+            logger.error("[FLATTRADE-ERROR] Order failed: {}", error);
+            throw new RuntimeException("FlatTrade Order Error: " + error);
         }
+    }
+
+    /**
+     * Fetches exact execution details for a specific FlatTrade order.
+     * Use this to get the 'avgprc' for your PnL calculations.
+     */
+    public JSONObject getIndividualOrderDetails(String orderId) {
+        try {
+            String jKey = getTokenForFlatTrade();
+            Map<String, String> jData = new HashMap<>();
+            jData.put("uid", "MALIT158"); // Your UID from the service
+            jData.put("norenordno", orderId);
+
+            String body = "jData=" + objectMapper.writeValueAsString(jData) + "&jKey=" + jKey;
+
+            // FlatTrade SingleOrderHistory returns a JSON array string
+            String responseBody = webClient.post().uri(BASE_URL + "/SingleOrderHistory")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            if (responseBody != null) {
+                org.json.JSONArray jsonArray = new org.json.JSONArray(responseBody);
+                if (jsonArray.length() > 0) {
+                    return jsonArray.getJSONObject(0);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("[FLATTRADE-ORDER-DETAILS] Error fetching order {}: {}", orderId, e.getMessage());
+        }
+        return null;
     }
 
     private JData setJDataForOrder(Token token) {
