@@ -6,58 +6,39 @@
     <title>Crumbs Pro Terminal</title>
     
     <link rel="icon" href="data:,">
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     
     <style>
-        :root {
-            --bg-color: #0d1117;
-            --text-color: #e5e7eb;
-            --header-bg: #111827;
-            --border-color: #1f2937;
-            --loader-bg: rgba(13, 17, 23, 0.85);
-            --select-bg: #1f2937;
-        }
-
-        body.light-mode {
-            --bg-color: #ffffff;
-            --text-color: #111827;
-            --header-bg: #f3f4f6;
-            --border-color: #d1d5db;
-            --loader-bg: rgba(255, 255, 255, 0.85);
-            --select-bg: #e5e7eb;
-        }
-
-        body { 
-            background-color: var(--bg-color); 
-            color: var(--text-color); 
-            transition: background-color 0.3s, color 0.3s;
-        }
-
-        .theme-header { background-color: var(--header-bg); border-color: var(--border-color); transition: all 0.3s; }
-        .theme-border { border-color: var(--border-color); transition: border-color 0.3s; }
-        .theme-loader { background-color: var(--loader-bg); transition: background-color 0.3s; }
-        .theme-select { background-color: var(--select-bg); border-color: var(--border-color); color: var(--text-color); }
-
-        #chart-container { height: calc(100vh - 120px); width: 100%; }
+        /* --- STATIC CSS --- */
+        *, ::before, ::after { box-sizing: border-box; margin: 0; padding: 0; }
+        .flex { display: flex; } .flex-col { flex-direction: column; } .items-center { align-items: center; } .justify-between { justify-content: space-between; } .justify-center { justify-content: center; }
+        .space-x-8 > * + * { margin-left: 2rem; } .space-x-10 > * + * { margin-left: 2.5rem; } .space-y-2 > * + * { margin-top: 0.5rem; }
+        .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; } .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; } .px-4 { padding-left: 1rem; padding-right: 1rem; } .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; } .p-1 { padding: 0.25rem; } .p-2 { padding: 0.5rem; } .p-4 { padding: 1rem; } .pb-6 { padding-bottom: 1.5rem; }
+        .gap-2 { gap: 0.5rem; } .gap-4 { gap: 1rem; }
+        .border { border-width: 1px; border-style: solid; } .border-b { border-bottom-width: 1px; border-bottom-style: solid; } .border-r { border-right-width: 1px; border-right-style: solid; } .border-4 { border-width: 4px; border-style: solid; }
+        .rounded { border-radius: 0.25rem; } .rounded-md { border-radius: 0.375rem; } .rounded-full { border-radius: 9999px; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; } .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; } .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .text-\[10px\] { font-size: 10px; } .text-\[11px\] { font-size: 11px; }
+        .font-bold { font-weight: 700; } .font-semibold { font-weight: 600; } .font-mono { font-family: monospace; } .tracking-widest { letter-spacing: 0.1em; } .uppercase { text-transform: uppercase; } .text-center { text-align: center; } .text-right { text-align: right; }
+        .w-full { width: 100%; } .h-full { height: 100%; } .w-64 { width: 16rem; } .h-12 { height: 3rem; } .w-12 { width: 3rem; } .flex-1 { flex: 1 1 0%; } .min-h-0 { min-height: 0px; } .relative { position: relative; } .absolute { position: absolute; } .inset-0 { top: 0; right: 0; bottom: 0; left: 0; } .z-50 { z-index: 50; }
+        .overflow-hidden { overflow: hidden; } .overflow-y-auto { overflow-y: auto; }
+        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); } .outline-none { outline: 2px solid transparent; outline-offset: 2px; }
+        .transition-colors { transition-property: color, background-color, border-color; transition-duration: 150ms; } .transition-all { transition-property: all; transition-duration: 150ms; } .transition-opacity { transition-property: opacity; } .duration-300 { transition-duration: 300ms; }
+        .active\:scale-95:active { transform: scale(0.95); }
+        .text-blue-500 { color: #3b82f6; } .text-green-500 { color: #22c55e; } .text-red-500 { color: #ef4444; } .text-gray-400 { color: #9ca3af; } .text-white { color: #ffffff; }
+        .bg-blue-600 { background-color: #2563eb; } .bg-emerald-600 { background-color: #059669; } .bg-rose-600 { background-color: #e11d48; }
+        button, select { font-family: inherit; } .hover\:bg-blue-500:hover { background-color: #3b82f6; } .hover\:text-white:hover { color: #ffffff; } .hover\:border-blue-500:hover { border-color: #3b82f6; } .hover\:bg-emerald-500:hover { background-color: #10b981; } .hover\:bg-rose-500:hover { background-color: #f43f5e; } .focus\:ring-1:focus { box-shadow: 0 0 0 1px #3b82f6; }
         
+        /* --- THEME STYLES --- */
+        :root { --bg-color: #0d1117; --text-color: #e5e7eb; --header-bg: #111827; --border-color: #1f2937; --loader-bg: rgba(13, 17, 23, 0.85); --select-bg: #1f2937; }
+        body.light-mode { --bg-color: #ffffff; --text-color: #111827; --header-bg: #f3f4f6; --border-color: #d1d5db; --loader-bg: rgba(255, 255, 255, 0.85); --select-bg: #e5e7eb; }
+        body { background-color: var(--bg-color); color: var(--text-color); transition: background-color 0.3s, color 0.3s; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .theme-header { background-color: var(--header-bg); border-color: var(--border-color); transition: all 0.3s; } .theme-border { border-color: var(--border-color); transition: border-color 0.3s; } .theme-loader { background-color: var(--loader-bg); transition: background-color 0.3s; } .theme-select { background-color: var(--select-bg); border-color: var(--border-color); color: var(--text-color); }
+        #chart-container { height: calc(100vh - 120px); width: 100%; }
         .loader { border-top-color: #3b82f6; animation: spinner 0.6s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        .live-dot { 
-            width: 10px; height: 10px; border-radius: 50%; 
-            background: #ef5350; display: inline-block; 
-            transition: background 0.3s;
-        }
-        .live-dot.connected { 
-            background: #26a69a; 
-            box-shadow: 0 0 8px #26a69a; 
-            animation: pulse 1.5s infinite; 
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
+        .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef5350; display: inline-block; transition: background 0.3s; }
+        .live-dot.connected { background: #26a69a; box-shadow: 0 0 8px #26a69a; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -131,12 +112,51 @@
     </div>
 
     <script>
+        // ==========================================
+        // CONFIGURATION (Modify values here)
+        // ==========================================
+        const CONFIG = {
+            API: {
+                INTRADAY: "/api/intraday",
+                KEY_RESOLVER: "/api/websocket/instrument/key",
+                MARKET_STREAM: "/api/stream/market",
+                PNL_STREAM: "/api/global/pnl/stream",
+                EXECUTION: "/api/global"
+            },
+            TIMERS: {
+                POLLING_INTERVAL_MS: 30000,   // How often to fetch background candles
+                RECONNECT_DELAY_MS: 3000      // Wait time before SSE reconnects
+            },
+            TRADING: {
+                DEFAULT_INSTRUMENT: "NIFTY",
+                CRUDE_START_MINUTES: 16 * 60,       // 4:00 PM
+                CRUDE_END_MINUTES: (23 * 60) + 30,  // 11:30 PM
+                TRADE_TYPE: "STRADDLE"
+            },
+            CHART: {
+                IST_OFFSET: 19800, // 5.5 hours for IST in seconds
+                COLORS: {
+                    BULL: '#10b981', // Green
+                    BEAR: '#ef4444', // Red
+                    SUPPORT: '#10b981',
+                    RESISTANCE: '#ef4444',
+                    TEXT_LIGHT: '#374151',
+                    TEXT_DARK: '#9ca3af',
+                    GRID_LIGHT: '#d1d5db',
+                    GRID_DARK: '#374151'
+                }
+            }
+        };
+
+        // ==========================================
+        // APPLICATION STATE
+        // ==========================================
         const AppState = {
             chart: null,
             series: { candle: null },
             data: { candles: [] },
             srLines: [],
-            currentName: "NIFTY"
+            currentName: CONFIG.TRADING.DEFAULT_INSTRUMENT
         };
 
         const StreamState = {
@@ -148,9 +168,12 @@
             iKeyCache: {},
             pendingTicks: [],
             TF_SECS: 300, 
-            IST_OFFSET: 19800 // 5.5 hours for IST
+            isSyncing: false 
         };
 
+        // ==========================================
+        // CORE LOGIC
+        // ==========================================
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
             syncChartColors();
@@ -160,9 +183,9 @@
             if (!AppState.chart) return;
             const isLight = document.body.classList.contains('light-mode');
             AppState.chart.applyOptions({
-                layout: { textColor: isLight ? '#374151' : '#9ca3af' }, 
-                priceScale: { borderColor: isLight ? '#d1d5db' : '#374151' },
-                timeScale: { borderColor: isLight ? '#d1d5db' : '#374151' }
+                layout: { textColor: isLight ? CONFIG.CHART.COLORS.TEXT_LIGHT : CONFIG.CHART.COLORS.TEXT_DARK }, 
+                priceScale: { borderColor: isLight ? CONFIG.CHART.COLORS.GRID_LIGHT : CONFIG.CHART.COLORS.GRID_DARK },
+                timeScale: { borderColor: isLight ? CONFIG.CHART.COLORS.GRID_LIGHT : CONFIG.CHART.COLORS.GRID_DARK }
             });
         }
 
@@ -170,15 +193,29 @@
         function hideLoader() { document.getElementById('loader').style.display = 'none'; }
 
         function initApp() {
-            const hour = new Date().getHours();
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+
+            // Light mode between 9 AM and 4 PM
             if (hour >= 9 && hour < 16) document.body.classList.add('light-mode');
+            
             setupChart();
             syncChartColors(); 
+            
             window.addEventListener('resize', () => {
                 const container = document.getElementById('chart-container');
                 if (AppState.chart) AppState.chart.applyOptions({ width: container.clientWidth });
             });
-            changeInstrument('NIFTY'); 
+
+            // Dynamic Instrument check
+            const currentMinutes = (hour * 60) + minute;
+            if (currentMinutes >= CONFIG.TRADING.CRUDE_START_MINUTES && currentMinutes <= CONFIG.TRADING.CRUDE_END_MINUTES) {
+                changeInstrument('CRUDEOIL');
+            } else {
+                changeInstrument(CONFIG.TRADING.DEFAULT_INSTRUMENT);
+            }
+
             startCandlePolling();
         }
 
@@ -189,24 +226,19 @@
                 grid: { vertLines: { visible: false }, horzLines: { visible: false } },
                 crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
                 priceScale: { autoScale: true },
-                timeScale: { 
-                    timeVisible: true, 
-                    secondsVisible: false,
-                    barSpacing: 12, 
-                    rightOffset: 5
-                }
+                timeScale: { timeVisible: true, secondsVisible: false, barSpacing: 12, rightOffset: 5 }
             });
             AppState.series.candle = AppState.chart.addCandlestickSeries({
-                upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
-                wickUpColor: '#10b981', wickDownColor: '#ef4444'
+                upColor: CONFIG.CHART.COLORS.BULL, downColor: CONFIG.CHART.COLORS.BEAR, borderVisible: false,
+                wickUpColor: CONFIG.CHART.COLORS.BULL, wickDownColor: CONFIG.CHART.COLORS.BEAR
             });
         }
 
         function clearChart() {
             if (AppState.series.candle) AppState.chart.removeSeries(AppState.series.candle);
             AppState.series.candle = AppState.chart.addCandlestickSeries({
-                upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
-                wickUpColor: '#10b981', wickDownColor: '#ef4444'
+                upColor: CONFIG.CHART.COLORS.BULL, downColor: CONFIG.CHART.COLORS.BEAR, borderVisible: false,
+                wickUpColor: CONFIG.CHART.COLORS.BULL, wickDownColor: CONFIG.CHART.COLORS.BEAR
             });
             AppState.srLines = [];
             AppState.data.candles = [];
@@ -230,8 +262,10 @@
                 b.style.color = 'var(--text-color)';
             });
             const activeBtn = document.getElementById(`btn-${name}`);
-            activeBtn.classList.add('bg-blue-600', 'text-white');
-            activeBtn.style.color = ''; 
+            if(activeBtn) {
+                activeBtn.classList.add('bg-blue-600', 'text-white');
+                activeBtn.style.color = ''; 
+            }
             clearChart(); 
             await loadData(false);
             resolveStreamKey(name);
@@ -241,50 +275,67 @@
 
         async function loadData(isSilent = false) {
             try {
+                StreamState.isSyncing = true; 
                 const tf = document.getElementById('timeFrame').value;
-                const response = await fetch(`/api/intraday?timeFrame=${tf}&name=${AppState.currentName}`);
+                const response = await fetch(`${CONFIG.API.INTRADAY}?timeFrame=${tf}&name=${AppState.currentName}`);
                 const payload = await response.json();
-                if (!payload || !payload.candles || payload.candles.length === 0) return;
+                if (!payload || !payload.candles || payload.candles.length === 0) {
+                    StreamState.isSyncing = false;
+                    return;
+                }
 
                 const formattedData = payload.candles.map(d => {
                     let ts = parseInt(d.time);
-                    // Standardize to seconds and apply IST offset
                     if (ts > 10000000000) ts = Math.floor(ts / 1000); 
                     return {
-                        time: ts + StreamState.IST_OFFSET, 
-                        open: parseFloat(d.open) || 0,
-                        high: parseFloat(d.high) || 0,
-                        low: parseFloat(d.low) || 0,
-                        close: parseFloat(d.close) || 0
+                        time: ts + CONFIG.CHART.IST_OFFSET, 
+                        open: parseFloat(d.open) || 0, high: parseFloat(d.high) || 0,
+                        low: parseFloat(d.low) || 0, close: parseFloat(d.close) || 0
                     };
                 });
                 formattedData.sort((a, b) => a.time - b.time);
                 AppState.data.candles = formattedData.filter((v, i, s) => i === s.findIndex((t) => (t.time === v.time)));
                 AppState.series.candle.setData(AppState.data.candles);
                 drawSR(payload.supportLevels, payload.resistanceLevels);
-            } catch (e) { if (!isSilent) logStatus("Error loading data."); } finally { if (!isSilent) hideLoader(); }
+            } catch (e) { 
+                if (!isSilent) logStatus("Error loading data."); 
+            } finally { 
+                StreamState.isSyncing = false; 
+                if (!isSilent) hideLoader(); 
+            }
         }
 
         function drawSR(supports, resistances) {
+            // Cleanup old lines
+            if (AppState.srLines && AppState.srLines.length > 0) {
+                AppState.srLines.forEach(line => { try { AppState.series.candle.removePriceLine(line); } catch(e) {} });
+                AppState.srLines = []; 
+            }
+
             const config = (p, c, t) => ({ price: p, color: c, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: t });
-            if (supports) supports.forEach(s => AppState.srLines.push(AppState.series.candle.createPriceLine(config(s.price, '#10b981', 'SUPP'))));
-            if (resistances) resistances.forEach(r => AppState.srLines.push(AppState.series.candle.createPriceLine(config(r.price, '#ef4444', 'RES'))));
+            if (supports) supports.forEach(s => AppState.srLines.push(AppState.series.candle.createPriceLine(config(s.price, CONFIG.CHART.COLORS.SUPPORT, 'SUPP'))));
+            if (resistances) resistances.forEach(r => AppState.srLines.push(AppState.series.candle.createPriceLine(config(r.price, CONFIG.CHART.COLORS.RESISTANCE, 'RES'))));
         }
 
         function startCandlePolling() {
             clearInterval(StreamState.candlePollingInterval);
-            StreamState.candlePollingInterval = setInterval(() => { if (document.visibilityState === 'visible') loadData(true); }, 30000); 
+            StreamState.candlePollingInterval = setInterval(() => { if (document.visibilityState === 'visible') loadData(true); }, CONFIG.TIMERS.POLLING_INTERVAL_MS); 
         }
 
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') { loadData(true); startCandlePolling(); } 
-            else clearInterval(StreamState.candlePollingInterval);
+            if (document.visibilityState === 'visible') { 
+                loadData(true); 
+                startCandlePolling(); 
+                connectMarketSSE(); 
+            } else { 
+                clearInterval(StreamState.candlePollingInterval);
+            }
         });
 
         async function getInstrumentKey(name) {
             if (StreamState.iKeyCache[name]) return StreamState.iKeyCache[name];
             try {
-                const res = await fetch(`/api/websocket/instrument/key?name=${encodeURIComponent(name)}`);
+                const res = await fetch(`${CONFIG.API.KEY_RESOLVER}?name=${encodeURIComponent(name)}`);
                 const data = await res.json();
                 const key = data.key || data.instrumentKey;
                 if (key) StreamState.iKeyCache[name] = key;
@@ -305,12 +356,13 @@
         function connectMarketSSE() {
             if (StreamState.reconnectTimeout) clearTimeout(StreamState.reconnectTimeout);
             if (StreamState.marketSource) StreamState.marketSource.close();
-            StreamState.marketSource = new EventSource('/api/stream/market');
+            
+            StreamState.marketSource = new EventSource(CONFIG.API.MARKET_STREAM);
             StreamState.marketSource.onopen = () => document.getElementById('live-dot').className = 'live-dot connected';
             StreamState.marketSource.onerror = () => {
                 document.getElementById('live-dot').className = 'live-dot';
                 StreamState.marketSource.close();
-                StreamState.reconnectTimeout = setTimeout(connectMarketSSE, 3000); 
+                StreamState.reconnectTimeout = setTimeout(connectMarketSSE, CONFIG.TIMERS.RECONNECT_DELAY_MS); 
             };
             StreamState.marketSource.addEventListener('ltp', e => {
                 let d; try { d = JSON.parse(e.data); } catch (ex) { return; }
@@ -324,11 +376,12 @@
         }
 
         function applyTick(price) {
+            if (StreamState.isSyncing) return; 
+
             const candles = AppState.data.candles;
             if (!candles.length || !AppState.series.candle) return;
             const last = candles[candles.length - 1];
-            // Apply IST offset to real-time math
-            const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
+            const nowIST = Math.floor(Date.now() / 1000) + CONFIG.CHART.IST_OFFSET;
             const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
 
             if (barFloor > last.time) {
@@ -347,7 +400,8 @@
         function startPnLStream() {
             if (StreamState.pnlSource) StreamState.pnlSource.close();
             const pnlDisplay = document.getElementById('pnl-val');
-            StreamState.pnlSource = new EventSource(`/api/global/pnl/stream?name=${AppState.currentName}&type=STRADDLE`);
+            
+            StreamState.pnlSource = new EventSource(`${CONFIG.API.PNL_STREAM}?name=${AppState.currentName}&type=${CONFIG.TRADING.TRADE_TYPE}`);
             StreamState.pnlSource.addEventListener('pnl-update', (e) => {
                 const val = parseFloat(e.data);
                 pnlDisplay.innerText = val.toFixed(2);
@@ -360,11 +414,11 @@
             logStatus(`Executing ${action}...`);
             const statusEl = document.getElementById('trade-status');
             try {
-                const res = await fetch(`/api/global/${action}?name=${AppState.currentName}&type=STRADDLE`, { method: 'POST' });
+                const res = await fetch(`${CONFIG.API.EXECUTION}/${action}?name=${AppState.currentName}&type=${CONFIG.TRADING.TRADE_TYPE}`, { method: 'POST' });
                 const msg = await res.text();
                 logStatus(msg);
                 if(action === 'entry') {
-                    statusEl.innerText = 'STRADDLE';
+                    statusEl.innerText = CONFIG.TRADING.TRADE_TYPE;
                     statusEl.className = 'text-sm font-mono font-bold text-green-500';
                     startPnLStream();
                 } else {
