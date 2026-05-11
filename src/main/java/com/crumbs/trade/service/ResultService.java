@@ -101,12 +101,12 @@ public class ResultService {
 				result.setType("ERROR");
 			}
 			result.setHasOption(Objects.nonNull(stock.getOptions()) ? "Y" : "N");
-			/*if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
-				result.setSl(convertStringToList(stock.getLast3daycandlelow()));
+			if ("UP".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
+				result.setSlPrice(stock.getBuysl());
 
 			} else if ("DOWN".equalsIgnoreCase(result.getType()) && "DAILY".equalsIgnoreCase(stock.getTradetype())) {
-				result.setSl(convertStringToList(stock.getLast3daycandlehigh()));
-			}*/
+				result.setSlPrice(stock.getSellsl());
+			}
 			result.setSl(stock.getSl());
 			if ("ERROR".equalsIgnoreCase(result.getType())) {
 			    logger.info("Skip Stock {} due to ERROR type", result.getName());

@@ -273,30 +273,42 @@
             connectMarketSSE(); 
         }
 
+        // ==========================================
+        // OPTIMIZED: loadData
+        // ==========================================
         async function loadData(isSilent = false) {
             try {
                 StreamState.isSyncing = true; 
                 const tf = document.getElementById('timeFrame').value;
                 const response = await fetch(`${CONFIG.API.INTRADAY}?timeFrame=${tf}&name=${AppState.currentName}`);
                 const payload = await response.json();
+                
                 if (!payload || !payload.candles || payload.candles.length === 0) {
                     StreamState.isSyncing = false;
                     return;
                 }
 
-                const formattedData = payload.candles.map(d => {
+                const uniqueCandles = new Map();
+                
+                payload.candles.forEach(d => {
                     let ts = parseInt(d.time);
                     if (ts > 10000000000) ts = Math.floor(ts / 1000); 
-                    return {
-                        time: ts + CONFIG.CHART.IST_OFFSET, 
-                        open: parseFloat(d.open) || 0, high: parseFloat(d.high) || 0,
-                        low: parseFloat(d.low) || 0, close: parseFloat(d.close) || 0
-                    };
+                    
+                    const timeKey = ts + CONFIG.CHART.IST_OFFSET;
+                    uniqueCandles.set(timeKey, {
+                        time: timeKey, 
+                        open: parseFloat(d.open) || 0, 
+                        high: parseFloat(d.high) || 0,
+                        low: parseFloat(d.low) || 0, 
+                        close: parseFloat(d.close) || 0
+                    });
                 });
-                formattedData.sort((a, b) => a.time - b.time);
-                AppState.data.candles = formattedData.filter((v, i, s) => i === s.findIndex((t) => (t.time === v.time)));
+
+                AppState.data.candles = Array.from(uniqueCandles.values()).sort((a, b) => a.time - b.time);
+                
                 AppState.series.candle.setData(AppState.data.candles);
                 drawSR(payload.supportLevels, payload.resistanceLevels);
+                
             } catch (e) { 
                 if (!isSilent) logStatus("Error loading data."); 
             } finally { 
@@ -306,7 +318,6 @@
         }
 
         function drawSR(supports, resistances) {
-            // Cleanup old lines
             if (AppState.srLines && AppState.srLines.length > 0) {
                 AppState.srLines.forEach(line => { try { AppState.series.candle.removePriceLine(line); } catch(e) {} });
                 AppState.srLines = []; 
@@ -348,7 +359,7 @@
             const key = await getInstrumentKey(symbol);
             StreamState.iKeyCurrent = key;
             if (StreamState.pendingTicks.length) {
-                StreamState.pendingTicks.forEach(applyTick);
+                StreamState.pendingTicks.forEach(t => applyTick(t.price));
                 StreamState.pendingTicks.length = 0;
             }
         }
@@ -375,25 +386,44 @@
             });
         }
 
+        // ==========================================
+        // OPTIMIZED: applyTick
+        // ==========================================
+        let pendingChartUpdate = null;
+
         function applyTick(price) {
             if (StreamState.isSyncing) return; 
 
             const candles = AppState.data.candles;
             if (!candles.length || !AppState.series.candle) return;
+            
             const last = candles[candles.length - 1];
             const nowIST = Math.floor(Date.now() / 1000) + CONFIG.CHART.IST_OFFSET;
             const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
 
+            let targetCandle;
+
             if (barFloor > last.time) {
-                const nc = { time: barFloor, open: price, high: price, low: price, close: price };
-                candles.push(nc);
-                try { AppState.series.candle.update(nc); } catch(e) {}
+                targetCandle = { time: barFloor, open: price, high: price, low: price, close: price };
+                candles.push(targetCandle);
             } else {
-                const upd = { time: last.time, open: +last.open, high: Math.max(+last.high, price), low: Math.min(+last.low, price), close: price };
-                candles[candles.length - 1] = upd;
-                if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
-                    try { AppState.series.candle.update(upd); } catch(e) {}
-                }
+                targetCandle = { 
+                    time: last.time, 
+                    open: +last.open, 
+                    high: Math.max(+last.high, price), 
+                    low: Math.min(+last.low, price), 
+                    close: price 
+                };
+                candles[candles.length - 1] = targetCandle;
+            }
+
+            if (!pendingChartUpdate) {
+                pendingChartUpdate = requestAnimationFrame(() => {
+                    try { 
+                        AppState.series.candle.update(candles[candles.length - 1]); 
+                    } catch(e) {}
+                    pendingChartUpdate = null;
+                });
             }
         }
 
@@ -428,9 +458,21 @@
             } catch (e) { logStatus("Trade failed."); }
         }
 
+        // ==========================================
+        // OPTIMIZED: logStatus
+        // ==========================================
         function logStatus(msg) {
             const div = document.getElementById('status-log');
-            div.innerHTML = `<div style="color: var(--text-color);">[${new Date().toLocaleTimeString()}] ${msg}</div>` + div.innerHTML;
+            
+            const logEntry = document.createElement('div');
+            logEntry.style.color = 'var(--text-color)';
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            
+            div.prepend(logEntry);
+            
+            while (div.children.length > 50) {
+                div.lastChild.remove();
+            }
         }
 
         document.addEventListener('DOMContentLoaded', initApp);
