@@ -486,7 +486,10 @@ public class StrategyService {
  // =========================================================================
     // EXIT CURRENT TRADE (Upgraded with DB Tracking)
     // =========================================================================
-    private void exitCurrentTrade(String reason, BigDecimal exitPrice) {
+ // =========================================================================
+    // EXIT CURRENT TRADE (Fixed: Fetches Option Premium instead of Index Price)
+    // =========================================================================
+    private void exitCurrentTrade(String reason, BigDecimal indexPrice) {
         try {
             Orders activeTrade = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
             if (activeTrade == null) return;
@@ -494,18 +497,34 @@ public class StrategyService {
             // 1. Call the broker to close the position
             orderService.exitActiveTrade(AppConstant.CPR_STRATEGY);
 
-            // 2. Perform DB Updates
-            BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
-            
-            // Calculate Directional PnL
-            BigDecimal pnl;
-            if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
-                pnl = exitPrice.subtract(entryPrice); // Long: Exit - Entry
-            } else {
-                pnl = entryPrice.subtract(exitPrice); // Short: Entry - Exit
+            // 2. Fetch the actual Option Premium (LTP) for the traded token
+            SmartConnect sc = angelOne.signIn();
+            BigDecimal actualExitPremium = angelOneService.getcurrentPrice(
+                    sc, 
+                    activeTrade.getExchange(), 
+                    activeTrade.getSymbol(), 
+                    activeTrade.getToken(), 
+                    "ltp"
+            );
+
+            // Fallback just in case the API call fails during exit
+            if (actualExitPremium == null) {
+                logger.warn("⚠️ Could not fetch actual exit premium for {}. Using 0.", activeTrade.getSymbol());
+                actualExitPremium = BigDecimal.ZERO;
             }
 
-            activeTrade.setExitPrice(exitPrice);
+            // 3. Perform DB Updates
+            BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
+            
+            // Calculate Directional PnL using the actual option premium
+            BigDecimal pnl;
+            if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
+                pnl = actualExitPremium.subtract(entryPrice); // Long: Exit - Entry
+            } else {
+                pnl = entryPrice.subtract(actualExitPremium); // Short: Entry - Exit
+            }
+
+            activeTrade.setExitPrice(actualExitPremium); // Save the option premium!
             activeTrade.setPl(pnl);
             activeTrade.setClosedOn(LocalDateTime.now());
             activeTrade.setStatus("CLOSED");
@@ -514,8 +533,8 @@ public class StrategyService {
 
             orderRepository.save(activeTrade);
             
-            logger.info("✅ [{}][EXIT] Reason: {} | Entry: {} | Exit: {} | PnL: {}", 
-                    AppConstant.CPR_STRATEGY, reason, entryPrice, exitPrice, pnl);
+            logger.info("✅ [{}][EXIT] Reason: {} | Symbol: {} | Entry: {} | Exit Premium: {} | PnL: {}", 
+                    AppConstant.CPR_STRATEGY, reason, activeTrade.getSymbol(), entryPrice, actualExitPremium, pnl);
 
         } catch (Exception | SmartAPIException e) {
             logger.error("❌ Error exiting CPR trade", e);

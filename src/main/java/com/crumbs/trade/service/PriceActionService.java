@@ -220,10 +220,11 @@ public class PriceActionService {
         result.setSupportLevels(supportLevels);
         result.setResistanceLevels(resistanceLevels);
 
-        log.debug("RangeLock [{}] locked S={} R={} | returned S={} R={}",
-                lockKey,
-                locked.supports.size(), locked.resistances.size(),
-                supportLevels.size(), resistanceLevels.size());
+		/*
+		 * log.debug("RangeLock [{}] locked S={} R={} | returned S={} R={}",
+		 * lockKey, locked.supports.size(), locked.resistances.size(),
+		 * supportLevels.size(), resistanceLevels.size());
+		 */
 
         return result;
     }
@@ -237,20 +238,12 @@ public class PriceActionService {
      * Support broken  → close is below (level - tolerance)
      * Resistance broken → close is above (level + tolerance)
      */
-    private void purgeBreachedZones(List<LockedZone> zones,
-                                    BigDecimal currentPrice,
-                                    BigDecimal tolerance,
-                                    boolean isSupport) {
-        zones.removeIf(z -> {
-            boolean broken = isSupport
-                    ? currentPrice.compareTo(z.level.subtract(tolerance)) < 0
-                    : currentPrice.compareTo(z.level.add(tolerance)) > 0;
-            if (broken)
-                log.info("🔴 {} BROKEN → evicted: {} (close={})",
-                        isSupport ? "Support" : "Resistance", z.level, currentPrice);
-            return broken;
-        });
-    }
+	private void purgeBreachedZones(List<LockedZone> zones,
+			BigDecimal currentPrice, BigDecimal tolerance, boolean isSupport) {
+		zones.removeIf(z -> isSupport
+				? currentPrice.compareTo(z.level.subtract(tolerance)) < 0
+				: currentPrice.compareTo(z.level.add(tolerance)) > 0);
+	}
 
     /**
      * For each freshly detected zone:
@@ -278,7 +271,7 @@ public class PriceActionService {
                         fz.getBroken(),
                         fz.getLastTouchAge()
                 ));
-                log.debug("🔒 Locked new zone: {}", fz.getLevel());
+                //log.debug("🔒 Locked new zone: {}", fz.getLevel());
             }
         }
     }
