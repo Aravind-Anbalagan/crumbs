@@ -63,7 +63,8 @@ public class StrategyService {
 
     private int buyConfirmCount  = 0;
     private int sellConfirmCount = 0;
-
+    private int buySLConfirmCount  = 0;
+    private int sellSLConfirmCount = 0;
     // Strangle flags
     public static boolean timeCheck   = false;
     public static boolean firstOrder  = false;
@@ -331,46 +332,79 @@ public class StrategyService {
     // =========================================================================
     // STOPLOSS CHECK
     // =========================================================================
+ // =========================================================================
+    // STOPLOSS CHECK (Upgraded with 5-Min Fake-Out Protection)
+    // =========================================================================
     private void checkStoploss(BigDecimal price,
                                 BigDecimal first5High, BigDecimal first5Low,
                                 BigDecimal upperBand,  BigDecimal lowerBand,
                                 String marketType) {
 
         Orders activeTrade = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
-        if (activeTrade == null) return;
+        if (activeTrade == null) {
+            // Safety: Reset SL counters if no trade is active
+            buySLConfirmCount = 0;
+            sellSLConfirmCount = 0;
+            return;
+        }
 
         String  activeType      = activeTrade.getType();
-        boolean buySLTriggered  = false;
-        boolean sellSLTriggered = false;
+        boolean buySLConditionMet  = false;
+        boolean sellSLConditionMet = false;
 
+        // 1. Calculate if the price is currently breaching the limits
         if ("NORMAL".equals(marketType)) {
-            buySLTriggered  = "BUY".equalsIgnoreCase(activeType)
-                           && price.compareTo(first5Low)  < 0
-                           && price.compareTo(lowerBand)  < 0;
-            sellSLTriggered = "SELL".equalsIgnoreCase(activeType)
-                           && price.compareTo(first5High) > 0
-                           && price.compareTo(upperBand)  > 0;
+            buySLConditionMet  = "BUY".equalsIgnoreCase(activeType)
+                               && price.compareTo(first5Low)  < 0
+                               && price.compareTo(lowerBand)  < 0;
+            sellSLConditionMet = "SELL".equalsIgnoreCase(activeType)
+                               && price.compareTo(first5High) > 0
+                               && price.compareTo(upperBand)  > 0;
         } else {
-            buySLTriggered  = "BUY".equalsIgnoreCase(activeType)  && price.compareTo(first5Low)  < 0;
-            sellSLTriggered = "SELL".equalsIgnoreCase(activeType) && price.compareTo(first5High) > 0;
+            buySLConditionMet  = "BUY".equalsIgnoreCase(activeType)  && price.compareTo(first5Low)  < 0;
+            sellSLConditionMet = "SELL".equalsIgnoreCase(activeType) && price.compareTo(first5High) > 0;
         }
 
-        if (buySLTriggered) {
-            logger.info("🛑 BUY SL Hit @ {} | first5Low={}", price, first5Low);
-            exitCurrentTrade("BUY_SL_HIT", price);
-            buySLHit.set(true);
-            cprBuyTradeTaken.set(true);
-            logger.info("🔒 BUY blocked for today. SELL side still open.");
-            if (buySLHit.get() && sellSLHit.get()) logger.info("🚫 Both SL hit — No more trades today.");
+        // 2. Process BUY Trade SL Logic
+        if (buySLConditionMet) {
+            buySLConfirmCount++;
+            logger.info("⚠️ BUY SL condition met. Reversal tick: {}/{}", buySLConfirmCount, BREAKOUT_CONFIRM_TICKS);
+            
+            if (buySLConfirmCount >= BREAKOUT_CONFIRM_TICKS) {
+                logger.info("🛑 BUY SL Hit (Confirmed for {} mins) @ {} | first5Low={}", BREAKOUT_CONFIRM_TICKS, price, first5Low);
+                exitCurrentTrade("BUY_SL_HIT", price);
+                buySLHit.set(true);
+                cprBuyTradeTaken.set(true);
+                logger.info("🔒 BUY blocked for today. SELL side still open.");
+                if (buySLHit.get() && sellSLHit.get()) logger.info("🚫 Both SL hit — No more trades today.");
+                buySLConfirmCount = 0; // Reset after exit
+            }
+        } else {
+            // Price recovered into safe zone! Reset the fake-out counter.
+            if ("BUY".equalsIgnoreCase(activeType)) {
+                buySLConfirmCount = 0; 
+            }
         }
 
-        if (sellSLTriggered) {
-            logger.info("🛑 SELL SL Hit @ {} | first5High={}", price, first5High);
-            exitCurrentTrade("SELL_SL_HIT", price);
-            sellSLHit.set(true);
-            cprSellTradeTaken.set(true);
-            logger.info("🔒 SELL blocked for today. BUY side still open.");
-            if (buySLHit.get() && sellSLHit.get()) logger.info("🚫 Both SL hit — No more trades today.");
+        // 3. Process SELL Trade SL Logic
+        if (sellSLConditionMet) {
+            sellSLConfirmCount++;
+            logger.info("⚠️ SELL SL condition met. Reversal tick: {}/{}", sellSLConfirmCount, BREAKOUT_CONFIRM_TICKS);
+            
+            if (sellSLConfirmCount >= BREAKOUT_CONFIRM_TICKS) {
+                logger.info("🛑 SELL SL Hit (Confirmed for {} mins) @ {} | first5High={}", BREAKOUT_CONFIRM_TICKS, price, first5High);
+                exitCurrentTrade("SELL_SL_HIT", price);
+                sellSLHit.set(true);
+                cprSellTradeTaken.set(true);
+                logger.info("🔒 SELL blocked for today. BUY side still open.");
+                if (buySLHit.get() && sellSLHit.get()) logger.info("🚫 Both SL hit — No more trades today.");
+                sellSLConfirmCount = 0; // Reset after exit
+            }
+        } else {
+            // Price recovered into safe zone! Reset the fake-out counter.
+            if ("SELL".equalsIgnoreCase(activeType)) {
+                sellSLConfirmCount = 0;
+            }
         }
     }
 
