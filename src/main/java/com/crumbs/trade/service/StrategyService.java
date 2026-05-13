@@ -149,21 +149,25 @@ public class StrategyService {
         }
     }
 
-    // =========================================================================
+ // =========================================================================
     // STEP 2 — Execute strategy  (called every 1 min 09:21 → 15:19)
     //
-    // Straddle day: straddle SL monitor + CPR signal both run every tick
+    // Straddle day: straddle SL monitor ONLY (ORB is skipped)
     // Normal day  : CPR signal only
     // =========================================================================
     public void executeCPRStrategy() throws SmartAPIException {
 
         if (skipCPRTakeStraddle.get()) {
-            logger.debug("📡 Big candle day — straddle monitor + CPR signal.");
+            // 📝 CLEAR LOGS: Tell the user exactly why no ORB trades are happening
+            logger.info("🛑 VOLATILITY EXHAUSTION: Big candle day (>100 pts) detected.");
+            logger.info("⏭️  Skipping directional ORB strategy. Monitoring Straddle ONLY.");
+            
             cprStraddleService.monitorStraddleSL();
-            // ✅ no return — fall through to CPR signal below
+            
+            return; // 🛑 The magic word. It stops the bot from running the code below.
         }
 
-        SmartConnect                sc        = angelOne.signIn();
+        SmartConnect                 sc        = angelOne.signIn();
         com.crumbs.trade.entity.CPR cprEntity = cprRepo.findByName(AppConstant.CPR_STRATEGY);
 
         if (cprEntity == null) {
@@ -171,6 +175,7 @@ public class StrategyService {
             return;
         }
 
+        // 🟢 This will ONLY run on normal days (< 100 points)
         getCPRStrategySignal(cprEntity, sc);
     }
 
