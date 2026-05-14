@@ -100,7 +100,7 @@ public class CPRStraddleService {
             logger.info("LTP={} → ATM Strike={}", ltp, atmStrike);
 
             List<StraddlePremiumDto> strikeList = 
-                    straddleIntradayService.buildStraddleDtos(atmStrike, 50)
+                    straddleIntradayService.buildStraddleDtos("NIFTY",atmStrike, 50)
                             .stream()
                             .filter(dto -> dto.getStrikePrice().compareTo(atmStrike) == 0)
                             .collect(Collectors.toList());

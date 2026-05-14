@@ -25,6 +25,7 @@ public class StraddleScheduler {
     })
     public void straddleNifty() {
         executionService.execute("NIFTY");
+        executionService.execute("SENSEX");
     }
     
     // -------------------- CRUDE --------------------

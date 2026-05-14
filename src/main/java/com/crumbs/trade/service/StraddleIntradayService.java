@@ -134,8 +134,8 @@ public class StraddleIntradayService {
 	        String session = sessionManager.getSession();
 	        BigDecimal spotPrice = null;
 	       
-	        if ("NIFTY".equalsIgnoreCase(name)) {
-	            spotPrice = samco.getNifty50Price(session);
+	        if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
+	            spotPrice = samco.getIndexPrice(session, name);
 	        	//strategy = strategyRepo.findByName("NIFTY");
 	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
 						strategy.getToken());
@@ -360,7 +360,18 @@ public class StraddleIntradayService {
 		    // First call of the day for this name
 		    logger.info("Building strike list ONCE for {} using ATM {}", name, atmStrike);
 
-		    List<StraddlePremiumDto> strikeList = buildStraddleDtos(atmStrike, 50);
+		    // 1. Determine the step interval based on the instrument
+		    int stepInterval = 50; // Default for NIFTY / CRUDEOIL
+		    
+		    if (name != null) {
+		        String upperName = name.toUpperCase();
+		        if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+		            stepInterval = 100;
+		        }
+		    }
+
+		    // 2. Pass the dynamic stepInterval instead of hardcoded 50
+		    List<StraddlePremiumDto> strikeList = buildStraddleDtos(name,atmStrike, stepInterval);
 
 		    strikeListCache.put(name, strikeList);
 		    strikeInitDate.put(name, today);
@@ -879,12 +890,19 @@ public class StraddleIntradayService {
 	// =====================================================
 	// STRIKE BUILDING - FROM ATM (STATIC ±500 RANGE)
 	// =====================================================
-	public List<StraddlePremiumDto> buildStraddleDtos(BigDecimal atmStrike, int interval) {
+	public List<StraddlePremiumDto> buildStraddleDtos(String name, BigDecimal atmStrike, int interval) {
 
 	    List<StraddlePremiumDto> list = new ArrayList<>();
 
-	    BigDecimal step  = BigDecimal.valueOf(interval);
-	    BigDecimal range = BigDecimal.valueOf(600);   // ±500
+	    BigDecimal step = BigDecimal.valueOf(interval);
+	    
+	    // Determine the range: 1000 for Sensex, 600 for Nifty/CrudeOil
+	    int rangeValue = 600;
+	    if (name != null && name.toUpperCase().contains("SENSEX")) {
+	        rangeValue = 1000;
+	    }
+	    
+	    BigDecimal range = BigDecimal.valueOf(rangeValue);
 
 	    BigDecimal start = atmStrike.subtract(range);
 	    BigDecimal end   = atmStrike.add(range);
@@ -908,19 +926,33 @@ public class StraddleIntradayService {
 	}
 
 	// =====================================================
-	// ATM STRIKE
-	// =====================================================
-	public BigDecimal getATMStrike(String name, Strategy strategy, BigDecimal price) {
+		// ATM STRIKE
+		// =====================================================
+		public BigDecimal getATMStrike(String name, Strategy strategy, BigDecimal price) {
 
-		SmartConnect smartconnect = angelOne.signIn();
+			SmartConnect smartconnect = angelOne.signIn();
 
-		if (price == null)
-			return BigDecimal.ZERO;
+			if (price == null)
+				return BigDecimal.ZERO;
 
-		int nearest = chartService.findNearestMultiple(price.intValue(), 50);
+			// 1. Default to 50 for NIFTY, CRUDEOIL, etc.
+			int stepInterval = 50; 
+			
+			// 2. Dynamically adjust the interval based on the instrument name
+			if (name != null) {
+				String upperName = name.toUpperCase();
+				
+				// Sensex and Bank indices require a 100-point step
+				if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+					stepInterval = 100;
+				}
+			}
 
-		return BigDecimal.valueOf(nearest);
-	}
+			// 3. Pass the dynamic stepInterval to your rounding logic
+			int nearest = chartService.findNearestMultiple(price.intValue(), stepInterval);
+
+			return BigDecimal.valueOf(nearest);
+		}
 
 	// =====================================================
 	// TOKEN DETAILS - WITH BETTER LOGGING
@@ -2349,7 +2381,7 @@ public class StraddleIntradayService {
 	        
 	        // 1. Get spot price
 	        String session = sessionManager.getSession();
-	        BigDecimal spotPrice = samco.getNifty50Price(session);
+	        BigDecimal spotPrice = samco.getIndexPrice(session,name);
 	        
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 	            logger.error("Invalid spot price for {}: {}", name, spotPrice);
@@ -2633,12 +2665,12 @@ public class StraddleIntradayService {
 	    BigDecimal spotPrice = null; 
 	    try {
 	        String session = sessionManager.getSession();
-	        spotPrice = samco.getNifty50Price(session); // Fallback to your spot fetch logic
+	        spotPrice = samco.getIndexPrice(session,name); // Fallback to your spot fetch logic
 	        
 	        if (spotPrice == null) return;
 
 	        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
-	        List<StraddlePremiumDto> warmUpList = buildStraddleDtos(atmStrike, 50);
+	        List<StraddlePremiumDto> warmUpList = buildStraddleDtos(name,atmStrike, 50);
 	        warmUpList = getAllTokenDetails(warmUpList, strategy);
 
 	        SmartConnect smartconnect = angelOne.signIn();

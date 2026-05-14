@@ -221,17 +221,32 @@ public class Samco {
     // MARKET DATA
     // -------------------------------------------------------------------------
 
-    public BigDecimal getNifty50Price(String sessionToken) {
+    public BigDecimal getIndexPrice(String sessionToken, String indexName) {
         QuoteApi quoteApi = new QuoteApi();
-        IndexDetailsResponse indexQuote = quoteApi.getIndexQuote(sessionToken, "NIFTY 50");
-        if (indexQuote == null)
-            throw new RuntimeException("IndexQuote API returned null response");
-        if (!"Success".equals(indexQuote.getStatus()))
-            throw new RuntimeException("IndexQuote API failed: " + indexQuote.getStatusMessage());
-        if (indexQuote.getIndexDetails() == null || indexQuote.getIndexDetails().isEmpty())
-            throw new RuntimeException("No index details in response");
+        if("NIFTY".equalsIgnoreCase(indexName))
+        {
+        	indexName="NIFTY 50";
+        }
+        // Pass the dynamic indexName ("NIFTY 50" or "SENSEX")
+        IndexDetailsResponse indexQuote = quoteApi.getIndexQuote(sessionToken, indexName);
+        
+        if (indexQuote == null) {
+            throw new RuntimeException("IndexQuote API returned null response for " + indexName);
+        }
+        
+        if (!"Success".equals(indexQuote.getStatus())) {
+            throw new RuntimeException("IndexQuote API failed for " + indexName + ": " + indexQuote.getStatusMessage());
+        }
+        
+        if (indexQuote.getIndexDetails() == null || indexQuote.getIndexDetails().isEmpty()) {
+            throw new RuntimeException("No index details in response for " + indexName);
+        }
+        
         BigDecimal price = BigDecimal.valueOf(indexQuote.getIndexDetails().get(0).getSpotPrice());
-        logger.info("Nifty 50 spot price: {}", price);
+        
+        // Updated logger to reflect the specific index being fetched
+        logger.info("{} spot price: {}", indexName, price);
+        
         return price;
     }
 

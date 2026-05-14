@@ -372,6 +372,7 @@ public class CommonController {
         return (isNoDigitName && (isEquity || isStockOption))
                 || exchSeg.equals("BSE")
                 || name.equals("NIFTY")
+                || name.equals("SENSEX")
                 || name.equals("CRUDEOIL")
                 || name.equals("CRUDEOILM")
                 || name.equals("NATURALGAS")
