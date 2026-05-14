@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/css/straddle.css" />
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <script>
+        // Authentication check - must be at the top to prevent UI flicker
         if (!sessionStorage.getItem('isLoggedIn')) {
             window.location.href = '/';
         }
@@ -47,6 +48,8 @@
         #bottom-legend {
             padding: 10px 15px; display: flex; flex-wrap: wrap; gap: 15px 25px;
             border-top: 1px solid rgba(255,255,255,0.05); font-size: 13px; font-weight: 600;
+            /* Default text color for dark mode (will be overridden by JS for light mode) */
+            color: #ffffff; 
             background: rgba(0,0,0,0.2); justify-content: center;
         }
     </style>
@@ -55,17 +58,19 @@
 <div class="container">
     <div class="card" id="chart-card">
         <div class="header">
-            <!-- Removed the Maximize button as the app is natively fullscreen now -->
+            <!-- Theme Toggle -->
             <div class="toggle-container" id="theme-toggle">
                 <span class="toggle-label">Dark</span>
                 <div class="toggle-switch active" id="theme-switch"></div>
             </div>
 
+            <!-- Auto Update Toggle -->
             <div class="toggle-container" id="auto-update-toggle">
                 <span class="toggle-label" id="auto-update-label">Auto: ON</span>
                 <div class="toggle-switch active" id="auto-update-switch"></div>
             </div>
 
+            <!-- Line Visibility Dropdown -->
             <div class="checkout-dropdown">
                 <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
                 <div class="checkout-menu" id="checkout-menu">
@@ -82,11 +87,13 @@
                     <div class="checkout-item"><input type="checkbox" id="pe-vwap-check" checked> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-vwap-check" checked> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="combined-prev-low-check" checked> <span class="swatch" style="background:#581c87"></span> Combined Prev Low</div>
+                    <!-- Updated Comb Low color to bright purple for visibility -->
+                    <div class="checkout-item"><input type="checkbox" id="combined-prev-low-check" checked> <span class="swatch" style="background:#c084fc"></span> Combined Prev Low</div>
                     <button class="checkout-ok-btn" id="checkout-ok-btn">OK</button>
                 </div>
             </div>
 
+            <!-- Strike Selection Controls -->
             <label style="color:#94a3b8">Name</label><select id="name-select"></select>
             <label style="color:#94a3b8">Expiry</label><select id="expiry-select"></select>
             <label style="color:#94a3b8">CE</label><select id="ce-strike-select"></select>
@@ -95,8 +102,11 @@
                 <input type="checkbox" id="sync-strike-check" style="cursor:pointer">
                 <label for="sync-strike-check" style="color:#94a3b8; font-size:12px; cursor:pointer">Strike Sync</label>
             </div>
+            
+            <!-- Reset Button -->
             <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
 
+            <!-- Status Indicator -->
             <div class="last-update" style="margin-left: auto;">
                 <span id="last-update-time">--:--:--</span>
                 <span class="status-indicator live" id="status-indicator"></span>
@@ -118,7 +128,8 @@
             <div><span style="color:#a78bfa">CE VWAP:</span> <span id="val-ce-vwap">-</span></div>
             <div><span style="color:#fb923c">PE VWAP:</span> <span id="val-pe-vwap">-</span></div>
             <div><span style="color:#06b6d4">Comb VWAP:</span> <span id="val-comb-vwap">-</span></div>
-            <div><span style="color:#581c87">Comb Low:</span> <span id="val-comb-low">-</span></div>
+            <!-- Updated Comb Low color to bright purple for visibility -->
+            <div><span style="color:#c084fc">Comb Prev Low:</span> <span id="val-comb-low">-</span></div>
         </div>
     </div>
 </div>
