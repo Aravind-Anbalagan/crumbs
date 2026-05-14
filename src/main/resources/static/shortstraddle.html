@@ -4,23 +4,58 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Nifty — CE/PE Chart</title>
-    
     <link rel="stylesheet" href="/css/straddle.css" />
-    
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <script>
-        // Authentication check - must be at the top to prevent UI flicker
         if (!sessionStorage.getItem('isLoggedIn')) {
             window.location.href = '/';
         }
     </script>
+    <style>
+        /* Force true fullscreen layout */
+        html, body {
+            margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
+            background: #071421; /* Dark theme default */
+        }
+        .container {
+            max-width: 100% !important; width: 100vw; height: 100vh;
+            padding: 0 !important; margin: 0 !important;
+            display: flex; flex-direction: column;
+        }
+        .card {
+            flex-grow: 1; display: flex; flex-direction: column;
+            border-radius: 0 !important; border: none !important; margin: 0 !important;
+            height: 100%;
+        }
+        .header { padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-wrap: wrap; }
+        
+        /* Loading Overlay Styling */
+        #loading-overlay {
+            display: none; position: absolute; inset: 0; z-index: 100;
+            background: rgba(7, 20, 33, 0.7); backdrop-filter: blur(3px);
+            align-items: center; justify-content: center; flex-direction: column;
+            color: #60a5fa; font-weight: 600; font-size: 1.1rem;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid rgba(96, 165, 250, 0.3);
+            border-radius: 50%; border-top-color: #60a5fa;
+            animation: spin 1s ease-in-out infinite; margin-bottom: 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Bottom Legend Styling */
+        #bottom-legend {
+            padding: 10px 15px; display: flex; flex-wrap: wrap; gap: 15px 25px;
+            border-top: 1px solid rgba(255,255,255,0.05); font-size: 13px; font-weight: 600;
+            background: rgba(0,0,0,0.2); justify-content: center;
+        }
+    </style>
 </head>
 <body>
 <div class="container">
     <div class="card" id="chart-card">
-        <button id="btn-max-chart" class="btn-icon">⛶</button>
-
         <div class="header">
+            <!-- Removed the Maximize button as the app is natively fullscreen now -->
             <div class="toggle-container" id="theme-toggle">
                 <span class="toggle-label">Dark</span>
                 <div class="toggle-switch active" id="theme-switch"></div>
@@ -31,47 +66,23 @@
                 <div class="toggle-switch active" id="auto-update-switch"></div>
             </div>
 
-            <div class="toggle-container" id="toggle-container">
-                <span class="toggle-label">Crossovers</span>
-                <div class="toggle-switch" id="toggle-switch"></div>
-            </div>
-
             <div class="checkout-dropdown">
                 <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
                 <div class="checkout-menu" id="checkout-menu">
                     <div class="checkout-item">
                         <input type="checkbox" id="all-lines-check">
-                        <span class="swatch" style="background:transparent;border:1px solid rgba(148,163,184,0.4)"></span>
-                        All
+                        <span class="swatch" style="background:transparent;border:1px solid rgba(148,163,184,0.4)"></span> All
                     </div>
                     <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="spot-check"> <span class="swatch" style="background:#000000"></span> Spot</div>
                     <div class="checkout-item"><input type="checkbox" id="ce-check" checked> <span class="swatch" style="background:#22c55e"></span> CE</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-check" checked> <span class="swatch" style="background:#ef4444"></span> PE</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-premium-check" > <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
-                    <div class="checkout-item"><input type="checkbox" id="avg-check" > <span class="swatch" style="background:#301934"></span> Avg Price</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-premium-check" checked> <span class="swatch" style="background:#3b82f6"></span> Combined Premium</div>
                     <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-iv-check"> <span class="swatch" style="background:#ec4899"></span> CE IV</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-iv-check"> <span class="swatch" style="background:#6366f1"></span> PE IV</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-iv-check"> <span class="swatch" style="background:#14b8a6"></span> Combined IV</div>
-                    <hr style="margin:6px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-extrinsic-check"> <span class="swatch" style="background:#16a34a"></span> CE Extrinsic</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-extrinsic-check"> <span class="swatch" style="background:#b91c1c"></span> PE Extrinsic</div>
-                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-open-check" > <span class="swatch" style="background:#86efac"></span> CE Open</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-open-check" > <span class="swatch" style="background:#fecaca"></span> PE Open</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-open-check" > <span class="swatch" style="background:#d6a65a"></span> Combined Open</div>
-                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
                     <div class="checkout-item"><input type="checkbox" id="ce-vwap-check" checked> <span class="swatch" style="background:#a78bfa"></span> CE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="pe-vwap-check" checked> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-vwap-check"> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-vwap-check" checked> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <div class="checkout-item"><input type="checkbox" id="ce-prev-close-check"> <span class="swatch" style="background:#10b981"></span> CE Prev Close</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-prev-close-check"> <span class="swatch" style="background:#f59e0b"></span> PE Prev Close</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-prev-close-check"> <span class="swatch" style="background:#8b5cf6"></span> Combined Prev Close</div>
-                    <div class="checkout-item"><input type="checkbox" id="ce-prev-low-check"> <span class="swatch" style="background:#14532d"></span> CE Prev Low</div>
-                    <div class="checkout-item"><input type="checkbox" id="pe-prev-low-check"> <span class="swatch" style="background:#7f1d1d"></span> PE Prev Low</div>
-                    <div class="checkout-item"><input type="checkbox" id="combined-prev-low-check"> <span class="swatch" style="background:#581c87"></span> Combined Prev Low</div>
+                    <div class="checkout-item"><input type="checkbox" id="combined-prev-low-check" checked> <span class="swatch" style="background:#581c87"></span> Combined Prev Low</div>
                     <button class="checkout-ok-btn" id="checkout-ok-btn">OK</button>
                 </div>
             </div>
@@ -86,46 +97,29 @@
             </div>
             <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
 
-            <div class="last-update">
+            <div class="last-update" style="margin-left: auto;">
                 <span id="last-update-time">--:--:--</span>
                 <span class="status-indicator live" id="status-indicator"></span>
             </div>
         </div>
 
-        <div id="chart"></div>
-
-        <div class="legend" id="bottom-legend">
-            <div class="item" style="border:none; background:transparent; padding:0">
-                <div id="diff-meter" class="diff-meter" style="display:none;">Price Diff: -</div>
-            </div>
-            <div class="item" data-line="spot"><span class="swatch" style="background:#000000"></span><span class="label">Spot:</span><strong id="val-spot">-</strong></div>
-            <div class="item" data-line="ce"><span class="swatch" style="background:#22c55e"></span><span class="label">CE:</span><strong id="val-ce">-</strong></div>
-            <div class="item" data-line="pe"><span class="swatch" style="background:#ef4444"></span><span class="label">PE:</span><strong id="val-pe">-</strong></div>
-            <div class="item" data-line="combinedPremium"><span class="swatch" style="background:#3b82f6"></span><span class="label">Combined:</span><strong id="val-combined-premium">-</strong></div>
-            <div class="item" data-line="avgPrice"><span class="swatch" style="background:#301934"></span><span class="label">Avg:</span><strong id="val-avg">-</strong></div>
-            <div class="item" data-line="ceIv"><span class="swatch" style="background:#ec4899"></span><span class="label">CE IV:</span><strong id="val-ce-iv">-</strong></div>
-            <div class="item" data-line="peIv"><span class="swatch" style="background:#6366f1"></span><span class="label">PE IV:</span><strong id="val-pe-iv">-</strong></div>
-            <div class="item" data-line="combinedIv"><span class="swatch" style="background:#14b8a6"></span><span class="label">Comb IV:</span><strong id="val-combined-iv">-</strong></div>
-            <div class="item" data-line="ceExtrinsic"><span class="swatch" style="background:#16a34a"></span><span class="label">CE Ext:</span><strong id="val-ce-extrinsic">-</strong></div>
-            <div class="item" data-line="peExtrinsic"><span class="swatch" style="background:#b91c1c"></span><span class="label">PE Ext:</span><strong id="val-pe-extrinsic">-</strong></div>
-            <div class="item" data-line="ceOpen"><span class="swatch" style="background:#86efac"></span><span class="label">CE Open:</span><strong id="val-ce-open">-</strong></div>
-            <div class="item" data-line="peOpen"><span class="swatch" style="background:#fecaca"></span><span class="label">PE Open:</span><strong id="val-pe-open">-</strong></div>
-            <div class="item" data-line="combinedOpen"><span class="swatch" style="background:#d6a65a"></span><span class="label">Comb Open:</span><strong id="val-combined-open">-</strong></div>
-            <div class="item" data-line="ceVwap"><span class="swatch" style="background:#a78bfa"></span><span class="label">CE VWAP:</span><strong id="val-ce-vwap">-</strong></div>
-            <div class="item" data-line="peVwap"><span class="swatch" style="background:#fb923c"></span><span class="label">PE VWAP:</span><strong id="val-pe-vwap">-</strong></div>
-            <div class="item" data-line="combinedVwap"><span class="swatch" style="background:#06b6d4"></span><span class="label">Comb VWAP:</span><strong id="val-combined-vwap">-</strong></div>
-            <div class="item" data-line="cePrevClose"><span class="swatch" style="background:#10b981"></span><span class="label">CE PrevClose:</span><strong id="val-ce-prev-close">-</strong></div>
-            <div class="item" data-line="pePrevClose"><span class="swatch" style="background:#f59e0b"></span><span class="label">PE PrevClose:</span><strong id="val-pe-prev-close">-</strong></div>
-            <div class="item" data-line="combinedPrevClose"><span class="swatch" style="background:#8b5cf6"></span><span class="label">Comb PrevClose:</span><strong id="val-combined-prev-close">-</strong></div>
-            <div class="item" data-line="cePrevLow"><span class="swatch" style="background:#14532d"></span><span class="label">Prev CE Low:</span><strong id="val-ce-prev-low">-</strong></div>
-            <div class="item" data-line="pePrevLow"><span class="swatch" style="background:#7f1d1d"></span><span class="label">Prev PE Low:</span><strong id="val-pe-prev-low">-</strong></div>
-            <div class="item" data-line="combinedPrevLow"><span class="swatch" style="background:#581c87"></span><span class="label">Prev Comb Low:</span><strong id="val-combined-prev-low">-</strong></div>        
+        <!-- Chart Area with relative positioning for the Loader Overlay -->
+        <div id="chart-wrapper" style="position: relative; flex-grow: 1; display: flex; flex-direction: column; min-height: 0;">
+            <div id="loading-overlay"><div class="spinner"></div>Loading Data...</div>
+            <div id="chart" style="flex-grow: 1;"></div>
         </div>
-    </div>
 
-    <div class="card">
-        <div style="color:#cbd5e1;font-weight:600;margin-bottom:8px">CE-PE Crossovers</div>
-        <div id="crossings-container" class="crossings-grid"></div>
+        <!-- Static Bottom Legend -->
+        <div id="bottom-legend">
+            <div><span style="color:#94a3b8">Diff:</span> <span id="val-diff" style="color:#f472b6">-</span></div>
+            <div><span style="color:#22c55e">CE:</span> <span id="val-ce">-</span></div>
+            <div><span style="color:#ef4444">PE:</span> <span id="val-pe">-</span></div>
+            <div><span style="color:#3b82f6">Comb:</span> <span id="val-comb">-</span></div>
+            <div><span style="color:#a78bfa">CE VWAP:</span> <span id="val-ce-vwap">-</span></div>
+            <div><span style="color:#fb923c">PE VWAP:</span> <span id="val-pe-vwap">-</span></div>
+            <div><span style="color:#06b6d4">Comb VWAP:</span> <span id="val-comb-vwap">-</span></div>
+            <div><span style="color:#581c87">Comb Low:</span> <span id="val-comb-low">-</span></div>
+        </div>
     </div>
 </div>
 
