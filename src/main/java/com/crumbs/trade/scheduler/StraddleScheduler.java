@@ -35,5 +35,6 @@ public class StraddleScheduler {
     })
     public void straddleCrude() {
         executionService.execute("CRUDEOIL");
+        executionService.execute("NATURALGAS");
     }
 }

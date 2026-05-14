@@ -67,8 +67,8 @@ public class AngelWebSocketService {
 
     @PostConstruct
     public void startWebSocket() {
-    	
-    	if (!isTradingDay()) {
+        
+        if (!isTradingDay()) {
             log.info("Today is weekend. Skipping Angel WebSocket startup.");
             return;
         }
@@ -224,16 +224,12 @@ public class AngelWebSocketService {
         String normalizedToken = normalizeToken(token);
         String key = exchangeType.name() + "_" + normalizedToken;
 
-        //log.info("Fetching LTP | Key: {}", key);
-        //log.debug("Current LTP Map Snapshot | {}", latestLtpMap);
-
         BigDecimal price = latestLtpMap.get(key);
         if (price == null) {
             log.warn("LTP not available yet | {}", key);
             return BigDecimal.ZERO;
         }
 
-        //log.info("Returning LTP | {} | {}", key, price);
         return price;
     }
 
@@ -306,28 +302,43 @@ public class AngelWebSocketService {
         }
     }
 
-    // Subscribe default instruments from DB on connect
+ // Subscribe default instruments from DB on connect
     private void subscribeDefaultInstruments() {
         try {
+            // 1. NIFTY (NSE Derivatives)
             Strategy nifty = strategyRepo.findByName("NIFTY");
             if (nifty != null) {
                 subscribe(ExchangeType.NSE_FO, nifty.getToken());
-            } else {
-                log.warn("NIFTY strategy not found in DB");
             }
 
+            // 2. CRUDEOIL (MCX Derivatives)
             Strategy crude = strategyRepo.findByName("CRUDEOIL");
             if (crude != null) {
                 subscribe(ExchangeType.MCX_FO, crude.getToken());
-            } else {
-                log.warn("CRUDEOIL strategy not found in DB");
             }
             
+            // 3. NIFTY INDEX (NSE Cash/Index)
             Strategy nifty_index = strategyRepo.findByName("NIFTY_INDEX");
-            if (crude != null) {
+            if (nifty_index != null) {
                 subscribe(ExchangeType.NSE_CM, nifty_index.getToken());
-            } else {
-                log.warn("NIFTY_INDEX strategy not found in DB");
+            }
+
+            // 4. SENSEX (BSE Derivatives)
+            Strategy sensex = strategyRepo.findByName("SENSEX");
+            if (sensex != null) {
+                subscribe(ExchangeType.BSE_FO, sensex.getToken()); 
+            }
+
+            // 5. SENSEX INDEX (BSE Cash/Index)
+            Strategy sensex_index = strategyRepo.findByName("SENSEX_INDEX");
+            if (sensex_index != null) {
+                subscribe(ExchangeType.BSE_CM, sensex_index.getToken());
+            }
+
+            // 6. NATURALGAS (MCX Derivatives)
+            Strategy naturalgas = strategyRepo.findByName("NATURALGAS");
+            if (naturalgas != null) {
+                subscribe(ExchangeType.MCX_FO, naturalgas.getToken());
             }
 
             log.info("Default instruments subscribed | Tokens in map: {}", subscribedTokens.keySet());

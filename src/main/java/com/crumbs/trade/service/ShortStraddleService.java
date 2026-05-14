@@ -37,9 +37,19 @@ public class ShortStraddleService {
     private static final LocalTime NIFTY_START = LocalTime.of(9, 20);
     private static final LocalTime NIFTY_ENTRY_CUTOFF = LocalTime.of(15, 0);
     private static final LocalTime NIFTY_SQUARE_OFF = LocalTime.of(15, 20);
+    
+    private static final LocalTime SENSEX_START = LocalTime.of(9, 20);
+    private static final LocalTime SENSEX_ENTRY_CUTOFF = LocalTime.of(15, 0);
+    private static final LocalTime SENSEX_SQUARE_OFF = LocalTime.of(15, 20);
+    
     private static final LocalTime CRUDE_START = LocalTime.of(16, 0);
-    private static final LocalTime CRUDE_ENTRY_CUTOFF = LocalTime.of(23, 0); // 🛑 NEW: No Crude entries after 11:00 PM
+    private static final LocalTime CRUDE_ENTRY_CUTOFF = LocalTime.of(23, 0); 
     private static final LocalTime CRUDE_SQUARE_OFF = LocalTime.of(23, 20);
+
+    // 👇 ADDED: NATURALGAS Timeframes (Mirroring Crude Oil)
+    private static final LocalTime NATURALGAS_START = LocalTime.of(16, 0);
+    private static final LocalTime NATURALGAS_ENTRY_CUTOFF = LocalTime.of(23, 0); 
+    private static final LocalTime NATURALGAS_SQUARE_OFF = LocalTime.of(23, 20);
 
     private static final int STATUS_ACTIVE = 1;
     private static final int STATUS_INACTIVE = 0;
@@ -47,8 +57,6 @@ public class ShortStraddleService {
     private static final String STATUS_CLOSED = "CLOSED";
     private static final String PHASE_ENTRY = "ENTRY";
     private static final String PHASE_EXIT = "EXIT";
-    
-    
 
     private final ShortStraddleRepository straddleRepository;
     private final OrderRepository ordersRepository;
@@ -58,8 +66,8 @@ public class ShortStraddleService {
     private final AngelWebSocketService angelWebSocketService;
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
- // Tracks the last strike price evaluated to ensure consecutive hits stay on the same strike
     private final ConcurrentHashMap<String, BigDecimal> lastSeenStrikes = new ConcurrentHashMap<>();
+
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
         
@@ -86,7 +94,9 @@ public class ShortStraddleService {
 
         // Time Window Checks
         if ("NIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(NIFTY_START)) return;
+        if ("SENSEX".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return; 
         if (tradeName.contains("CRUDE") && now.isBefore(CRUDE_START)) return;
+        if (tradeName.contains("NATURALGAS") && now.isBefore(NATURALGAS_START)) return; // 👇 ADDED
 
         List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(tradeName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
@@ -122,25 +132,29 @@ public class ShortStraddleService {
                 return;
             }
             
-         // 🛑 NEW CUTOFF LOGIC: Block new entries if past the cutoff time
+            // 🛑 NEW CUTOFF LOGIC: Block new entries if past the cutoff time
             if (!isWithinEntryWindow(baseSymbol, now)) {
-                // We use debug/trace level logging here so we don't spam the console every second until square-off
                 log.debug("⏳ [{}] Entry window closed for today. Waiting for EOD.", tradeName);
                 return;
             }
-         // If time is valid, scan for entry
-         // =========================================================
-            // 🎯 ENTRY SCAN: INDEX ATM FOR NIFTY / FUTURE ATM FOR CRUDE
+
+            // =========================================================
+            // 🎯 ENTRY SCAN: INDEX ATM FOR NIFTY / FUTURE ATM FOR CRUDE & NG
             // =========================================================
             if ("NIFTY".equalsIgnoreCase(baseSymbol)) {
-                // 🚀 Call the new helper method
                 getNiftyIndexAtm(tradeName).ifPresent(atmStrike -> 
                     straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick -> 
                         processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
                     )
                 );
+            } else if ("SENSEX".equalsIgnoreCase(baseSymbol)) { 
+                getSensexIndexAtm(tradeName).ifPresent(atmStrike -> 
+                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick -> 
+                    processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
+                )
+            );
             } else {
-                // Original logic for CRUDEOIL or other symbols
+                // 👇 Handles CRUDEOIL, NATURALGAS, or any other futures-based commodity
                 straddleRepository.findATMBySymbol(baseSymbol).ifPresent(tick -> 
                     processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
                 );
@@ -285,14 +299,11 @@ public class ShortStraddleService {
         String reason = "";
 
         if (isPointSlConfigured) {
-            // Priority 1: If Price SL is hit, exit immediately.
-            // Priority 2: If Consecutive Hits are met, it waits here doing nothing until Price SL is breached.
             if (isPointSlBreached) {
                 shouldExit = true;
                 reason = isHitsMet ? "TREND_AND_PRICE_SL_HIT" : "PRICE_SL_HARD_STOP";
             }
         } else {
-            // Fallback: If you forgot to configure SL points in the database
             if (isHitsMet) {
                 shouldExit = true;
                 reason = "TREND_SL_MET_(NO_PRICE_SL_CONFIGURED)";
@@ -306,9 +317,8 @@ public class ShortStraddleService {
         }
     }
 
-    // Notice: NO @Transactional here to prevent DB connection locks during live network calls
     protected void executeShortStraddle(String tradeName, StraddleIntraday tick, BigDecimal entryGap, Strategy strategyConfig, Strategy sourceConfig) {
-    	log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
+        log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
         BigDecimal targetValue = entryGap.add(sourceConfig.getTargetPoints());
 
@@ -428,7 +438,7 @@ public class ShortStraddleService {
                 if ("Y".equalsIgnoreCase(sourceConfig.getLive())) {
                     try {
                         // Pass "SHORT_STRADDLE" to the exit service
-                    	// Pass BOTH names to perfectly isolate the exit
+                        // Pass BOTH names to perfectly isolate the exit
                         orderService.exitActiveTradeByToken(
                                 order.getToken(), 
                                 sourceConfig.getName(), // "NIFTY" for broker config
@@ -478,15 +488,20 @@ public class ShortStraddleService {
 
     private boolean isSquareOffTime(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(NIFTY_SQUARE_OFF);
+        if ("SENSEX".equalsIgnoreCase(symbol)) return !now.isBefore(SENSEX_SQUARE_OFF); 
         if (symbol.contains("CRUDE")) return !now.isBefore(CRUDE_SQUARE_OFF);
+        if (symbol.contains("NATURALGAS")) return !now.isBefore(NATURALGAS_SQUARE_OFF); // 👇 ADDED
         return false;
     }
     
     private boolean isWithinEntryWindow(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return now.isBefore(NIFTY_ENTRY_CUTOFF);
+        if ("SENSEX".equalsIgnoreCase(symbol)) return now.isBefore(SENSEX_ENTRY_CUTOFF); 
         if (symbol.contains("CRUDE")) return now.isBefore(CRUDE_ENTRY_CUTOFF);
+        if (symbol.contains("NATURALGAS")) return now.isBefore(NATURALGAS_ENTRY_CUTOFF); // 👇 ADDED
         return true; 
     }
+
     /**
      * Helper to fetch the live LTP for NIFTY_INDEX and calculate the nearest ATM strike.
      */
@@ -508,6 +523,33 @@ public class ShortStraddleService {
         // Nifty Step Size is 50. Round LTP to nearest 50 to get ATM Strike.
         BigDecimal atmStrike = indexLtp.divide(new BigDecimal("50"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("50"));
         log.debug("📉 [{}] NIFTY INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
+        
+        return Optional.of(atmStrike);
+    }
+    
+    /**
+     * Helper to fetch the live LTP for SENSEX_INDEX and calculate the nearest ATM strike.
+     * Note: Sensex step size is 100.
+     */
+    private Optional<BigDecimal> getSensexIndexAtm(String tradeName) {
+        Strategy indexConfig = strategyRepo.findByName("SENSEX_INDEX");
+        
+        if (indexConfig == null || indexConfig.getToken() == null) {
+            log.error("❌ [{}] SENSEX_INDEX config missing in DB. Cannot determine Index ATM.", tradeName);
+            return Optional.empty();
+        }
+
+        // Assuming AngelOne uses BSE_CM for the SENSEX Index LTP 
+        BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.BSE_CM, indexConfig.getToken());
+        
+        if (indexLtp == null || indexLtp.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("⚠️ [{}] SENSEX Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);
+            return Optional.empty();
+        }
+
+        // Sensex Step Size is 100. Round LTP to nearest 100 to get ATM Strike.
+        BigDecimal atmStrike = indexLtp.divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        log.debug("📉 [{}] SENSEX INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
         
         return Optional.of(atmStrike);
     }

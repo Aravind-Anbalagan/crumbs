@@ -23,8 +23,12 @@ public class ShortStraddleScheduler {
         @Scheduled(cron = "10 * 10-14 * * MON-FRI", zone = "Asia/Kolkata"),
         @Scheduled(cron = "10 0-30 15 * * MON-FRI", zone = "Asia/Kolkata") // Buffer extended to 3:30 PM
     })
-    public void straddleNifty() {
+    public void straddleIndices() {
+        // Evaluates NIFTY first
         executeIfActive(() -> shortStraddleService.evaluate("NIFTY"));
+        
+        // Then immediately evaluates SENSEX
+        executeIfActive(() -> shortStraddleService.evaluate("SENSEX"));
     }
 
     // ==================== CRUDE OIL (4:00:10 PM - 11:31:10 PM) ====================
@@ -34,6 +38,7 @@ public class ShortStraddleScheduler {
     })
     public void straddleCrude() {
         executeIfActive(() -> shortStraddleService.evaluate("CRUDEOIL"));
+        executeIfActive(() -> shortStraddleService.evaluate("NATURALGAS"));
     }
 
     /**

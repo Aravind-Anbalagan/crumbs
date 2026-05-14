@@ -136,13 +136,9 @@ public class StraddleIntradayService {
 	       
 	        if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
 	            spotPrice = samco.getIndexPrice(session, name);
-	        	//strategy = strategyRepo.findByName("NIFTY");
-	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
-						strategy.getToken());
-	        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name)) {
+	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(), strategy.getToken());
+	        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
 	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
-				//spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(),
-				//		strategy.getToken());
 	        }
 
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -252,13 +248,17 @@ public class StraddleIntradayService {
 	}
 	
 	public String getSymbolByName(String name) {
-		if ("NIFTY".equalsIgnoreCase(name)) {
-			return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol();
-		} else if ("CRUDEOIL".equalsIgnoreCase(name)|| "CRUDEOILM".equalsIgnoreCase(name)) {
-			return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol1();
-		}
-		return null;
-	}
+        if ("NIFTY".equalsIgnoreCase(name)) {
+            return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol();
+        } else if ("CRUDEOIL".equalsIgnoreCase(name)|| "CRUDEOILM".equalsIgnoreCase(name)) {
+            return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol1();
+        } else if ("NATURALGAS".equalsIgnoreCase(name)) {
+            // Retrieve NG symbol directly from its own strategy row to pass to Samco
+            Strategy strategy = strategyRepo.findByName(name);
+            return strategy != null ? strategy.getSymbol() : "NATURALGAS";
+        }
+        return null;
+    }
 	
 	private void fetchVwapInParallel(
 		    List<StraddlePremiumDto> strikesWithPrices,
@@ -343,41 +343,33 @@ public class StraddleIntradayService {
 		        Thread.currentThread().interrupt();
 		    }
 		}
-	public List<StraddlePremiumDto> getOrBuildStrikeList(
-		    String name,
-		    BigDecimal atmStrike
-		) {
-		    LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+	public List<StraddlePremiumDto> getOrBuildStrikeList(String name, BigDecimal atmStrike) {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
 
-		    // Check if already built today
-		    if (
-		        strikeListCache.containsKey(name) &&
-		        today.equals(strikeInitDate.get(name))
-		    ) {
-		        return strikeListCache.get(name);
-		    }
+        if (strikeListCache.containsKey(name) && today.equals(strikeInitDate.get(name))) {
+            return strikeListCache.get(name);
+        }
 
-		    // First call of the day for this name
-		    logger.info("Building strike list ONCE for {} using ATM {}", name, atmStrike);
+        logger.info("Building strike list ONCE for {} using ATM {}", name, atmStrike);
 
-		    // 1. Determine the step interval based on the instrument
-		    int stepInterval = 50; // Default for NIFTY / CRUDEOIL
-		    
-		    if (name != null) {
-		        String upperName = name.toUpperCase();
-		        if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
-		            stepInterval = 100;
-		        }
-		    }
+        int stepInterval = 50; 
+        
+        if (name != null) {
+            String upperName = name.toUpperCase();
+            if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+                stepInterval = 100;
+            } else if (upperName.contains("NATURALGAS")) {
+                stepInterval = 5; // MCX NG strike interval
+            }
+        }
 
-		    // 2. Pass the dynamic stepInterval instead of hardcoded 50
-		    List<StraddlePremiumDto> strikeList = buildStraddleDtos(name,atmStrike, stepInterval);
+        List<StraddlePremiumDto> strikeList = buildStraddleDtos(name, atmStrike, stepInterval);
 
-		    strikeListCache.put(name, strikeList);
-		    strikeInitDate.put(name, today);
+        strikeListCache.put(name, strikeList);
+        strikeInitDate.put(name, today);
 
-		    return strikeList;
-		}
+        return strikeList;
+    }
 
 	
 	// =====================================================
@@ -891,31 +883,33 @@ public class StraddleIntradayService {
 	// STRIKE BUILDING - FROM ATM (STATIC ±500 RANGE)
 	// =====================================================
 	public List<StraddlePremiumDto> buildStraddleDtos(String name, BigDecimal atmStrike, int interval) {
+        List<StraddlePremiumDto> list = new ArrayList<>();
+        BigDecimal step = BigDecimal.valueOf(interval);
+        
+        int rangeValue = 600;
+        if (name != null) {
+            String upperName = name.toUpperCase();
+            if (upperName.contains("SENSEX")) {
+                rangeValue = 1000;
+            } else if (upperName.contains("NATURALGAS")) {
+                rangeValue = 50; // ±100 points handles 10 strikes on each side
+            }
+        }
+        
+        BigDecimal range = BigDecimal.valueOf(rangeValue);
 
-	    List<StraddlePremiumDto> list = new ArrayList<>();
+        BigDecimal start = atmStrike.subtract(range);
+        BigDecimal end   = atmStrike.add(range);
 
-	    BigDecimal step = BigDecimal.valueOf(interval);
-	    
-	    // Determine the range: 1000 for Sensex, 600 for Nifty/CrudeOil
-	    int rangeValue = 600;
-	    if (name != null && name.toUpperCase().contains("SENSEX")) {
-	        rangeValue = 1000;
-	    }
-	    
-	    BigDecimal range = BigDecimal.valueOf(rangeValue);
+        for (BigDecimal strike = start;
+             strike.compareTo(end) <= 0;
+             strike = strike.add(step)) {
 
-	    BigDecimal start = atmStrike.subtract(range);
-	    BigDecimal end   = atmStrike.add(range);
+            list.add(createDto(strike));
+        }
 
-	    for (BigDecimal strike = start;
-	         strike.compareTo(end) <= 0;
-	         strike = strike.add(step)) {
-
-	        list.add(createDto(strike));
-	    }
-
-	    return list;
-	}
+        return list;
+    }
 
 
 
@@ -928,31 +922,27 @@ public class StraddleIntradayService {
 	// =====================================================
 		// ATM STRIKE
 		// =====================================================
-		public BigDecimal getATMStrike(String name, Strategy strategy, BigDecimal price) {
+	public BigDecimal getATMStrike(String name, Strategy strategy, BigDecimal price) {
+        SmartConnect smartconnect = angelOne.signIn();
 
-			SmartConnect smartconnect = angelOne.signIn();
+        if (price == null)
+            return BigDecimal.ZERO;
 
-			if (price == null)
-				return BigDecimal.ZERO;
+        int stepInterval = 50; 
+        
+        if (name != null) {
+            String upperName = name.toUpperCase();
+            
+            if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+                stepInterval = 100;
+            } else if (upperName.contains("NATURALGAS")) {
+                stepInterval = 5; // MCX NG strike interval
+            }
+        }
 
-			// 1. Default to 50 for NIFTY, CRUDEOIL, etc.
-			int stepInterval = 50; 
-			
-			// 2. Dynamically adjust the interval based on the instrument name
-			if (name != null) {
-				String upperName = name.toUpperCase();
-				
-				// Sensex and Bank indices require a 100-point step
-				if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
-					stepInterval = 100;
-				}
-			}
-
-			// 3. Pass the dynamic stepInterval to your rounding logic
-			int nearest = chartService.findNearestMultiple(price.intValue(), stepInterval);
-
-			return BigDecimal.valueOf(nearest);
-		}
+        int nearest = chartService.findNearestMultiple(price.intValue(), stepInterval);
+        return BigDecimal.valueOf(nearest);
+    }
 
 	// =====================================================
 	// TOKEN DETAILS - WITH BETTER LOGGING
