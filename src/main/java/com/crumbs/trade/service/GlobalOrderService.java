@@ -45,7 +45,7 @@ public class GlobalOrderService {
 
     public String processGlobalEntry(String instrument, String action, String txnType) throws Exception {
         
-        // Ensure no duplicate active trades exist
+        // 1. Prevent Duplicates
         List<Orders> activePositions = ordersRepo.findAllByNameAndActive(instrument, 1);
         if (!activePositions.isEmpty()) {
             return "SKIP: " + instrument + " has an active trade. Close it first.";
@@ -53,59 +53,89 @@ public class GlobalOrderService {
 
         String signalName = SIG_PREFIX + instrument + "_" + action.toUpperCase() + "_" + txnType;
         
-        // 1. Fetch Base Instrument for configurations (Expiry, Exchange)
+        // 2. Fetch Base Instrument for configurations
         Strategy baseInstrument = strategyRepo.findByName(instrument);
+        if (baseInstrument == null) {
+            return "ERROR: Base instrument " + instrument + " not found in Strategy table.";
+        }
         StrategyDTO base = taskService.getStrategyDetails(instrument, baseInstrument.getExchange());
         
-        // 2. Identify Execution Strategy (Maps Naked CE/PE to "OPTION_BUY")
-        String execStrategyName = ("CE".equalsIgnoreCase(action) || "PE".equalsIgnoreCase(action)) ? "OPTION_BUY" : action;
-        Strategy execStrategy = strategyRepo.findByName(execStrategyName);
+        // 3. Resolve the Live Flag Safely
+        String liveFlag = baseInstrument.getLive(); 
         
-        // 3. Resolve the Live Flag (Prioritize OPTION_BUY flag, fallback to Base Instrument)
-        String liveFlag = (execStrategy != null && execStrategy.getLive() != null) 
-                            ? execStrategy.getLive() 
-                            : baseInstrument.getLive();
+        if ("CE".equalsIgnoreCase(action) || "PE".equalsIgnoreCase(action)) {
+            // If Naked Option, pull the flag from OPTION_BUY
+            Strategy optionBuyStrategy = strategyRepo.findByName("OPTION_BUY");
+            if (optionBuyStrategy != null && optionBuyStrategy.getLive() != null) {
+                liveFlag = optionBuyStrategy.getLive();
+            }
+        } else if ("STRADDLE".equalsIgnoreCase(action)) {
+            // If Straddle, check if a custom STRADDLE flag exists, else fallback to Base
+            Strategy straddleStrategy = strategyRepo.findByName("STRADDLE");
+            if (straddleStrategy != null && straddleStrategy.getLive() != null) {
+                liveFlag = straddleStrategy.getLive();
+            }
+        }
+
+        // Safeguard against padding spaces in the DB
+        if (liveFlag != null) {
+            liveFlag = liveFlag.trim();
+        }
         
-        // This LTP is the Future price, used strictly to calculate the ATM strike
+        // 4. Calculate Strike
         BigDecimal ltp = fetchLtp(base); 
-        
         int strikeStep = (instrument.contains("BANKNIFTY") || instrument.contains("SENSEX")) ? 100 : 50;
         int strike = chartService.findNearestMultiple(ltp.intValue(), strikeStep);
         String cycleId = UUID.randomUUID().toString();
 
         List<String> legs = "STRADDLE".equalsIgnoreCase(action) ? List.of("CE", "PE") : List.of(action.toUpperCase());
         
+        boolean executedAtLeastOne = false;
+        StringBuilder symbolsTried = new StringBuilder();
+        
+        // 5. Execute Loop
         for (String optType : legs) {
             String symbol = String.format("%s%s%d%s", baseInstrument.getName(), baseInstrument.getExpiry(), strike, optType);
+            symbolsTried.append(symbol).append(" ");
+            
             Indexes idx = indexesRepo.findByNameAndSymbol(instrument, symbol);
             
-            if (idx == null) continue;
+            if (idx == null) {
+                logger.warn("Symbol not found in indexes DB: {}", symbol);
+                continue; // Skip this leg if it doesn't exist in DB
+            }
 
-            // Pass the dynamic txnType (BUY or SELL)
             Token t = buildToken(idx, instrument, signalName, txnType, ltp, strike);
             
             BigDecimal optionPremium = "FLATTRADE".equalsIgnoreCase(ACTIVE_BROKER)
                 ? flatTradeService.getCurrentPrice(idx.getExchange(), idx.getToken())
                 : angelOneService.getcurrentPrice(angelOne.signIn(), idx.getExchange(), idx.getSymbol(), idx.getToken());
 
-            // 4. Pass the dynamically resolved liveFlag!
             String brokerOrderId = executeBrokerCall(t, liveFlag);
             BigDecimal finalPrice = getActualOrLtp(brokerOrderId, optionPremium);
 
             recordInDb(t, cycleId, brokerOrderId, 1, "ENTRY", "OPEN", finalPrice);
             angelWebSocketService.subscribe(getExchangeType(idx.getExchange()), idx.getToken());
+            
+            executedAtLeastOne = true;
         }
+
+        // 6. Silent Failure Catch
+        if (!executedAtLeastOne) {
+            return "ERROR: Could not find matching option symbols in your indexes table. Tried: " + symbolsTried.toString();
+        }
+
         return "SUCCESS: " + txnType + " Entry placed for " + action + " (Live: " + liveFlag + ")";
     }
 
     public String processGlobalExit(String instrument, String action) throws Exception {
-        // Fetch ALL active positions for this instrument
         List<Orders> activeLegs = ordersRepo.findAllByNameAndActive(instrument, 1);
 
         if (activeLegs.isEmpty()) {
             return "SKIP: No active positions to close for " + instrument;
         }
 
+        Strategy strategy = strategyRepo.findByName(instrument);
         for (Orders o : activeLegs) {
             Token t = new Token();
             t.setToken(o.getToken()); 
@@ -113,7 +143,7 @@ public class GlobalOrderService {
             t.setQuantity(o.getQuantity());
             t.setExch_seg(o.getExchange()); 
             
-            // Reverses the transaction type to close the position
+            // Reverse transaction to close position
             t.setTransactionType("BUY".equalsIgnoreCase(o.getType()) ? "SELL" : "BUY");
             
             t.setOrderType(Constants.ORDER_TYPE_MARKET); 
@@ -122,11 +152,10 @@ public class GlobalOrderService {
             t.setName(o.getName()); 
             t.setSignal("EXIT_ALL");
 
-            // SAFETY NET: Force paper-trade exit if entry was a paper-trade
+            // SAFETY NET: If entry was a paper-trade (SIM_), FORCE exit to be a paper-trade
             boolean isSimulated = o.getOrderid() != null && o.getOrderid().startsWith("SIM_");
             String liveFlagForExit = isSimulated ? "N" : "Y";
 
-            // Execute exit using the safe flag
             String exitOrderId = executeBrokerCall(t, liveFlagForExit);
             
             BigDecimal currentLtp = fetchLtpForLeg(o);
@@ -155,27 +184,23 @@ public class GlobalOrderService {
     }
 
     public String getLivePnl(String instrument, String action) throws Exception {
-        // Fetch ALL active legs for this instrument (NIFTY / CRUDEOIL)
         List<Orders> activeLegs = ordersRepo.findAllByNameAndActive(instrument, 1);
 
         if (activeLegs.isEmpty()) return "0.00";
 
         BigDecimal netPnl = BigDecimal.ZERO;
         for (Orders leg : activeLegs) {
-            // Fetch from WebSocket Cache
             BigDecimal currentLtp = angelWebSocketService.getLatestLTP(
                     getExchangeType(leg.getExchange()), 
                     leg.getToken()
             );
 
-            // Fallback: If WebSocket hasn't received a tick yet, use entry price
             if (currentLtp.compareTo(BigDecimal.ZERO) == 0) {
                 currentLtp = leg.getAskPrice();
             }
 
             BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
             
-            // Handles both Long (Buy) and Short (Sell) legs dynamically
             BigDecimal diff = "BUY".equalsIgnoreCase(leg.getType()) 
                     ? currentLtp.subtract(leg.getAskPrice()) 
                     : leg.getAskPrice().subtract(currentLtp);
@@ -190,7 +215,6 @@ public class GlobalOrderService {
             return fallbackLtp;
         }
         try {
-            // Wait for broker to process trade execution
             Thread.sleep(800); 
             return fetchRealExecutionPrice(orderId, fallbackLtp);
         } catch (Exception e) {
@@ -225,7 +249,8 @@ public class GlobalOrderService {
     }
 
     private String executeBrokerCall(Token t, String liveFlag) throws Exception {
-        if (!"Y".equalsIgnoreCase(liveFlag)) {
+        // Safe check for "Y"
+        if (liveFlag == null || !"Y".equalsIgnoreCase(liveFlag.trim())) {
             return "SIM_" + UUID.randomUUID().toString().substring(0,8);
         }
         
