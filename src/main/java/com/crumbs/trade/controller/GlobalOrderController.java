@@ -17,9 +17,12 @@ public class GlobalOrderController {
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @PostMapping("/entry")
-    public ResponseEntity<String> entry(@RequestParam String name, @RequestParam String type) {
+    public ResponseEntity<String> entry(
+            @RequestParam String name, 
+            @RequestParam String type, 
+            @RequestParam(defaultValue = "BUY") String txnType) {
         try {
-            return ResponseEntity.ok(globalOrderService.processGlobalEntry(name.toUpperCase(), type.toUpperCase()));
+            return ResponseEntity.ok(globalOrderService.processGlobalEntry(name.toUpperCase(), type.toUpperCase(), txnType.toUpperCase()));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Entry Error: " + e.getMessage());
         }

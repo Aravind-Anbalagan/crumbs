@@ -136,7 +136,8 @@ public class StraddleIntradayService {
 	       
 	        if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
 	            spotPrice = samco.getIndexPrice(session, name);
-	            spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(), strategy.getToken());
+	            //If Samco fails , use the angelone price
+	            //spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(), strategy.getToken());
 	        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
 	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
 	        }
@@ -356,10 +357,21 @@ public class StraddleIntradayService {
         
         if (name != null) {
             String upperName = name.toUpperCase();
-            if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+            // ADDED CRUDEOIL HERE
+            if (upperName.contains("SENSEX") || upperName.contains("BANK") || upperName.contains("CRUDEOIL")) {
                 stepInterval = 100;
             } else if (upperName.contains("NATURALGAS")) {
                 stepInterval = 5; // MCX NG strike interval
+            }
+        }
+
+        int rangeValue = 600;
+        if (name != null) {
+            String upperName = name.toUpperCase();
+            if (upperName.contains("SENSEX")) {
+                rangeValue = 1000;
+            } else if (upperName.contains("NATURALGAS")) {
+                rangeValue = 50; // ±100 points handles 10 strikes on each side
             }
         }
 
@@ -370,7 +382,6 @@ public class StraddleIntradayService {
 
         return strikeList;
     }
-
 	
 	// =====================================================
 	// ✅ EVENT-BASED CE / PE CROSSOVER (1-MINUTE ONLY)
@@ -933,7 +944,8 @@ public class StraddleIntradayService {
         if (name != null) {
             String upperName = name.toUpperCase();
             
-            if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+            // ADDED CRUDEOIL HERE
+            if (upperName.contains("SENSEX") || upperName.contains("BANK") || upperName.contains("CRUDEOIL")) {
                 stepInterval = 100;
             } else if (upperName.contains("NATURALGAS")) {
                 stepInterval = 5; // MCX NG strike interval
@@ -2648,46 +2660,59 @@ public class StraddleIntradayService {
 	 * This ensures VWAP is accurate even if the system restarts midday.
 	 */
 	public void warmUpVwap(String name, Strategy strategy) {
-	    logger.info("🔥 Starting VWAP warm-up for {}", name);
-	    
-	    // 1. Get the ATM strike to identify which tokens to warm up
-	    // In a full system, you might want to warm up all strikes in your range
-	    BigDecimal spotPrice = null; 
-	    try {
-	        String session = sessionManager.getSession();
-	        spotPrice = samco.getIndexPrice(session,name); // Fallback to your spot fetch logic
-	        
-	        if (spotPrice == null) return;
+        logger.info("🔥 Starting VWAP warm-up for {}", name);
+        
+        // 1. Get the ATM strike to identify which tokens to warm up
+        // In a full system, you might want to warm up all strikes in your range
+        BigDecimal spotPrice = null; 
+        try {
+            String session = sessionManager.getSession();
+            spotPrice = samco.getIndexPrice(session,name); // Fallback to your spot fetch logic
+            
+            if (spotPrice == null) return;
 
-	        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
-	        List<StraddlePremiumDto> warmUpList = buildStraddleDtos(name,atmStrike, 50);
-	        warmUpList = getAllTokenDetails(warmUpList, strategy);
+            BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
+            
+            // DYNAMIC INTERVAL LOGIC ADDED HERE
+            int stepInterval = 50; 
+            if (name != null) {
+                String upperName = name.toUpperCase();
+                if (upperName.contains("SENSEX") || upperName.contains("BANK") || upperName.contains("CRUDEOIL")) {
+                    stepInterval = 100;
+                } else if (upperName.contains("NATURALGAS")) {
+                    stepInterval = 5;
+                }
+            }
+            
+            // REPLACED HARDCODED 50 WITH stepInterval
+            List<StraddlePremiumDto> warmUpList = buildStraddleDtos(name, atmStrike, stepInterval);
+            warmUpList = getAllTokenDetails(warmUpList, strategy);
 
-	        SmartConnect smartconnect = angelOne.signIn();
+            SmartConnect smartconnect = angelOne.signIn();
 
-	        for (StraddlePremiumDto dto : warmUpList) {
-	            // Warm up CE
-	            if (dto.getCeToken() != null) {
-	                JSONArray candles = fetchLatestOneMinuteCandle(
-	                    smartconnect, strategy.getExchange(), dto.getCeToken().getToken());
-	                if (candles != null) {
-	                    updateVwapIncremental(dto.getCeToken().getToken(), candles);
-	                }
-	            }
-	            // Warm up PE
-	            if (dto.getPeToken() != null) {
-	                JSONArray candles = fetchLatestOneMinuteCandle(
-	                    smartconnect, strategy.getExchange(), dto.getPeToken().getToken());
-	                if (candles != null) {
-	                    updateVwapIncremental(dto.getPeToken().getToken(), candles);
-	                }
-	            }
-	        }
-	        logger.info("✅ VWAP warm-up completed for {}", name);
-	    } catch (Exception e) {
-	        logger.error("❌ VWAP warm-up failed for {}", name, e);
-	    }
-	}
+            for (StraddlePremiumDto dto : warmUpList) {
+                // Warm up CE
+                if (dto.getCeToken() != null) {
+                    JSONArray candles = fetchLatestOneMinuteCandle(
+                        smartconnect, strategy.getExchange(), dto.getCeToken().getToken());
+                    if (candles != null) {
+                        updateVwapIncremental(dto.getCeToken().getToken(), candles);
+                    }
+                }
+                // Warm up PE
+                if (dto.getPeToken() != null) {
+                    JSONArray candles = fetchLatestOneMinuteCandle(
+                        smartconnect, strategy.getExchange(), dto.getPeToken().getToken());
+                    if (candles != null) {
+                        updateVwapIncremental(dto.getPeToken().getToken(), candles);
+                    }
+                }
+            }
+            logger.info("✅ VWAP warm-up completed for {}", name);
+        } catch (Exception e) {
+            logger.error("❌ VWAP warm-up failed for {}", name, e);
+        }
+    }
 	
 	private synchronized void enforceRateLimit() throws InterruptedException {
 	    long now = System.currentTimeMillis();
