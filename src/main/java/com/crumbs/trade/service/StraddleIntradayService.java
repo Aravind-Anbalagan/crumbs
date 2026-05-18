@@ -112,141 +112,143 @@ public class StraddleIntradayService {
 	private static final int ALERT_COOLDOWN_MINUTES = 5;
 	
 	// =====================================================
-	// MAIN ENTRY - WITH COMPREHENSIVE VALIDATION
-	// =====================================================
-	public void getCombineStraddlePremium(String name) {
+		// MAIN ENTRY - WITH COMPREHENSIVE VALIDATION
+		// =====================================================
+		public void getCombineStraddlePremium(String name) {
 
-	    try {
-	        SmartConnect smartconnect = angelOne.signIn();
-	        
-	        if (smartconnect == null) {
-	            logger.error("Failed to sign in to Angel One");
-	            return;
-	        }
+		    try {
+		        SmartConnect smartconnect = angelOne.signIn();
+		        
+		        if (smartconnect == null) {
+		            logger.error("Failed to sign in to Angel One");
+		            return;
+		        }
 
-	        Strategy strategy = strategyRepo.findByName(name);
-	        
-	        if (strategy == null) {
-	            logger.error("Strategy not found: {}", name);
-	            return;
-	        }
+		        Strategy strategy = strategyRepo.findByName(name);
+		        
+		        if (strategy == null) {
+		            logger.error("Strategy not found: {}", name);
+		            return;
+		        }
 
-	        String session = sessionManager.getSession();
-	        BigDecimal spotPrice = null;
-	       
-	        if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
-	            spotPrice = samco.getIndexPrice(session, name);
-	            //If Samco fails , use the angelone price
-	            //spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(), strategy.getToken());
-	        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
-	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
-	        }
+		        String session = sessionManager.getSession();
+		        BigDecimal spotPrice = null;
+		       
+		        if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
+		            spotPrice = samco.getIndexPrice(session, name);
+		            //If Samco fails , use the angelone price
+		            //spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(), strategy.getToken());
+		        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
+		            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+		        }
 
-	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
-	            logger.error("Invalid spot price for {}: {}", name, spotPrice);
-	            return;
-	        }
+		        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
+		            logger.error("Invalid spot price for {}: {}", name, spotPrice);
+		            return;
+		        }
 
-	        logger.debug("Spot price for {}: {}", name, spotPrice);
+		        logger.debug("Spot price for {}: {}", name, spotPrice);
 
-	        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
+		        BigDecimal atmStrike = getATMStrike(name, strategy, spotPrice);
 
-	        if (atmStrike == null || atmStrike.compareTo(BigDecimal.ZERO) <= 0) {
-	            logger.error("Invalid ATM strike for {}: {}", name, atmStrike);
-	            return;
-	        }
+		        if (atmStrike == null || atmStrike.compareTo(BigDecimal.ZERO) <= 0) {
+		            logger.error("Invalid ATM strike for {}: {}", name, atmStrike);
+		            return;
+		        }
 
-	        logger.info("ATM strike for {}: {}", name, atmStrike);
+		        logger.info("ATM strike for {}: {}", name, atmStrike);
 
-	        List<StraddlePremiumDto> strikeList = getOrBuildStrikeList(name, atmStrike);
-	        strikeList = getAllTokenDetails(strikeList, strategy);
+		        List<StraddlePremiumDto> strikeList = getOrBuildStrikeList(name, atmStrike);
+		        strikeList = getAllTokenDetails(strikeList, strategy);
 
-	        long validTokenCount = strikeList.stream()
-	            .filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
-	            .count();
+		        long validTokenCount = strikeList.stream()
+		            .filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null)
+		            .count();
 
-	        if (validTokenCount == 0) {
-	            logger.error("No valid tokens found for strategy: {}", name);
-	            return;
-	        }
+		        if (validTokenCount == 0) {
+		            logger.error("No valid tokens found for strategy: {}", name);
+		            return;
+		        }
 
-	        logger.info("Found {} strikes with valid tokens out of {}",
-	            validTokenCount, strikeList.size());
+		        logger.info("Found {} strikes with valid tokens out of {}",
+		            validTokenCount, strikeList.size());
 
-	        // =========================================================
-	        // PREVIOUS DAY OHLC — ONCE PER DAY (High + Low + Close)
-	        // =========================================================
-	        resetPrevDayDataIfNewDay();
+		        // =========================================================
+		        // PREVIOUS DAY OHLC — ONCE PER DAY (High + Low + Close)
+		        // =========================================================
+		        resetPrevDayDataIfNewDay();
 
-	        Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
+		        Map<String, BigDecimal> strategyHighCache = prevHighMap.get(name);
 
-	        if (strategyHighCache == null || strategyHighCache.isEmpty()) {
-	            logger.info("Fetching previous day OHLC for strategy: {} (one-time fetch)", name);
-	            fetchPreviousDayDataForAllStrikes(strikeList, smartconnect, strategy); // ← ONE merged call
-	        } else {
-	            logger.debug("Using cached previous day data for strategy: {}", name);
-	            populatePrevDayDataFromCache(strikeList, name); // ← cache lookup, no API call
-	        }
+		        if (strategyHighCache == null || strategyHighCache.isEmpty()) {
+		            logger.info("Fetching previous day OHLC for strategy: {} (one-time fetch)", name);
+		            fetchPreviousDayDataForAllStrikes(strikeList, smartconnect, strategy); // ← ONE merged call
+		        } else {
+		            logger.debug("Using cached previous day data for strategy: {}", name);
+		            populatePrevDayDataFromCache(strikeList, name); // ← cache lookup, no API call
+		        }
 
-	        // =========================================================
-	        // CURRENT PRICES — EVERY 1 MIN (batch — single API call)
-	        // =========================================================
-	        strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect, strategy.getExchange());
+		        // =========================================================
+		        // CURRENT PRICES — EVERY 1 MIN (batch — single API call)
+		        // =========================================================
+		        strikeList = getPriceForAllTheStrikesBatch(strikeList, smartconnect, strategy.getExchange());
 
-	        long validPriceCount = strikeList.stream()
-	            .filter(dto ->
-	                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
-	                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
-	            )
-	            .count();
+		        long validPriceCount = strikeList.stream()
+		            .filter(dto ->
+		                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+		                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+		            )
+		            .count();
 
-	        if (validPriceCount == 0) {
-	            logger.error("No valid prices fetched for strategy: {}", name);
-	            return;
-	        }
+		        if (validPriceCount == 0) {
+		            logger.error("No valid prices fetched for strategy: {}", name);
+		            return;
+		        }
 
-	        logger.info("Successfully fetched prices for {} strikes", validPriceCount);
+		        logger.info("Successfully fetched prices for {} strikes", validPriceCount);
 
-	        // =========================================================
-	        // IV FROM GREEKS API
-	        // =========================================================
-	        Map<String, BigDecimal> ivMap = fetchIVFromGreeksAPI(
-	            smartconnect, strategy.getName(), strategy.getExpiry()
-	        );
+		        // =========================================================
+		        // IV FROM GREEKS API - COMMENTED OUT FOR PERFORMANCE
+		        // =========================================================
+		        /*
+		        Map<String, BigDecimal> ivMap = fetchIVFromGreeksAPI(
+		            smartconnect, strategy.getName(), strategy.getExpiry()
+		        );
 
-	        if (ivMap != null && !ivMap.isEmpty()) {
-	            populateIVFromGreeksMap(strikeList, ivMap);
-	        } else {
-	            logger.warn("IV map is null/empty for {} {}", strategy.getName(), strategy.getExpiry());
-	        }
+		        if (ivMap != null && !ivMap.isEmpty()) {
+		            populateIVFromGreeksMap(strikeList, ivMap);
+		        } else {
+		            logger.warn("IV map is null/empty for {} {}", strategy.getName(), strategy.getExpiry());
+		        }
+		        */
 
-	        // =========================================================
-	        // VWAP — EVERY 1 MIN (ONE_MINUTE candle per token)
-	        // =========================================================
-	        resetVwapIfNewDay();
+		        // =========================================================
+		        // VWAP — EVERY 1 MIN (ONE_MINUTE candle per token)
+		        // =========================================================
+		        resetVwapIfNewDay();
 
-	        List<StraddlePremiumDto> strikesWithPrices = strikeList.stream()
-	            .filter(dto ->
-	                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
-	                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
-	            )
-	            .collect(Collectors.toList());
+		        List<StraddlePremiumDto> strikesWithPrices = strikeList.stream()
+		            .filter(dto ->
+		                (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) ||
+		                (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)
+		            )
+		            .collect(Collectors.toList());
 
-	        logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)",
-	            strikesWithPrices.size(), strikeList.size());
+		        logger.info("Fetching VWAP for {} strikes with valid prices (out of {} total)",
+		            strikesWithPrices.size(), strikeList.size());
 
-	        fetchVwapInParallel(strikesWithPrices, smartconnect, strategy.getExchange());
+		        fetchVwapInParallel(strikesWithPrices, smartconnect, strategy.getExchange());
 
-	        // =========================================================
-	        // SAVE TO DB
-	        // =========================================================
-	        int savedCount = savePriceDetails(strikeList, strategy, spotPrice, atmStrike);
-	        logger.info("Saved {} records to database for {}", savedCount, name);
+		        // =========================================================
+		        // SAVE TO DB
+		        // =========================================================
+		        int savedCount = savePriceDetails(strikeList, strategy, spotPrice, atmStrike);
+		        logger.info("Saved {} records to database for {}", savedCount, name);
 
-	    } catch (Exception e) {
-	        logger.error("Error in getCombineStraddlePremium for {}", name, e);
-	    }
-	}
+		    } catch (Exception e) {
+		        logger.error("Error in getCombineStraddlePremium for {}", name, e);
+		    }
+		}
 	
 	public String getSymbolByName(String name) {
         if ("NIFTY".equalsIgnoreCase(name)) {
