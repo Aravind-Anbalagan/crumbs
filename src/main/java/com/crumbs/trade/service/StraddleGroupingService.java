@@ -74,6 +74,8 @@ public class StraddleGroupingService {
             dto.setName(instrumentName);
             
             // Get strategy for THIS instrument (not hardcoded NIFTY_INDEX)
+         // Instead of passing entry.getKey() directly, customize the lookup name
+            String lookupName = "SENSEX".equalsIgnoreCase(instrumentName) ? "SENSEX_INDEX" : instrumentName;
             Strategy strategy = getStrategyForInstrument(instrumentName);
             
             if (strategy != null) {
