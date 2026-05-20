@@ -19,9 +19,9 @@ public class PreMarketLevelScheduler {
     private final StrategyRepo strategyRepo;
     private final StraddleExecutionService executionService;
     
-    // ==================== PRE-MARKET ANALYSIS (9:15:10 AM) ====================
+    // ==================== PRE-MARKET ANALYSIS (8:00:10 AM) ====================
 
-    @Scheduled(cron = "10 15 9 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "10 0 8 * * MON-FRI", zone = "Asia/Kolkata")
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
     }
@@ -38,7 +38,7 @@ public class PreMarketLevelScheduler {
     @Scheduled(cron = "*/10 0-30 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMarketLevelStrategy() throws IOException, SmartAPIException {
       
-        if (!isActive("MARKET_LEVEL")) {
+        if (!isActive("PRE_MARKET_LEVEL")) {
             //LoggerFactory.getLogger(getClass())
                // .info("Strategy STRADDLE_PREMIUM is inactive, skipping pre-market analysis for {}", name);
             return;

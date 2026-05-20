@@ -53,7 +53,7 @@ public class PreMarketLevelOrderManagementService {
     // ================= STRATEGY CONFIG ==========================
     // ============================================================
 
-    private static final String       STRATEGY_NAME = "MARKET_LEVEL";
+    private static final String       STRATEGY_NAME = "PRE_MARKET_LEVEL";
     private static final ExchangeType EXCHANGE      = ExchangeType.NSE_FO;
 
     // ============================================================
