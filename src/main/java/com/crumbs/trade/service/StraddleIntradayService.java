@@ -28,7 +28,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.crumbs.trade.broker.AngelOne;
@@ -958,64 +959,94 @@ public class StraddleIntradayService {
         return BigDecimal.valueOf(nearest);
     }
 
+
 	// =====================================================
-	// TOKEN DETAILS - WITH BETTER LOGGING
-	// =====================================================
-	public List<StraddlePremiumDto> getAllTokenDetails(
-		List<StraddlePremiumDto> strikeList, 
-		Strategy strategy
-	) {
+    // TOKEN DETAILS - DYNAMIC WEEKLY & MONTHLY ROUTING
+    // =====================================================
+    public List<StraddlePremiumDto> getAllTokenDetails(
+        List<StraddlePremiumDto> strikeList, 
+        Strategy strategy
+    ) {
+        logger.info("Fetching tokens for strategy: {}, expiry: {}", 
+            strategy.getName(), strategy.getExpiry());
 
-		logger.info("Fetching tokens for strategy: {}, expiry: {}", 
-			strategy.getName(), strategy.getExpiry());
+        for (StraddlePremiumDto dto : strikeList) {
+            int strike = dto.getStrikePrice().intValue();
 
-		for (StraddlePremiumDto dto : strikeList) {
+            // Generate accurate database lookup symbols dynamically
+            String ceSymbol = generateSymbol(strategy.getName(), strategy.getExpiry(), strike, "CE");
+            String peSymbol = generateSymbol(strategy.getName(), strategy.getExpiry(), strike, "PE");
 
-			int strike = dto.getStrikePrice().intValue();
+            // Fetch CE token
+            Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
+            if (ceIndex != null) {
+                Token t = new Token();
+                t.setToken(ceIndex.getToken());
+                t.setSymbol(ceIndex.getSymbol());
+                t.setExch_seg(ceIndex.getExchange());
+                t.setQuantity(ceIndex.getLotsize());
+                dto.setCeToken(t);
+                logger.debug("Found CE token for {}: {}", ceSymbol, t.getToken());
+            } else {
+                logger.warn("CE token NOT found for symbol: {}", ceSymbol);
+            }
 
-			String ceSymbol = String.format("%s%s%dCE", 
-				strategy.getName(), strategy.getExpiry(), strike);
+            // Fetch PE token
+            Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
+            if (peIndex != null) {
+                Token t = new Token();
+                t.setToken(peIndex.getToken());
+                t.setSymbol(peIndex.getSymbol());
+                t.setExch_seg(peIndex.getExchange());
+                t.setQuantity(peIndex.getLotsize());
+                dto.setPeToken(t);
+                logger.debug("Found PE token for {}: {}", peSymbol, t.getToken());
+            } else {
+                logger.warn("PE token NOT found for symbol: {}", peSymbol);
+            }
+        }
+        
+        return strikeList;
+    }
 
-			String peSymbol = String.format("%s%s%dPE", 
-				strategy.getName(), strategy.getExpiry(), strike);
+    /**
+     * Translates strategy attributes into exact database table symbol patterns.
+     * Differentiates Monthly vs Weekly structural variations inside BSE Sensex contracts.
+     */
+    private String generateSymbol(String strategyName, String expiry, int strike, String optionType) {
+        if (strategyName == null || expiry == null) {
+            return "";
+        }
 
-			// Fetch CE token
-			Indexes ceIndex = indexesRepo.findByNameAndSymbol(
-				strategy.getName(), ceSymbol
-			);
+        String upperName = strategyName.toUpperCase().trim();
+        String cleanExpiry = expiry.toUpperCase().trim();
 
-			if (ceIndex != null) {
-				Token t = new Token();
-				t.setToken(ceIndex.getToken());
-				t.setSymbol(ceIndex.getSymbol());
-				t.setExch_seg(ceIndex.getExchange());
-				t.setQuantity(ceIndex.getLotsize());
-				dto.setCeToken(t);
-				logger.debug("Found CE token for {}: {}", ceSymbol, t.getToken());
-			} else {
-				logger.warn("CE token NOT found for symbol: {}", ceSymbol);
-			}
+        if ("SENSEX".equals(upperName)) {
+            // Parses standard layout patterns like "27MAY26"
+            // Group 1: Day ("27"), Group 2: Month ("MAY"), Group 3: Year ("26")
+            Pattern pattern = Pattern.compile("^(\\d{1,2})([A-Z]{3})(\\d{2})$");
+            Matcher matcher = pattern.matcher(cleanExpiry);
 
-			// Fetch PE token
-			Indexes peIndex = indexesRepo.findByNameAndSymbol(
-				strategy.getName(), peSymbol
-			);
+            if (matcher.matches()) {
+                String day = matcher.group(1);
+                String month = matcher.group(2);
+                String year = matcher.group(3);
 
-			if (peIndex != null) {
-				Token t = new Token();
-				t.setToken(peIndex.getToken());
-				t.setSymbol(peIndex.getSymbol());
-				t.setExch_seg(peIndex.getExchange());
-				t.setQuantity(peIndex.getLotsize());
-				dto.setPeToken(t);
-				logger.debug("Found PE token for {}: {}", peSymbol, t.getToken());
-			} else {
-				logger.warn("PE token NOT found for symbol: {}", peSymbol);
-			}
-		}
-		
-		return strikeList;
-	}
+                int dayInt = Integer.parseInt(day);
+                
+                // Monthly Expiry Rule: Sensex monthly contracts expire on the last week of the month (Days 26-31).
+                // Your DB stores monthly options omitting the day component entirely: SENSEX + YY + MMM
+                if (dayInt >= 26) { 
+                    String monthlyExpiryPattern = year + month; // E.g. "26MAY"
+                    return String.format("%s%s%d%s", upperName, monthlyExpiryPattern, strike, optionType);
+                }
+            }
+        }
+
+        // Standard formatting path for NIFTY, CRUDEOIL, NATURALGAS, and SENSEX Weeklies
+        // Outputs standard format strings directly: e.g., SENSEX27MAY2674200CE or NIFTY26MAY2623800CE
+        return String.format("%s%s%d%s", upperName, cleanExpiry, strike, optionType);
+    }
 
 	// =====================================================
 	// COMBINED CHART
