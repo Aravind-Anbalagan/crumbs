@@ -1,218 +1,414 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crumbs // 4-Group Monitor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <title>Glassmorphic Algo Trading Dashboard</title>
     <style>
+        /* DESIGN SYSTEM VARIABLES */
         :root {
-            --bg-main: #0a0f1c;
-            --glass-bg: rgba(15, 23, 42, 0.75);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --accent: #818cf8;
-            --success: #10b981;
-            --error: #f43f5e;
+            /* Dark Theme (Default Glass) */
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --glass-bg: rgba(30, 41, 59, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-highlight: rgba(255, 255, 255, 0.03);
             --text-main: #f8fafc;
-            --text-dim: #94a3b8;
-            --card-inner: rgba(255, 255, 255, 0.03);
+            --text-muted: #94a3b8;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.15);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.15);
+            --warning: #f59e0b;
+            --card-shadow: rgba(0, 0, 0, 0.3);
         }
 
         [data-theme="light"] {
-            --bg-main: #f1f5f9;
-            --glass-bg: rgba(255, 255, 255, 0.85);
-            --glass-border: rgba(0, 0, 0, 0.1);
-            --accent: #4f46e5;
-            --success: #059669;
-            --error: #dc2626;
+            /* Light Theme (Frosty Glass) */
+            --bg-gradient: linear-gradient(135deg, #f1f5f9 0%, #dbeafe 100%);
+            --glass-bg: rgba(255, 255, 255, 0.45);
+            --glass-border: rgba(15, 23, 42, 0.08);
+            --glass-highlight: rgba(255, 255, 255, 0.5);
             --text-main: #0f172a;
-            --text-dim: #64748b;
-            --card-inner: rgba(0, 0, 0, 0.02);
+            --text-muted: #475569;
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.2);
+            --success: #059669;
+            --success-bg: rgba(5, 150, 105, 0.12);
+            --danger: #dc2626;
+            --danger-bg: rgba(220, 38, 38, 0.12);
+            --warning: #d97706;
+            --card-shadow: rgba(15, 23, 42, 0.08);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
-        body { background-color: var(--bg-main); background-image: radial-gradient(at 0% 0%, var(--accent), transparent 30%); background-attachment: fixed; color: var(--text-main); min-height: 100vh; padding: 1.5rem; transition: background 0.3s ease; }
-        
-        .terminal-container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
-        header { display: flex; justify-content: space-between; align-items: center; }
-        .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
-        .logo span { color: var(--accent); opacity: 0.8; }
-        
-        .glass-card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 12px; }
-        
-        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; }
-        .stat-card { padding: 0.8rem 1.2rem; border-left: 4px solid var(--accent); }
-        .stat-label { font-size: 0.65rem; font-weight: 800; color: var(--text-dim); text-transform: uppercase; }
-        .stat-value { font-size: 1.5rem; font-weight: 800; margin-top: 0.2rem; }
+        * {
+            box-sizing: border-box; margin: 0; padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+        }
 
-        .nav-btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; font-weight: 700; font-size: 0.85rem; }
-        .nav-btn.active { background: var(--accent); color: white; }
+        body {
+            background: var(--bg-gradient);
+            background-attachment: fixed;
+            color: var(--text-main);
+            padding: 2rem;
+            min-height: 100vh;
+        }
 
-        .orders-grid { display: flex; flex-direction: column; gap: 1.2rem; }
-        .straddle-card { padding: 1.2rem; border-left: 5px solid var(--accent); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
-        .straddle-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.8rem; border-bottom: 1px solid var(--glass-border); margin-bottom: 1rem; }
-        
-        .leg-row { 
-            display: grid; 
-            grid-template-columns: 80px 1.5fr 100px 80px 80px 1fr 1fr 120px 100px;
-            align-items: center;
-            padding: 0.8rem 1rem;
-            background: var(--card-inner);
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
-            font-size: 0.85rem;
+            box-shadow: 0 8px 32px 0 var(--card-shadow);
+            border-radius: 12px;
         }
 
-        .mono { font-family: 'ui-monospace', 'SFMono-Regular', monospace; font-weight: 700; }
-        .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; border: 1px solid currentColor; display: inline-block; text-align: center; }
-        .dir-buy { color: var(--success); }
-        .dir-sell { color: var(--error); }
-        .pnl-green { color: var(--success); }
-        .pnl-red { color: var(--error); }
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; padding: 1.5rem;
+        }
+
+        .controls-right { display: flex; align-items: center; gap: 1rem; }
+
+        .theme-toggle {
+            background: var(--glass-highlight); border: 1px solid var(--glass-border);
+            color: var(--text-main); padding: 0.6rem 1.2rem; border-radius: 20px;
+            cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;
+        }
+
+        .status-indicator {
+            display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;
+            color: var(--text-muted); padding: 0.5rem 1.2rem; border-radius: 20px;
+            background: var(--glass-highlight); border: 1px solid var(--glass-border);
+        }
+
+        .dot {
+            width: 8px; height: 8px; border-radius: 50%; background-color: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+        .dot.paused { background-color: var(--warning); box-shadow: 0 0 10px var(--warning); }
+
+        /* PNL SUMMARY WIDGETS */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-card {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .summary-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .summary-value {
+            font-size: 2rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* TABS */
+        .tabs-container {
+            display: flex; gap: 0.4rem; margin-bottom: -1px; overflow-x: auto; padding: 0 0.5rem;
+        }
+
+        .tab-btn {
+            background: var(--glass-bg); backdrop-filter: blur(8px); color: var(--text-muted);
+            border: 1px solid var(--glass-border); border-bottom: none;
+            padding: 0.8rem 1.6rem; border-radius: 10px 10px 0 0;
+            cursor: pointer; font-weight: 600; font-size: 0.9rem; white-space: nowrap;
+        }
+
+        .tab-btn.active {
+            background: var(--primary); color: white; border-color: var(--primary);
+            box-shadow: 0 0 15px var(--primary-glow); z-index: 2; position: relative;
+        }
+
+        /* TABLE */
+        .table-container { border-radius: 0 12px 12px 12px; overflow: hidden; }
+        .responsive-wrapper { overflow-x: auto; width: 100%; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem; white-space: nowrap; }
+        th, td { padding: 1.1rem 1.2rem; border-bottom: 1px solid var(--glass-border); }
+        th { background-color: rgba(0, 0, 0, 0.15); color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+        [data-theme="light"] th { background-color: rgba(255, 255, 255, 0.3); }
+
+        .badge { padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+        .badge.open { background: var(--primary); color: white; box-shadow: 0 0 10px var(--primary-glow); }
+        .badge.closed { background: rgba(148, 163, 184, 0.2); color: var(--text-main); }
+        .badge.buy { background: var(--success-bg); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge.sell { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
         
-        .theme-btn { background: var(--glass-bg); color: var(--text-main); border: 1px solid var(--glass-border); padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; cursor: pointer; }
+        .badge.live { background: rgba(59, 130, 246, 0.15); color: var(--primary); border: 1px solid var(--primary); }
+        .badge.paper { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); border: 1px dashed var(--text-muted); }
+
+        .pnl-positive { color: var(--success) !important; }
+        .pnl-negative { color: var(--danger) !important; }
+        
+        .time-muted { color: var(--text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
     </style>
 </head>
 <body>
 
-<div class="terminal-container">
-    <header>
-        <div class="logo">CRUMBS <span>// STRATEGY</span></div>
-        <div style="display: flex; gap: 0.8rem; align-items: center;">
-            <div id="liveIndicator" style="font-size: 0.7rem; font-weight: 800; color: var(--success);">● LIVE</div>
-            <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️ LIGHT MODE</button>
-            <button class="theme-btn" style="background: var(--accent); color: white;" onclick="refreshData()">REFRESH</button>
+    <!-- Header -->
+    <div class="glass-panel header">
+        <h2>Live Risk Dashboard</h2>
+        <div class="controls-right">
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span id="theme-icon">🌙</span> <span id="theme-text">Dark Mode</span>
+            </button>
+            <div class="status-indicator" id="network-status">
+                <div class="dot" id="status-dot"></div>
+                <span id="status-text">Synchronizing...</span>
+            </div>
         </div>
-    </header>
-
-    <div class="glass-card" style="padding: 0.3rem; width: fit-content;">
-        <nav style="display: flex; gap: 4px;">
-            <button class="nav-btn active" onclick="setStrategy(this, 'CPR')">CPR Strategy</button>
-            <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_NIFTY')">Nifty Straddle</button>
-            <button class="nav-btn" onclick="setStrategy(this, 'SHORT_STRADDLE_CRUDEOIL')">Crude Straddle</button>
-        </nav>
     </div>
 
-    <div class="stats-row">
-        <div class="glass-card stat-card"><div class="stat-label">System</div><div class="stat-value" id="stat-name">CPR</div></div>
-        <div class="glass-card stat-card"><div class="stat-label">Active Groups</div><div class="stat-value" id="stat-count">0</div></div>
-        <div class="glass-card stat-card"><div class="stat-label">Total Points</div><div class="stat-value" id="stat-points">0.00</div></div>
-        <div class="glass-card stat-card"><div class="stat-label">Net Realized</div><div class="stat-value" id="stat-pnl">₹0</div></div>
+    <!-- PNL SUMMARY CARDS -->
+    <div class="summary-grid">
+        <div class="glass-panel summary-card">
+            <div class="summary-title">🔴 Live Market PnL</div>
+            <div class="summary-value" id="live-pnl">₹0.00</div>
+        </div>
+        <div class="glass-panel summary-card">
+            <div class="summary-title">📝 Paper Trading PnL</div>
+            <div class="summary-value" id="paper-pnl">₹0.00</div>
+        </div>
+        <div class="glass-panel summary-card">
+            <div class="summary-title">💎 Combined Net PnL</div>
+            <div class="summary-value" id="total-pnl">₹0.00</div>
+        </div>
     </div>
 
-    <div id="ordersContainer" class="orders-grid"></div>
-</div>
+    <!-- Tabs Navigation -->
+    <div class="tabs-container" id="tabs"></div>
 
-<script>
-    let currentStrategy = 'CPR';
+    <!-- Table -->
+    <div class="glass-panel table-container" id="content">
+        <div style="padding: 4rem; text-align: center; color: var(--text-muted);">
+            <div style="display:inline-block; width: 20px; height: 20px; border: 3px solid var(--glass-border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 10px; vertical-align: middle;"></div>
+            <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+            Allocating interface cache loops...
+        </div>
+    </div>
 
-    function toggleTheme() {
-        const body = document.documentElement;
-        const btn = document.getElementById('themeBtn');
-        if (body.getAttribute('data-theme') === 'dark') {
-            body.setAttribute('data-theme', 'light');
-            btn.innerText = '🌙 DARK MODE';
-        } else {
-            body.setAttribute('data-theme', 'dark');
-            btn.innerText = '☀️ LIGHT MODE';
+    <script>
+        const getApiUrl = () => {
+            const hostname = window.location.hostname;
+            const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || window.location.protocol === 'file:';
+            return `${isLocal ? 'http://localhost:8080' : window.location.origin}/api/orders/orderList`;
+        };
+
+        const API_URL = getApiUrl();
+        const POLL_INTERVAL_MS = 2000;
+
+        let activeStrategyTab = null; 
+        let pollingTimer = null;
+        let currentTheme = 'dark';
+
+        function toggleTheme() {
+            const body = document.documentElement;
+            if (currentTheme === 'dark') {
+                body.setAttribute('data-theme', 'light');
+                document.getElementById('theme-icon').innerText = '☀️';
+                document.getElementById('theme-text').innerText = 'Light Mode';
+                currentTheme = 'light';
+            } else {
+                body.removeAttribute('data-theme');
+                document.getElementById('theme-icon').innerText = '🌙';
+                document.getElementById('theme-text').innerText = 'Dark Mode';
+                currentTheme = 'dark';
+            }
         }
-    }
 
-    async function refreshData() {
-        if (document.hidden) return;
-        const container = document.getElementById('ordersContainer');
-        try {
-            const response = await fetch(`/api/orders/orderList?name=${currentStrategy}`);
-            let data = await response.json();
-            
-            // --- FIXED GROUPING LOGIC ---
-            const groups = {};
-            data.forEach(o => {
-                // Use Strike as the primary key. If strike is same, they go in one card.
-                // Fallback to tradeCycleId or just the ID if everything else is missing.
-                const key = o.strike || o.tradeCycleId || `id_${o.id}`;
+        async function fetchOrders() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error('Network fault');
+                const data = await response.json();
+                
+                calculateAndRenderSummaries(data);
+                processAndRenderMatrix(data);
+                updateNetworkIndicator(true, "Live Sync Engaged");
+            } catch (error) {
+                updateNetworkIndicator(false, "API Interrupted");
+            }
+        }
 
-                if (!groups[key]) {
-                    groups[key] = { legs: [], totalPnl: 0, totalPts: 0, strike: o.strike };
-                }
-                groups[key].legs.push(o);
-                groups[key].totalPnl += (o.pnl || 0);
-                groups[key].totalPts += (o.points || 0);
-            });
+        function calculateAndRenderSummaries(data) {
+            let livePnl = 0;
+            let paperPnl = 0;
 
-            let cardsHtml = "";
-            let overallPnl = 0, overallPts = 0;
-
-            Object.keys(groups).forEach(key => {
-                const group = groups[key];
-                overallPnl += group.totalPnl;
-                overallPts += group.totalPts;
-
-                let legsHtml = "";
-                // Sort legs so CE comes first
-                group.legs.sort((a,b) => (a.symbol || "").includes('CE') ? -1 : 1);
-
-                group.legs.forEach(l => {
-                    const dirClass = l.direction === 'BUY' ? 'dir-buy' : 'dir-sell';
-                    legsHtml += `
-                        <div class="leg-row">
-                            <div class="mono" style="color:var(--text-dim); font-size:0.7rem;">#${l.id}</div>
-                            <div style="font-weight:800; font-size:0.9rem;">${l.symbol}</div>
-                            <div class="mono" style="color:var(--accent)">${l.strike || '--'}</div>
-                            <div><span class="badge ${dirClass}">${l.direction || 'SELL'}</span></div>
-                            <div class="mono" style="font-size:0.8rem">QTY:${l.quantity}</div>
-                            <div class="mono">ENT: ₹${(l.entryPrice || 0).toFixed(2)}</div>
-                            <div class="mono">EXIT: ${l.exitPrice > 0 ? '₹'+l.exitPrice.toFixed(2) : '--'}</div>
-                            <div class="mono ${l.pnl >= 0 ? 'pnl-green' : 'pnl-red'}" style="font-size:1rem">₹${(l.pnl || 0).toLocaleString('en-IN')}</div>
-                            <div style="font-size:0.65rem; text-align:right; font-weight:800; color:var(--text-dim); text-transform:uppercase;">${l.status}</div>
-                        </div>
-                    `;
+            if (data && data.length > 0) {
+                data.forEach(order => {
+                    const val = order.pnl || 0;
+                    if (order.tradeMode === 'LIVE') {
+                        livePnl += val;
+                    } else {
+                        paperPnl += val;
+                    }
                 });
+            }
 
-                cardsHtml += `
-                    <div class="glass-card straddle-card">
-                        <div class="straddle-header">
-                            <div style="display:flex; flex-direction:column">
-                                <span style="font-size:0.65rem; font-weight:800; color:var(--text-dim); text-transform:uppercase;">Strike Group</span>
-                                <span style="font-size:1.1rem; font-weight:800;">${group.strike || 'N/A'} Straddle Pair</span>
-                            </div>
-                            <div style="text-align:right">
-                                <span style="font-size:0.65rem; font-weight:800; color:var(--text-dim); text-transform:uppercase;">Combined PnL</span>
-                                <div class="mono ${group.totalPnl >= 0 ? 'pnl-green' : 'pnl-red'}" style="font-size:1.3rem">
-                                    ₹${group.totalPnl.toLocaleString('en-IN')}
-                                </div>
-                            </div>
-                        </div>
-                        ${legsHtml}
-                    </div>
+            const totalPnl = livePnl + paperPnl;
+
+            const formatCurrency = (val) => {
+                const sign = val > 0 ? '+' : '';
+                return `${sign}₹${val.toFixed(2)}`;
+            };
+
+            const applyColor = (elementId, val) => {
+                const el = document.getElementById(elementId);
+                el.innerText = formatCurrency(val);
+                el.className = `summary-value ${val > 0 ? 'pnl-positive' : (val < 0 ? 'pnl-negative' : '')}`;
+            };
+
+            applyColor('live-pnl', livePnl);
+            applyColor('paper-pnl', paperPnl);
+            applyColor('total-pnl', totalPnl);
+        }
+
+        function processAndRenderMatrix(data) {
+            if (!data || data.length === 0) {
+                document.getElementById('content').innerHTML = `<div style="padding:4rem;text-align:center;">No executions found.</div>`;
+                return;
+            }
+
+            const strategiesMap = data.reduce((map, order) => {
+                const key = order.strategyName || 'UNNAMED_STRATEGY';
+                if (!map[key]) map[key] = [];
+                map[key].push(order);
+                return map;
+            }, {});
+
+            const discoveredStrategies = Object.keys(strategiesMap).sort();
+
+            if (!activeStrategyTab || !discoveredStrategies.includes(activeStrategyTab)) {
+                activeStrategyTab = discoveredStrategies[0];
+            }
+
+            renderDynamicTabBar(discoveredStrategies);
+            renderOperationalTable(strategiesMap[activeStrategyTab]);
+        }
+
+        function renderDynamicTabBar(strategyNames) {
+            const tabsContainer = document.getElementById('tabs');
+            const generatedHtml = strategyNames.map(name => {
+                const isSelected = name === activeStrategyTab ? 'active' : '';
+                return `<button class="tab-btn ${isSelected}" onclick="changeViewTab('${name}')">${name.replace(/_/g, ' ')}</button>`;
+            }).join('');
+
+            if (tabsContainer.innerHTML !== generatedHtml) tabsContainer.innerHTML = generatedHtml;
+        }
+
+        window.changeViewTab = function(targetStrategy) {
+            activeStrategyTab = targetStrategy;
+            fetchOrders(); 
+        }
+
+        function renderOperationalTable(orders) {
+            const container = document.getElementById('content');
+            
+            let htmlOutput = `
+                <div class="responsive-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Mode</th>
+                                <th>Instrument</th>
+                                <th>Side</th>
+                                <th>Status</th>
+                                <th>Entry Time</th>
+                                <th>Exit Time</th>
+                                <th>Entry Px</th>
+                                <th>Exit Px</th>
+                                <th>Net PnL (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            orders.forEach(order => {
+                const isProfit = order.pnl > 0;
+                const isLoss = order.pnl < 0;
+                const pnlClass = isProfit ? 'pnl-positive' : (isLoss ? 'pnl-negative' : '');
+                
+                const currentStatus = order.status || 'OPEN';
+                const statusClass = currentStatus.toUpperCase() === 'OPEN' ? 'open' : 'closed';
+                
+                const currentDirection = order.direction || 'SELL';
+                const sideClass = currentDirection.toUpperCase() === 'BUY' ? 'buy' : 'sell';
+
+                const tMode = order.tradeMode || 'PAPER';
+                const modeClass = tMode === 'LIVE' ? 'live' : 'paper';
+                
+                const signedValue = isProfit ? '+' : '';
+
+                // Truncate milliseconds and format times cleanly
+                const formatTime = (timeStr) => {
+                    if (!timeStr || timeStr === "N/A" || timeStr === "ACTIVE") return timeStr || "-";
+                    return timeStr.replace("T", " ").substring(0, 19);
+                };
+
+                htmlOutput += `
+                    <tr>
+                        <td style="color: var(--text-muted); font-size: 0.85rem;">#${order.id}</td>
+                        <td><span class="badge ${modeClass}">${tMode}</span></td>
+                        <td style="font-weight: 600;">${order.symbol || 'N/A'}</td>
+                        <td><span class="badge ${sideClass}">${currentDirection}</span></td>
+                        <td><span class="badge ${statusClass}">${currentStatus}</span></td>
+                        <td class="time-muted">${formatTime(order.entryTime)}</td>
+                        <td class="time-muted">${formatTime(order.exitTime)}</td>
+                        <td style="font-variant-numeric: tabular-nums;">${order.entryPrice ? order.entryPrice.toFixed(2) : '-'}</td>
+                        <td style="font-variant-numeric: tabular-nums;">${order.exitPrice ? order.exitPrice.toFixed(2) : '-'}</td>
+                        <td class="${pnlClass}" style="font-variant-numeric: tabular-nums; font-weight:700;">
+                            ${order.pnl != null ? signedValue + order.pnl.toFixed(2) : '0.00'}
+                        </td>
+                    </tr>
                 `;
             });
 
-            container.innerHTML = cardsHtml || `<div style="text-align:center; padding:3rem; color:var(--text-dim)">No data Found...</div>`;
-            
-            document.getElementById('stat-count').innerText = Object.keys(groups).length;
-            document.getElementById('stat-points').innerText = overallPts.toFixed(2);
-            const pnlEl = document.getElementById('stat-pnl');
-            pnlEl.innerText = `₹${overallPnl.toLocaleString('en-IN')}`;
-            pnlEl.style.color = overallPnl >= 0 ? 'var(--success)' : 'var(--error)';
-
-        } catch (e) { 
-            console.error("Fetch Error:", e);
-            document.getElementById('ordersContainer').innerHTML = `<div style="color:var(--error); text-align:center; padding:2rem;">Data Error: Check console</div>`;
+            htmlOutput += `</tbody></table></div>`;
+            container.innerHTML = htmlOutput;
         }
-    }
 
-    function setStrategy(btn, name) {
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentStrategy = name;
-        document.getElementById('stat-name').innerText = name.replace('SHORT_STRADDLE_', '').replace('_', ' ');
-        refreshData();
-    }
+        function updateNetworkIndicator(isActiveState, feedbackMessage) {
+            document.getElementById('status-text').innerText = feedbackMessage;
+            if (isActiveState) {
+                document.getElementById('status-dot').classList.remove('paused');
+            } else {
+                document.getElementById('status-dot').classList.add('paused');
+            }
+        }
 
-    setInterval(refreshData, 30000);
-    window.onload = refreshData;
-</script>
+        function initiateProcessingScheduler() {
+            if (pollingTimer) clearInterval(pollingTimer);
+            fetchOrders(); 
+            pollingTimer = setInterval(fetchOrders, POLL_INTERVAL_MS);
+        }
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                clearInterval(pollingTimer);
+                updateNetworkIndicator(false, "Risk Engine Paused");
+            } else {
+                initiateProcessingScheduler();
+            }
+        });
+
+        initiateProcessingScheduler();
+    </script>
 </body>
 </html>

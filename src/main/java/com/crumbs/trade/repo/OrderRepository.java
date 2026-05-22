@@ -69,4 +69,8 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     	                    @Param("startOfDay") LocalDateTime startOfDay);
     Optional<Orders> findByNameAndTokenAndActive(String name, String token, Integer active);
     List<Orders> findAllByNameAndActive(String name, int active);
+    
+ // Add this line to fix the error:
+    List<Orders> findByActive(int active);
+
 }

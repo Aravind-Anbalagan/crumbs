@@ -6,7 +6,6 @@ import com.crumbs.trade.repo.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -16,55 +15,91 @@ public class TradeExecutionService {
     private final TradeExecutionRepo srRepo;
     private final OrderRepository orderRepository;
     private final ResultVixRepo haRepo;
+    
+    // Inject RiskService to access the live RAM Cache
+    private final RiskService riskService;
 
-    public TradeExecutionService(TradeExecutionRepo srRepo, OrderRepository orderRepository, ResultVixRepo haRepo) {
+    public TradeExecutionService(TradeExecutionRepo srRepo, 
+                                 OrderRepository orderRepository, 
+                                 ResultVixRepo haRepo,
+                                 RiskService riskService) {
         this.srRepo = srRepo;
         this.orderRepository = orderRepository;
         this.haRepo = haRepo;
+        this.riskService = riskService;
     }
 
+    /**
+     * Updated unified method. If 'strategy' is null or empty, it collects EVERYTHING
+     * from all tables so the UI can dynamically generate tabs for whatever is running.
+     */
     public List<UnifiedOrderDto> getAllOrders(String strategy) {
-        if (strategy == null) return Collections.emptyList();
-        String upperStrategy = strategy.toUpperCase();
+        List<UnifiedOrderDto> allUnifiedOrders = new ArrayList<>();
+        
+        boolean fetchAll = (strategy == null || strategy.trim().isEmpty());
+        String upperStrategy = fetchAll ? "" : strategy.toUpperCase();
 
-        if (upperStrategy.contains("CPR")) {
-            return orderRepository.findByNameContainingIgnoreCase("CPR").stream()
-                    .map(this::mapCPR).collect(Collectors.toList());
+        // 1. Process main ORDERS Table
+        if (fetchAll) {
+            // Fetch everything available if no specific filter is provided
+            List<Orders> allDbOrders = orderRepository.findAll();
+            for (Orders o : allDbOrders) {
+                allUnifiedOrders.add(mapGenericOrder(o));
+            }
+        } else {
+            // Maintain exact custom query routing if a specific string is requested
+            if (upperStrategy.contains("CPR")) {
+                allUnifiedOrders.addAll(orderRepository.findByNameContainingIgnoreCase("CPR").stream()
+                        .map(this::mapGenericOrder).collect(Collectors.toList()));
+            } else {
+                allUnifiedOrders.addAll(orderRepository.findAllByName(upperStrategy).stream()
+                        .map(this::mapGenericOrder).collect(Collectors.toList()));
+            }
         }
 
-        if (upperStrategy.startsWith("SHORT_STRADDLE_")) {
-            return orderRepository.findAllByName(upperStrategy).stream()
-                    .map(this::mapShortStraddle).collect(Collectors.toList());
+        // 2. Process Support Resistance (SR) Table
+        if (fetchAll || upperStrategy.equals("SR")) {
+            allUnifiedOrders.addAll(srRepo.findAll().stream().map(this::mapSR).collect(Collectors.toList()));
         }
 
-        return switch (upperStrategy) {
-            case "SR" -> srRepo.findAll().stream().map(this::mapSR).collect(Collectors.toList());
-            case "HEIKIN_PSAR" -> haRepo.findAll().stream().map(this::mapHA).collect(Collectors.toList());
-            default -> Collections.emptyList();
-        };
+        // 3. Process Heikin Ashi (HEIKIN_PSAR) Table
+        if (fetchAll || upperStrategy.equals("HEIKIN_PSAR")) {
+            allUnifiedOrders.addAll(haRepo.findAll().stream().map(this::mapHA).collect(Collectors.toList()));
+        }
+
+        // Sort globally by ID descending so newest trades always hit the top of the UI grid
+        allUnifiedOrders.sort(Comparator.comparing(UnifiedOrderDto::getId).reversed());
+
+        return allUnifiedOrders;
     }
 
-    private UnifiedOrderDto mapShortStraddle(Orders o) {
+    /**
+     * Dynamic mapper that looks at the existing row's 'name' property 
+     * to safely apply parameters without causing NullPointerExceptions.
+     */
+    private UnifiedOrderDto mapGenericOrder(Orders o) {
         UnifiedOrderDto d = createBaseDto(o);
-        d.setStrategyName(o.getName());
-        d.setStrategyType("Option Seller");
-        d.setInstrumentType(o.getOptionType());
-        
-        applyTradingMath(d, o); 
-        applyTimestamps(d, o);
-        return d;
-    }
 
-    private UnifiedOrderDto mapCPR(Orders o) {
-        UnifiedOrderDto d = createBaseDto(o);
-        
-        d.setInstrumentType(o.getSignal() != null ? o.getSignal() : 
-                           (o.getSymbol() != null && o.getSymbol().endsWith("PE") ? "PE" : "CE"));
+        String normName = d.getStrategyName().toUpperCase();
 
-        d.setStrategyType("Option Seller");
-        
-        applyTradingMath(d, o); 
+        // Dynamically assign strategy categories for UI presentation
+        if (normName.contains("STRADDLE")) {
+            d.setStrategyType("Option Seller");
+            d.setInstrumentType(o.getOptionType());
+        } else if (normName.contains("CPR")) {
+            d.setStrategyType("Option Buyer");
+            d.setInstrumentType(o.getOptionType() != null ? o.getOptionType() : 
+                               (o.getSymbol() != null && o.getSymbol().endsWith("PE") ? "PE" : "CE"));
+        } else if (normName.contains("DIRECTIONAL")) {
+            d.setStrategyType("Directional Trend");
+            d.setInstrumentType(o.getOptionType() != null ? o.getOptionType() : "FUT/OPT");
+        } else {
+            d.setStrategyType("Algorithmic Strategy");
+            d.setInstrumentType(o.getOptionType());
+        }
+
         applyTimestamps(d, o);
+        applyTradingMath(d, o); 
         return d;
     }
 
@@ -74,12 +109,17 @@ public class TradeExecutionService {
         UnifiedOrderDto d = new UnifiedOrderDto();
         d.setId(o.getId());
         d.setSymbol(o.getSymbol());
-        d.setStrategyName(o.getName() != null ? o.getName() : "CPR_STRATEGY");
+        d.setStrategyName(o.getName() != null ? o.getName() : "UNNAMED_STRATEGY");
         d.setQuantity(Math.abs(o.getQuantity()));
-        
-        // NEW: Map the BUY/SELL type attribute
         d.setDirection(o.getType()); 
+        d.setExitReason(o.getExitReason());
 
+        // 👉 IDENTIFY LIVE VS PAPER TRADING MODE
+        // If the orderid exists, is not null, and is not explicitly "1", it's a LIVE market order.
+        boolean isLive = o.getOrderid() != null && !o.getOrderid().trim().isEmpty() && !o.getOrderid().equals("1");
+        d.setTradeMode(isLive ? "LIVE" : "PAPER");
+
+        // Parse Strike Price
         if (o.getStrike() != null) {
             d.setStrike(o.getStrike().toString());
         } else if (o.getSymbol() != null) {
@@ -88,6 +128,7 @@ public class TradeExecutionService {
         } else {
             d.setStrike("-");
         }
+        
         return d;
     }
 
@@ -99,20 +140,25 @@ public class TradeExecutionService {
         BigDecimal exit = o.getExitPrice();
         BigDecimal pts = BigDecimal.ZERO;
 
-        // Auto-detect math logic based on the Type attribute
         boolean isSeller = "SELL".equalsIgnoreCase(d.getDirection()) || "Option Seller".equalsIgnoreCase(d.getStrategyType());
 
         if (entry != null && exit != null && exit.compareTo(BigDecimal.ZERO) > 0) {
-            // Seller: Entry - Exit | Buyer: Exit - Entry
             pts = isSeller ? entry.subtract(exit) : exit.subtract(entry);
         }
         
         d.setPoints(pts);
         
-        if (o.getPl() != null && o.getPl().compareTo(BigDecimal.ZERO) != 0) {
-            d.setPnl(o.getPl());
+        if ("OPEN".equalsIgnoreCase(d.getStatus())) {
+            // Live blinking figures from RAM Cache (Zero DB hits!)
+            BigDecimal livePnl = riskService.getLivePnLForUI().get(o.getId());
+            d.setPnl(livePnl != null ? livePnl : BigDecimal.ZERO);
         } else {
-            d.setPnl(pts.multiply(BigDecimal.valueOf(d.getQuantity())));
+            // Static historical closing figure
+            if (o.getPl() != null) {
+                d.setPnl(o.getPl());
+            } else {
+                d.setPnl(pts.multiply(BigDecimal.valueOf(d.getQuantity())));
+            }
         }
     }
 
@@ -120,8 +166,8 @@ public class TradeExecutionService {
         d.setEntryTime(o.getCreatedOn() != null ? 
                       o.getCreatedOn().toString().replace("T", " ").substring(0, 19) : "N/A");
         
-        if (o.getActive() == 0 && o.getClosedOn() != null) {
-            d.setExitTime(o.getClosedOn().toString().replace("T", " ").substring(0, 19));
+        if (o.getActive() == 0 || "CLOSED".equalsIgnoreCase(o.getStatus())) {
+            d.setExitTime(o.getClosedOn() != null ? o.getClosedOn().toString().replace("T", " ").substring(0, 19) : "N/A");
             d.setStatus("CLOSED");
         } else {
             d.setExitTime("ACTIVE");
@@ -129,6 +175,8 @@ public class TradeExecutionService {
         }
     }
 
+    // --- LEGACY MAPPERS ---
+    
     private UnifiedOrderDto mapSR(TradeExecution e) {
         UnifiedOrderDto d = new UnifiedOrderDto();
         d.setId(e.getId());
@@ -136,15 +184,13 @@ public class TradeExecutionService {
         d.setSymbol(e.getSymbol());
         d.setInstrumentType(e.getTradeType());
         d.setStrike(e.getLevelValue() != null ? e.getLevelValue().toString() : "-");
-        
-        // Use the trade type directly for mapping
         d.setDirection(e.getTradeType() != null && e.getTradeType().toUpperCase().contains("SELL") ? "SELL" : "BUY");
         d.setStrategyType(d.getDirection().equals("SELL") ? "SELLER" : "BUYER");
-        
         d.setEntryPrice(e.getEntryPrice());
         d.setExitPrice(e.getExitPrice());
         d.setPnl(e.getPnl());
         d.setStatus(e.getStatus());
+        d.setTradeMode("PAPER"); // Default fallback for legacy tables
         return d;
     }
 
@@ -153,8 +199,9 @@ public class TradeExecutionService {
         d.setId(r.getId());
         d.setStrategyName("HEIKIN_PSAR");
         d.setSymbol(r.getSymbol());
-        d.setDirection("BUY"); // Heikin PSAR is typically a buyer strategy in this context
+        d.setDirection("BUY"); 
         d.setStatus(r.isActive() ? "OPEN" : "CLOSED");
+        d.setTradeMode("PAPER"); // Default fallback for legacy tables
         return d;
     }
 }

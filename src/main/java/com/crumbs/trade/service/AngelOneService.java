@@ -629,4 +629,20 @@ public class AngelOneService {
 			
 			return executedPrice;
 		}
+		
+		/**
+		 * PURE BROKER COUPLING: Fetches raw positions directly from AngelOne API.
+		 * Returns the raw JSONObject for the Risk Engine to process.
+		 */
+		public JSONObject getRawPositions() {
+			try {
+				SmartConnect smartConnectInstance = angelOne.signIn();
+				if (smartConnectInstance != null) {
+					return smartConnectInstance.getPosition();
+				}
+			} catch (Exception e) {
+				logger.error("Failed to fetch raw positions from AngelOne: {}", e.getMessage());
+			}
+			return null;
+		}
 }

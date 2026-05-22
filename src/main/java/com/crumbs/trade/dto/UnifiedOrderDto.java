@@ -21,4 +21,6 @@ public class UnifiedOrderDto {
     private BigDecimal pnl;        
     private String status;
     private String direction; 
+    private String exitReason; 
+    private String tradeMode; // Will hold "LIVE" or "PAPER"
 }
