@@ -52,7 +52,8 @@
             background: var(--bg-gradient);
             background-attachment: fixed;
             color: var(--text-main);
-            padding: 2rem;
+            padding: 1rem 1.5rem; /* Tighter body padding */
+            font-size: 14px; /* More compact base font */
             min-height: 100vh;
         }
 
@@ -61,91 +62,96 @@
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
-            box-shadow: 0 8px 32px 0 var(--card-shadow);
-            border-radius: 12px;
+            box-shadow: 0 4px 16px 0 var(--card-shadow);
+            border-radius: 8px; /* Tighter borders */
         }
 
         .header {
             display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 1.5rem; padding: 1.5rem;
+            margin-bottom: 1rem; padding: 1rem 1.2rem;
+        }
+        
+        .header h2 {
+            font-size: 1.2rem;
         }
 
-        .controls-right { display: flex; align-items: center; gap: 1rem; }
+        .controls-right { display: flex; align-items: center; gap: 0.8rem; }
 
         .theme-toggle {
             background: var(--glass-highlight); border: 1px solid var(--glass-border);
-            color: var(--text-main); padding: 0.6rem 1.2rem; border-radius: 20px;
-            cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;
+            color: var(--text-main); padding: 0.4rem 0.8rem; border-radius: 20px;
+            cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;
+            font-size: 0.8rem;
         }
 
         .status-indicator {
-            display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;
-            color: var(--text-muted); padding: 0.5rem 1.2rem; border-radius: 20px;
+            display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem;
+            color: var(--text-muted); padding: 0.4rem 0.8rem; border-radius: 20px;
             background: var(--glass-highlight); border: 1px solid var(--glass-border);
         }
 
         .dot {
-            width: 8px; height: 8px; border-radius: 50%; background-color: var(--success);
-            box-shadow: 0 0 10px var(--success);
+            width: 6px; height: 6px; border-radius: 50%; background-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
         }
-        .dot.paused { background-color: var(--warning); box-shadow: 0 0 10px var(--warning); }
+        .dot.paused { background-color: var(--warning); box-shadow: 0 0 8px var(--warning); }
 
         /* PNL SUMMARY WIDGETS */
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.8rem;
+            margin-bottom: 1.2rem;
         }
 
         .summary-card {
-            padding: 1.5rem;
+            padding: 1rem;
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: 0.3rem;
         }
 
         .summary-title {
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             color: var(--text-muted);
             font-weight: 600;
         }
 
         .summary-value {
-            font-size: 2rem;
+            font-size: 1.4rem; /* Compact value font */
             font-weight: 700;
             font-variant-numeric: tabular-nums;
         }
 
         /* TABS */
         .tabs-container {
-            display: flex; gap: 0.4rem; margin-bottom: -1px; overflow-x: auto; padding: 0 0.5rem;
+            display: flex; gap: 0.2rem; margin-bottom: -1px; overflow-x: auto; padding: 0 0.5rem;
         }
 
         .tab-btn {
             background: var(--glass-bg); backdrop-filter: blur(8px); color: var(--text-muted);
             border: 1px solid var(--glass-border); border-bottom: none;
-            padding: 0.8rem 1.6rem; border-radius: 10px 10px 0 0;
-            cursor: pointer; font-weight: 600; font-size: 0.9rem; white-space: nowrap;
+            padding: 0.6rem 1.2rem; border-radius: 6px 6px 0 0;
+            cursor: pointer; font-weight: 600; font-size: 0.8rem; white-space: nowrap;
         }
 
         .tab-btn.active {
             background: var(--primary); color: white; border-color: var(--primary);
-            box-shadow: 0 0 15px var(--primary-glow); z-index: 2; position: relative;
+            box-shadow: 0 0 10px var(--primary-glow); z-index: 2; position: relative;
         }
 
         /* TABLE */
-        .table-container { border-radius: 0 12px 12px 12px; overflow: hidden; }
+        .table-container { border-radius: 0 8px 8px 8px; overflow: hidden; }
         .responsive-wrapper { overflow-x: auto; width: 100%; }
-        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem; white-space: nowrap; }
-        th, td { padding: 1.1rem 1.2rem; border-bottom: 1px solid var(--glass-border); }
-        th { background-color: rgba(0, 0, 0, 0.15); color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; white-space: nowrap; }
+        th, td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--glass-border); } /* Tighter cell padding */
+        th { background-color: rgba(0, 0, 0, 0.15); color: var(--text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
         [data-theme="light"] th { background-color: rgba(255, 255, 255, 0.3); }
 
-        .badge { padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
-        .badge.open { background: var(--primary); color: white; box-shadow: 0 0 10px var(--primary-glow); }
+        .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+        .badge.open { background: var(--primary); color: white; box-shadow: 0 0 8px var(--primary-glow); }
         .badge.closed { background: rgba(148, 163, 184, 0.2); color: var(--text-main); }
         .badge.buy { background: var(--success-bg); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
         .badge.sell { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
@@ -156,7 +162,7 @@
         .pnl-positive { color: var(--success) !important; }
         .pnl-negative { color: var(--danger) !important; }
         
-        .time-muted { color: var(--text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+        .time-muted { color: var(--text-muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
     </style>
 </head>
 <body>
@@ -196,8 +202,8 @@
 
     <!-- Table -->
     <div class="glass-panel table-container" id="content">
-        <div style="padding: 4rem; text-align: center; color: var(--text-muted);">
-            <div style="display:inline-block; width: 20px; height: 20px; border: 3px solid var(--glass-border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 10px; vertical-align: middle;"></div>
+        <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+            <div style="display:inline-block; width: 16px; height: 16px; border: 2px solid var(--glass-border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px; vertical-align: middle;"></div>
             <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
             Allocating interface cache loops...
         </div>
@@ -222,12 +228,12 @@
             if (currentTheme === 'dark') {
                 body.setAttribute('data-theme', 'light');
                 document.getElementById('theme-icon').innerText = '☀️';
-                document.getElementById('theme-text').innerText = 'Light Mode';
+                document.getElementById('theme-text').innerText = 'Light';
                 currentTheme = 'light';
             } else {
                 body.removeAttribute('data-theme');
                 document.getElementById('theme-icon').innerText = '🌙';
-                document.getElementById('theme-text').innerText = 'Dark Mode';
+                document.getElementById('theme-text').innerText = 'Dark';
                 currentTheme = 'dark';
             }
         }
@@ -281,7 +287,7 @@
 
         function processAndRenderMatrix(data) {
             if (!data || data.length === 0) {
-                document.getElementById('content').innerHTML = `<div style="padding:4rem;text-align:center;">No executions found.</div>`;
+                document.getElementById('content').innerHTML = `<div style="padding:2rem;text-align:center;font-size:0.85rem;">No executions found.</div>`;
                 return;
             }
 
@@ -356,7 +362,6 @@
                 
                 const signedValue = isProfit ? '+' : '';
 
-                // Truncate milliseconds and format times cleanly
                 const formatTime = (timeStr) => {
                     if (!timeStr || timeStr === "N/A" || timeStr === "ACTIVE") return timeStr || "-";
                     return timeStr.replace("T", " ").substring(0, 19);
@@ -364,7 +369,7 @@
 
                 htmlOutput += `
                     <tr>
-                        <td style="color: var(--text-muted); font-size: 0.85rem;">#${order.id}</td>
+                        <td style="color: var(--text-muted); font-size: 0.75rem;">#${order.id}</td>
                         <td><span class="badge ${modeClass}">${tMode}</span></td>
                         <td style="font-weight: 600;">${order.symbol || 'N/A'}</td>
                         <td><span class="badge ${sideClass}">${currentDirection}</span></td>

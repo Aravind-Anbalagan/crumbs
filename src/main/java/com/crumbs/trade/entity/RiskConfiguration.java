@@ -24,23 +24,33 @@ public class RiskConfiguration {
     @Column(name = "strategy_name", length = 100)
     private String strategyName;
 
+    // --- NEW: STRATEGY CATEGORIZATION ---
+    @Column(name = "strategy_type", length = 20, nullable = false)
+    private String strategyType; // e.g., 'OPTION_SELL', 'OPTION_BUY', 'STRADDLE'
+
     @Column(name = "max_loss_limit", precision = 12, scale = 2)
     private BigDecimal maxLossLimit;
 
     @Column(name = "target_profit", precision = 12, scale = 2)
     private BigDecimal targetProfit;
 
-    @Column(name = "is_trailing_enabled")
-    private Boolean isTrailingEnabled; // Must be Boolean object, not primitive boolean
+    @Column(name = "smart_risk_flag", length = 1, nullable = false)
+    private String smartRiskFlag; 
 
-    @Column(name = "activation_threshold", precision = 12, scale = 2)
-    private BigDecimal activationThreshold;
+    @Column(name = "velocity_panic_drop", precision = 12, scale = 2)
+    private BigDecimal velocityPanicDrop;
 
-    @Column(name = "trail_by", precision = 12, scale = 2)
-    private BigDecimal trailBy;
+    @Column(name = "milestone_percent", precision = 5, scale = 2)
+    private BigDecimal milestonePercent; 
 
-    @Column(name = "profit_step", precision = 12, scale = 2)
-    private BigDecimal profitStep;
+    @Column(name = "breakeven_floor", precision = 12, scale = 2)
+    private BigDecimal breakevenFloor; 
+
+    @Column(name = "trailing_activation", precision = 12, scale = 2)
+    private BigDecimal trailingActivation; 
+
+    @Column(name = "trailing_drawdown_pct", precision = 5, scale = 2)
+    private BigDecimal trailingDrawdownPct; 
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
