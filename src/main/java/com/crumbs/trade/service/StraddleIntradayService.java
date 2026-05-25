@@ -2416,7 +2416,14 @@ public class StraddleIntradayService {
 	        
 	        // 1. Get spot price
 	        String session = sessionManager.getSession();
-	        BigDecimal spotPrice = samco.getIndexPrice(session,name);
+	        BigDecimal spotPrice = null;
+	        if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
+	            spotPrice = samco.getIndexPrice(session, name);
+	            //If Samco fails , use the angelone price
+	            //spotPrice = angelOneService.getcurrentPrice(smartconnect, strategy.getExchange(), strategy.getSymbol(), strategy.getToken());
+	        } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
+	            spotPrice = samco.getLtp(session, strategy.getExchange(), getSymbolByName(name));
+	        }
 	        
 	        if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
 	            logger.error("Invalid spot price for {}: {}", name, spotPrice);

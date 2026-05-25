@@ -186,9 +186,9 @@ public class StraddleChartController {
         return ResponseEntity.ok(updated);
     }
     
-    @GetMapping("/preMarketAnalysis")
-    public void getPreMartketLevels() {
+    @GetMapping("/atmAnalysis")
+    public void getPreMartketLevels(@RequestParam(defaultValue = "NIFTY") String name) {
     	straddleIntradayService.prevDayDataDate = null;
-        straddleExecutionService.executePreMarket("NIFTY");
+        straddleExecutionService.executePreMarket(name);
     }
 }

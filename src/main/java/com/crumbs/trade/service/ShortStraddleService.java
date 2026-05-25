@@ -383,8 +383,9 @@ public class ShortStraddleService {
     }
     
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategyConfig, Strategy sourceConfig) {
-        BigDecimal totalEntry = BigDecimal.ZERO;
-        BigDecimal totalExit = BigDecimal.ZERO;
+        BigDecimal totalEntryPoints = BigDecimal.ZERO;
+        BigDecimal totalExitPoints = BigDecimal.ZERO;
+        BigDecimal totalRupeePnL = BigDecimal.ZERO; // Track Rupee PnL instead of just points
         boolean allSuccess = true;
 
         for (Orders order : activeOrders) {
@@ -409,11 +410,18 @@ public class ShortStraddleService {
                 BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
                 BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
                 
-                totalEntry = totalEntry.add(entryPrice);
-                totalExit = totalExit.add(exitPrice);
+                totalEntryPoints = totalEntryPoints.add(entryPrice);
+                totalExitPoints = totalExitPoints.add(exitPrice);
+
+                // --- NEW PNL CALCULATION IN RUPEES ---
+                BigDecimal pointsCollected = entryPrice.subtract(exitPrice); // Short trade: entry(sell) - exit(buy)
+                BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
+                BigDecimal legRupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
+                
+                totalRupeePnL = totalRupeePnL.add(legRupeePnL);
 
                 order.setExitPrice(exitPrice);
-                order.setPl(entryPrice.subtract(exitPrice)); 
+                order.setPl(legRupeePnL); // Save Rupee PnL to DB
                 order.setClosedOn(LocalDateTime.now());
                 order.setTradePhase(PHASE_EXIT);
                 order.setStatus(STATUS_CLOSED);
@@ -427,14 +435,14 @@ public class ShortStraddleService {
         }
         
         if (allSuccess && !activeOrders.isEmpty()) {
-            BigDecimal finalPnL = totalEntry.subtract(totalExit); 
-            String emoji = finalPnL.signum() >= 0 ? "✅" : "❌";
+            String emoji = totalRupeePnL.signum() >= 0 ? "✅" : "❌";
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER"; 
             String tradeName = activeOrders.get(0).getName(); 
 
+            // Updated Telegram message to reflect the Rupee value
             telegramService.sendMessage(String.format(
-                "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **%.2f pts**", 
-                emoji, mode, tradeName, reason, totalEntry, totalExit, finalPnL
+                "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**", 
+                emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL
             ));
         }
     }

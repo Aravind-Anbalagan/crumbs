@@ -38,36 +38,46 @@
         }
         .header-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
         .header h1{font-size:1.1em;font-weight:700;color:#fff;letter-spacing:-.3px;white-space:nowrap;}
+        
+        /* Strategy Toggle */
+        .strategy-toggle {
+            display: flex;
+            background: rgba(0,0,0,0.25);
+            border-radius: 8px;
+            padding: 3px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .strategy-toggle input[type="radio"] { display: none; }
+        .strategy-toggle label {
+            padding: 4px 12px;
+            font-size: 0.75em;
+            font-weight: 700;
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        .strategy-toggle input[type="radio"]:checked + label {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
         .hdr-info{
             font-family:'JetBrains Mono',monospace; font-size:.72em;
             color:rgba(255,255,255,.85); background:rgba(255,255,255,.13);
             padding:3px 10px; border-radius:6px; border:1px solid rgba(255,255,255,.18);
         }
-        /* 2nd midpoint inline in header */
-        .hdr-mid2{
-            display:flex; align-items:center; gap:7px;
-            background:rgba(255,159,64,.15); border:1px solid rgba(255,159,64,.35);
-            border-radius:8px; padding:4px 10px;
-        }
-        .hdr-mid2 label{font-size:.75em;font-weight:700;color:#ff9f40;white-space:nowrap;}
-        .hdr-mid2 input[type=number]{
-            width:90px; padding:4px 8px; border-radius:5px;
-            border:1px solid rgba(255,159,64,.4); background:rgba(0,0,0,.3);
-            color:#fff; font-family:'JetBrains Mono',monospace; font-size:.82em; outline:none;
-        }
-        .hdr-mid2 input:focus{border-color:#ff9f40;}
-        .hdr-mid2-status{font-size:.7em;color:rgba(255,255,255,.5);font-style:italic;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
         .header-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 
-        /* ══ 2ND MID POINT (right side of header) ══ */
+        /* ══ 2ND MID POINT ══ */
         .hdr-mid2{
             display:flex; align-items:center; gap:7px;
             background:rgba(255,159,64,.13); border:1px solid rgba(255,159,64,.32);
             border-radius:9px; padding:5px 11px;
         }
         .hdr-mid2 label{font-size:.75em;font-weight:700;color:#ff9f40;white-space:nowrap;}
-        /* stored value display pill */
         .mid2-stored{
             font-family:'JetBrains Mono',monospace; font-size:.78em; font-weight:700;
             color:#ff9f40; background:rgba(255,159,64,.18);
@@ -138,7 +148,6 @@
             border-bottom:1px solid var(--panel-border);
             display:flex;align-items:center;justify-content:space-between;
         }
-        /* Select All / Hide All toggle */
         .dd-select-all{
             display:flex;align-items:center;gap:6px;padding:5px 4px 5px;
             margin-bottom:5px;border-bottom:1px solid var(--panel-border);
@@ -194,14 +203,21 @@
 <body data-theme="dark">
 <div class="container">
 
-    <!-- ══ HEADER ══ -->
     <div class="header">
         <div class="header-left">
             <h1>📊 Pre-Market Cross-Plot</h1>
+            
+            <div class="strategy-toggle">
+                <input type="radio" id="strat-nifty" name="strategy" value="NIFTY">
+                <label for="strat-nifty">NIFTY</label>
+                
+                <input type="radio" id="strat-crude" name="strategy" value="CRUDEOIL">
+                <label for="strat-crude">CRUDEOIL</label>
+            </div>
+
             <div class="hdr-info" id="headerInfo">Loading...</div>
         </div>
         <div class="header-right">
-            <!-- ⚡ 2nd Mid Point — right side -->
             <div class="hdr-mid2">
                 <label>⚡ 2nd Mid</label>
                 <div class="mid2-stored" id="mid2Stored" title="Currently stored value">—</div>
@@ -212,10 +228,8 @@
         </div>
     </div>
 
-    <!-- ══ CHARTS ══ -->
     <div class="charts-grid" id="chartsGrid">
 
-        <!-- CE Panel -->
         <div class="chart-panel ce" id="cePanel">
             <div class="panel-header">
                 <div class="ph-left">
@@ -256,7 +270,6 @@
             <div class="chart-wrapper"><canvas id="ceChart"></canvas></div>
         </div>
 
-        <!-- PE Panel -->
         <div class="chart-panel pe" id="pePanel">
             <div class="panel-header">
                 <div class="ph-left">
@@ -300,17 +313,6 @@
 </div>
 
 <script>
-/* ═══════════════════════════════════════════════════════════
-   DATASET INDEX MAP (same order for CE and PE charts)
-   0  Current Price           dot,  #ff4f6d / #3b9eff
-   1  Own Prev High           dash, #f5a623
-   2  Own Prev Low            dash, #2ecc71
-   3  Cross Prev Low          dash, #e879a0   (PE Low on CE | CE Low on PE)
-   4  Mid Point               dash, #00e5cc
-   5  Cross Prev High         dash, #ffd166   (PE High on CE | CE High on PE)
-   6  2nd Mid Point           dash, #ff9f40
-═══════════════════════════════════════════════════════════ */
-
 /* ── Theme ── */
 let currentTheme = localStorage.getItem('theme') || 'dark';
 function applyTheme() {
@@ -342,16 +344,6 @@ const state = {
     name:'NIFTY', atmStrike:0, expiry:'', tradingDate:''
 };
 
-/*
-  DATASET INDEX:
-  0 = Current Price   → DEFAULT ON
-  1 = Own Prev High   → DEFAULT ON
-  2 = Own Prev Low    → DEFAULT OFF
-  3 = Cross Prev Low  → DEFAULT ON
-  4 = Mid Point       → DEFAULT ON
-  5 = Cross Prev High → DEFAULT OFF
-  6 = 2nd Mid Point   → DEFAULT OFF
-*/
 const DEFAULT_VIS = [true, true, false, true, true, false, false];
 
 const vis = {
@@ -362,6 +354,40 @@ const vis = {
 let times=[], cePrices=[], pePrices=[];
 let ceChart, peChart;
 let currentView = 'split';
+
+/* ── Strategy Selection ── */
+function switchStrategy(strategy) {
+    // 1. Update active strategy name
+    state.name = strategy;
+    
+    // 2. Update header to show loading state immediately
+    document.getElementById('headerInfo').textContent = 'Loading ' + strategy + '...';
+    
+    // 3. Clear existing data arrays and state
+    times = []; 
+    cePrices = []; 
+    pePrices = [];
+    state.ce = { current:0, high:0, low:0 };
+    state.pe = { current:0, high:0, low:0 };
+    state.midPoint = 0;
+    
+    // 4. Reset the metrics UI (sets values back to '—')
+    updateMetrics(); 
+    
+    // 5. Destroy the old charts completely to clear the canvas
+    if (ceChart) { ceChart.destroy(); ceChart = null; }
+    if (peChart) { peChart.destroy(); peChart = null; }
+    
+    // 6. Load the 2nd Mid setting for the new strategy and fetch data
+    loadMid2FromStorage(); 
+    fetchChartData(strategy);
+}
+
+// Attach listeners to strategy radio buttons
+document.querySelectorAll('input[name="strategy"]').forEach(radio => {
+    radio.addEventListener('change', (e) => switchStrategy(e.target.value));
+});
+
 
 /* ── Dropdown open/close ── */
 function toggleDropdown(side) {
@@ -389,10 +415,8 @@ function syncSelectAll(side) {
 }
 
 function toggleSelectAll(side, event) {
-    // Prevent double-fire when clicking the checkbox itself
     if (event.target.tagName === 'INPUT') return;
     const allChk = document.getElementById('selAll-' + side);
-    // If currently all checked OR indeterminate → hide all; if all unchecked → show all
     const anyOn  = vis[side].some(Boolean);
     const newVal = !anyOn;
     for (let i = 0; i < vis[side].length; i++) {
@@ -400,7 +424,6 @@ function toggleSelectAll(side, event) {
         const chk = document.getElementById(`vis-${side}-${i}`);
         if (chk) chk.checked = newVal;
     }
-    // Apply to chart
     const chart = side === 'ce' ? ceChart : peChart;
     if (chart) {
         chart.data.datasets.forEach((ds, i) => { ds.hidden = !vis[side][i]; });
@@ -410,7 +433,6 @@ function toggleSelectAll(side, event) {
     rebuildLegend(side);
 }
 
-// Also handle when user clicks the Select All checkbox directly
 document.addEventListener('change', e => {
     if (!e.target.matches('#selAll-ce, #selAll-pe')) return;
     const side   = e.target.id === 'selAll-ce' ? 'ce' : 'pe';
@@ -440,7 +462,7 @@ function onVis(side, idx, checked) {
     rebuildLegend(side);
 }
 
-/* ── Legend config (label, color, type) per index ── */
+/* ── Legend config ── */
 const CE_LEGEND_DEF = [
     ['CE Current Price',  '#ff4f6d','dot'],
     ['CE Prev High',      '#f5a623','dash'],
@@ -474,7 +496,6 @@ function rebuildLegend(side) {
     el.innerHTML = def
         .map((d, i) => {
             if (!vis[side][i]) return '';
-            // 2nd Mid always shown in legend; grayed-out when no value set yet
             if (i === 7 && state.secondMidPoint === null)
                 return chip('2nd Mid (not set)', d[1], d[2], 'opacity:.38');
             return chip(d[0], d[1], d[2]);
@@ -540,31 +561,17 @@ const crosshairPlugin = {
         ctx.lineWidth = 1;
         ctx.strokeStyle = lineColor;
 
-        // Vertical line
-        ctx.beginPath();
-        ctx.moveTo(x, top);
-        ctx.lineTo(x, bottom);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
 
-        // Horizontal line
-        ctx.beginPath();
-        ctx.moveTo(left, y);
-        ctx.lineTo(right, y);
-        ctx.stroke();
-
-        // Intersection dot
         ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = dotColor;
-        ctx.fill();
-
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor; ctx.fill();
         ctx.restore();
     }
 };
 Chart.register(crosshairPlugin);
 
-/* Attach mouse events to a canvas to drive the crosshair */
 function attachCrosshair(canvas, getChart) {
     canvas.addEventListener('mousemove', e => {
         const chart = getChart();
@@ -574,24 +581,20 @@ function attachCrosshair(canvas, getChart) {
         const y = e.clientY - rect.top;
         const ca = chart.chartArea;
         if (x >= ca.left && x <= ca.right && y >= ca.top && y <= ca.bottom) {
-            chart._crosshairX = x;
-            chart._crosshairY = y;
+            chart._crosshairX = x; chart._crosshairY = y;
         } else {
-            chart._crosshairX = null;
-            chart._crosshairY = null;
+            chart._crosshairX = null; chart._crosshairY = null;
         }
         chart.draw();
     });
     canvas.addEventListener('mouseleave', () => {
         const chart = getChart();
         if (!chart) return;
-        chart._crosshairX = null;
-        chart._crosshairY = null;
+        chart._crosshairX = null; chart._crosshairY = null;
         chart.draw();
     });
 }
 
-/* ── Chart options — tooltip shows ONLY current price ── */
 function chartOptions(priceColor, priceLabel) {
     const c = cc();
     return {
@@ -600,17 +603,14 @@ function chartOptions(priceColor, priceLabel) {
         plugins:{
             legend:{ display:false },
             tooltip:{
-                backgroundColor: c.ttBg,
-                titleColor: c.ttTxt,
-                bodyColor:  priceColor,
-                borderColor: priceColor, borderWidth:1.5,
+                backgroundColor: c.ttBg, titleColor: c.ttTxt,
+                bodyColor:  priceColor, borderColor: priceColor, borderWidth:1.5,
                 padding:10, cornerRadius:8,
                 titleFont:{ size:11, family:'JetBrains Mono' },
                 bodyFont: { size:13, weight:'700', family:'JetBrains Mono' },
                 displayColors: false,
                 callbacks:{
                     title: ctx => '🕐 ' + ctx[0].label,
-                    /* Only show current price line (index 0) */
                     label: ctx => {
                         if (ctx.datasetIndex !== 0) return null;
                         return `  ${priceLabel}: ₹${ctx.parsed.y.toFixed(2)}`;
@@ -621,8 +621,7 @@ function chartOptions(priceColor, priceLabel) {
         },
         scales:{
             y:{
-                beginAtZero:false,
-                grid:{ color:c.grid },
+                beginAtZero:false, grid:{ color:c.grid },
                 ticks:{ callback:v=>'₹'+v.toFixed(0), color:c.tick, font:{size:10,family:'JetBrains Mono'} }
             },
             x:{
@@ -633,14 +632,12 @@ function chartOptions(priceColor, priceLabel) {
     };
 }
 
-/* ── Create / destroy ── */
 function createCEChart() {
     const canvas = document.getElementById('ceChart');
     if (!canvas) return;
     if (ceChart) { ceChart.destroy(); ceChart=null; }
     ceChart = new Chart(canvas.getContext('2d'), {
-        type:'line',
-        data:{ labels:[...times], datasets:buildCE() },
+        type:'line', data:{ labels:[...times], datasets:buildCE() },
         options: chartOptions('#ff4f6d','CE Price')
     });
     attachCrosshair(canvas, () => ceChart);
@@ -650,8 +647,7 @@ function createPEChart() {
     if (!canvas) return;
     if (peChart) { peChart.destroy(); peChart=null; }
     peChart = new Chart(canvas.getContext('2d'), {
-        type:'line',
-        data:{ labels:[...times], datasets:buildPE() },
+        type:'line', data:{ labels:[...times], datasets:buildPE() },
         options: chartOptions('#3b9eff','PE Price')
     });
     attachCrosshair(canvas, () => peChart);
@@ -662,7 +658,6 @@ function rebuildCharts() {
     rebuildLegends();
 }
 
-/* ── Live patch ── */
 function patchChart(chart, priceData, own, cross) {
     if (!chart) return;
     const ds = chart.data.datasets;
@@ -688,7 +683,6 @@ function updateCharts() {
     patchChart(peChart, pePrices, state.pe, state.ce);
 }
 
-/* ── Metrics ── */
 const fmt = v => (v!==null && v!==undefined && +v!==0) ? '₹'+Number(v).toFixed(2) : '—';
 const setTxt = (id, v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
 function updateMetrics() {
@@ -705,7 +699,6 @@ function updateMetrics() {
     setTxt('peMid',     fmt(state.midPoint));
 }
 
-/* ── View switching ── */
 function setView(view) {
     currentView = view;
     const grid  = document.getElementById('chartsGrid');
@@ -731,7 +724,6 @@ function setView(view) {
     setTimeout(rebuildCharts, 30);
 }
 
-/* ── Reset lines to default ── */
 function resetLines(side) {
     DEFAULT_VIS.forEach((v, i) => {
         vis[side][i] = v;
@@ -746,7 +738,6 @@ function resetLines(side) {
     syncSelectAll(side);
     rebuildLegend(side);
 }
-
 
 function updateMid2Display() {
     const el = document.getElementById('mid2Stored');
@@ -766,6 +757,9 @@ function loadMid2FromStorage() {
     const saved = localStorage.getItem('secondMidPoint_' + (state.name || 'NIFTY'));
     if (saved !== null && !isNaN(parseFloat(saved))) {
         state.secondMidPoint = parseFloat(saved);
+        updateMid2Display();
+    } else {
+        state.secondMidPoint = null;
         updateMid2Display();
     }
 }
@@ -803,7 +797,6 @@ async function setSecondMidPoint() {
     }
 }
 
-
 async function fetchChartData(strategyName='NIFTY') {
     try {
         const res  = await fetch(`/api/straddle/pre-market/chart/${strategyName}`);
@@ -816,7 +809,7 @@ async function fetchChartData(strategyName='NIFTY') {
             state.pe.low    = d.pe.prevLow;
             state.atmStrike = d.selectedAtm?.strike   ?? d.atmStrike ?? d.strike ?? 0;
             state.midPoint  = d.selectedAtm?.midPoint ?? d.midPoint  ?? 0;
-            state.name        = d.strategy || d.name   || 'NIFTY';
+            state.name        = d.strategy || d.name   || strategyName;
             state.expiry      = d.expiry      || '';
             state.tradingDate = d.tradingDate || '';
 
@@ -851,12 +844,22 @@ async function fetchChartData(strategyName='NIFTY') {
 /* ── Boot ── */
 window.addEventListener('DOMContentLoaded', async () => {
     applyTheme();
-    loadMid2FromStorage();
     syncSelectAll('ce');
     syncSelectAll('pe');
-    await fetchChartData('NIFTY');
-    loadMid2FromStorage();   // re-run after state.name is set from API
-    setInterval(()=>fetchChartData('NIFTY'), 60_000);
+
+    // Auto-select based on Time: Switches to CRUDEOIL starting at 4:00 PM (16:00)
+    const currentHour = new Date().getHours();
+    const initialStrategy = currentHour >= 16 ? 'CRUDEOIL' : 'NIFTY';
+    
+    // Set matching Radio Button
+    document.getElementById(initialStrategy === 'NIFTY' ? 'strat-nifty' : 'strat-crude').checked = true;
+    state.name = initialStrategy;
+
+    loadMid2FromStorage();
+    await fetchChartData(initialStrategy);
+    
+    // Interval dynamically references `state.name`
+    setInterval(()=>fetchChartData(state.name), 60_000);
 });
 </script>
 </body>
