@@ -58,20 +58,17 @@
 <div class="container">
     <div class="card" id="chart-card">
         <div class="header">
-            <!-- Theme Toggle -->
-            <div class="toggle-container" id="theme-toggle">
+                        <div class="toggle-container" id="theme-toggle">
                 <span class="toggle-label">Dark</span>
                 <div class="toggle-switch active" id="theme-switch"></div>
             </div>
 
-            <!-- Auto Update Toggle -->
-            <div class="toggle-container" id="auto-update-toggle">
+                        <div class="toggle-container" id="auto-update-toggle">
                 <span class="toggle-label" id="auto-update-label">Auto: ON</span>
                 <div class="toggle-switch active" id="auto-update-switch"></div>
             </div>
 
-            <!-- Line Visibility Dropdown -->
-            <div class="checkout-dropdown">
+                        <div class="checkout-dropdown">
                 <button class="checkout-btn" id="checkout-btn">⋮ Lines</button>
                 <div class="checkout-menu" id="checkout-menu">
                     <div class="checkout-item">
@@ -87,14 +84,17 @@
                     <div class="checkout-item"><input type="checkbox" id="pe-vwap-check" checked> <span class="swatch" style="background:#fb923c"></span> PE VWAP</div>
                     <div class="checkout-item"><input type="checkbox" id="combined-vwap-check" checked> <span class="swatch" style="background:#06b6d4"></span> Combined VWAP</div>
                     <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
-                    <!-- Updated Comb Low color to bright purple for visibility -->
-                    <div class="checkout-item"><input type="checkbox" id="combined-prev-low-check" checked> <span class="swatch" style="background:#c084fc"></span> Combined Prev Low</div>
+                                        <div class="checkout-item"><input type="checkbox" id="combined-prev-low-check" checked> <span class="swatch" style="background:#c084fc"></span> Combined Prev Low</div>
+                    <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)"/>
+                    <div class="checkout-item"><input type="checkbox" id="ce-intrinsic-check"> <span class="swatch" style="background:#10b981"></span> CE Intrinsic</div>
+                    <div class="checkout-item"><input type="checkbox" id="ce-extrinsic-check"> <span class="swatch" style="background:#34d399"></span> CE Extrinsic</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-intrinsic-check"> <span class="swatch" style="background:#f43f5e"></span> PE Intrinsic</div>
+                    <div class="checkout-item"><input type="checkbox" id="pe-extrinsic-check"> <span class="swatch" style="background:#fb7185"></span> PE Extrinsic</div>
                     <button class="checkout-ok-btn" id="checkout-ok-btn">OK</button>
                 </div>
             </div>
 
-            <!-- Strike Selection Controls -->
-            <label style="color:#94a3b8">Name</label><select id="name-select"></select>
+                        <label style="color:#94a3b8">Name</label><select id="name-select"></select>
             <label style="color:#94a3b8">Expiry</label><select id="expiry-select"></select>
             <label style="color:#94a3b8">CE</label><select id="ce-strike-select"></select>
             <label style="color:#94a3b8">PE</label><select id="pe-strike-select"></select>
@@ -103,24 +103,20 @@
                 <label for="sync-strike-check" style="color:#94a3b8; font-size:12px; cursor:pointer">Strike Sync</label>
             </div>
             
-            <!-- Reset Button -->
-            <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
+                        <button id="btn-reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#60a5fa;cursor:pointer">Reset</button>
 
-            <!-- Status Indicator -->
-            <div class="last-update" style="margin-left: auto;">
+                        <div class="last-update" style="margin-left: auto;">
                 <span id="last-update-time">--:--:--</span>
                 <span class="status-indicator live" id="status-indicator"></span>
             </div>
         </div>
 
-        <!-- Chart Area with relative positioning for the Loader Overlay -->
-        <div id="chart-wrapper" style="position: relative; flex-grow: 1; display: flex; flex-direction: column; min-height: 0;">
+                <div id="chart-wrapper" style="position: relative; flex-grow: 1; display: flex; flex-direction: column; min-height: 0;">
             <div id="loading-overlay"><div class="spinner"></div>Loading Data...</div>
             <div id="chart" style="flex-grow: 1;"></div>
         </div>
 
-        <!-- Static Bottom Legend -->
-        <div id="bottom-legend">
+                <div id="bottom-legend">
             <div><span style="color:#94a3b8">Diff:</span> <span id="val-diff" style="color:#f472b6">-</span></div>
             <div><span style="color:#22c55e">CE:</span> <span id="val-ce">-</span></div>
             <div><span style="color:#ef4444">PE:</span> <span id="val-pe">-</span></div>
@@ -128,8 +124,11 @@
             <div><span style="color:#a78bfa">CE VWAP:</span> <span id="val-ce-vwap">-</span></div>
             <div><span style="color:#fb923c">PE VWAP:</span> <span id="val-pe-vwap">-</span></div>
             <div><span style="color:#06b6d4">Comb VWAP:</span> <span id="val-comb-vwap">-</span></div>
-            <!-- Updated Comb Low color to bright purple for visibility -->
-            <div><span style="color:#c084fc">Comb Prev Low:</span> <span id="val-comb-low">-</span></div>
+                        <div><span style="color:#c084fc">Comb Prev Low:</span> <span id="val-comb-low">-</span></div>
+            <div><span style="color:#10b981">CE Int:</span> <span id="val-ce-intrinsic">-</span></div>
+            <div><span style="color:#34d399">CE Ext:</span> <span id="val-ce-extrinsic">-</span></div>
+            <div><span style="color:#f43f5e">PE Int:</span> <span id="val-pe-intrinsic">-</span></div>
+            <div><span style="color:#fb7185">PE Ext:</span> <span id="val-pe-extrinsic">-</span></div>
         </div>
     </div>
 </div>

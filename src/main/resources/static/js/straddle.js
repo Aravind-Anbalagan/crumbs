@@ -8,7 +8,10 @@ let apiData = [];
 let currentSeries = {
     ceSeries: [], peSeries: [], combinedPremiumSeries: [],
     ceVwapSeries: [], peVwapSeries: [], combinedVwapSeries: [],
-    combinedPrevLowSeries: []
+    combinedPrevLowSeries: [],
+    // NEW: Extrinsic and Intrinsic series
+    ceIntrinsicSeries: [], ceExtrinsicSeries: [], 
+    peIntrinsicSeries: [], peExtrinsicSeries: []
 };
 
 // Start in Dark Theme by default to match the HTML layout
@@ -20,10 +23,11 @@ let savedVisibleRange = null;
 let lastUpdateTimestamp = null;
 let crosshairUpdatePending = false;
 
-// Default 7 lines
+// Default lines visibility (Intrinsic/Extrinsic default to false to prevent clutter)
 let lineVisibility = {
     ce: true, pe: true, combinedPremium: true,
-    ceVwap: true, peVwap: true, combinedVwap: true, combinedPrevLow: true
+    ceVwap: true, peVwap: true, combinedVwap: true, combinedPrevLow: true,
+    ceIntrinsic: false, ceExtrinsic: false, peIntrinsic: false, peExtrinsic: false
 };
 
 let pendingLineVisibility = {...lineVisibility};
@@ -47,7 +51,9 @@ function syncCheckboxesFromVisibility() {
     const map = {
         ce: 'ce-check', pe: 'pe-check', combinedPremium: 'combined-premium-check',
         ceVwap: 'ce-vwap-check', peVwap: 'pe-vwap-check', combinedVwap: 'combined-vwap-check',
-        combinedPrevLow: 'combined-prev-low-check'
+        combinedPrevLow: 'combined-prev-low-check',
+        ceIntrinsic: 'ce-intrinsic-check', ceExtrinsic: 'ce-extrinsic-check',
+        peIntrinsic: 'pe-intrinsic-check', peExtrinsic: 'pe-extrinsic-check'
     };
     Object.entries(map).forEach(([key, id]) => {
         const el = document.getElementById(id);
@@ -73,6 +79,10 @@ function setAllLinesChecked(checked) {
     document.getElementById('pe-vwap-check').checked = checked;
     document.getElementById('combined-vwap-check').checked = checked;
     document.getElementById('combined-prev-low-check').checked = checked;
+    document.getElementById('ce-intrinsic-check').checked = checked;
+    document.getElementById('ce-extrinsic-check').checked = checked;
+    document.getElementById('pe-intrinsic-check').checked = checked;
+    document.getElementById('pe-extrinsic-check').checked = checked;
     updateAllCheckbox();
 }
 
@@ -85,6 +95,10 @@ function applyLineVisibilityChanges() {
     lines.peVwap.setData(lineVisibility.peVwap ? currentSeries.peVwapSeries : []);
     lines.combinedVwap.setData(lineVisibility.combinedVwap ? currentSeries.combinedVwapSeries : []);
     lines.combinedPrevLow.setData(lineVisibility.combinedPrevLow ? currentSeries.combinedPrevLowSeries : []);
+    lines.ceIntrinsic.setData(lineVisibility.ceIntrinsic ? currentSeries.ceIntrinsicSeries : []);
+    lines.ceExtrinsic.setData(lineVisibility.ceExtrinsic ? currentSeries.ceExtrinsicSeries : []);
+    lines.peIntrinsic.setData(lineVisibility.peIntrinsic ? currentSeries.peIntrinsicSeries : []);
+    lines.peExtrinsic.setData(lineVisibility.peExtrinsic ? currentSeries.peExtrinsicSeries : []);
     saveLineVisibility();
 }
 
@@ -111,7 +125,10 @@ function updateLastUpdateTime() {
 }
 
 function transformToSeries(apiArray) {
-    const series = { ce: [], pe: [], combinedPremium: [], ceVwap: [], peVwap: [], combinedVwap: [], combinedPrevLow: [] };
+    const series = { 
+        ce: [], pe: [], combinedPremium: [], ceVwap: [], peVwap: [], combinedVwap: [], combinedPrevLow: [],
+        ceIntrinsic: [], ceExtrinsic: [], peIntrinsic: [], peExtrinsic: []
+    };
 
     for (const row of apiArray) {
         const t = toUnixSeconds(row.timestamp);
@@ -124,12 +141,18 @@ function transformToSeries(apiArray) {
         if (row.peVwap != null) series.peVwap.push({ time: t, value: Number(row.peVwap) });
         if (row.combinedVwap != null) series.combinedVwap.push({ time: t, value: Number(row.combinedVwap) });
         if (row.combinedPrevLow != null) series.combinedPrevLow.push({ time: t, value: Number(row.combinedPrevLow) });
+        if (row.ceIntrinsic != null) series.ceIntrinsic.push({ time: t, value: Number(row.ceIntrinsic) });
+        if (row.ceExtrinsic != null) series.ceExtrinsic.push({ time: t, value: Number(row.ceExtrinsic) });
+        if (row.peIntrinsic != null) series.peIntrinsic.push({ time: t, value: Number(row.peIntrinsic) });
+        if (row.peExtrinsic != null) series.peExtrinsic.push({ time: t, value: Number(row.peExtrinsic) });
     }
 
     Object.assign(currentSeries, {
         ceSeries: series.ce, peSeries: series.pe, combinedPremiumSeries: series.combinedPremium,
         ceVwapSeries: series.ceVwap, peVwapSeries: series.peVwap, combinedVwapSeries: series.combinedVwap,
-        combinedPrevLowSeries: series.combinedPrevLow
+        combinedPrevLowSeries: series.combinedPrevLow,
+        ceIntrinsicSeries: series.ceIntrinsic, ceExtrinsicSeries: series.ceExtrinsic,
+        peIntrinsicSeries: series.peIntrinsic, peExtrinsicSeries: series.peExtrinsic
     });
 }
 
@@ -159,7 +182,11 @@ const lines = {
     ceVwap: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#a78bfa', priceScaleId: 'right' }),
     peVwap: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#fb923c', priceScaleId: 'right' }),
     combinedVwap: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2.5, color: '#06b6d4', priceScaleId: 'right', title: 'Comb Vwap' }),
-    combinedPrevLow: chart.addLineSeries({ lineWidth: 2, color: '#581c87', lineStyle: 1, priceScaleId: 'right', title: 'Comb Prev Low' })
+    combinedPrevLow: chart.addLineSeries({ lineWidth: 2, color: '#581c87', lineStyle: 1, priceScaleId: 'right', title: 'Comb Prev Low' }),
+    ceIntrinsic: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#10b981', priceScaleId: 'right' }),
+    ceExtrinsic: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#34d399', priceScaleId: 'right' }),
+    peIntrinsic: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#f43f5e', priceScaleId: 'right' }),
+    peExtrinsic: chart.addLineSeries({ priceLineVisible: false, lastValueVisible: true, lineWidth: 2, color: '#fb7185', priceScaleId: 'right' })
 };
 
 // Toggle Theme Logic
@@ -189,7 +216,7 @@ function toggleTheme() {
 // DOM Cache for high-performance legend updates
 const domCache = {};
 function initDOMCache() {
-    ['diff', 'ce', 'pe', 'comb', 'ce-vwap', 'pe-vwap', 'comb-vwap', 'comb-low'].forEach(id => {
+    ['diff', 'ce', 'pe', 'comb', 'ce-vwap', 'pe-vwap', 'comb-vwap', 'comb-low', 'ce-intrinsic', 'ce-extrinsic', 'pe-intrinsic', 'pe-extrinsic'].forEach(id => {
         domCache[id] = document.getElementById(`val-${id}`);
     });
 }
@@ -215,6 +242,10 @@ function updateLegendValues(vals) {
     domCache['pe-vwap'].textContent = fmt(vals['pe-vwap']);
     domCache['comb-vwap'].textContent = fmt(vals['comb-vwap']);
     domCache['comb-low'].textContent = fmt(vals['comb-low']);
+    domCache['ce-intrinsic'].textContent = fmt(vals['ce-intrinsic']);
+    domCache['ce-extrinsic'].textContent = fmt(vals['ce-extrinsic']);
+    domCache['pe-intrinsic'].textContent = fmt(vals['pe-intrinsic']);
+    domCache['pe-extrinsic'].textContent = fmt(vals['pe-extrinsic']);
 }
 
 function updateLegendLatest() {
@@ -226,7 +257,11 @@ function updateLegendLatest() {
         'ce-vwap': getLast(currentSeries.ceVwapSeries),
         'pe-vwap': getLast(currentSeries.peVwapSeries),
         'comb-vwap': getLast(currentSeries.combinedVwapSeries),
-        'comb-low': getLast(currentSeries.combinedPrevLowSeries)
+        'comb-low': getLast(currentSeries.combinedPrevLowSeries),
+        'ce-intrinsic': getLast(currentSeries.ceIntrinsicSeries),
+        'ce-extrinsic': getLast(currentSeries.ceExtrinsicSeries),
+        'pe-intrinsic': getLast(currentSeries.peIntrinsicSeries),
+        'pe-extrinsic': getLast(currentSeries.peExtrinsicSeries)
     });
 }
 
@@ -246,7 +281,11 @@ function updateLegendAtCrosshair(param) {
         'ce-vwap': getValue(getData(lines.ceVwap)),
         'pe-vwap': getValue(getData(lines.peVwap)),
         'comb-vwap': getValue(getData(lines.combinedVwap)),
-        'comb-low': getValue(getData(lines.combinedPrevLow))
+        'comb-low': getValue(getData(lines.combinedPrevLow)),
+        'ce-intrinsic': getValue(getData(lines.ceIntrinsic)),
+        'ce-extrinsic': getValue(getData(lines.ceExtrinsic)),
+        'pe-intrinsic': getValue(getData(lines.peIntrinsic)),
+        'pe-extrinsic': getValue(getData(lines.peExtrinsic))
     });
 }
 
@@ -254,7 +293,10 @@ function updateLegendAtCrosshair(param) {
 function showLoader() {
     document.getElementById('loading-overlay').style.display = 'flex';
     Object.keys(lines).forEach(k => lines[k].setData([])); // Clear old lines instantly
-    updateLegendValues({ ce: null, pe: null, comb: null, 'ce-vwap': null, 'pe-vwap': null, 'comb-vwap': null, 'comb-low': null });
+    updateLegendValues({ 
+        ce: null, pe: null, comb: null, 'ce-vwap': null, 'pe-vwap': null, 'comb-vwap': null, 'comb-low': null,
+        'ce-intrinsic': null, 'ce-extrinsic': null, 'pe-intrinsic': null, 'pe-extrinsic': null
+    });
 }
 
 function hideLoader() {
@@ -374,7 +416,9 @@ function initCheckoutDropdown() {
     const mapping = {
         'ce-check': 'ce', 'pe-check': 'pe', 'combined-premium-check': 'combinedPremium',
         'ce-vwap-check': 'ceVwap', 'pe-vwap-check': 'peVwap', 'combined-vwap-check': 'combinedVwap',
-        'combined-prev-low-check': 'combinedPrevLow'
+        'combined-prev-low-check': 'combinedPrevLow',
+        'ce-intrinsic-check': 'ceIntrinsic', 'ce-extrinsic-check': 'ceExtrinsic',
+        'pe-intrinsic-check': 'peIntrinsic', 'pe-extrinsic-check': 'peExtrinsic'
     };
 
     Object.entries(mapping).forEach(([id, key]) => {
@@ -391,7 +435,9 @@ function syncCheckboxesFromPendingVisibility() {
     const map = {
         ce: 'ce-check', pe: 'pe-check', combinedPremium: 'combined-premium-check',
         ceVwap: 'ce-vwap-check', peVwap: 'pe-vwap-check', combinedVwap: 'combined-vwap-check',
-        combinedPrevLow: 'combined-prev-low-check'
+        combinedPrevLow: 'combined-prev-low-check',
+        ceIntrinsic: 'ce-intrinsic-check', ceExtrinsic: 'ce-extrinsic-check',
+        peIntrinsic: 'pe-intrinsic-check', peExtrinsic: 'pe-extrinsic-check'
     };
     Object.entries(map).forEach(([key, id]) => {
         const el = document.getElementById(id);
@@ -449,6 +495,8 @@ async function updateIncrementalData() {
             pushUpdate('ce', 'ce'); pushUpdate('pe', 'pe'); pushUpdate('combinedPremium', 'combinedPremium');
             pushUpdate('ceVwap', 'ceVwap'); pushUpdate('peVwap', 'peVwap'); pushUpdate('combinedVwap', 'combinedVwap');
             pushUpdate('combinedPrevLow', 'combinedPrevLow');
+            pushUpdate('ceIntrinsic', 'ceIntrinsic'); pushUpdate('ceExtrinsic', 'ceExtrinsic');
+            pushUpdate('peIntrinsic', 'peIntrinsic'); pushUpdate('peExtrinsic', 'peExtrinsic');
         }
 
         lastUpdateTimestamp = newRecords[newRecords.length - 1].timestamp;

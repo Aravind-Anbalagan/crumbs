@@ -1076,6 +1076,7 @@ public class StraddleIntradayService {
 			pt.setCe(r.getCePrice());
 			pt.setCeOpen(r.getCeOpenPrice());
 			pt.setCeExtrinsic(r.getCeExtrinsic());
+			pt.setCeIntrinsic(r.getCeIntrinsic());
 			pt.setCeVwap(r.getCeVwap());
 			pt.setCeIV(r.getCeIV());  // ✅ ADD
 			// 🟢 SET THESE HERE (Then you can delete the loops you mentioned)
@@ -1094,6 +1095,7 @@ public class StraddleIntradayService {
 			pt.setPe(r.getPePrice());
 			pt.setPeOpen(r.getPeOpenPrice());
 			pt.setPeExtrinsic(r.getPeExtrinsic());
+			pt.setPeIntrinsic(r.getPeIntrinsic());
 			pt.setPeVwap(r.getPeVwap());
 			pt.setPeIV(r.getPeIV());  // ✅ ADD
 			// 🟢 SET THESE HERE
@@ -1106,7 +1108,7 @@ public class StraddleIntradayService {
 			String key = r.getTimestamp().atZone(ist).toOffsetDateTime().withNano(0).toString();
 			CombinedChartPoint pt = map.computeIfAbsent(key, t -> new CombinedChartPoint(
 				t, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
-			,null,null,null,null, null, null));
+			,null,null,null,null, null, null, peStrike, peStrike));
 			pt.setSpot(r.getSpot());
 		}
 		

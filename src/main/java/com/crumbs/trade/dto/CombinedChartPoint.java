@@ -26,6 +26,8 @@ public class CombinedChartPoint {
 
     private BigDecimal peExtrinsic;   // <-- NEW
     private BigDecimal ceExtrinsic;   // <-- NEW
+    private BigDecimal peIntrinsic;   // <-- NEW
+    private BigDecimal ceIntrinsic;   // <-- NEW
     private BigDecimal avgPrice;
     
     private BigDecimal ceVwap;
