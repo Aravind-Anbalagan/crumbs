@@ -3,26 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crumbs Execution Terminal</title>
+    <title>Crumbs Terminal - Glass Execution</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
+        /* --- Glassmorphism Theme Variables --- */
         :root {
-            --bg-color: #131722;
-            --text-color: #d1d4dc;
-            --header-bg: #1e222d;
-            --border-color: #2b2b43;
-            --btn-bg: #2b2b43;
-            --btn-hover: #363a45;
-            --accent-blue: #2962FF;
+            --bg-gradient: linear-gradient(135deg, #090e17, #131722, #1a1625);
+            --glass-bg: rgba(19, 23, 34, 0.55);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            
+            --btn-glass: rgba(255, 255, 255, 0.05);
+            --btn-glass-hover: rgba(255, 255, 255, 0.1);
+            
+            --text-color: #e2e8f0;
+            --text-muted: #8b94a5;
+            --accent-blue: #3b82f6;
+            --chart-grid: rgba(255, 255, 255, 0.05);
         }
 
         body.light-mode {
-            --bg-color: #ffffff;
-            --text-color: #191919;
-            --header-bg: #f0f3fa;
-            --border-color: #d1d4dc;
-            --btn-bg: #e0e3eb;
-            --btn-hover: #c5cbce;
+            --bg-gradient: linear-gradient(135deg, #e0e7ff, #f8fafc, #f3e8ff);
+            --glass-bg: rgba(255, 255, 255, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            
+            --btn-glass: rgba(0, 0, 0, 0.04);
+            --btn-glass-hover: rgba(0, 0, 0, 0.08);
+            
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --chart-grid: rgba(0, 0, 0, 0.05);
         }
 
         * { box-sizing: border-box; }
@@ -30,28 +41,40 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: var(--bg-color);
+            background: var(--bg-gradient);
+            background-attachment: fixed;
             color: var(--text-color);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             display: flex;
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
+            transition: background 0.4s ease, color 0.4s ease;
         }
 
+        /* --- Glass Panel Utility --- */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            transition: all 0.4s ease;
+        }
+
+        /* --- Header Styles --- */
         #header {
-            padding: 10px 15px;
-            background-color: var(--header-bg);
-            border-bottom: 1px solid var(--border-color);
+            padding: 12px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
-            gap: 10px;
+            gap: 15px;
+            z-index: 10;
         }
 
         .title-wrapper { display: flex; align-items: center; gap: 10px; margin: 0; }
-        .title-wrapper h2 { margin: 0; font-size: 1.3rem; }
+        .title-wrapper h2 { margin: 0; font-size: 1.3rem; letter-spacing: 0.5px; }
 
         .live-dot { 
             width: 10px; height: 10px; border-radius: 50%; 
@@ -60,7 +83,7 @@
         }
         .live-dot.connected { 
             background: #26a69a; 
-            box-shadow: 0 0 8px #26a69a; 
+            box-shadow: 0 0 10px #26a69a; 
             animation: pulse 1.5s infinite; 
         }
 
@@ -75,37 +98,176 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            background: var(--bg-color);
+            background: var(--btn-glass);
             padding: 6px 14px;
-            border-radius: 4px;
-            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            border: 1px solid var(--glass-border);
             font-size: 0.85rem;
+            transition: all 0.3s ease;
         }
-
         .toggle-group label { display: flex; align-items: center; cursor: pointer; gap: 6px; font-weight: 500; }
 
         .controls select, .controls button {
-            background: var(--btn-bg);
+            background: var(--btn-glass);
             color: var(--text-color);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--glass-border);
             padding: 8px 14px;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
+            backdrop-filter: blur(8px);
+            transition: all 0.2s;
         }
+        .controls button:hover, .controls select:hover { background: var(--btn-glass-hover); }
 
-        #theme-btn { 
-            padding: 7px 12px; 
-            font-size: 1rem;
+        #theme-btn { padding: 7px 12px; font-size: 1rem; display: flex; align-items: center; gap: 5px; }
+
+        /* --- PnL and Status Container --- */
+        .pnl-container {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 20px;
+            border-left: 1px solid var(--glass-border);
+            padding-left: 15px;
+        }
+        .status-box { text-align: right; }
+        .status-box span { font-size: 10px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+        
+        .pnl-box { 
+            background: var(--btn-glass); 
+            padding: 6px 16px; 
+            border-radius: 8px; 
+            border: 1px solid var(--glass-border); 
+            text-align: center; 
+        }
+        .pnl-box span { display: block; font-size: 10px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+        
+        #trade-status { font-family: 'Courier New', Courier, monospace; font-size: 15px; font-weight: bold; color: var(--text-muted); }
+        #pnl-val { font-family: 'Courier New', Courier, monospace; font-size: 22px; font-weight: bold; color: var(--text-muted); text-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        
+        .text-green { color: #10b981 !important; text-shadow: 0 0 10px rgba(16, 185, 129, 0.3) !important; }
+        .text-red { color: #ef4444 !important; text-shadow: 0 0 10px rgba(239, 68, 68, 0.3) !important; }
+
+        /* --- Layout Wrappers --- */
+        #main-wrapper {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+            width: 100%;
+            padding: 15px;
+            gap: 15px;
         }
 
+        /* --- Sidebar Styles --- */
+        #sidebar {
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 20px;
+            flex-shrink: 0;
+            border-radius: 16px;
+        }
+
+        .side-section-title { 
+            font-size: 11px; 
+            font-weight: 800; 
+            text-transform: uppercase; 
+            color: var(--text-muted); 
+            margin-bottom: 8px; 
+            display: block; 
+            letter-spacing: 1px;
+        }
+        
+        .flex-row { display: flex; gap: 10px; }
+        .flex-1 { flex: 1; }
+
+        /* Radio Buttons UI */
+        .trade-radio-label {
+            display: block;
+            border: 1px solid var(--glass-border);
+            background: var(--btn-glass);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(4px);
+        }
+        
+        input[type="radio"]:checked + .trade-radio-label {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transform: translateY(-1px);
+        }
+        
+        input[type="radio"]:checked + .trade-radio-label.buy-btn { background-color: #10b981; color: white; border-color: #10b981; }
+        input[type="radio"]:checked + .trade-radio-label.sell-btn { background-color: #ef4444; color: white; border-color: #ef4444; }
+
+        select.full-width {
+            width: 100%;
+            background: var(--btn-glass);
+            color: var(--text-color);
+            border: 1px solid var(--glass-border);
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 13px;
+            outline: none;
+            backdrop-filter: blur(4px);
+        }
+        select.full-width option { background: #1e222d; color: #fff; }
+        body.light-mode select.full-width option { background: #fff; color: #000; }
+
+        .exec-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 800;
+            font-size: 13px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .exec-btn.enter { 
+            background: linear-gradient(135deg, #10b981, #059669); 
+            margin-bottom: 12px; 
+        }
+        .exec-btn.enter:hover { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); transform: translateY(-1px); }
+        
+        .exec-btn.exit { 
+            background: linear-gradient(135deg, #ef4444, #dc2626); 
+        }
+        .exec-btn.exit:hover { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); transform: translateY(-1px); }
+        
+        .exec-btn:active { transform: scale(0.97); }
+
+        /* System Logs */
+        .logs-container { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; margin-top: 5px; }
+        #status-log {
+            flex-grow: 1;
+            background: var(--btn-glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            overflow-y: auto;
+            backdrop-filter: blur(4px);
+        }
+
+        /* --- Chart Area --- */
         #chart-wrapper {
             flex-grow: 1;
             position: relative;
             width: 100%;
+            border-radius: 16px;
+            overflow: hidden;
         }
 
         #chart-container {
@@ -120,23 +282,31 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background-color: rgba(19, 23, 34, 0.8);
+            background: var(--glass-bg);
+            backdrop-filter: blur(8px);
             z-index: 10;
-            color: #ef5350;
+            color: var(--accent-blue);
+            font-size: 1.2rem;
             font-weight: bold;
+            letter-spacing: 1px;
         }
 
         input[type="radio"], input[type="checkbox"] { accent-color: var(--accent-blue); cursor: pointer; }
         
-        /* Updated Indicator Colors for the Legend */
-        .color-vwap { color: #9C27B0; font-weight: bold; } /* Purple */
-        .color-fast { color: #089981; font-weight: bold; } /* Green */
-        .color-slow { color: #F23645; font-weight: bold; } /* Red */
+        .color-vwap { color: #d946ef; font-weight: bold; } /* Slightly brighter purple */
+        .color-fast { color: #10b981; font-weight: bold; } 
+        .color-slow { color: #ef4444; font-weight: bold; } 
+        
+        /* Custom Scrollbar for logs */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(150, 150, 150, 0.3); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(150, 150, 150, 0.5); }
     </style>
 </head>
 <body>
 
-    <div id="header">
+    <div id="header" class="glass-panel">
         <div class="title-wrapper">
             <h2>⚡ Crumbs Terminal</h2>
             <span id="live-dot" class="live-dot" title="SSE Disconnected"></span>
@@ -164,13 +334,67 @@
             
             <button onclick="updateChart()">🔄 Sync</button>
         </div>
+
+        <div class="pnl-container">
+            <div class="status-box">
+                <span>Active Position</span><br>
+                <span id="trade-status">NONE</span>
+            </div>
+            <div class="pnl-box">
+                <span>Live PnL</span>
+                <span id="pnl-val">0.00</span>
+            </div>
+        </div>
     </div>
 
-    <div id="chart-wrapper">
-        <div id="chart-overlay">
-            <div id="overlay-message">Searching for data...</div>
+    <div id="main-wrapper">
+        <!-- Execution Sidebar -->
+        <div id="sidebar" class="glass-panel">
+            
+            <div id="naked-options" style="display: flex; flex-direction: column; gap: 18px;">
+                <div>
+                    <span class="side-section-title">Transaction Type</span>
+                    <div class="flex-row">
+                        <label class="flex-1">
+                            <input type="radio" name="txnType" value="BUY" checked style="display:none;">
+                            <div class="trade-radio-label buy-btn">BUY</div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="txnType" value="SELL" style="display:none;">
+                            <div class="trade-radio-label sell-btn">SELL</div>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <span class="side-section-title">Option Leg</span>
+                    <select id="naked-leg" class="full-width">
+                        <option value="CE">CALL (CE)</option>
+                        <option value="PE">PUT (PE)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <span class="side-section-title">Execution</span>
+                <button class="exec-btn enter" onclick="executeTrade('entry')">ENTER POSITION</button>
+                <button class="exec-btn exit" onclick="executeTrade('exit')">EXIT ALL</button>
+            </div>
+
+            <div class="logs-container">
+                <span class="side-section-title">System Logs</span>
+                <div id="status-log">
+                    <div style="color: var(--text-muted);">System initialized. Ready for execution...</div>
+                </div>
+            </div>
         </div>
-        <div id="chart-container"></div>
+
+        <!-- Chart Area -->
+        <div id="chart-wrapper" class="glass-panel">
+            <div id="chart-overlay">
+                <div id="overlay-message">Searching for data...</div>
+            </div>
+            <div id="chart-container"></div>
+        </div>
     </div>
 
     <script>
@@ -178,16 +402,18 @@
         const AppState = {
             chart: null,
             series: { candle: null, priceLine: null, vwap: null, fastEma: null, slowEma: null },
-            data: { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } }
+            data: { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } },
+            tradeType: null
         };
 
         // --- SSE Stream State ---
         const StreamState = {
             source: null,
+            pnlSource: null,
             iKeyCurrent: null,
             iKeyCache: {},
             pendingTicks: [],
-            TF_SECS: 300, // 5 minutes in seconds
+            TF_SECS: 300, 
             IST_OFFSET: 19800
         };
 
@@ -195,10 +421,8 @@
             const now = new Date();
             const hour = now.getHours();
             
-            // Logic: 9 AM to 4 PM (16:00)
             const isDaytime = (hour >= 9 && hour < 16);
 
-            // Set default theme and symbol based on time
             if (isDaytime) {
                 document.body.classList.add('light-mode');
                 document.getElementById('sym-nifty').checked = true;
@@ -213,7 +437,6 @@
                 if (AppState.chart) AppState.chart.resize(wrapper.clientWidth, wrapper.clientHeight);
             });
 
-            // Start initial data fetch and connect SSE stream
             updateChart();
             connectSSE();
         }
@@ -225,18 +448,18 @@
             AppState.chart = LightweightCharts.createChart(container, {
                 width: wrapper.clientWidth,
                 height: wrapper.clientHeight,
-                timeScale: { timeVisible: true }
+                timeScale: { timeVisible: true },
+                layout: { background: { type: 'solid', color: 'transparent' } } // Required for glass background to show through
             });
 
             syncChartColors();
 
-            AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#089981', downColor: '#F23645' });
-            AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#2962FF', visible: false });
+            AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#10b981', downColor: '#ef4444' });
+            AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#3b82f6', visible: false });
             
-            // Assign specific, zone-defining colors here
-            AppState.series.vwap = AppState.chart.addLineSeries({ color: '#9C27B0', lineWidth: 2 }); // Purple
-            AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#089981', lineWidth: 2 }); // Green
-            AppState.series.slowEma = AppState.chart.addLineSeries({ color: '#F23645', lineWidth: 2 }); // Red
+            AppState.series.vwap = AppState.chart.addLineSeries({ color: '#d946ef', lineWidth: 2 }); 
+            AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#10b981', lineWidth: 2 }); 
+            AppState.series.slowEma = AppState.chart.addLineSeries({ color: '#ef4444', lineWidth: 2 }); 
         }
 
         function toggleTheme() {
@@ -246,30 +469,79 @@
 
         function syncChartColors() {
             const isLight = document.body.classList.contains('light-mode');
-            const themeCfg = {
-                background: isLight ? '#ffffff' : '#131722',
-                text: isLight ? '#191919' : '#d1d4dc',
-                grid: isLight ? '#f0f3fa' : '#2b2b43'
-            };
+            const textColor = isLight ? '#1e293b' : '#e2e8f0';
+            const gridColor = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
 
-            AppState.chart.applyOptions({
-                layout: { background: { type: 'solid', color: themeCfg.background }, textColor: themeCfg.text },
-                grid: { vertLines: { color: themeCfg.grid }, horzLines: { color: themeCfg.grid } }
-            });
-
-            const overlay = document.getElementById('chart-overlay');
-            overlay.style.backgroundColor = isLight ? 'rgba(255,255,255,0.8)' : 'rgba(19,23,34,0.8)';
-            
-            // CRITICAL: Force markers to be re-evaluated and redrawn with correct theme colors
-            if (AppState.data.markers.crossovers.length > 0) {
-                applyToggles();
+            if(AppState.chart) {
+                AppState.chart.applyOptions({
+                    layout: { textColor: textColor },
+                    grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } }
+                });
             }
+            
+            if (AppState.data.markers.crossovers.length > 0) applyToggles();
+        }
+
+        async function executeTrade(action) {
+            logStatus(`Initiating ${action.toUpperCase()} sequence...`);
+            const statusEl = document.getElementById('trade-status');
+            
+            // Simplified logic: Always uses naked leg values
+            const typeToSend = document.getElementById('naked-leg').value;
+            const txnType = document.querySelector('input[name="txnType"]:checked').value;
+
+            const symbol = document.querySelector('input[name="symbol-select"]:checked').value;
+            const wsSymbol = symbol === 'SAMCO_NIFTY' ? 'NIFTY' : symbol;
+
+            try {
+                const url = `/api/global/${action}?name=${wsSymbol}&type=${typeToSend}&txnType=${txnType}`;
+                const res = await fetch(url, { method: 'POST' });
+                const msg = await res.text();
+                logStatus(msg);
+                
+                if (msg.includes('SUCCESS')) {
+                    if (action === 'entry') {
+                        statusEl.innerText = `${txnType} ${typeToSend}`;
+                        statusEl.className = txnType === 'BUY' ? 'text-green' : 'text-red';
+                        AppState.tradeType = typeToSend;
+                        startPnLStream(wsSymbol);
+                    } else if (action === 'exit') {
+                        statusEl.innerText = 'NONE';
+                        statusEl.className = '';
+                        if (StreamState.pnlSource) StreamState.pnlSource.close();
+                        document.getElementById('pnl-val').innerText = '0.00';
+                        document.getElementById('pnl-val').className = '';
+                    }
+                }
+            } catch (e) { 
+                logStatus("Trade network request failed."); 
+            }
+        }
+
+        function startPnLStream(symbol) {
+            if (StreamState.pnlSource) StreamState.pnlSource.close();
+            const pnlDisplay = document.getElementById('pnl-val');
+            
+            StreamState.pnlSource = new EventSource(`/api/global/pnl/stream?name=${symbol}&type=${AppState.tradeType}`);
+            StreamState.pnlSource.addEventListener('pnl-update', (e) => {
+                const val = parseFloat(e.data);
+                pnlDisplay.innerText = val.toFixed(2);
+                pnlDisplay.className = val > 0 ? 'text-green' : val < 0 ? 'text-red' : '';
+            });
+            StreamState.pnlSource.onerror = () => StreamState.pnlSource.close();
+        }
+
+        function logStatus(msg) {
+            const div = document.getElementById('status-log');
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            div.prepend(logEntry);
+            while (div.children.length > 50) div.lastChild.remove();
         }
 
         function showOverlay(msg) {
             const overlay = document.getElementById('chart-overlay');
-            const messageEl = document.getElementById('overlay-message');
-            messageEl.innerText = msg;
+            document.getElementById('overlay-message').innerText = msg;
             overlay.style.display = 'flex';
         }
 
@@ -284,12 +556,12 @@
 
         async function updateChart() {
             const symbol = document.querySelector('input[name="symbol-select"]:checked').value;
+            const wsSymbol = symbol === 'SAMCO_NIFTY' ? 'NIFTY' : symbol;
             
             clearChart();
             showOverlay(`Fetching ${symbol} data...`);
 
             try {
-                // Fetch historical API
                 const response = await fetch(`/api/v1/market-trend/chart-data?symbol=${symbol}&timeframe=FIVE_MINUTE`);
                 const rawData = await response.json();
 
@@ -310,8 +582,11 @@
                 applyToggles();
                 AppState.chart.timeScale().fitContent();
 
-                // Hook up the SSE stream specifically for this newly selected symbol
                 resolveStreamKey(symbol);
+
+                if (document.getElementById('trade-status').innerText !== 'NONE') {
+                    startPnLStream(wsSymbol);
+                }
 
             } catch (error) {
                 console.error(error);
@@ -332,9 +607,9 @@
                 if (item.slowEma) AppState.data.slowEma.push({ time, value: item.slowEma });
                 
                 if (item.signal === 'BUY') {
-                    AppState.data.markers.crossovers.push({ time, position: 'belowBar', color: '#26a69a', shape: 'arrowUp', text: 'BUY' });
+                    AppState.data.markers.crossovers.push({ time, position: 'belowBar', color: '#10b981', shape: 'arrowUp', text: 'BUY' });
                 } else if (item.signal === 'SELL') {
-                    AppState.data.markers.crossovers.push({ time, position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: 'SELL' });
+                    AppState.data.markers.crossovers.push({ time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'SELL' });
                 }
             });
         }
@@ -347,12 +622,10 @@
             AppState.series.fastEma.applyOptions({ visible: document.getElementById('toggle-fast-ema').checked });
             AppState.series.slowEma.applyOptions({ visible: document.getElementById('toggle-slow-ema').checked });
 
-            // 1. Determine safe high-contrast colors based on the current theme
             const isLight = document.body.classList.contains('light-mode');
-            const safeBuyColor = isLight ? '#00796B' : '#00E676'; // Darker, safe green for light; Bright, glowing green for dark
-            const safeSellColor = isLight ? '#C62828' : '#FF5252'; // Darker, safe red for light; Bright, glowing red for dark
+            const safeBuyColor = isLight ? '#059669' : '#34d399';
+            const safeSellColor = isLight ? '#dc2626' : '#f87171';
 
-            // 2. Map your raw markers, assigning the new, theme-aware colors
             const themeAwareMarkers = AppState.data.markers.crossovers.map(m => ({
                 time: m.time,
                 position: m.position,
@@ -361,15 +634,10 @@
                 text: m.text
             }));
 
-            // 3. Apply the theme-calculated markers to the active chart series
             const activeMarkers = document.getElementById('toggle-crossovers').checked ? themeAwareMarkers : [];
             AppState.series.candle.setMarkers(isLine ? [] : activeMarkers);
             AppState.series.priceLine.setMarkers(isLine ? activeMarkers : []);
         }
-
-        // ==========================================
-        //         LIVE SSE STREAM LOGIC
-        // ==========================================
 
         async function getInstrumentKey(name) {
             if (StreamState.iKeyCache[name]) return StreamState.iKeyCache[name];
@@ -380,15 +648,12 @@
                 if (key) StreamState.iKeyCache[name] = key;
                 return key;
             } catch (e) {
-                console.error('[KEY ERROR]', name, e);
                 return null;
             }
         }
 
         async function resolveStreamKey(symbol) {
             StreamState.iKeyCurrent = null;
-            
-            // Map SAMCO_NIFTY to exactly 'NIFTY' for the WebSocket backend
             const wsSymbol = symbol === 'SAMCO_NIFTY' ? 'NIFTY' : symbol;
             
             const key = await getInstrumentKey(wsSymbol);
@@ -415,13 +680,12 @@
                 document.getElementById('live-dot').title = 'Reconnecting...';
                 StreamState.source.close();
                 StreamState.source = null;
-                setTimeout(connectSSE, 3000); // Try reconnecting
+                setTimeout(connectSSE, 3000);
             };
 
             StreamState.source.addEventListener('ltp', e => {
                 let d; 
                 try { d = JSON.parse(e.data); } catch (ex) { return; }
-                
                 if (!d || d.price == null) return;
                 
                 const price = +d.price;
@@ -434,7 +698,6 @@
                     return; 
                 }
                 
-                // Only process ticks for the currently selected instrument
                 if (tickKey !== StreamState.iKeyCurrent) return;
                 
                 applyTick(price);
@@ -442,87 +705,79 @@
         }
 
         function applyTick(priceOrObj) {
-    // 1. Extract price and potential indicator updates from the stream
-    const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
-    
-    // Attempt to pull indicator updates if your backend SSE provides them
-    const vwapVal = typeof priceOrObj === 'object' ? priceOrObj.vwap : undefined;
-    const fastEmaVal = typeof priceOrObj === 'object' ? priceOrObj.fastEma : undefined;
-    const slowEmaVal = typeof priceOrObj === 'object' ? priceOrObj.slowEma : undefined;
+            const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
+            const vwapVal = typeof priceOrObj === 'object' ? priceOrObj.vwap : undefined;
+            const fastEmaVal = typeof priceOrObj === 'object' ? priceOrObj.fastEma : undefined;
+            const slowEmaVal = typeof priceOrObj === 'object' ? priceOrObj.slowEma : undefined;
 
-    const candles = AppState.data.candles;
-    if (!candles.length || !AppState.series.candle) return;
+            const candles = AppState.data.candles;
+            if (!candles.length || !AppState.series.candle) return;
 
-    const last = candles[candles.length - 1];
-    const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
-    const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
+            const last = candles[candles.length - 1];
+            const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
+            const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
 
-    if (barFloor > last.time) {
-        // --- TIME CROSSED INTO A NEW 5-MINUTE CANDLE ---
-        const nc = { time: barFloor, open: price, high: price, low: price, close: price };
-        candles.push(nc);
-        AppState.data.priceLine.push({ time: barFloor, value: price });
+            if (barFloor > last.time) {
+                const nc = { time: barFloor, open: price, high: price, low: price, close: price };
+                candles.push(nc);
+                AppState.data.priceLine.push({ time: barFloor, value: price });
 
-        // Carry over the last known indicator values so the lines continue drawing
-        const lastVwap = AppState.data.vwap.length ? AppState.data.vwap[AppState.data.vwap.length - 1].value : price;
-        const lastFastEma = AppState.data.fastEma.length ? AppState.data.fastEma[AppState.data.fastEma.length - 1].value : price;
-        const lastSlowEma = AppState.data.slowEma.length ? AppState.data.slowEma[AppState.data.slowEma.length - 1].value : price;
+                const lastVwap = AppState.data.vwap.length ? AppState.data.vwap[AppState.data.vwap.length - 1].value : price;
+                const lastFastEma = AppState.data.fastEma.length ? AppState.data.fastEma[AppState.data.fastEma.length - 1].value : price;
+                const lastSlowEma = AppState.data.slowEma.length ? AppState.data.slowEma[AppState.data.slowEma.length - 1].value : price;
 
-        const nVwap = { time: barFloor, value: vwapVal !== undefined ? vwapVal : lastVwap };
-        const nFastEma = { time: barFloor, value: fastEmaVal !== undefined ? fastEmaVal : lastFastEma };
-        const nSlowEma = { time: barFloor, value: slowEmaVal !== undefined ? slowEmaVal : lastSlowEma };
+                const nVwap = { time: barFloor, value: vwapVal !== undefined ? vwapVal : lastVwap };
+                const nFastEma = { time: barFloor, value: fastEmaVal !== undefined ? fastEmaVal : lastFastEma };
+                const nSlowEma = { time: barFloor, value: slowEmaVal !== undefined ? slowEmaVal : lastSlowEma };
 
-        AppState.data.vwap.push(nVwap);
-        AppState.data.fastEma.push(nFastEma);
-        AppState.data.slowEma.push(nSlowEma);
+                AppState.data.vwap.push(nVwap);
+                AppState.data.fastEma.push(nFastEma);
+                AppState.data.slowEma.push(nSlowEma);
 
-        try {
-            AppState.series.candle.update(nc);
-            AppState.series.priceLine.update({ time: barFloor, value: price });
-            AppState.series.vwap.update(nVwap);
-            AppState.series.fastEma.update(nFastEma);
-            AppState.series.slowEma.update(nSlowEma);
-        } catch(e) { console.warn('Chart update failed', e); }
+                try {
+                    AppState.series.candle.update(nc);
+                    AppState.series.priceLine.update({ time: barFloor, value: price });
+                    AppState.series.vwap.update(nVwap);
+                    AppState.series.fastEma.update(nFastEma);
+                    AppState.series.slowEma.update(nSlowEma);
+                } catch(e) {}
 
-    } else {
-        // --- UPDATE THE CURRENT ACTIVE CANDLE ---
-        const upd = {
-            time: last.time,
-            open: +last.open,
-            high: Math.max(+last.high, price),
-            low: Math.min(+last.low, price),
-            close: price
-        };
-        
-        candles[candles.length - 1] = upd;
-        AppState.data.priceLine[AppState.data.priceLine.length - 1] = { time: last.time, value: price };
+            } else {
+                const upd = {
+                    time: last.time,
+                    open: +last.open,
+                    high: Math.max(+last.high, price),
+                    low: Math.min(+last.low, price),
+                    close: price
+                };
+                
+                candles[candles.length - 1] = upd;
+                AppState.data.priceLine[AppState.data.priceLine.length - 1] = { time: last.time, value: price };
 
-        // Update indicators intra-candle IF the SSE stream provided them
-        if (vwapVal !== undefined) {
-            const uVwap = { time: last.time, value: vwapVal };
-            AppState.data.vwap[AppState.data.vwap.length - 1] = uVwap;
-            AppState.series.vwap.update(uVwap);
+                if (vwapVal !== undefined) {
+                    const uVwap = { time: last.time, value: vwapVal };
+                    AppState.data.vwap[AppState.data.vwap.length - 1] = uVwap;
+                    AppState.series.vwap.update(uVwap);
+                }
+                if (fastEmaVal !== undefined) {
+                    const uFast = { time: last.time, value: fastEmaVal };
+                    AppState.data.fastEma[AppState.data.fastEma.length - 1] = uFast;
+                    AppState.series.fastEma.update(uFast);
+                }
+                if (slowEmaVal !== undefined) {
+                    const uSlow = { time: last.time, value: slowEmaVal };
+                    AppState.data.slowEma[AppState.data.slowEma.length - 1] = uSlow;
+                    AppState.series.slowEma.update(uSlow);
+                }
+
+                if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
+                    try {
+                        AppState.series.candle.update(upd);
+                        AppState.series.priceLine.update({ time: last.time, value: price });
+                    } catch(e) {}
+                }
+            }
         }
-        if (fastEmaVal !== undefined) {
-            const uFast = { time: last.time, value: fastEmaVal };
-            AppState.data.fastEma[AppState.data.fastEma.length - 1] = uFast;
-            AppState.series.fastEma.update(uFast);
-        }
-        if (slowEmaVal !== undefined) {
-            const uSlow = { time: last.time, value: slowEmaVal };
-            AppState.data.slowEma[AppState.data.slowEma.length - 1] = uSlow;
-            AppState.series.slowEma.update(uSlow);
-        }
-
-        // Only issue a chart render update if actual price values changed
-        if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
-            try {
-                AppState.series.candle.update(upd);
-                AppState.series.priceLine.update({ time: last.time, value: price });
-            } catch(e) {}
-        }
-    }
-}
 
         document.addEventListener('DOMContentLoaded', initApp);
     </script>
