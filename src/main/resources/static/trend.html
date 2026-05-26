@@ -128,9 +128,10 @@
 
         input[type="radio"], input[type="checkbox"] { accent-color: var(--accent-blue); cursor: pointer; }
         
-        .color-vwap { color: #ff9800; }
-        .color-fast { color: #2962FF; }
-        .color-slow { color: #FF6D00; }
+        /* Updated Indicator Colors for the Legend */
+        .color-vwap { color: #9C27B0; font-weight: bold; } /* Purple */
+        .color-fast { color: #089981; font-weight: bold; } /* Green */
+        .color-slow { color: #F23645; font-weight: bold; } /* Red */
     </style>
 </head>
 <body>
@@ -229,11 +230,13 @@
 
             syncChartColors();
 
-            AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350' });
+            AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#089981', downColor: '#F23645' });
             AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#2962FF', visible: false });
-            AppState.series.vwap = AppState.chart.addLineSeries({ color: '#ff9800', lineWidth: 2 });
-            AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#2962FF', lineWidth: 2 });
-            AppState.series.slowEma = AppState.chart.addLineSeries({ color: '#FF6D00', lineWidth: 2 });
+            
+            // Assign specific, zone-defining colors here
+            AppState.series.vwap = AppState.chart.addLineSeries({ color: '#9C27B0', lineWidth: 2 }); // Purple
+            AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#089981', lineWidth: 2 }); // Green
+            AppState.series.slowEma = AppState.chart.addLineSeries({ color: '#F23645', lineWidth: 2 }); // Red
         }
 
         function toggleTheme() {
@@ -256,6 +259,11 @@
 
             const overlay = document.getElementById('chart-overlay');
             overlay.style.backgroundColor = isLight ? 'rgba(255,255,255,0.8)' : 'rgba(19,23,34,0.8)';
+            
+            // CRITICAL: Force markers to be re-evaluated and redrawn with correct theme colors
+            if (AppState.data.markers.crossovers.length > 0) {
+                applyToggles();
+            }
         }
 
         function showOverlay(msg) {
@@ -339,9 +347,24 @@
             AppState.series.fastEma.applyOptions({ visible: document.getElementById('toggle-fast-ema').checked });
             AppState.series.slowEma.applyOptions({ visible: document.getElementById('toggle-slow-ema').checked });
 
-            const markers = document.getElementById('toggle-crossovers').checked ? AppState.data.markers.crossovers : [];
-            AppState.series.candle.setMarkers(isLine ? [] : markers);
-            AppState.series.priceLine.setMarkers(isLine ? markers : []);
+            // 1. Determine safe high-contrast colors based on the current theme
+            const isLight = document.body.classList.contains('light-mode');
+            const safeBuyColor = isLight ? '#00796B' : '#00E676'; // Darker, safe green for light; Bright, glowing green for dark
+            const safeSellColor = isLight ? '#C62828' : '#FF5252'; // Darker, safe red for light; Bright, glowing red for dark
+
+            // 2. Map your raw markers, assigning the new, theme-aware colors
+            const themeAwareMarkers = AppState.data.markers.crossovers.map(m => ({
+                time: m.time,
+                position: m.position,
+                color: m.text === 'BUY' ? safeBuyColor : safeSellColor,
+                shape: m.shape,
+                text: m.text
+            }));
+
+            // 3. Apply the theme-calculated markers to the active chart series
+            const activeMarkers = document.getElementById('toggle-crossovers').checked ? themeAwareMarkers : [];
+            AppState.series.candle.setMarkers(isLine ? [] : activeMarkers);
+            AppState.series.priceLine.setMarkers(isLine ? activeMarkers : []);
         }
 
         // ==========================================
@@ -419,47 +442,87 @@
         }
 
         function applyTick(priceOrObj) {
-            const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
-            const candles = AppState.data.candles;
-            
-            if (!candles.length || !AppState.series.candle) return;
+    // 1. Extract price and potential indicator updates from the stream
+    const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
+    
+    // Attempt to pull indicator updates if your backend SSE provides them
+    const vwapVal = typeof priceOrObj === 'object' ? priceOrObj.vwap : undefined;
+    const fastEmaVal = typeof priceOrObj === 'object' ? priceOrObj.fastEma : undefined;
+    const slowEmaVal = typeof priceOrObj === 'object' ? priceOrObj.slowEma : undefined;
 
-            const last = candles[candles.length - 1];
-            const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
-            const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
+    const candles = AppState.data.candles;
+    if (!candles.length || !AppState.series.candle) return;
 
-            if (barFloor > last.time) {
-                // Time crossed into a new 5-minute candle
-                const nc = { time: barFloor, open: price, high: price, low: price, close: price };
-                candles.push(nc);
-                AppState.data.priceLine.push({ time: barFloor, value: price });
-                
-                try {
-                    AppState.series.candle.update(nc);
-                    AppState.series.priceLine.update({ time: barFloor, value: price });
-                } catch(e) { console.warn('Chart update failed', e); }
-            } else {
-                // Update the current active candle
-                const upd = {
-                    time: last.time,
-                    open: +last.open,
-                    high: Math.max(+last.high, price),
-                    low: Math.min(+last.low, price),
-                    close: price
-                };
-                
-                candles[candles.length - 1] = upd;
-                AppState.data.priceLine[AppState.data.priceLine.length - 1] = { time: last.time, value: price };
+    const last = candles[candles.length - 1];
+    const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
+    const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
 
-                // Only issue an update to the chart UI if the actual values changed
-                if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
-                    try {
-                        AppState.series.candle.update(upd);
-                        AppState.series.priceLine.update({ time: last.time, value: price });
-                    } catch(e) {}
-                }
-            }
+    if (barFloor > last.time) {
+        // --- TIME CROSSED INTO A NEW 5-MINUTE CANDLE ---
+        const nc = { time: barFloor, open: price, high: price, low: price, close: price };
+        candles.push(nc);
+        AppState.data.priceLine.push({ time: barFloor, value: price });
+
+        // Carry over the last known indicator values so the lines continue drawing
+        const lastVwap = AppState.data.vwap.length ? AppState.data.vwap[AppState.data.vwap.length - 1].value : price;
+        const lastFastEma = AppState.data.fastEma.length ? AppState.data.fastEma[AppState.data.fastEma.length - 1].value : price;
+        const lastSlowEma = AppState.data.slowEma.length ? AppState.data.slowEma[AppState.data.slowEma.length - 1].value : price;
+
+        const nVwap = { time: barFloor, value: vwapVal !== undefined ? vwapVal : lastVwap };
+        const nFastEma = { time: barFloor, value: fastEmaVal !== undefined ? fastEmaVal : lastFastEma };
+        const nSlowEma = { time: barFloor, value: slowEmaVal !== undefined ? slowEmaVal : lastSlowEma };
+
+        AppState.data.vwap.push(nVwap);
+        AppState.data.fastEma.push(nFastEma);
+        AppState.data.slowEma.push(nSlowEma);
+
+        try {
+            AppState.series.candle.update(nc);
+            AppState.series.priceLine.update({ time: barFloor, value: price });
+            AppState.series.vwap.update(nVwap);
+            AppState.series.fastEma.update(nFastEma);
+            AppState.series.slowEma.update(nSlowEma);
+        } catch(e) { console.warn('Chart update failed', e); }
+
+    } else {
+        // --- UPDATE THE CURRENT ACTIVE CANDLE ---
+        const upd = {
+            time: last.time,
+            open: +last.open,
+            high: Math.max(+last.high, price),
+            low: Math.min(+last.low, price),
+            close: price
+        };
+        
+        candles[candles.length - 1] = upd;
+        AppState.data.priceLine[AppState.data.priceLine.length - 1] = { time: last.time, value: price };
+
+        // Update indicators intra-candle IF the SSE stream provided them
+        if (vwapVal !== undefined) {
+            const uVwap = { time: last.time, value: vwapVal };
+            AppState.data.vwap[AppState.data.vwap.length - 1] = uVwap;
+            AppState.series.vwap.update(uVwap);
         }
+        if (fastEmaVal !== undefined) {
+            const uFast = { time: last.time, value: fastEmaVal };
+            AppState.data.fastEma[AppState.data.fastEma.length - 1] = uFast;
+            AppState.series.fastEma.update(uFast);
+        }
+        if (slowEmaVal !== undefined) {
+            const uSlow = { time: last.time, value: slowEmaVal };
+            AppState.data.slowEma[AppState.data.slowEma.length - 1] = uSlow;
+            AppState.series.slowEma.update(uSlow);
+        }
+
+        // Only issue a chart render update if actual price values changed
+        if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
+            try {
+                AppState.series.candle.update(upd);
+                AppState.series.priceLine.update({ time: last.time, value: price });
+            } catch(e) {}
+        }
+    }
+}
 
         document.addEventListener('DOMContentLoaded', initApp);
     </script>
