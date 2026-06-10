@@ -51,4 +51,8 @@ public class PreMarketAnalysis {
     //Tokens
     private String ceToken;
     private String peToken;
+    
+  //Tokens
+    private String ceSymbol;
+    private String peSymbol;
 }

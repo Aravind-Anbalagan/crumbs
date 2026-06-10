@@ -24,7 +24,7 @@ public class DominanceScheduler {
      * Executes the dominance check every minute during weekdays (MON-FRI).
      * Timezone set to Asia/Kolkata.
      */
-    @Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
+    //@Scheduled(cron = "0 * * * * MON-FRI", zone = "Asia/Kolkata")
     public void runDominanceCheck() {
         if (!isStrategyActive(STRATEGY_NAME)) {
             log.debug("Dominance check skipped: Strategy '{}' is inactive.", STRATEGY_NAME);

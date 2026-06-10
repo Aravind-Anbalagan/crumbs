@@ -36,7 +36,7 @@ public class StraddleExecutionService {
      */
     public void executePreMarket(String name) {
         try {
-            if (!isActive("PRE_MARKET_LEVEL")) {
+            if (!isActive("DIRECTIONAL_SELL")) {
                 //LoggerFactory.getLogger(getClass())
                    // .info("Strategy MARKET_LEVEL is inactive, skipping pre-market analysis for {}", name);
                 return;

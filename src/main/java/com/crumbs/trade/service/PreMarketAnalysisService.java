@@ -161,6 +161,8 @@ public class PreMarketAnalysisService {
         analysis.setPePrevLow(selected.getPePrevLow());
         analysis.setCeToken(selected.getCeToken().getToken());
         analysis.setPeToken(selected.getPeToken().getToken());
+        analysis.setCeSymbol(selected.getCeToken().getSymbol());
+        analysis.setPeSymbol(selected.getPeToken().getSymbol());
         return analysis;
     }
     
