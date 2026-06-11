@@ -293,7 +293,7 @@
 
         input[type="radio"], input[type="checkbox"] { accent-color: var(--accent-blue); cursor: pointer; }
         
-        .color-vwap { color: #d946ef; font-weight: bold; } /* Slightly brighter purple */
+        .color-vwap { color: #d946ef; font-weight: bold; }
         .color-fast { color: #10b981; font-weight: bold; } 
         .color-slow { color: #ef4444; font-weight: bold; } 
         
@@ -326,11 +326,6 @@
                 <label><input type="radio" name="symbol-select" id="sym-nifty" value="SAMCO_NIFTY" onchange="updateChart()"> NIFTY</label>
                 <label><input type="radio" name="symbol-select" id="sym-crude" value="CRUDEOIL" onchange="updateChart()"> CRUDEOIL</label>
             </div>
-
-            <select id="select-chart-type" onchange="applyToggles()">
-                <option value="candle">Candlesticks</option>
-                <option value="line">Line (Close)</option>
-            </select>
             
             <button onclick="updateChart()">🔄 Sync</button>
         </div>
@@ -348,7 +343,6 @@
     </div>
 
     <div id="main-wrapper">
-        <!-- Execution Sidebar -->
         <div id="sidebar" class="glass-panel">
             
             <div id="naked-options" style="display: flex; flex-direction: column; gap: 18px;">
@@ -388,7 +382,6 @@
             </div>
         </div>
 
-        <!-- Chart Area -->
         <div id="chart-wrapper" class="glass-panel">
             <div id="chart-overlay">
                 <div id="overlay-message">Searching for data...</div>
@@ -401,8 +394,8 @@
         // --- Core App State ---
         const AppState = {
             chart: null,
-            series: { candle: null, priceLine: null, vwap: null, fastEma: null, slowEma: null },
-            data: { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } },
+            series: { candle: null, vwap: null, fastEma: null, slowEma: null },
+            data: { candles: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } },
             tradeType: null
         };
 
@@ -432,10 +425,14 @@
 
             setupChart();
             
-            window.addEventListener('resize', () => {
-                const wrapper = document.getElementById('chart-wrapper');
-                if (AppState.chart) AppState.chart.resize(wrapper.clientWidth, wrapper.clientHeight);
+            // Replaced default event listener with ResizeObserver to prevent shrinking/squishing
+            const wrapper = document.getElementById('chart-wrapper');
+            const resizeObserver = new ResizeObserver(entries => {
+                if (entries.length === 0 || !AppState.chart) return;
+                const { width, height } = entries[0].contentRect;
+                AppState.chart.applyOptions({ width, height });
             });
+            resizeObserver.observe(wrapper);
 
             updateChart();
             connectSSE();
@@ -455,7 +452,6 @@
             syncChartColors();
 
             AppState.series.candle = AppState.chart.addCandlestickSeries({ upColor: '#10b981', downColor: '#ef4444' });
-            AppState.series.priceLine = AppState.chart.addLineSeries({ color: '#3b82f6', visible: false });
             
             AppState.series.vwap = AppState.chart.addLineSeries({ color: '#d946ef', lineWidth: 2 }); 
             AppState.series.fastEma = AppState.chart.addLineSeries({ color: '#10b981', lineWidth: 2 }); 
@@ -486,7 +482,6 @@
             logStatus(`Initiating ${action.toUpperCase()} sequence...`);
             const statusEl = document.getElementById('trade-status');
             
-            // Simplified logic: Always uses naked leg values
             const typeToSend = document.getElementById('naked-leg').value;
             const txnType = document.querySelector('input[name="txnType"]:checked').value;
 
@@ -574,13 +569,16 @@
                 processData(rawData);
                 
                 AppState.series.candle.setData(AppState.data.candles);
-                AppState.series.priceLine.setData(AppState.data.priceLine);
                 AppState.series.vwap.setData(AppState.data.vwap);
                 AppState.series.fastEma.setData(AppState.data.fastEma);
                 AppState.series.slowEma.setData(AppState.data.slowEma);
                 
                 applyToggles();
-                AppState.chart.timeScale().fitContent();
+
+                // Wrapping in a slight timeout ensures fitContent accounts for flexbox loading sizes
+                setTimeout(() => {
+                    AppState.chart.timeScale().fitContent();
+                }, 50);
 
                 resolveStreamKey(symbol);
 
@@ -595,12 +593,15 @@
         }
 
         function processData(rawData) {
-            AppState.data = { candles: [], priceLine: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } };
+            AppState.data = { candles: [], vwap: [], fastEma: [], slowEma: [], markers: { crossovers: [] } };
+            
+            // Sort data chronologically to prevent chart shrinking due to unsorted items
+            rawData.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
             rawData.forEach(item => {
                 const time = Math.floor(new Date(item.timestamp).getTime() / 1000) + StreamState.IST_OFFSET; 
                 if (item.close) {
                     AppState.data.candles.push({ time, open: item.open, high: item.high, low: item.low, close: item.close });
-                    AppState.data.priceLine.push({ time, value: item.close });
                 }
                 if (item.vwap) AppState.data.vwap.push({ time, value: item.vwap });
                 if (item.fastEma) AppState.data.fastEma.push({ time, value: item.fastEma });
@@ -615,9 +616,6 @@
         }
 
         function applyToggles() {
-            const isLine = document.getElementById('select-chart-type').value === 'line';
-            AppState.series.candle.applyOptions({ visible: !isLine });
-            AppState.series.priceLine.applyOptions({ visible: isLine });
             AppState.series.vwap.applyOptions({ visible: document.getElementById('toggle-vwap').checked });
             AppState.series.fastEma.applyOptions({ visible: document.getElementById('toggle-fast-ema').checked });
             AppState.series.slowEma.applyOptions({ visible: document.getElementById('toggle-slow-ema').checked });
@@ -635,8 +633,7 @@
             }));
 
             const activeMarkers = document.getElementById('toggle-crossovers').checked ? themeAwareMarkers : [];
-            AppState.series.candle.setMarkers(isLine ? [] : activeMarkers);
-            AppState.series.priceLine.setMarkers(isLine ? activeMarkers : []);
+            AppState.series.candle.setMarkers(activeMarkers);
         }
 
         async function getInstrumentKey(name) {
@@ -705,30 +702,48 @@
         }
 
         function applyTick(priceOrObj) {
-            const price = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
+            const rawPrice = typeof priceOrObj === 'object' ? priceOrObj.price : priceOrObj;
             const vwapVal = typeof priceOrObj === 'object' ? priceOrObj.vwap : undefined;
             const fastEmaVal = typeof priceOrObj === 'object' ? priceOrObj.fastEma : undefined;
             const slowEmaVal = typeof priceOrObj === 'object' ? priceOrObj.slowEma : undefined;
+
+            const price = +rawPrice;
+            if (!isFinite(price) || price <= 0) return;
 
             const candles = AppState.data.candles;
             if (!candles.length || !AppState.series.candle) return;
 
             const last = candles[candles.length - 1];
+
+            // --- 🛡️ THE SHRINK FIX: OUTLIER FILTER ---
+            // If the incoming live tick is more than 10% different from the last close, 
+            // it is a bad tick (e.g. missing decimal, paisa conversion error). Ignore it.
+            const percentDiff = Math.abs(price - last.close) / last.close;
+            if (percentDiff > 0.10) {
+                console.warn(`⚠️ Dropped anomaly tick: ${price} (Last close: ${last.close})`);
+                return;
+            }
+
+            // --- 🛡️ INDICATOR ZERO-DROP FIX ---
+            // If the stream sends a 0 for VWAP or EMA, it will crush the Y-axis. Filter them to undefined.
+            const safeVwap = (vwapVal > 0) ? vwapVal : undefined;
+            const safeFast = (fastEmaVal > 0) ? fastEmaVal : undefined;
+            const safeSlow = (slowEmaVal > 0) ? slowEmaVal : undefined;
+
             const nowIST = Math.floor(Date.now() / 1000) + StreamState.IST_OFFSET;
             const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
 
             if (barFloor > last.time) {
                 const nc = { time: barFloor, open: price, high: price, low: price, close: price };
                 candles.push(nc);
-                AppState.data.priceLine.push({ time: barFloor, value: price });
 
                 const lastVwap = AppState.data.vwap.length ? AppState.data.vwap[AppState.data.vwap.length - 1].value : price;
                 const lastFastEma = AppState.data.fastEma.length ? AppState.data.fastEma[AppState.data.fastEma.length - 1].value : price;
                 const lastSlowEma = AppState.data.slowEma.length ? AppState.data.slowEma[AppState.data.slowEma.length - 1].value : price;
 
-                const nVwap = { time: barFloor, value: vwapVal !== undefined ? vwapVal : lastVwap };
-                const nFastEma = { time: barFloor, value: fastEmaVal !== undefined ? fastEmaVal : lastFastEma };
-                const nSlowEma = { time: barFloor, value: slowEmaVal !== undefined ? slowEmaVal : lastSlowEma };
+                const nVwap = { time: barFloor, value: safeVwap !== undefined ? safeVwap : lastVwap };
+                const nFastEma = { time: barFloor, value: safeFast !== undefined ? safeFast : lastFastEma };
+                const nSlowEma = { time: barFloor, value: safeSlow !== undefined ? safeSlow : lastSlowEma };
 
                 AppState.data.vwap.push(nVwap);
                 AppState.data.fastEma.push(nFastEma);
@@ -736,7 +751,6 @@
 
                 try {
                     AppState.series.candle.update(nc);
-                    AppState.series.priceLine.update({ time: barFloor, value: price });
                     AppState.series.vwap.update(nVwap);
                     AppState.series.fastEma.update(nFastEma);
                     AppState.series.slowEma.update(nSlowEma);
@@ -752,20 +766,20 @@
                 };
                 
                 candles[candles.length - 1] = upd;
-                AppState.data.priceLine[AppState.data.priceLine.length - 1] = { time: last.time, value: price };
 
-                if (vwapVal !== undefined) {
-                    const uVwap = { time: last.time, value: vwapVal };
+                // Only update indicators if the stream actually sent a valid > 0 number
+                if (safeVwap !== undefined) {
+                    const uVwap = { time: last.time, value: safeVwap };
                     AppState.data.vwap[AppState.data.vwap.length - 1] = uVwap;
                     AppState.series.vwap.update(uVwap);
                 }
-                if (fastEmaVal !== undefined) {
-                    const uFast = { time: last.time, value: fastEmaVal };
+                if (safeFast !== undefined) {
+                    const uFast = { time: last.time, value: safeFast };
                     AppState.data.fastEma[AppState.data.fastEma.length - 1] = uFast;
                     AppState.series.fastEma.update(uFast);
                 }
-                if (slowEmaVal !== undefined) {
-                    const uSlow = { time: last.time, value: slowEmaVal };
+                if (safeSlow !== undefined) {
+                    const uSlow = { time: last.time, value: safeSlow };
                     AppState.data.slowEma[AppState.data.slowEma.length - 1] = uSlow;
                     AppState.series.slowEma.update(uSlow);
                 }
@@ -773,7 +787,6 @@
                 if (upd.close !== +last.close || upd.high !== +last.high || upd.low !== +last.low) {
                     try {
                         AppState.series.candle.update(upd);
-                        AppState.series.priceLine.update({ time: last.time, value: price });
                     } catch(e) {}
                 }
             }
