@@ -14,16 +14,16 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/risk")
-@CrossOrigin(origins = "*") // Allows your UI to fetch data without CORS block errors
+@CrossOrigin(origins = "*") // Allows your UI frontend to fetch data without CORS blocks
 public class RiskController {
 
     @Autowired
     private RiskService riskService;
 
     @GetMapping("/live-pnl")
-    public ResponseEntity<Map<Long, BigDecimal>> getLiveDashboardPnL() {
-        // Reads instantly from RAM. Zero database egress cost.
-        Map<Long, BigDecimal> livePnLMap = riskService.getLivePnLForUI();
+    public ResponseEntity<Map<String, BigDecimal>> getLiveDashboardPnL() {
+        // Reads instantly from RAM. Zero database egress cost or slow disk I/O queries.
+        Map<String, BigDecimal> livePnLMap = riskService.getLivePnLForUI();
         
         return ResponseEntity.ok(livePnLMap); 
     }
