@@ -30,9 +30,9 @@ import lombok.RequiredArgsConstructor;
 //            All fields are now final and injected via constructor (Lombok handles it)
 @Component
 @RequiredArgsConstructor
-public class IntradayScheduler {
+public class IntradayEquityScheduler {
 
-    private static final Logger logger = LoggerFactory.getLogger(IntradayScheduler.class);
+    private static final Logger logger = LoggerFactory.getLogger(IntradayEquityScheduler.class);
 
     private final IntradayExecutionService intradayExecutionService;
     private final StockController stockController;

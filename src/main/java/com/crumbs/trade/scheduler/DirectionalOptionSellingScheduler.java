@@ -22,7 +22,7 @@ public class DirectionalOptionSellingScheduler {
     
     // ==================== PRE-MARKET ANALYSIS (8:00:10 AM) ====================
 
-    @Scheduled(cron = "10 0 8 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "10 30 8 * * MON-FRI", zone = "Asia/Kolkata")
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
     }

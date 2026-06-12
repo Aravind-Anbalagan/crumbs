@@ -1,8 +1,8 @@
 package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -16,6 +16,7 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,18 @@ public class RiskService {
 
     private static final Logger logger = LoggerFactory.getLogger(RiskService.class);
 
+    // --- STRATEGY & EXCHANGE CONSTANTS ---
+    private static final String EXCHANGE_NFO = "NFO";
+    private static final String EXCHANGE_BSE = "BSE";
+    private static final String EXCHANGE_NSE = "NSE";
+    private static final String EXCHANGE_MCX = "MCX";
+    private static final String STATUS_CLOSED = "CLOSED";
+    private static final String PHASE_EXIT = "EXIT";
+    private static final String SIDE_BUY = "BUY";
+    private static final String SMART_RISK_ACTIVE = "Y";
+    private static final String PAPER_ORDER_ID_MARKER = "1";
+    private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Kolkata");
+
     @Autowired
     private AngelOneService angelOneService;
 
@@ -46,49 +59,49 @@ public class RiskService {
     @Autowired
     private AngelOne angelOne;
 
-    // --- CLOUD MEMORY CACHES ---
-    private final Map<Long, BigDecimal> liveUiCachePnL = new ConcurrentHashMap<>();
-    private final Map<Long, BigDecimal> highWaterMarks = new ConcurrentHashMap<>();
-    private final Map<Long, BigDecimal> activeTrailingFloors = new ConcurrentHashMap<>();
+    @Autowired
+    @Lazy
+    private RiskService self;
 
-    public Map<Long, BigDecimal> getLivePnLForUI() {
+    // --- CYCLE-LEVEL MEMORY CACHES ---
+    private final Map<String, BigDecimal> liveUiCachePnL = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> highWaterMarks = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> activeTrailingFloors = new ConcurrentHashMap<>();
+
+    public Map<String, BigDecimal> getLivePnLForUI() {
         return liveUiCachePnL;
     }
 
-    /**
-     * Master Orchestration Loop called continuously by RiskExecutionScheduler.
-     */
     public void processSystemRiskMatrix() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(MARKET_ZONE);
         int currentHour = now.getHour();
         int currentMinute = now.getMinute();
 
-        // 1. Fetch & Filter active orders based on market hours
+        // 1. Fetch active open orders
         List<Orders> rawOpenOrders = orderRepository.findByActive(1);
         if (rawOpenOrders == null || rawOpenOrders.isEmpty()) {
-            clearMemoryCaches();
+            clearAllMemoryCaches();
             return;
         }
 
+        // Market hours boundary validation
         List<Orders> openOrders = rawOpenOrders.stream().filter(order -> {
             String exch = order.getExchange() != null ? order.getExchange().toUpperCase() : "";
-            // Skip NFO/BSE/NSE after 3:30 PM
-            if ((exch.equals("NFO") || exch.equals("BSE") || exch.equals("NSE")) 
+            if ((EXCHANGE_NFO.equals(exch) || EXCHANGE_BSE.equals(exch) || EXCHANGE_NSE.equals(exch)) 
                     && (currentHour >= 16 || (currentHour == 15 && currentMinute > 30))) {
                 return false; 
             }
-            // Skip MCX before 9:00 AM
-            if (exch.equals("MCX") && currentHour < 9) {
+            if (EXCHANGE_MCX.equals(exch) && currentHour < 9) {
                 return false; 
             }
             return true;
         }).collect(Collectors.toList());
 
         if (openOrders.isEmpty()) {
-            return; // All active trades are currently in closed markets
+            return; 
         }
 
-        // 2. OPTIMIZATION: Batch Fetch Risk Configurations (O(1) Database Query)
+        // 2. Dynamic Config Loader
         Set<String> strategyIdentifiers = openOrders.stream()
                 .map(Orders::getName)
                 .filter(Objects::nonNull)
@@ -102,120 +115,163 @@ public class RiskService {
                     .collect(Collectors.toMap(RiskConfiguration::getStrategyName, Function.identity())); 
         }
 
-        // 3. Establish Angel One connection & fetch live broker positions
+        // 3. Establish Broker Stream Connection
         SmartConnect connection = null;
         try {
-            connection = angelOne.signIn(); // Make sure token expiry handling is managed in AngelOne class
+            connection = angelOne.signIn(); 
         } catch (Exception e) {
-            logger.error("Global broker authentication failed for this pass: {}", e.getMessage());
+            logger.error("Broker authentication failed, skipping this risk matrix pass: {}", e.getMessage());
             return;
         }
         
         Map<String, BigDecimal> brokerPnLMap = compileLiveBrokerPnLs();
 
-        // 4. Evaluate each order
-        for (Orders order : openOrders) {
-            BigDecimal computedPnL = BigDecimal.ZERO;
-            boolean isLiveTrade = order.getOrderid() != null && !order.getOrderid().equals("1");
-            RiskConfiguration config = configMap.get(order.getName());
+        // 4. Group open multi-leg orders safely by cycle ID
+        Function<Orders, String> cycleIdClassifier = order -> 
+                order.getTradeCycleId() != null ? order.getTradeCycleId() : "SINGLE_" + order.getId();
 
-            if (isLiveTrade) {
-                computedPnL = brokerPnLMap.getOrDefault(order.getToken(), BigDecimal.ZERO);
-                evaluateOrderRisk(order, computedPnL, connection, config);
-            } else {
-                if (connection == null) continue;
-                try {
-                    BigDecimal currentLtp = angelOneService.getcurrentPrice(
-                        connection, order.getExchange(), order.getSymbol(), order.getToken()
-                    );
+        Map<String, List<Orders>> strategyGroups = openOrders.stream()
+                .collect(Collectors.groupingBy(cycleIdClassifier));
 
-                    if (currentLtp != null && order.getAskPrice() != null) {
-                        BigDecimal pointsDiff = "BUY".equalsIgnoreCase(order.getType())
-                            ? currentLtp.subtract(order.getAskPrice())
-                            : order.getAskPrice().subtract(currentLtp);
+        // --- CYCLE START LOG ---
+        logger.info("--- Risk Engine Tick: Monitoring {} active groups ({} total legs) ---", strategyGroups.size(), openOrders.size());
 
-                        computedPnL = pointsDiff.multiply(BigDecimal.valueOf(order.getQuantity()));
-                        evaluateOrderRisk(order, computedPnL, connection, config);
+        // 5. Purge memory caches
+        purgeDeadCacheKeys(strategyGroups.keySet());
+
+        // 6. Process Matrix Loop per Strategy Group
+        for (Map.Entry<String, List<Orders>> entry : strategyGroups.entrySet()) {
+            String cycleKey = entry.getKey();
+            List<Orders> groupLegs = entry.getValue();
+            
+            RiskConfiguration config = configMap.get(groupLegs.get(0).getName());
+            BigDecimal combinedGroupPnL = BigDecimal.ZERO;
+            boolean skipGroupEvaluation = false;
+
+            for (Orders leg : groupLegs) {
+                boolean isLiveTrade = leg.getOrderid() != null && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
+
+                if (isLiveTrade) {
+                    if (brokerPnLMap.isEmpty()) {
+                        skipGroupEvaluation = true; 
+                        break;
                     }
-                } catch (Exception e) {
-                    logger.error("Error calculating paper PnL for Order {}: {}", order.getId(), e.getMessage());
+                    BigDecimal legPnL = brokerPnLMap.getOrDefault(leg.getToken(), BigDecimal.ZERO);
+                    combinedGroupPnL = combinedGroupPnL.add(legPnL);
+                } else {
+                    if (connection == null) {
+                        skipGroupEvaluation = true;
+                        break;
+                    }
+                    try {
+                        BigDecimal currentLtp = angelOneService.getcurrentPrice(
+                            connection, leg.getExchange(), leg.getSymbol(), leg.getToken()
+                        );
+
+                        if (currentLtp != null && leg.getAskPrice() != null) {
+                            BigDecimal pointsDiff = SIDE_BUY.equalsIgnoreCase(leg.getType())
+                                ? currentLtp.subtract(leg.getAskPrice())
+                                : leg.getAskPrice().subtract(currentLtp);
+
+                            BigDecimal legPaperPnL = pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
+                            combinedGroupPnL = combinedGroupPnL.add(legPaperPnL);
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error calculating paper PnL for Leg ID {}: {}", leg.getId(), e.getMessage());
+                    }
                 }
+            }
+
+            if (!skipGroupEvaluation) {
+                evaluateGroupRisk(groupLegs, cycleKey, combinedGroupPnL, connection, config);
+            } else {
+                logger.warn("[SKIPPED] Cycle {} missing live broker data for evaluation.", cycleKey);
             }
         }
     }
 
-    /**
-     * Evaluates calculations against safety limits, velocity checks, and dynamic rubber-band trailing.
-     */
-    private void evaluateOrderRisk(Orders order, BigDecimal currentLivePnL, SmartConnect connection, RiskConfiguration config) {
-        // Capture previous cycle's PnL to measure velocity spikes BEFORE updating the cache
-        BigDecimal previousTickPnL = liveUiCachePnL.getOrDefault(order.getId(), currentLivePnL);
-        liveUiCachePnL.put(order.getId(), currentLivePnL);
+    private void evaluateGroupRisk(List<Orders> group, String cycleKey, BigDecimal currentCombinedPnL, 
+                                   SmartConnect connection, RiskConfiguration config) {
+        
+        BigDecimal previousTickPnL = liveUiCachePnL.getOrDefault(cycleKey, currentCombinedPnL);
+        liveUiCachePnL.put(cycleKey, currentCombinedPnL);
 
-        // =========================================================================
-        // BASELINE LAYERS: ALWAYS ACTIVE (Points converted to Total ₹)
-        // =========================================================================
-        BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
+        Orders primaryLeg = group.get(0);
+        String strategyName = primaryLeg.getName();
+        BigDecimal totalQuantity = group.stream()
+                .map(Orders::getQuantity)
+                .map(BigDecimal::valueOf)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 1. HARD EMERGENCY STOP LOSS BOUNDS CHECK
-        if (order.getSl() != null && order.getSl().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal slInRupees = order.getSl().multiply(quantity);
-            if (currentLivePnL.compareTo(slInRupees.negate()) <= 0) {
-                terminateTrade(order, "HARD_MAX_LOSS_BREACHED", currentLivePnL, connection);
+        // Define fallback boundaries
+        BigDecimal maxLossThreshold = null;
+        BigDecimal targetProfitThreshold = null;
+
+        if (config != null) {
+            maxLossThreshold = config.getMaxLossLimit(); 
+            targetProfitThreshold = config.getTargetProfit(); 
+        } else {
+            if (primaryLeg.getSl() != null && primaryLeg.getSl().compareTo(BigDecimal.ZERO) > 0) {
+                maxLossThreshold = primaryLeg.getSl().multiply(totalQuantity).negate();
+            }
+            if (primaryLeg.getTarget() != null && primaryLeg.getTarget().compareTo(BigDecimal.ZERO) > 0) {
+                targetProfitThreshold = primaryLeg.getTarget().multiply(totalQuantity);
+            }
+        }
+
+        // 1. DYNAMIC HARD STOP LOSS CHECK
+        if (maxLossThreshold != null) {
+            BigDecimal absoluteMaxLoss = maxLossThreshold.abs().negate();
+            if (currentCombinedPnL.compareTo(absoluteMaxLoss) <= 0) {
+                terminateEntireGroup(group, cycleKey, "HARD_MAX_LOSS_BREACHED", currentCombinedPnL, connection);
                 return;
             }
         }
 
-        // 2. ABSOLUTE FIXED TARGET PROFIT CEILING CHECK
-        if (order.getTarget() != null && order.getTarget().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal targetInRupees = order.getTarget().multiply(quantity);
-            if (currentLivePnL.compareTo(targetInRupees) >= 0) {
-                terminateTrade(order, "FIXED_TARGET_PROFIT_HIT", currentLivePnL, connection);
+        // 2. DYNAMIC HARD TARGET PROFIT CHECK
+        if (targetProfitThreshold != null && targetProfitThreshold.compareTo(BigDecimal.ZERO) > 0) {
+            if (currentCombinedPnL.compareTo(targetProfitThreshold) >= 0) {
+                terminateEntireGroup(group, cycleKey, "FIXED_TARGET_PROFIT_HIT", currentCombinedPnL, connection);
                 return;
             }
         }
 
-        // =========================================================================
-        // DYNAMIC BYPASS CHECK: Master Toggle Switch
-        // =========================================================================
-        if (config == null || "N".equalsIgnoreCase(config.getSmartRiskFlag())) {
+        // --- SMART RISK OVERRIDE TRIGGER ---
+        if (config == null || !SMART_RISK_ACTIVE.equalsIgnoreCase(config.getSmartRiskFlag())) {
+            logger.info("[MONITORING] Strategy: {} | Cycle: {} | Live PnL: {} | Target: {} | Max Loss: {} | SmartRisk: OFF", 
+                    strategyName, cycleKey, currentCombinedPnL, targetProfitThreshold, maxLossThreshold);
             return; 
         }
 
-        // =========================================================================
-        // INTELLIGENT LAYERS: ACTIVE ONLY WHEN smart_risk_flag = 'Y'
-        // =========================================================================
-
-        // 3. VELOCITY / GAMMA SPIKE PROTECTION
+        // 3. VELOCITY SPIKE PROTECTION
         if (config.getVelocityPanicDrop() != null && config.getVelocityPanicDrop().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal pnlDropThisTick = previousTickPnL.subtract(currentLivePnL);
+            BigDecimal pnlDropThisTick = previousTickPnL.subtract(currentCombinedPnL);
             if (pnlDropThisTick.compareTo(config.getVelocityPanicDrop()) > 0) {
-                terminateTrade(order, "VELOCITY_SPIKE_DETECTED", currentLivePnL, connection);
+                terminateEntireGroup(group, cycleKey, "VELOCITY_SPIKE_DETECTED", currentCombinedPnL, connection);
                 return;
             }
         }
 
-        // Update local Peak High Water Marks
-        BigDecimal peakPnL = highWaterMarks.getOrDefault(order.getId(), currentLivePnL);
-        if (currentLivePnL.compareTo(peakPnL) > 0) {
-            peakPnL = currentLivePnL;
-            highWaterMarks.put(order.getId(), peakPnL);
+        // Calculate peak equity curves for Trailing & Milestone Engines
+        BigDecimal peakPnL = highWaterMarks.getOrDefault(cycleKey, currentCombinedPnL);
+        if (currentCombinedPnL.compareTo(peakPnL) > 0) {
+            peakPnL = currentCombinedPnL;
+            highWaterMarks.put(cycleKey, peakPnL);
         }
 
-        // 4. THE "NEVER GO RED" MILESTONE PROTECTION
-        if (order.getTarget() != null && config.getMilestonePercent() != null && config.getBreakevenFloor() != null) {
-            BigDecimal totalTargetRupees = order.getTarget().multiply(quantity);
-            BigDecimal milestoneActivation = totalTargetRupees.multiply(config.getMilestonePercent()); 
+        // 4. MILESTONE "NEVER GO RED" PROTECTOR
+        if (targetProfitThreshold != null && config.getMilestonePercent() != null && config.getBreakevenFloor() != null) {
+            BigDecimal milestoneActivation = targetProfitThreshold.multiply(config.getMilestonePercent()); 
             
             if (peakPnL.compareTo(milestoneActivation) >= 0) {
-                if (currentLivePnL.compareTo(config.getBreakevenFloor()) <= 0) {
-                    terminateTrade(order, "MILESTONE_PROFIT_PROTECTION_TRIGGERED", currentLivePnL, connection);
+                if (currentCombinedPnL.compareTo(config.getBreakevenFloor()) <= 0) {
+                    terminateEntireGroup(group, cycleKey, "MILESTONE_PROFIT_PROTECTION_TRIGGERED", currentCombinedPnL, connection);
                     return;
                 }
             }
         }
 
-        // 5. RUBBER-BAND PEAK DRAWDOWN TRAILING ENGINE
+        // 5. TRAILING STOP DRAWDOWN ENGINE
         BigDecimal activation = config.getTrailingActivation();
         BigDecimal drawdownPct = config.getTrailingDrawdownPct(); 
 
@@ -223,107 +279,121 @@ public class RiskService {
             BigDecimal allowedDrop = peakPnL.multiply(drawdownPct);
             BigDecimal dynamicFloor = peakPnL.subtract(allowedDrop);
 
-            // Update RAM tracking for UI
-            BigDecimal existingFloor = activeTrailingFloors.get(order.getId());
+            BigDecimal existingFloor = activeTrailingFloors.get(cycleKey);
             if (existingFloor == null || dynamicFloor.compareTo(existingFloor) > 0) {
-                activeTrailingFloors.put(order.getId(), dynamicFloor);
-                logger.info("RiskEngine [{}]: Order {} trailing floor pulled up to {}", order.getName(), order.getId(), dynamicFloor);
+                activeTrailingFloors.put(cycleKey, dynamicFloor);
+                logger.info("   [↑] Floor Raised! {} trailing stop moved up to {}", strategyName, dynamicFloor);
             }
 
-            // Execution check against the dynamically shifting floor
-            BigDecimal currentFloor = activeTrailingFloors.get(order.getId());
-            if (currentFloor != null && currentLivePnL.compareTo(currentFloor) <= 0) {
-                terminateTrade(order, "RUBBER_BAND_MAX_DRAWDOWN_BREACHED", currentLivePnL, connection);
+            BigDecimal currentFloor = activeTrailingFloors.get(cycleKey);
+            if (currentFloor != null && currentCombinedPnL.compareTo(currentFloor) <= 0) {
+                terminateEntireGroup(group, cycleKey, "RUBBER_BAND_MAX_DRAWDOWN_BREACHED", currentCombinedPnL, connection);
+                return;
             }
         }
+
+        // --- ACTIVE MONITORING HEARTBEAT LOG ---
+        BigDecimal activeFloor = activeTrailingFloors.getOrDefault(cycleKey, BigDecimal.ZERO);
+        logger.info("[MONITORING] Strategy: {} | Cycle: {} | Live PnL: {} | Peak: {} | Active Floor: {} | Target: {}", 
+                strategyName, cycleKey, currentCombinedPnL, peakPnL, activeFloor, targetProfitThreshold);
     }
 
-    /**
-     * Executes market liquidation. 
-     * Network API calls are bypassed for paper trades.
-     */
-    private void terminateTrade(Orders order, String exitReason, BigDecimal closurePnL, SmartConnect connection) {
-        boolean isLiveTrade = order.getOrderid() != null && !order.getOrderid().equals("1");
+    private void terminateEntireGroup(List<Orders> group, String cycleKey, String exitReason, 
+                                      BigDecimal closurePnL, SmartConnect connection) {
+        
+        String strategyName = group.get(0).getName();
+        logger.warn("🚨 [LIQUIDATED] ========================================================");
+        logger.warn("🚨 Strategy: {} | Cycle: {}", strategyName, cycleKey);
+        logger.warn("🚨 Reason:   {}", exitReason);
+        logger.warn("🚨 Final PnL: {}", closurePnL);
+        logger.warn("🚨 ====================================================================");
 
-        if (isLiveTrade) {
-            logger.warn(">>> LIVE TERMINATION | Order ID: {} | Strategy: {} | Reason: {} | Final PnL: {}", 
-                order.getId(), order.getName(), exitReason, closurePnL);
-            
-            if (connection != null) {
+        for (Orders leg : group) {
+            boolean isLiveTrade = leg.getOrderid() != null && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
+
+            if (isLiveTrade && connection != null) {
                 try {
                     Token exitToken = new Token();
-                    exitToken.setSymbol(order.getSymbol());
-                    exitToken.setToken(order.getToken());
-                    exitToken.setExch_seg(order.getExchange());
-                    exitToken.setQuantity(order.getQuantity());
+                    exitToken.setSymbol(leg.getSymbol());
+                    exitToken.setToken(leg.getToken());
+                    exitToken.setExch_seg(leg.getExchange());
+                    exitToken.setQuantity(leg.getQuantity());
                     exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
                     exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD); 
                     exitToken.setVariety(Constants.VARIETY_NORMAL);
                     
-                    String exitSide = "BUY".equalsIgnoreCase(order.getType()) 
+                    String exitSide = SIDE_BUY.equalsIgnoreCase(leg.getType()) 
                         ? Constants.TRANSACTION_TYPE_SELL 
                         : Constants.TRANSACTION_TYPE_BUY;
                     exitToken.setTransactionType(exitSide);
 
                     Token responseToken = angelOneService.placeOrder(connection, exitToken);
                     if (responseToken != null && responseToken.getOrderId() != null) {
-                        logger.info("Live market exit success. Broker ID: {}", responseToken.getOrderId());
+                        logger.info("   => Broker exit success for leg: {} | Order ID: {}", leg.getSymbol(), responseToken.getOrderId());
                     }
                 } catch (Exception | SmartAPIException e) {
-                    logger.error("CRITICAL: Live market exit failed for Order {}: {}", order.getId(), e.getMessage());
-                    return; // Fail-safe: Do not update DB if broker order fails
+                    logger.error("   => CRITICAL ERROR: Broker exit failed for Leg {}: {}", leg.getId(), e.getMessage());
+                    return; 
                 }
+            } else {
+                logger.info("   => Paper Trade leg terminated: {}", leg.getSymbol());
             }
-        } else {
-            // PAPER TRADE EXIT FLOW
-            logger.info(">>> PAPER TERMINATION | Order ID: {} | Strategy: {} | Reason: {} | Final PnL: {}", 
-                order.getId(), order.getName(), exitReason, closurePnL);
         }
 
-        // Proceed to update DB regardless of Live/Paper status
-        persistClosedOrderToDb(order, exitReason, closurePnL);
+        // Clean out internal tracking states completely
+        liveUiCachePnL.remove(cycleKey);
+        highWaterMarks.remove(cycleKey);
+        activeTrailingFloors.remove(cycleKey);
+
+        for (Orders leg : group) {
+            self.persistClosedOrderToDb(leg, exitReason, closurePnL);
+        }
     }
 
     @Transactional
-    protected void persistClosedOrderToDb(Orders order, String exitReason, BigDecimal closurePnL) {
+    public void persistClosedOrderToDb(Orders order, String exitReason, BigDecimal closurePnL) {
         order.setActive(0);
-        order.setStatus("CLOSED");
-        order.setTradePhase("EXIT");
-        order.setClosedOn(LocalDateTime.now());
+        order.setStatus(STATUS_CLOSED);
+        order.setTradePhase(PHASE_EXIT);
+        order.setClosedOn(LocalDateTime.now(MARKET_ZONE));
         order.setExitReason(exitReason);
         order.setPl(closurePnL); 
 
         orderRepository.save(order);
-
-        // Clean tracking data for this specific order
-        liveUiCachePnL.remove(order.getId());
-        highWaterMarks.remove(order.getId());
-        activeTrailingFloors.remove(order.getId());
     }
 
-    private void clearMemoryCaches() {
+    private void purgeDeadCacheKeys(Set<String> activeCycleKeys) {
+        liveUiCachePnL.keySet().retainAll(activeCycleKeys);
+        highWaterMarks.keySet().retainAll(activeCycleKeys);
+        activeTrailingFloors.keySet().retainAll(activeCycleKeys);
+    }
+
+    private void clearAllMemoryCaches() {
         if (!liveUiCachePnL.isEmpty()) {
             liveUiCachePnL.clear();
             highWaterMarks.clear();
             activeTrailingFloors.clear();
-            logger.info("Memory caches purged. No active trades globally.");
+            logger.info("--- Risk Engine Idle: Memory flushed. Zero live trades detected. ---");
         }
     }
 
     private Map<String, BigDecimal> compileLiveBrokerPnLs() {
         Map<String, BigDecimal> tokenPnLMap = new ConcurrentHashMap<>();
-        JSONObject rawPositionResponse = angelOneService.getRawPositions();
-
-        if (rawPositionResponse != null && rawPositionResponse.optBoolean("status", false)) {
-            JSONArray positions = rawPositionResponse.optJSONArray("data");
-            if (positions != null) {
-                for (int i = 0; i < positions.length(); i++) {
-                    JSONObject pos = positions.getJSONObject(i);
-                    String pnlString = pos.optString("pnl", "0.00");
-                    BigDecimal pnl = new BigDecimal(pnlString);
-                    tokenPnLMap.put(pos.optString("symboltoken", ""), pnl);
+        try {
+            JSONObject rawPositionResponse = angelOneService.getRawPositions();
+            if (rawPositionResponse != null && rawPositionResponse.optBoolean("status", false)) {
+                JSONArray positions = rawPositionResponse.optJSONArray("data");
+                if (positions != null) {
+                    for (int i = 0; i < positions.length(); i++) {
+                        JSONObject pos = positions.getJSONObject(i);
+                        String pnlString = pos.optString("pnl", "0.00");
+                        BigDecimal pnl = new BigDecimal(pnlString);
+                        tokenPnLMap.put(pos.optString("symboltoken", ""), pnl);
+                    }
                 }
             }
+        } catch (Exception e) {
+            logger.error("Error fetching live position book from broker API: {}", e.getMessage());
         }
         return tokenPnLMap;
     }
