@@ -1,72 +1,81 @@
 package com.crumbs.trade.service;
 
-import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-import com.crumbs.trade.dto.ChartDataDTO;
-import com.crumbs.trade.entity.Strategy;
-import com.crumbs.trade.repo.LevelRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.messaging.MessagingException;
 import org.springframework.stereotype.Service;
+
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
+import com.crumbs.trade.dto.Token;
+import com.crumbs.trade.entity.Orders;
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.Vix;
+import com.crumbs.trade.entity.StraddleIntraday;
+import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.repo.VixRepo;
-
-import jakarta.mail.internet.AddressException;
+import com.crumbs.trade.repo.ShortStraddleRepository;
 
 @Service
 public class HeikinPsarExecutionService {
 
     private static final Logger logger = LogManager.getLogger(HeikinPsarExecutionService.class);
 
-    // ================= CONFIGURATION CONSTANTS =================
-    // Symbols & Names
+    // =========================================================
+    // 🛠️ 1. SYSTEM CONFIGURATION & GLOBAL TOGGLES 
+    // =========================================================
+    
+    // Trade Mode: "TREND_FOLLOWING" (Wait for reverse signal) OR "SCALPING" (Fixed Target/SL)
+    private static final String TRADE_MODE = "TREND_FOLLOWING"; 
+    
+    // Option Mode: true = Option Buyer (Long CE/PE), false = Option Seller (Short CE/PE)
+    private static final boolean IS_OPTION_BUYER = false; 
+    
+    // Scalping Configuration (Only applies if TRADE_MODE = "SCALPING" and IS_OPTION_BUYER = true)
+    private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("20.00");
+    private static final BigDecimal SCALP_SL_POINTS = new BigDecimal("10.00");
+
+
+    // =========================================================
+    // 🏦 2. INSTRUMENT & EXCHANGE CONSTANTS
+    // =========================================================
+    
     private static final String NIFTY = "SAMCO_NIFTY";
-    private static final String VIX = "VIX";
     private static final String CRUDEOIL = "CRUDEOIL";
-    private static final String SILVERM = "SILVERM";
-    private static final String NIFTY_OI = "NIFTY_OI";
     private static final String SAMCO_CRUDEOIL = "SAMCO_CRUDEOIL";
     
-    // Exchanges
     private static final String EXCHANGE_NSE = "NSE";
     private static final String EXCHANGE_NFO = "NFO";
     private static final String EXCHANGE_MCX = "MCX";
     
-    // Timeframes
     private static final String TF_FIVE_MIN = "FIVE_MINUTE";
-    private static final String TF_ONE_MIN = "ONE_MINUTE";
-    private static final int FIVE_MIN = 5;
-    // Strategy Flags
-    private static final String STRAT_HEIKIN_PSAR = "HEIKIN_ACHI";
-    private static final String STRAT_VIX = "VIX";
-    private static final String STRAT_NIFTY_INDEX = "NIFTY_INDEX";
-    private static final String STRAT_SR = "SR";
-    
-    // Status
     private static final String ACTIVE_YES = "Y";
 
+    // Required Repositories & Services
     @Autowired private ChartService chartService;
     @Autowired private StrategyRepo strategyRepo;
     @Autowired private VixRepo vixRepo;
-    @Autowired private OIService oiService;
-    @Autowired private SRService srService;
-    @Autowired private LevelRepository levelRepo;
+    @Autowired private OrderRepository ordersRepository;
+    @Autowired private OrderService orderService;
+    @Autowired private TelegramService telegramService;
+    @Autowired private ShortStraddleRepository straddleRepository;
 
-    // ================= CORE EXECUTIONS =================
+    // =========================================================
+    // 🚀 CORE EXECUTIONS
+    // =========================================================
 
-    /**
-     * Entry point for Nifty-related strategy logic.
-     */
     public void commonExecutionNifty() {
         try {
             executeNiftyInternal();
@@ -77,9 +86,6 @@ public class HeikinPsarExecutionService {
         }
     }
 
-    /**
-     * Entry point for MCX (Crude Oil) related strategy logic.
-     */
     public void commonExecutionMcx() {
         try {
             executeMcxInternal();
@@ -90,142 +96,288 @@ public class HeikinPsarExecutionService {
         }
     }
 
-    // ================= INTERNAL METHODS =================
+    // ================= INTERNAL DATA FETCHING =================
 
-    private void executeNiftyInternal()
-            throws SmartAPIException, IOException, AddressException, MessagingException {
+    private void executeNiftyInternal() throws Exception, SmartAPIException {
+        Strategy strategy = strategyRepo.findByName(NIFTY);
+        if (!isStrategyActive(strategy)) return;
 
-    	// 1. Get the current time for the 'TO' parameter
         String to = chartService.getDate("TO", EXCHANGE_NSE, 1);
         String from;
 
-        // 2. Check the database for the last fetched candle
         Optional<Vix> lastRecord = vixRepo.findFirstByNameOrderByTimestampDesc(NIFTY);
-
         if (lastRecord.isPresent()) {
-        	// Start from the last known candle's timestamp. 
-            // This ensures if the last candle was incomplete, it gets updated.
-            
-            String rawTimestamp = lastRecord.get().getTimestamp(); // "2026-04-29T09:15:00+05:30"
-            
-            // Define the desired format
+            String rawTimestamp = lastRecord.get().getTimestamp();
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-            
-            // Parse the ISO string and format it
             from = OffsetDateTime.parse(rawTimestamp).format(formatter); 
         } else {
-            // Fallback: If the DB is completely empty (e.g., first run of the day), 
-            // fetch from the morning open.
             from = chartService.getDate("FROM", EXCHANGE_NSE, 1);
         }
 
-        // Process Heikin-PSAR Strategy
-        if (isActive(STRAT_HEIKIN_PSAR)) {
-            chartService.readChartData(
-                    TF_FIVE_MIN, EXCHANGE_NFO, false, NIFTY,
-                    from, to, // Now 'from' is dynamic!
-                    strategyRepo.findByName(NIFTY).getTradingsymbol()
-                    ,"SAMCO");
-        }
-/*
-        // Option Chain analysis
-        if (isActive(STRAT_NIFTY_INDEX)) {
-            oiService.getOptionChain(NIFTY_OI);
-        }
-
-        // Support/Resistance Analysis
-        if (isActive(STRAT_SR)) {
-            srService.analyzeIntraday(NIFTY, TF_FIVE_MIN);
-        }
-        */
+        chartService.readChartData(TF_FIVE_MIN, EXCHANGE_NFO, false, NIFTY, from, to, strategy.getTradingsymbol(), "SAMCO");
+        vixRepo.findFirstByNameOrderByTimestampDesc(NIFTY).ifPresent(candle -> evaluateAndExecuteTrade(candle, strategy));
     }
 
-    private void executeMcxInternal()
-            throws SmartAPIException, IOException, AddressException, MessagingException {
+    private void executeMcxInternal() throws Exception, SmartAPIException {
+        Strategy strategy = strategyRepo.findByName(SAMCO_CRUDEOIL);
+        if (!isStrategyActive(strategy)) return;
 
-        // 1. Get current time for 'TO'
         String to = chartService.getDate("TO", EXCHANGE_MCX, 1);
         String from;
 
-        // 2. Check the database for the last fetched CRUDEOIL candle
         Optional<Vix> lastRecord = vixRepo.findFirstByNameOrderByTimestampDesc(CRUDEOIL);
-
         if (lastRecord.isPresent()) {
             from = ChartService.formatDateTime(lastRecord.get().getTimestamp());
         } else {
             from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
         }
-       
-        // Process MCX Heikin-PSAR
-           if (isActive(STRAT_HEIKIN_PSAR)) {  
-        	Strategy strategy = strategyRepo.findByName(SAMCO_CRUDEOIL);
-        	if(strategy!=null)
-        	{
-        		 chartService.readChartData(
-                         TF_FIVE_MIN, strategy.getExchange(), false, CRUDEOIL,
-                         from, to,
-                         strategyRepo.findByName(CRUDEOIL).getTradingsymbol()
-                 ,"SAMCO");
-        	}
-           
+        
+        chartService.readChartData(TF_FIVE_MIN, strategy.getExchange(), false, CRUDEOIL, from, to, strategyRepo.findByName(CRUDEOIL).getTradingsymbol(), "SAMCO");
+        vixRepo.findFirstByNameOrderByTimestampDesc(CRUDEOIL).ifPresent(candle -> evaluateAndExecuteTrade(candle, strategy));
+    }
+
+    // =========================================================
+    // 🧠 BRAIN: ORDER EVALUATION & STATE MACHINE
+    // =========================================================
+
+    private static final String HEIKIN_SIGNAL = "HEIKIN_PSAR";
+    private static final int STATUS_ACTIVE = 1;
+    private static final int STATUS_INACTIVE = 0; 
+    private static final String STATUS_OPEN = "OPEN";
+    private static final String STATUS_CLOSED = "CLOSED";
+    private static final String PHASE_ENTRY = "ENTRY";
+    private static final String PHASE_EXIT = "EXIT";
+
+    private void evaluateAndExecuteTrade(Vix latestCandle, Strategy strategy) {
+        if (latestCandle == null || strategy == null) return;
+
+        String instrument = strategy.getTradingsymbol(); 
+        LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+
+        // Timeframes
+        boolean isNiftyValid = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 20));
+        boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 0));
+        boolean isNiftySquareOff = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(15, 20));
+        boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 0));
+
+        // ---------------------------------------------------------
+        // PHASE 1: EVALUATE OPEN TRADES (EXIT LOGIC)
+        // ---------------------------------------------------------
+        Orders openTrade = ordersRepository.findByNameAndActive(strategy.getName(), STATUS_ACTIVE);
+        
+        if (openTrade != null) {
+            
+            // 1. Force EOD Square Off (Always applies)
+            if (isNiftySquareOff || isCrudeSquareOff) {
+                logger.info("🕒 [{}][EXIT] Square-off time reached.", strategy.getName());
+                processExit(openTrade, latestCandle, "EOD_SQUARE_OFF", strategy);
+                return;
+            }
+            
+            // 2. SCALPING EXIT (Only for Buyers with Fixed Targets)
+            if ("SCALPING".equalsIgnoreCase(TRADE_MODE) && IS_OPTION_BUYER) {
+                BigDecimal currentPremium = getCurrentOptionPremium(getBaseSymbol(strategy.getName()), openTrade.getStrike(), openTrade.getOptionType());
+                BigDecimal entryPremium = openTrade.getAskPrice();
+                
+                if (currentPremium != null && entryPremium != null) {
+                    BigDecimal pointsGained = currentPremium.subtract(entryPremium); // Buyer Math: Current - Entry
+                    
+                    if (pointsGained.compareTo(SCALP_TARGET_POINTS) >= 0) {
+                        logger.info("🎯 [{}][SCALP] Target Hit! Secured: +{} pts", strategy.getName(), pointsGained.setScale(2, RoundingMode.HALF_UP));
+                        processExit(openTrade, latestCandle, "SCALP_TARGET_HIT", strategy);
+                        return;
+                    }
+                    
+                    if (pointsGained.compareTo(SCALP_SL_POINTS.negate()) <= 0) { // e.g. -12 <= -10
+                        logger.info("🛑 [{}][SCALP] Stop Loss Hit! Loss: {} pts", strategy.getName(), pointsGained.setScale(2, RoundingMode.HALF_UP));
+                        processExit(openTrade, latestCandle, "SCALP_SL_HIT", strategy);
+                        return;
+                    }
+                }
+            }
+            
+            // 3. TREND FOLLOWING EXIT (Applies to Sellers, or if TRADE_MODE is Trend Following)
+            if ("TREND_FOLLOWING".equalsIgnoreCase(TRADE_MODE) || !IS_OPTION_BUYER) {
+                String currentSignal = latestCandle.getSignal();
+                boolean isLongReversal = "CE".equalsIgnoreCase(openTrade.getOptionType()) && "SELL".equalsIgnoreCase(currentSignal);
+                boolean isShortReversal = "PE".equalsIgnoreCase(openTrade.getOptionType()) && "BUY".equalsIgnoreCase(currentSignal);
+                
+                if (isLongReversal || isShortReversal) {
+                    logger.info("🔄 [{}][EXIT] Trend Reversal detected. Closing position.", strategy.getName());
+                    processExit(openTrade, latestCandle, "TREND_REVERSAL", strategy);
+                }
+            }
+            
+            return; // If trade is open but no exit condition met, keep holding.
+        }
+
+        // ---------------------------------------------------------
+        // PHASE 2: EVALUATE NEW ENTRIES
+        // ---------------------------------------------------------
+        if (!isNiftyValid && !isCrudeValid) return; 
+
+        String signal = latestCandle.getSignal();
+        if (signal == null || "NONE".equalsIgnoreCase(signal)) return;
+        
+        String orderType = "";
+        String optionType = "";
+
+        if ("BUY".equalsIgnoreCase(signal)) { // BULLISH
+            if (IS_OPTION_BUYER) {
+                orderType = "BUY"; optionType = "CE"; // Scalper/Buyer goes Long Call
+            } else {
+                orderType = "SELL"; optionType = "PE"; // Trend Seller goes Short Put
+            }
+        } else if ("SELL".equalsIgnoreCase(signal)) { // BEARISH
+            if (IS_OPTION_BUYER) {
+                orderType = "BUY"; optionType = "PE"; // Scalper/Buyer goes Long Put
+            } else {
+                orderType = "SELL"; optionType = "CE"; // Trend Seller goes Short Call
+            }
+        }
+
+        if (!orderType.isEmpty()) {
+            processEntry(strategy, latestCandle, orderType, optionType);
         }
     }
 
-    // ================= ORDER MONITOR =================
+    // =========================================================
+    // ⚙️ BROKER EXECUTION & DB UPDATES
+    // =========================================================
 
-    /**
-     * Periodically called to check status of executed trades.
-     */
-    public void monitorExecutedOrders() {
+    private void processEntry(Strategy strategyConfig, Vix candle, String type, String optionType) {
+        String tradeName = strategyConfig.getName();
+        BigDecimal spotPrice = candle.getClose(); 
+        String baseSymbol = getBaseSymbol(tradeName);
+        BigDecimal atmStrike = calculateAtmStrike(baseSymbol, spotPrice);
+        
+        StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).orElse(null);
+        if (optionData == null) {
+            logger.error("❌ [{}] No Option Data found for Symbol: {} | Strike: {}", tradeName, baseSymbol, atmStrike);
+            return;
+        }
+
+        String optionToken = "CE".equalsIgnoreCase(optionType) ? optionData.getCeToken() : optionData.getPeToken();
+        String optionSymbol = "CE".equalsIgnoreCase(optionType) ? optionData.getCeSymbol() : optionData.getPeSymbol();
+        BigDecimal entryPremium = "CE".equalsIgnoreCase(optionType) ? optionData.getCePrice() : optionData.getPePrice();
+
+        logger.info("🚀 [{}][EXECUTE] Opening {} {} | Spot: {} | Strike: {} | Premium: {}", tradeName, type, optionType, spotPrice, atmStrike, entryPremium);
+        boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
+        Orders order = null;
+
         try {
-            check(NIFTY, EXCHANGE_NFO);
-            check(SILVERM, EXCHANGE_MCX);
+            Token t = new Token();
+            t.setToken(optionToken); t.setSymbol(optionSymbol); t.setStrike(atmStrike);
+            t.setName(tradeName); t.setExch_seg(strategyConfig.getExchange()); t.setQuantity(strategyConfig.getQuantity());
+
+            if (isLive) {
+                orderService.orderPlaceWithToken(t, tradeName, type, true);
+                order = ordersRepository.findByNameAndTokenAndActive(tradeName, optionToken, STATUS_ACTIVE).orElse(null);
+            }
+
+            if (order == null) {
+                order = new Orders();
+                order.setToken(optionToken); order.setSymbol(optionSymbol); order.setQuantity(strategyConfig.getQuantity());
+                order.setExchange(strategyConfig.getExchange()); order.setActive(STATUS_ACTIVE); 
+            }
+
+            order.setName(tradeName); order.setSignal(HEIKIN_SIGNAL);
+            order.setType(type); order.setOptionType(optionType); order.setSide(optionType);
+            order.setTradeCycleId(UUID.randomUUID().toString());
+            order.setAskPrice(entryPremium); order.setStrike(atmStrike);
+            order.setStatus(STATUS_OPEN); order.setTradePhase(PHASE_ENTRY);
+            
+            ordersRepository.save(order);
+
+            if (telegramService != null) {
+                telegramService.sendMessage(String.format(
+                    "🚀 **[%s] ENTRY [%s]**\nMode: %s\nSide: %s %s\nStrike: %.0f\nPremium: ₹%.2f", 
+                    TRADE_MODE, (isLive ? "LIVE" : "PAPER"), (IS_OPTION_BUYER ? "BUYER" : "SELLER"), type, optionType, atmStrike, entryPremium
+                ));
+            }
+        
+        } catch (SmartAPIException e) {
+            logger.error("🚨 SmartAPI Error {}: {}", tradeName, e.getMessage());
         } catch (Exception e) {
-            logger.error("❌ Error monitoring executed orders", e);
+            logger.error("❌ Execution Failed {}: {}", tradeName, e.getMessage());
         }
     }
 
-    private void check(String name, String exchange) {
-        if (!isActive(name)) return;
-
-        List<Vix> list = vixRepo.findAllByNameContainingOrderByIdDesc(name);
-        if (list == null || list.isEmpty()) return;
-
-        chartService.lookForExecutedOrder(name, exchange, list.get(0), false);
-    }
-
-    // ================= EXIT =================
-
-    /**
-     * Forced exit logic for EOD or specific conditions.
-     */
-    public void exit(String symbol, String exchange) {
+    private void processExit(Orders openTrade, Vix exitCandle, String reason, Strategy strategyConfig) {
+        String tradeName = openTrade.getName();
+        boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
+        
         try {
-            chartService.exitFromTrade(symbol, exchange);
+            if (isLive) {
+                orderService.exitActiveTradeByToken(openTrade.getToken(), strategyConfig.getName(), tradeName);
+            }
+
+            // Fetch current premium for PnL
+            BigDecimal exitPremium = getCurrentOptionPremium(getBaseSymbol(tradeName), openTrade.getStrike(), openTrade.getOptionType());
+            if (exitPremium == null) exitPremium = BigDecimal.ZERO; 
+
+            BigDecimal entryPrice = openTrade.getAskPrice() != null ? openTrade.getAskPrice() : BigDecimal.ZERO;
+            BigDecimal pointsCollected = "BUY".equalsIgnoreCase(openTrade.getType()) 
+                    ? exitPremium.subtract(entryPrice) 
+                    : entryPrice.subtract(exitPremium); 
+
+            BigDecimal rupeePnL = pointsCollected.multiply(BigDecimal.valueOf(openTrade.getQuantity())).setScale(2, RoundingMode.HALF_UP);
+
+            openTrade.setExitPrice(exitPremium);
+            openTrade.setPl(rupeePnL);
+            openTrade.setClosedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+            openTrade.setTradePhase(PHASE_EXIT);
+            openTrade.setStatus(STATUS_CLOSED);
+            openTrade.setActive(STATUS_INACTIVE); // UNLOCK
+            openTrade.setExitReason(reason);
+            
+            ordersRepository.save(openTrade); 
+            
+            String emoji = rupeePnL.signum() >= 0 ? "✅" : "❌";
+            if (telegramService != null) {
+                telegramService.sendMessage(String.format(
+                    "%s **EXIT [%s]: %s**\nReason: %s\nStrike: %.0f\nEntry: %.2f | Exit: %.2f\nEst. PnL: **₹%.2f**", 
+                    emoji, (isLive ? "LIVE" : "PAPER"), tradeName, reason, openTrade.getStrike(), entryPrice, exitPremium, rupeePnL
+                ));
+            }
+            
+        } catch (SmartAPIException e) {
+            logger.error("🚨 [{}][EXIT] SmartAPI Broker Error: {}", tradeName, e.getMessage());
         } catch (Exception e) {
-            logger.error("❌ Exit failed for {} {}", symbol, exchange, e);
+            logger.error("❌ [{}][EXIT] System error closing trade: {}", tradeName, e.getMessage());
         }
     }
 
-    // ================= UTIL =================
+    // =========================================================
+    // 🧰 UTILITY HELPER METHODS
+    // =========================================================
 
-    private boolean isActive(String name) {
-        // 1. Check if today is a weekend. If so, return false immediately.
-        DayOfWeek today = LocalDate.now().getDayOfWeek();
-        if (today == DayOfWeek.SATURDAY || today == DayOfWeek.SUNDAY) {
-            return false;
-        }
-
-        // 2. If it's a weekday, proceed with the original logic
-        Strategy s = strategyRepo.findByName(name);
-        return s != null && ACTIVE_YES.equalsIgnoreCase(s.getActive());
+    private BigDecimal getCurrentOptionPremium(String baseSymbol, BigDecimal strike, String optionType) {
+        StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, strike).orElse(null);
+        if (optionData == null) return null;
+        return "CE".equalsIgnoreCase(optionType) ? optionData.getCePrice() : optionData.getPePrice();
     }
 
-    private void logApiError(String tag, SmartAPIException e) {
-        logger.error("🚨 SmartAPI error [{}] – continuing scheduler", tag, e);
+    private String getBaseSymbol(String tradeName) {
+        if (tradeName.contains("NIFTY")) return "NIFTY";
+        if (tradeName.contains("CRUDEOIL")) return "CRUDEOIL";
+        if (tradeName.contains("SENSEX")) return "SENSEX";
+        return tradeName;
     }
 
-    private void logGeneralError(String tag, Exception e) {
-        logger.error("❌ Execution error [{}] – continuing scheduler", tag, e);
+    private BigDecimal calculateAtmStrike(String baseSymbol, BigDecimal spotPrice) {
+        if ("NIFTY".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("50"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("50"));
+        if ("CRUDEOIL".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("10"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("10"));
+        if ("SENSEX".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        return spotPrice.setScale(0, RoundingMode.HALF_UP);
     }
+
+    private boolean isStrategyActive(Strategy strategy) {
+        if (strategy == null || !ACTIVE_YES.equalsIgnoreCase(strategy.getActive())) return false;
+        DayOfWeek today = LocalDate.now(ZoneId.of("Asia/Kolkata")).getDayOfWeek();
+        return !(today == DayOfWeek.SATURDAY || today == DayOfWeek.SUNDAY);
+    }
+
+    private void logApiError(String tag, SmartAPIException e) { logger.error("🚨 SmartAPI error [{}]", tag, e); }
+    private void logGeneralError(String tag, Exception e) { logger.error("❌ Execution error [{}]", tag, e); }
 }

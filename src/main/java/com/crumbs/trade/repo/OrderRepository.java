@@ -14,7 +14,7 @@ import com.crumbs.trade.entity.Orders;
 
 public interface OrderRepository extends JpaRepository<Orders, Long> {
 	Orders findByNameAndActive(String name, int active);
-
+	Optional<Orders> findByNameAndActive(String name, Integer active);
 	@Modifying
 	@Query("delete from Orders o")
 	void deleteAll();
