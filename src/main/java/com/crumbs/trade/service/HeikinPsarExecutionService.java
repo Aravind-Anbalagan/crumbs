@@ -154,6 +154,10 @@ public class HeikinPsarExecutionService {
         String instrument = strategy.getTradingsymbol(); 
         LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
 
+        // Generate Unique Trade Name (e.g., HEIKIN_NIFTY, HEIKIN_CRUDEOIL)
+        String baseSymbol = getBaseSymbol(strategy.getName());
+        String tradeName = "HEIKIN_" + baseSymbol;
+
         // Timeframes
         boolean isNiftyValid = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 20));
         boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 0));
@@ -163,33 +167,33 @@ public class HeikinPsarExecutionService {
         // ---------------------------------------------------------
         // PHASE 1: EVALUATE OPEN TRADES (EXIT LOGIC)
         // ---------------------------------------------------------
-        Orders openTrade = ordersRepository.findByNameAndActive(strategy.getName(), STATUS_ACTIVE);
+        Orders openTrade = ordersRepository.findByNameAndActive(tradeName, STATUS_ACTIVE);
         
         if (openTrade != null) {
             
             // 1. Force EOD Square Off (Always applies)
             if (isNiftySquareOff || isCrudeSquareOff) {
-                logger.info("🕒 [{}][EXIT] Square-off time reached.", strategy.getName());
+                logger.info("🕒 [{}][EXIT] Square-off time reached.", tradeName);
                 processExit(openTrade, latestCandle, "EOD_SQUARE_OFF", strategy);
                 return;
             }
             
             // 2. SCALPING EXIT (Only for Buyers with Fixed Targets)
             if ("SCALPING".equalsIgnoreCase(TRADE_MODE) && IS_OPTION_BUYER) {
-                BigDecimal currentPremium = getCurrentOptionPremium(getBaseSymbol(strategy.getName()), openTrade.getStrike(), openTrade.getOptionType());
+                BigDecimal currentPremium = getCurrentOptionPremium(baseSymbol, openTrade.getStrike(), openTrade.getOptionType());
                 BigDecimal entryPremium = openTrade.getAskPrice();
                 
                 if (currentPremium != null && entryPremium != null) {
                     BigDecimal pointsGained = currentPremium.subtract(entryPremium); // Buyer Math: Current - Entry
                     
                     if (pointsGained.compareTo(SCALP_TARGET_POINTS) >= 0) {
-                        logger.info("🎯 [{}][SCALP] Target Hit! Secured: +{} pts", strategy.getName(), pointsGained.setScale(2, RoundingMode.HALF_UP));
+                        logger.info("🎯 [{}][SCALP] Target Hit! Secured: +{} pts", tradeName, pointsGained.setScale(2, RoundingMode.HALF_UP));
                         processExit(openTrade, latestCandle, "SCALP_TARGET_HIT", strategy);
                         return;
                     }
                     
-                    if (pointsGained.compareTo(SCALP_SL_POINTS.negate()) <= 0) { // e.g. -12 <= -10
-                        logger.info("🛑 [{}][SCALP] Stop Loss Hit! Loss: {} pts", strategy.getName(), pointsGained.setScale(2, RoundingMode.HALF_UP));
+                    if (pointsGained.compareTo(SCALP_SL_POINTS.negate()) <= 0) { 
+                        logger.info("🛑 [{}][SCALP] Stop Loss Hit! Loss: {} pts", tradeName, pointsGained.setScale(2, RoundingMode.HALF_UP));
                         processExit(openTrade, latestCandle, "SCALP_SL_HIT", strategy);
                         return;
                     }
@@ -203,7 +207,7 @@ public class HeikinPsarExecutionService {
                 boolean isShortReversal = "PE".equalsIgnoreCase(openTrade.getOptionType()) && "BUY".equalsIgnoreCase(currentSignal);
                 
                 if (isLongReversal || isShortReversal) {
-                    logger.info("🔄 [{}][EXIT] Trend Reversal detected. Closing position.", strategy.getName());
+                    logger.info("🔄 [{}][EXIT] Trend Reversal detected. Closing position.", tradeName);
                     processExit(openTrade, latestCandle, "TREND_REVERSAL", strategy);
                 }
             }
@@ -237,7 +241,7 @@ public class HeikinPsarExecutionService {
         }
 
         if (!orderType.isEmpty()) {
-            processEntry(strategy, latestCandle, orderType, optionType);
+            processEntry(strategy, latestCandle, orderType, optionType, tradeName);
         }
     }
 
@@ -245,12 +249,12 @@ public class HeikinPsarExecutionService {
     // ⚙️ BROKER EXECUTION & DB UPDATES
     // =========================================================
 
-    private void processEntry(Strategy strategyConfig, Vix candle, String type, String optionType) {
-        String tradeName = strategyConfig.getName();
+    private void processEntry(Strategy strategyConfig, Vix candle, String type, String optionType, String tradeName) {
         BigDecimal spotPrice = candle.getClose(); 
-        String baseSymbol = getBaseSymbol(tradeName);
+        String baseSymbol = getBaseSymbol(strategyConfig.getName());
         BigDecimal atmStrike = calculateAtmStrike(baseSymbol, spotPrice);
         
+        // 1. Fetch Option Tokens & Premium
         StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).orElse(null);
         if (optionData == null) {
             logger.error("❌ [{}] No Option Data found for Symbol: {} | Strike: {}", tradeName, baseSymbol, atmStrike);
@@ -261,14 +265,26 @@ public class HeikinPsarExecutionService {
         String optionSymbol = "CE".equalsIgnoreCase(optionType) ? optionData.getCeSymbol() : optionData.getPeSymbol();
         BigDecimal entryPremium = "CE".equalsIgnoreCase(optionType) ? optionData.getCePrice() : optionData.getPePrice();
 
-        logger.info("🚀 [{}][EXECUTE] Opening {} {} | Spot: {} | Strike: {} | Premium: {}", tradeName, type, optionType, spotPrice, atmStrike, entryPremium);
+        // 2. Fetch Quantity Dynamically 
+        Strategy sourceConfig = strategyRepo.findByName(baseSymbol);
+        int quantity = (sourceConfig != null && sourceConfig.getQuantity() > 0) 
+                        ? sourceConfig.getQuantity() 
+                        : strategyConfig.getQuantity();
+
+        logger.info("🚀 [{}][EXECUTE] Opening {} {} | Spot: {} | Strike: {} | Premium: {} | Qty: {}", 
+                    tradeName, type, optionType, spotPrice, atmStrike, entryPremium, quantity);
+        
         boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
         Orders order = null;
 
         try {
             Token t = new Token();
-            t.setToken(optionToken); t.setSymbol(optionSymbol); t.setStrike(atmStrike);
-            t.setName(tradeName); t.setExch_seg(strategyConfig.getExchange()); t.setQuantity(strategyConfig.getQuantity());
+            t.setToken(optionToken); 
+            t.setSymbol(optionSymbol); 
+            t.setStrike(atmStrike);
+            t.setName(tradeName); 
+            t.setExch_seg(strategyConfig.getExchange()); 
+            t.setQuantity(quantity);
 
             if (isLive) {
                 orderService.orderPlaceWithToken(t, tradeName, type, true);
@@ -277,22 +293,34 @@ public class HeikinPsarExecutionService {
 
             if (order == null) {
                 order = new Orders();
-                order.setToken(optionToken); order.setSymbol(optionSymbol); order.setQuantity(strategyConfig.getQuantity());
-                order.setExchange(strategyConfig.getExchange()); order.setActive(STATUS_ACTIVE); 
+                order.setToken(optionToken); 
+                order.setSymbol(optionSymbol); 
+                order.setExchange(strategyConfig.getExchange()); 
+                order.setActive(STATUS_ACTIVE); 
             }
 
-            order.setName(tradeName); order.setSignal(HEIKIN_SIGNAL);
-            order.setType(type); order.setOptionType(optionType); order.setSide(optionType);
+            order.setName(tradeName); 
+            order.setQuantity(quantity);
+            order.setSignal(HEIKIN_SIGNAL);
+            order.setType(type); 
+            order.setOptionType(optionType); 
+            order.setSide(optionType);
             order.setTradeCycleId(UUID.randomUUID().toString());
-            order.setAskPrice(entryPremium); order.setStrike(atmStrike);
-            order.setStatus(STATUS_OPEN); order.setTradePhase(PHASE_ENTRY);
+            order.setAskPrice(entryPremium); 
+            order.setStrike(atmStrike);
+            order.setStatus(STATUS_OPEN); 
+            order.setTradePhase(PHASE_ENTRY);
+            
+            // Set Creation Timestamp (Change to setCreatedDate() if your DB entity uses that naming)
+            order.setCreatedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
             
             ordersRepository.save(order);
 
             if (telegramService != null) {
                 telegramService.sendMessage(String.format(
-                    "🚀 **[%s] ENTRY [%s]**\nMode: %s\nSide: %s %s\nStrike: %.0f\nPremium: ₹%.2f", 
-                    TRADE_MODE, (isLive ? "LIVE" : "PAPER"), (IS_OPTION_BUYER ? "BUYER" : "SELLER"), type, optionType, atmStrike, entryPremium
+                    "🚀 **[%s] ENTRY [%s]**\nMode: %s\nSide: %s %s\nStrike: %.0f\nPremium: ₹%.2f\nQty: %d", 
+                    TRADE_MODE, (isLive ? "LIVE" : "PAPER"), (IS_OPTION_BUYER ? "BUYER" : "SELLER"), 
+                    type, optionType, atmStrike, entryPremium, quantity
                 ));
             }
         
@@ -344,7 +372,7 @@ public class HeikinPsarExecutionService {
         } catch (SmartAPIException e) {
             logger.error("🚨 [{}][EXIT] SmartAPI Broker Error: {}", tradeName, e.getMessage());
         } catch (Exception e) {
-            logger.error("❌ [{}][EXIT] System error closing trade: {}", tradeName, e.getMessage());
+            logger.error("❌ [{}][EXIT] Error closing trade: {}", tradeName, e.getMessage());
         }
     }
 

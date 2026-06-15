@@ -207,7 +207,7 @@ public class DirectionalOptionSellingService {
         }
     }
 
- // ============================================================
+    // ============================================================
     // ================= DB & BROKER EXECUTION ====================
     // ============================================================
 
@@ -243,6 +243,9 @@ public class DirectionalOptionSellingService {
                 order.setQuantity(sourceConfig.getQuantity()); 
                 order.setExchange(sourceConfig.getExchange()); 
                 order.setActive(STATUS_ACTIVE);
+                
+                // FIX 1: Manually set the created on date for paper trades
+                order.setCreatedOn(LocalDateTime.now());
             } else {
                 log.warn("⚠️ [{}] Execution skipped. Both LIVE and PAPER flags are 'N' in config.", tradeName);
                 return;
@@ -325,6 +328,12 @@ public class DirectionalOptionSellingService {
 
     private BigDecimal getLivePrice(String token) {
         BigDecimal price = angelWebSocketService.getLatestLTP(ExchangeType.NSE_FO, token);
-        return price == null ? null : price.setScale(2, RoundingMode.HALF_UP);
+        
+        // FIX 2: Reject null OR zero values so you don't enter/exit at ₹0.00
+        if (price == null || price.compareTo(BigDecimal.ZERO) == 0) {
+            return null; 
+        }
+        
+        return price.setScale(2, RoundingMode.HALF_UP);
     }
 }
