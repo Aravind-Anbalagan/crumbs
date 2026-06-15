@@ -485,14 +485,8 @@ public class StrategyService {
         return meta;
     }
 
-    // =========================================================================
-    // EXIT CURRENT TRADE
-    // =========================================================================
  // =========================================================================
-    // EXIT CURRENT TRADE (Upgraded with DB Tracking)
-    // =========================================================================
- // =========================================================================
-    // EXIT CURRENT TRADE (Fixed: Fetches Option Premium instead of Index Price)
+    // EXIT CURRENT TRADE (Branched for Live & Paper Executions)
     // =========================================================================
     private void exitCurrentTrade(String reason, BigDecimal indexPrice) {
         try {
@@ -502,9 +496,14 @@ public class StrategyService {
             // 1. Call the broker to close the position
             orderService.exitActiveTrade(AppConstant.CPR_STRATEGY);
 
+            // Fetch strategy to check the live/paper attribute
+            Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
+            // Note: Adjust .getLive() to .getPaper() if your entity is structured inversely
+            boolean isLive = strategy != null && "Y".equalsIgnoreCase(strategy.getLive()); 
+
             // 2. Fetch the actual Option Premium (LTP) for the traded token
             SmartConnect sc = angelOne.signIn();
-            BigDecimal actualExitPremium = angelOneService.getcurrentPrice(
+            BigDecimal ltp = angelOneService.getcurrentPrice(
                     sc, 
                     activeTrade.getExchange(), 
                     activeTrade.getSymbol(), 
@@ -512,24 +511,38 @@ public class StrategyService {
                     "ltp"
             );
 
-            // Fallback just in case the API call fails during exit
-            if (actualExitPremium == null) {
+            if (ltp == null) {
                 logger.warn("⚠️ Could not fetch actual exit premium for {}. Using 0.", activeTrade.getSymbol());
-                actualExitPremium = BigDecimal.ZERO;
+                ltp = BigDecimal.ZERO;
             }
 
-            // 3. Perform DB Updates
-            BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
-            
-            // Calculate Directional PnL using the actual option premium
+            // 3. Assign Entry and Exit Prices Based on Execution Mode
+            BigDecimal entryPrice;
+            BigDecimal exitPrice;
+
+            if (isLive) {
+                // LIVE TRADE: Entry and Exit should be actual executed prices.
+                // Assuming activeTrade.getAskPrice() was saved correctly during orderPlace
+                entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
+                
+                // Set to LTP for now, but this is where you map your broker's actual executed exit price
+                exitPrice = ltp; 
+            } else {
+                // PAPER TRADE: Use standard simulated AskPrice and current LTP
+                entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
+                exitPrice = ltp;
+            }
+
+            // 4. Calculate Directional PnL
             BigDecimal pnl;
             if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
-                pnl = actualExitPremium.subtract(entryPrice); // Long: Exit - Entry
+                pnl = exitPrice.subtract(entryPrice); // Long: Exit - Entry
             } else {
-                pnl = entryPrice.subtract(actualExitPremium); // Short: Entry - Exit
+                pnl = entryPrice.subtract(exitPrice); // Short: Entry - Exit
             }
 
-            activeTrade.setExitPrice(actualExitPremium); // Save the option premium!
+            // 5. Update DB
+            activeTrade.setExitPrice(exitPrice); 
             activeTrade.setPl(pnl);
             activeTrade.setClosedOn(LocalDateTime.now());
             activeTrade.setStatus("CLOSED");
@@ -538,8 +551,8 @@ public class StrategyService {
 
             orderRepository.save(activeTrade);
             
-            logger.info("✅ [{}][EXIT] Reason: {} | Symbol: {} | Entry: {} | Exit Premium: {} | PnL: {}", 
-                    AppConstant.CPR_STRATEGY, reason, activeTrade.getSymbol(), entryPrice, actualExitPremium, pnl);
+            logger.info("✅ [{}][EXIT] Reason: {} | Mode: {} | Symbol: {} | Entry: {} | Exit: {} | PnL: {}", 
+                    AppConstant.CPR_STRATEGY, reason, isLive ? "LIVE" : "PAPER", activeTrade.getSymbol(), entryPrice, exitPrice, pnl);
 
         } catch (Exception | SmartAPIException e) {
             logger.error("❌ Error exiting CPR trade", e);

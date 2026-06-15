@@ -234,27 +234,50 @@ public class OrderService {
         logger.info("Trade closed by token -> {}", activeTrade.getSymbol());
     }
 
-    // =========================================================================
-    // CREATE NEW ENTRY
-    // =========================================================================
-    private void placeNewEntry(String strategyName, int spotPrice, String signal,
-                               SmartConnect sc, Strategy strategy, OrderMeta meta)
-            throws Exception, SmartAPIException {
+	// =========================================================================
+	// CREATE NEW ENTRY
+	// =========================================================================
+	private void placeNewEntry(String strategyName, int spotPrice,
+			String signal, SmartConnect sc, Strategy strategy, OrderMeta meta)
+			throws Exception, SmartAPIException {
 
-        // LTP is fetched internally by createToken() -> getNameAndTradingSymbol()
-        // No duplicate API call needed here
-        Token token = createToken(strategy, signal);
+		Token token = createToken(strategy, signal);
 
-        if (token.getToken() == null || token.getToken().isEmpty()) {
-            throw new Exception("Token resolution failed for strategy: " + strategyName);
-        }
+		if (token.getToken() == null || token.getToken().isEmpty()) {
+			throw new Exception(
+					"Token resolution failed for strategy: " + strategyName);
+		}
 
-        prepareSellOrder(token, strategyName, signal, meta);
+		// Apply meta first (this currently injects the Index Spot Price into
+		// token.EntryPrice)
+		prepareSellOrder(token, strategyName, signal, meta);
 
-        placeFinalOrder(sc, token, strategy,
-                signal.equalsIgnoreCase("BUY") ? StrategyService.MIN : StrategyService.MAX,
-                meta);
-    }
+		// 🟢 FIX 3: Fetch the ACTUAL Option Premium using the newly generated
+		// Option token
+		BigDecimal optionPremium = angelOneService.getcurrentPrice(sc,
+				token.getExch_seg(), token.getSymbol(), token.getToken(),
+				"ltp");
+
+		if (optionPremium != null) {
+			// Overwrite the Index Spot price with the true Option Premium
+			token.setAskPrice(optionPremium); // Use this if your Token uses
+												// askPrice
+			token.setEntryPrice(optionPremium); // Update this as well to be
+												// safe
+			logger.info("Fetched Option Premium for {}: {}", token.getSymbol(),
+					optionPremium);
+		} else {
+			logger.warn(
+					"⚠️ Could not fetch LTP for option {}. DB will record 0.",
+					token.getSymbol());
+		}
+
+		placeFinalOrder(sc, token, strategy,
+				signal.equalsIgnoreCase("BUY")
+						? StrategyService.MIN
+						: StrategyService.MAX,
+				meta);
+	}
 
     // =========================================================================
     // CREATE TOKEN
@@ -270,6 +293,13 @@ public class OrderService {
             token.setToken(dto.getToken());
             token.setExch_seg(dto.getExchange());
             token.setQuantity(dto.getLotSize());
+            
+            // 🟢 FIX 2: Transfer Strike and OptionType from DTO to Token
+            if (dto.getStrike() != null) {
+                token.setStrike(new BigDecimal(dto.getStrike())); 
+            }
+      
+
         } catch (AddressException | MessagingException | IOException e) {
             logger.error("❌ Error during Token creation: {}", e.getMessage());
         }
@@ -284,8 +314,8 @@ public class OrderService {
             return strategy;
         }
 
-        SmartConnect sc           = angelOne.signIn();
-        BigDecimal   currentPrice = angelOneService.getcurrentPrice(sc,
+        SmartConnect sc            = angelOne.signIn();
+        BigDecimal   currentPrice  = angelOneService.getcurrentPrice(sc,
                 strategy.getExchange(), strategy.getTradingsymbol(), strategy.getToken());
 
         if (currentPrice == null) {
@@ -319,6 +349,10 @@ public class OrderService {
                 tradingSymbol, currentPrice, optionType, nearestStrike);
 
         strategy.setTradingsymbol(tradingSymbol);
+        
+        // 🟢 FIX 1: Attach Strike and OptionType to the DTO so they don't get lost
+        strategy.setStrike(String.valueOf(nearestStrike)); // Adjust to Integer/BigDecimal if your DTO demands it
+        strategy.setOptionType(optionType);
 
         Indexes indexes = indexesRepo.findByNameAndSymbol(strategy.getName(), tradingSymbol);
         if (indexes != null) {

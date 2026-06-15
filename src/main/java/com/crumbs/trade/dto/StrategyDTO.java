@@ -20,4 +20,7 @@ public class StrategyDTO {
     private String papertrade;
     private String dayCandle;
     private int lotSize;
+ // Newly added fields to support CPR option premium fetching
+    private String strike;
+    private String optionType;
 }

@@ -47,5 +47,7 @@ public class Token {
     BigDecimal pivot;            // CPR pivot
     String     marketType;       // NORMAL | GAP_UP | GAP_DOWN
     String     entryTime;        // ISO datetime of entry
+    String optionType;       // CE or PE
+	BigDecimal askPrice;     // Actual Option Premium (since your Orders entity uses this)
     
 }
