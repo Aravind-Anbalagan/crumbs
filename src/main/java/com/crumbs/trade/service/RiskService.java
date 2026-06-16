@@ -1,6 +1,7 @@
 package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode; // <-- ADDED FOR MATH ROUNDING
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -338,26 +339,54 @@ public class RiskService {
         highWaterMarks.remove(cycleKey);
         activeTrailingFloors.remove(cycleKey);
 
+        // --- SURGICAL FIX APPLIED HERE ---
         for (Orders leg : group) {
+            // 1. Get exact individual PnL BEFORE removing from cache
+            BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO);
             liveUiCachePnL.remove(leg.getId());
-            self.persistClosedOrderToDb(leg, exitReason, closurePnL);
+
+            // 2. Mathematically derive the exit price using askPrice and final PnL
+            BigDecimal calculatedExitPrice = BigDecimal.ZERO;
+            if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
+                BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
+                BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4, RoundingMode.HALF_UP);
+                
+                if (SIDE_BUY.equalsIgnoreCase(leg.getType())) {
+                    calculatedExitPrice = leg.getAskPrice().add(pnlPerUnit);
+                } else {
+                    calculatedExitPrice = leg.getAskPrice().subtract(pnlPerUnit);
+                }
+                
+                calculatedExitPrice = calculatedExitPrice.setScale(2, RoundingMode.HALF_UP);
+            } else if (leg.getAskPrice() != null) {
+                calculatedExitPrice = leg.getAskPrice(); // fallback
+            }
+
+            self.persistClosedOrderToDb(leg, exitReason, finalLegPnL, calculatedExitPrice);
         }
+        // --- END SURGICAL FIX ---
     }
 
+    // --- SURGICAL FIX APPLIED TO PARAMETERS HERE ---
     @Transactional
-    public void persistClosedOrderToDb(Orders order, String exitReason, BigDecimal closurePnL) {
+    public void persistClosedOrderToDb(Orders order, String exitReason, BigDecimal finalLegPnL, BigDecimal exitPrice) {
         order.setActive(0);
         order.setStatus(STATUS_CLOSED);
         order.setTradePhase(PHASE_EXIT);
         order.setClosedOn(LocalDateTime.now(MARKET_ZONE));
         order.setExitReason(exitReason);
         
-        // Save the leg's final individual PnL value back to the DB upon closure
-        BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(order.getId(), BigDecimal.ZERO);
+        // Save the explicitly passed PnL
         order.setPl(finalLegPnL); 
+
+        // Save explicitly calculated exit price
+        if (exitPrice != null && exitPrice.compareTo(BigDecimal.ZERO) > 0) {
+            order.setExitPrice(exitPrice);
+        }
 
         orderRepository.save(order);
     }
+    // --- END SURGICAL FIX ---
 
     private void clearAllMemoryCaches() {
         if (!liveUiCachePnL.isEmpty()) {
