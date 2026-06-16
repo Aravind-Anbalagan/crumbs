@@ -159,10 +159,14 @@ public class HeikinPsarExecutionService {
         String tradeName = "HEIKIN_" + baseSymbol;
 
         // Timeframes
+     // Timeframes
         boolean isNiftyValid = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 20));
-        boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 0));
+        // Updated Crude validity to 23:20
+        boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 20));
+        
         boolean isNiftySquareOff = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(15, 20));
-        boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 0));
+        // Updated Crude square-off to 23:20
+        boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 20));
 
         // ---------------------------------------------------------
         // PHASE 1: EVALUATE OPEN TRADES (EXIT LOGIC)

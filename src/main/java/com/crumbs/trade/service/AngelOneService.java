@@ -263,122 +263,92 @@ public class AngelOneService {
 		return new BigDecimal(String.valueOf(jsonObject.get(keyword)));
 	}
 	
-	public void createStrategy_modified(SmartConnect smartConnect, String strategyName, int spotPrice, String type,String signal)
-			throws SmartAPIException, Exception {
-		try
-		{
-			// TODO Auto-generated method stub
-			// Get Current Price
-			smartConnect = angelOne.signIn();
-			logger.info("Order placing...");
-			Strategy strategy = new Strategy();
-			strategy = strategyRepo.findByName("STRANGLE");
-			String exchange = strategy.getExchange();
-			String tradingSymbol = strategy.getTradingsymbol();
-			String symboltoken = strategy.getToken();
-			String expiry = strategy.getExpiry();
-			BigDecimal currentPrice = getcurrentPrice(smartConnect, exchange, tradingSymbol, symboltoken);
+	// 🟢 CHANGE: Added 'int breakEven' parameter to the method signature
+    public void createStrategy_modified(SmartConnect smartConnect, String strategyName, int spotPrice, String type, String signal, int breakEven)
+            throws SmartAPIException, Exception {
+        try {
+            smartConnect = angelOne.signIn();
+            logger.info("Order placing...");
+            Strategy strategy = strategyRepo.findByName("STRANGLE");
+            String exchange = strategy.getExchange();
+            String tradingSymbol = strategy.getTradingsymbol();
+            String symboltoken = strategy.getToken();
+            String expiry = strategy.getExpiry();
+            BigDecimal currentPrice = getcurrentPrice(smartConnect, exchange, tradingSymbol, symboltoken);
 
-			if (smartConnect != null) {
-				String url = null;
-				boolean result = false;
-				HashMap<Token, Integer> priceMapCE = new HashMap<>();
-				HashMap<Token, Integer> priceMapPE = new HashMap<>();
-				Token tokenCE = createSymbol(currentPrice, "CE", smartConnect, expiry,spotPrice,strategy,"SELLER");
-				Token tokenPE = createSymbol(currentPrice, "PE", smartConnect, expiry,spotPrice,strategy,"SELLER");
+            if (smartConnect != null) {
+                Token tokenCE = createSymbol(currentPrice, "CE", smartConnect, expiry, spotPrice, strategy, "SELLER");
+                Token tokenPE = createSymbol(currentPrice, "PE", smartConnect, expiry, spotPrice, strategy, "SELLER");
 
-				if (type.equalsIgnoreCase("SELL")) {
-					// Order for CE
-					tokenCE.setProductType(Constants.PRODUCT_CARRYFORWARD);
-					tokenCE.setVariety(Constants.VARIETY_NORMAL);
-					tokenCE.setOrderType(Constants.ORDER_TYPE_MARKET);
-					tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
-					tokenCE.setName("STRANGLE");
-					tokenCE.setType(type);
-					tokenCE.setTriggerPrice(new Double(0));
-					tokenCE.setSignal(signal);
-					tokenCE.setExch_seg("NFO");
-					//Live
-					if (strategy.getLive().equalsIgnoreCase("Y")) {
-						placeOrder(smartConnect, tokenCE);
-						//insertOrder(tokenCE, StrategyService.MAX);
-						if (tokenCE.getPrice() != 0) {
-							tokenCE.setTriggerPrice((((double) 45) / 100) * tokenCE.getPrice() + tokenCE.getPrice());
-							// SL LEG
-							tokenCE.setVariety(Constants.VARIETY_STOPLOSS);
-							tokenCE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
-							tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
-							insertOrder(tokenCE, StrategyService.MAX);
-							placeOrder(smartConnect, tokenCE);
-							// Finvasia
-							//createStrategy(smartConnect, "NIFTY", 0, "CE");
+                if (type.equalsIgnoreCase("SELL")) {
+                    tokenCE.setProductType(Constants.PRODUCT_CARRYFORWARD);
+                    tokenCE.setVariety(Constants.VARIETY_NORMAL);
+                    tokenCE.setOrderType(Constants.ORDER_TYPE_MARKET);
+                    tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
+                    tokenCE.setName("STRANGLE");
+                    tokenCE.setType(type);
+                    tokenCE.setTriggerPrice(new Double(0));
+                    tokenCE.setSignal(signal);
+                    tokenCE.setExch_seg("NFO");
 
-						} else {
-							logger.error("Unable to place order : " + type);
-						}
-					}
-					else
-					{
-						 if(strategy.getPapertrade().equalsIgnoreCase("Y")) 
-							{
-								//Paper Trade
-								insertOrder(tokenCE, StrategyService.MAX);
-							}
-					}
-				   
-				
+                    if (strategy.getLive().equalsIgnoreCase("Y")) {
+                        placeOrder(smartConnect, tokenCE);
+                        if (tokenCE.getPrice() != 0) {
+                            tokenCE.setTriggerPrice((((double) 45) / 100) * tokenCE.getPrice() + tokenCE.getPrice());
+                            tokenCE.setVariety(Constants.VARIETY_STOPLOSS);
+                            tokenCE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
+                            tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
+                            
+                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MAX
+                            insertOrder(tokenCE, breakEven); 
+                            placeOrder(smartConnect, tokenCE);
+                        } else {
+                            logger.error("Unable to place order : " + type);
+                        }
+                    } else {
+                         if(strategy.getPapertrade().equalsIgnoreCase("Y")) {
+                             // 🟢 FIX: Use breakEven parameter instead of StrategyService.MAX
+                             insertOrder(tokenCE, breakEven); 
+                         }
+                    }
 
-				} else if (type.equalsIgnoreCase("BUY")) {
-					// Order for PE
-					tokenPE.setProductType(Constants.PRODUCT_CARRYFORWARD);
-					tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
-					tokenPE.setVariety(Constants.VARIETY_NORMAL);
-					tokenPE.setOrderType(Constants.ORDER_TYPE_MARKET);
-					tokenPE.setName("STRANGLE");
-					tokenPE.setType(type);
-					tokenPE.setTriggerPrice(new Double(0));
-					tokenPE.setSignal(signal);
-					tokenPE.setExch_seg("NFO");
-					//Live
-					if (strategy.getLive().equalsIgnoreCase("Y")) {
-						placeOrder(smartConnect, tokenPE);
-						//insertOrder(tokenPE, StrategyService.MIN);
-						if (tokenPE.getPrice() != 0) {
-							tokenPE.setTriggerPrice((((double) 45) / 100) * tokenPE.getPrice() + tokenPE.getPrice());
-							// SL-LEG
-							tokenPE.setVariety(Constants.VARIETY_STOPLOSS);
-							tokenPE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
-							tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
-							insertOrder(tokenPE, StrategyService.MIN);
-							placeOrder(smartConnect, tokenPE);
-							// Finvasia
-							//createStrategy(smartConnect, "NIFTY", 0, "PE");
+                } else if (type.equalsIgnoreCase("BUY")) {
+                    tokenPE.setProductType(Constants.PRODUCT_CARRYFORWARD);
+                    tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
+                    tokenPE.setVariety(Constants.VARIETY_NORMAL);
+                    tokenPE.setOrderType(Constants.ORDER_TYPE_MARKET);
+                    tokenPE.setName("STRANGLE");
+                    tokenPE.setType(type);
+                    tokenPE.setTriggerPrice(new Double(0));
+                    tokenPE.setSignal(signal);
+                    tokenPE.setExch_seg("NFO");
 
-						} else {
-							logger.error("Unable to place order : " + type);
-						}
-					} 
-					else
-					{
-						if (strategy.getPapertrade().equalsIgnoreCase("Y")) {
-							//Paper Trade
-							insertOrder(tokenPE, StrategyService.MIN);
-						}
-					}
-					
-				
-
-				}
-
-			}
-			
-		}
-		catch(Exception ex)
-		{
-			//sendEmail.sendmail(strategyName + "Error",ex.getMessage(),0);
-		}
-
-	}
+                    if (strategy.getLive().equalsIgnoreCase("Y")) {
+                        placeOrder(smartConnect, tokenPE);
+                        if (tokenPE.getPrice() != 0) {
+                            tokenPE.setTriggerPrice((((double) 45) / 100) * tokenPE.getPrice() + tokenPE.getPrice());
+                            tokenPE.setVariety(Constants.VARIETY_STOPLOSS);
+                            tokenPE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
+                            tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
+                            
+                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MIN
+                            insertOrder(tokenPE, breakEven); 
+                            placeOrder(smartConnect, tokenPE);
+                        } else {
+                            logger.error("Unable to place order : " + type);
+                        }
+                    } else {
+                        if (strategy.getPapertrade().equalsIgnoreCase("Y")) {
+                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MIN
+                            insertOrder(tokenPE, breakEven); 
+                        }
+                    }
+                }
+            }
+        } catch(Exception ex) {
+            logger.error("Error in createStrategy_modified", ex);
+        }
+    }
 	
 	@Transactional
 	public Orders insertOrder(Token token, int breakEven) throws Exception {
@@ -391,9 +361,15 @@ public class AngelOneService {
 		// CREATED DATE
 		orders.setCreatedOn(LocalDateTime.now());
 
-		// ASK PRICE
-		Double ask = token.getPrice();
-		orders.setAskPrice(ask != null ? BigDecimal.valueOf(ask) : BigDecimal.ZERO);
+		// 🟢 FIX: SAFELY MAP ASK PRICE AND ENTRY PRICE
+		// Prioritize getAskPrice/getEntryPrice (which we set in OrderService)
+		// Fallback to getPrice() just in case older parts of your system still use it
+		BigDecimal actualPremium = token.getAskPrice() != null ? token.getAskPrice() : 
+                                   (token.getEntryPrice() != null ? token.getEntryPrice() : 
+                                   (token.getPrice() != null ? BigDecimal.valueOf(token.getPrice()) : BigDecimal.ZERO));
+
+		orders.setAskPrice(actualPremium);
+		
 
 		// SL
 		Double sl = token.getTriggerPrice();
@@ -412,7 +388,7 @@ public class AngelOneService {
 		// BREAKEVEN
 		orders.setBreakeven(BigDecimal.valueOf(breakEven));
 
-		// QUANTITY – works for int **or** Integer
+		// QUANTITY
 		try {
 			orders.setQuantity(token.getQuantity());
 		} catch (Exception e) {

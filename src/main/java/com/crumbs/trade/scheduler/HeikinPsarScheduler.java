@@ -32,7 +32,7 @@ public class HeikinPsarScheduler {
     @Schedules({
         @Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = ZONE),
         @Scheduled(cron = "5 */5 10-14 * * MON-FRI", zone = ZONE),
-        @Scheduled(cron = "5 0-15/5 15 * * MON-FRI", zone = ZONE)
+        @Scheduled(cron = "5 0-25/5 15 * * MON-FRI", zone = ZONE)
     })
     public void runNifty() {
         runSafely(TAG_NIFTY_EXEC, () -> executionService.commonExecutionNifty());
