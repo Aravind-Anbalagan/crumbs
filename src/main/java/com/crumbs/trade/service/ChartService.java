@@ -992,82 +992,80 @@ public class ChartService {
     }
     
  // =========================================================
-    // Combined Signal (VWAP + EMA Crossover)
-    // =========================================================
+ // Combined Signal (VWAP + EMA Crossover)
+ // =========================================================
 
-    public List<Candlestick> calculateCombinedSignal(String name) {
-        String todayDate = LocalDate.now(ZoneId.of("Asia/Kolkata")).toString();
-        List<Vix> todaysCandles = vixRepo.findByName(name).stream()
-                .filter(v -> v.getTimestamp() != null && v.getTimestamp().startsWith(todayDate))
-                .sorted(java.util.Comparator.comparing(Vix::getTimestamp)) 
-                .collect(Collectors.toList());
+     public List<Candlestick> calculateCombinedSignal(String name) {
+         String todayDate = LocalDate.now(ZoneId.of("Asia/Kolkata")).toString();
+         List<Vix> todaysCandles = vixRepo.findByName(name).stream()
+                 .filter(v -> v.getTimestamp() != null && v.getTimestamp().startsWith(todayDate))
+                 .sorted(java.util.Comparator.comparing(Vix::getTimestamp)) 
+                 .collect(Collectors.toList());
 
-        String vwapMode = "NONE";
-        String emaMode = "NONE";
-        
-        // Track exactly when the modes flipped
-        int vwapFlippedIndex = -1;
-        int emaFlippedIndex = -1;
-        int maxCandleGap = 10; 
+         String vwapMode = "NONE";
+         String emaMode = "NONE";
+         
+         // Track exactly when the modes flipped
+         int vwapFlippedIndex = -1;
+         int emaFlippedIndex = -1;
+         int maxCandleGap = 10; 
 
-        String activeSignalMode = "NONE"; 
-        List<Candlestick> resultList = new ArrayList<>();
+         String activeSignalMode = "NONE"; 
+         List<Candlestick> resultList = new ArrayList<>();
 
-        for (int i = 0; i < todaysCandles.size(); i++) {
-            Vix vix = todaysCandles.get(i);
+         for (int i = 0; i < todaysCandles.size(); i++) {
+             Vix vix = todaysCandles.get(i);
 
-            // 1. Track VWAP Mode
-            if ("BUY".equalsIgnoreCase(vix.getVwapSignal()) && !"BUY".equals(vwapMode)) {
-                vwapMode = "BUY";
-                vwapFlippedIndex = i;
-            } else if ("SELL".equalsIgnoreCase(vix.getVwapSignal()) && !"SELL".equals(vwapMode)) {
-                vwapMode = "SELL";
-                vwapFlippedIndex = i;
-            }
+             // 1. Track VWAP Mode
+             if ("BUY".equalsIgnoreCase(vix.getVwapSignal()) && !"BUY".equals(vwapMode)) {
+                 vwapMode = "BUY";
+                 vwapFlippedIndex = i;
+             } else if ("SELL".equalsIgnoreCase(vix.getVwapSignal()) && !"SELL".equals(vwapMode)) {
+                 vwapMode = "SELL";
+                 vwapFlippedIndex = i;
+             }
 
-            // 2. Track EMA Mode
-            if ("BUY_CROSS".equalsIgnoreCase(vix.getCrossoverEvent()) && !"BUY".equals(emaMode)) {
-                emaMode = "BUY";
-                emaFlippedIndex = i;
-            } else if ("SELL_CROSS".equalsIgnoreCase(vix.getCrossoverEvent()) && !"SELL".equals(emaMode)) {
-                emaMode = "SELL";
-                emaFlippedIndex = i;
-            }
+             // 2. Track EMA Mode
+             if ("BUY_CROSS".equalsIgnoreCase(vix.getCrossoverEvent()) && !"BUY".equals(emaMode)) {
+                 emaMode = "BUY";
+                 emaFlippedIndex = i;
+             } else if ("SELL_CROSS".equalsIgnoreCase(vix.getCrossoverEvent()) && !"SELL".equals(emaMode)) {
+                 emaMode = "SELL";
+                 emaFlippedIndex = i;
+             }
 
-            // 3. Check Alignment & Gap Limit
-            String currentCombined = "NONE";
-            if ("BUY".equals(vwapMode) && "BUY".equals(emaMode)) {
-                if (Math.abs(vwapFlippedIndex - emaFlippedIndex) <= maxCandleGap) {
-                    currentCombined = "BUY";
-                }
-            } else if ("SELL".equals(vwapMode) && "SELL".equals(emaMode)) {
-                if (Math.abs(vwapFlippedIndex - emaFlippedIndex) <= maxCandleGap) {
-                    currentCombined = "SELL";
-                }
-            }
+             // 3. Check Alignment & Gap Limit
+             String currentCombined = "NONE";
+             if ("BUY".equals(vwapMode) && "BUY".equals(emaMode)) {
+                 if (Math.abs(vwapFlippedIndex - emaFlippedIndex) <= maxCandleGap) {
+                     currentCombined = "BUY";
+                 }
+             } else if ("SELL".equals(vwapMode) && "SELL".equals(emaMode)) {
+                 if (Math.abs(vwapFlippedIndex - emaFlippedIndex) <= maxCandleGap) {
+                     currentCombined = "SELL";
+                 }
+             }
 
-            // 4. Create the Trigger
-            String newSignalTrigger = null; 
-            if ("BUY".equals(currentCombined) && !"BUY".equals(activeSignalMode)) {
-                newSignalTrigger = "BUY";
-                activeSignalMode = "BUY"; 
-            } else if ("SELL".equals(currentCombined) && !"SELL".equals(activeSignalMode)) {
-                newSignalTrigger = "SELL";
-                activeSignalMode = "SELL";
-            } else if ("NONE".equals(currentCombined)) {
-                activeSignalMode = "NONE"; 
-            }
+             // 4. Create the Trigger (Fixed to capture clear trend flips)
+             String newSignalTrigger = null; 
+             if ("BUY".equals(currentCombined) && !"BUY".equals(activeSignalMode)) {
+                 newSignalTrigger = "BUY";
+                 activeSignalMode = "BUY"; 
+             } else if ("SELL".equals(currentCombined) && !"SELL".equals(activeSignalMode)) {
+                 newSignalTrigger = "SELL";
+                 activeSignalMode = "SELL";
+             }
 
-            // 5. Add to result list ONLY if the database needs updating
-            if ((newSignalTrigger != null && !newSignalTrigger.equals(vix.getSignal())) || 
-                (newSignalTrigger == null && vix.getSignal() != null)) {
-                
-                Candlestick c = new Candlestick(null, null, null, null, vix.getId(), null, null, null);
-                c.setCombinedSignal(newSignalTrigger); // 🚀 Uses the new dedicated field
-                resultList.add(c);
-            }
-        }
-        return resultList;
-    }
+             // 5. Add to result list ONLY if the database needs updating
+             if ((newSignalTrigger != null && !newSignalTrigger.equals(vix.getSignal())) || 
+                 (newSignalTrigger == null && vix.getSignal() != null)) {
+                 
+                 Candlestick c = new Candlestick(null, null, null, null, vix.getId(), null, null, null);
+                 c.setCombinedSignal(newSignalTrigger); // 🚀 Uses the new dedicated field
+                 resultList.add(c);
+             }
+         }
+         return resultList;
+     }
     
 }
