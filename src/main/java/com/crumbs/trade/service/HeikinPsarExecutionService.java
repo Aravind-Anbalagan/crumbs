@@ -38,10 +38,10 @@ public class HeikinPsarExecutionService {
     // =========================================================
     
     // Trade Mode: "TREND_FOLLOWING" (Wait for reverse signal) OR "SCALPING" (Fixed Target/SL)
-    private static final String TRADE_MODE = "TREND_FOLLOWING"; 
+    private static final String TRADE_MODE = "SCALPING"; 
     
     // Option Mode: true = Option Buyer (Long CE/PE), false = Option Seller (Short CE/PE)
-    private static final boolean IS_OPTION_BUYER = false; 
+    private static final boolean IS_OPTION_BUYER = true; 
     
     // Scalping Configuration (Only applies if TRADE_MODE = "SCALPING" and IS_OPTION_BUYER = true)
     private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("20.00");
