@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crumbs Pro Terminal</title>
+    
+    <link rel="icon" href="data:,">
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <style>
+        /* --- STATIC CSS --- */
+        *, ::before, ::after { box-sizing: border-box; margin: 0; padding: 0; }
+        .flex { display: flex; } .flex-col { flex-direction: column; } .items-center { align-items: center; } .justify-between { justify-content: space-between; } .justify-center { justify-content: center; }
+        .space-x-8 > * + * { margin-left: 2rem; } .space-x-10 > * + * { margin-left: 2.5rem; } .space-y-1 > * + * { margin-top: 0.25rem; } .space-y-2 > * + * { margin-top: 0.5rem; } .space-y-3 > * + * { margin-top: 0.75rem; } .space-y-4 > * + * { margin-top: 1rem; }
+        .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; } .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; } .px-4 { padding-left: 1rem; padding-right: 1rem; } .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; } .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; } .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; } .p-1 { padding: 0.25rem; } .p-2 { padding: 0.5rem; } .p-4 { padding: 1rem; } .pb-6 { padding-bottom: 1.5rem; } .pt-2 { padding-top: 0.5rem; } .pt-4 { padding-top: 1rem; }
+        .gap-2 { gap: 0.5rem; } .gap-4 { gap: 1rem; }
+        .border { border-width: 1px; border-style: solid; } .border-b { border-bottom-width: 1px; border-bottom-style: solid; } .border-r { border-right-width: 1px; border-right-style: solid; } .border-4 { border-width: 4px; border-style: solid; }
+        .rounded { border-radius: 0.25rem; } .rounded-md { border-radius: 0.375rem; } .rounded-full { border-radius: 9999px; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; } .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; } .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .text-\[10px\] { font-size: 10px; } .text-\[11px\] { font-size: 11px; }
+        .font-bold { font-weight: 700; } .font-semibold { font-weight: 600; } .font-mono { font-family: monospace; } .tracking-widest { letter-spacing: 0.1em; } .uppercase { text-transform: uppercase; } .text-center { text-align: center; } .text-right { text-align: right; }
+        .w-full { width: 100%; } .h-full { height: 100%; } .w-64 { width: 16rem; } .h-12 { height: 3rem; } .w-12 { width: 3rem; } .flex-1 { flex: 1 1 0%; } .min-h-0 { min-height: 0px; } .relative { position: relative; } .absolute { position: absolute; } .inset-0 { top: 0; right: 0; bottom: 0; left: 0; } .z-50 { z-index: 50; }
+        .overflow-hidden { overflow: hidden; } .overflow-y-auto { overflow-y: auto; }
+        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); } .outline-none { outline: 2px solid transparent; outline-offset: 2px; }
+        .transition-colors { transition-property: color, background-color, border-color; transition-duration: 150ms; } .transition-all { transition-property: all; transition-duration: 150ms; } .transition-opacity { transition-property: opacity; } .duration-300 { transition-duration: 300ms; }
+        .active\:scale-95:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+        
+        .text-blue-500 { color: #3b82f6; } .text-green-500 { color: #22c55e; } .text-red-500 { color: #ef4444; } .text-gray-400 { color: #9ca3af; } .text-white { color: #ffffff; }
+        .bg-blue-600 { background-color: #2563eb; } .bg-emerald-600 { background-color: #059669; } .bg-rose-600 { background-color: #e11d48; }
+        
+        button, select { font-family: inherit; } .hover\:bg-blue-500:hover { background-color: #3b82f6; } .hover\:text-white:hover { color: #ffffff; } .hover\:border-blue-500:hover { border-color: #3b82f6; } .hover\:bg-emerald-500:hover { background-color: #10b981; } .hover\:bg-rose-500:hover { background-color: #f43f5e; } .focus\:ring-1:focus { box-shadow: 0 0 0 1px #3b82f6; }
+        
+        /* --- RADIO BUTTON UI CSS --- */
+        .trade-radio-label { display: block; border-width: 1px; border-style: solid; border-radius: 0.25rem; padding: 0.5rem; text-align: center; font-size: 11px; font-weight: bold; cursor: pointer; transition: all 150ms; }
+        input[type="radio"]:checked + .trade-radio-label.straddle-btn { background-color: #2563eb; color: white; border-color: #2563eb; }
+        input[type="radio"]:checked + .trade-radio-label.naked-btn { background-color: #4f46e5; color: white; border-color: #4f46e5; }
+        input[type="radio"]:checked + .trade-radio-label.buy-btn { background-color: #059669; color: white; border-color: #059669; }
+        input[type="radio"]:checked + .trade-radio-label.sell-btn { background-color: #e11d48; color: white; border-color: #e11d48; }
+
+        /* --- THEME STYLES --- */
+        :root { --bg-color: #0d1117; --text-color: #e5e7eb; --header-bg: #111827; --border-color: #1f2937; --loader-bg: rgba(13, 17, 23, 0.85); --select-bg: #1f2937; }
+        body.light-mode { --bg-color: #ffffff; --text-color: #111827; --header-bg: #f3f4f6; --border-color: #d1d5db; --loader-bg: rgba(255, 255, 255, 0.85); --select-bg: #e5e7eb; }
+        body { background-color: var(--bg-color); color: var(--text-color); transition: background-color 0.3s, color 0.3s; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .theme-header { background-color: var(--header-bg); border-color: var(--border-color); transition: all 0.3s; } .theme-border { border-color: var(--border-color); transition: border-color 0.3s; } .theme-loader { background-color: var(--loader-bg); transition: background-color 0.3s; } .theme-select { background-color: var(--select-bg); border-color: var(--border-color); color: var(--text-color); }
+        #chart-container { height: calc(100vh - 120px); width: 100%; }
+        .loader { border-top-color: #3b82f6; animation: spinner 0.6s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef5350; display: inline-block; transition: background 0.3s; }
+        .live-dot.connected { background: #26a69a; box-shadow: 0 0 8px #26a69a; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    </style>
+</head>
+<body class="overflow-hidden">
+
+    <nav class="flex items-center justify-between px-6 py-3 theme-header border-b">
+        <div class="flex items-center space-x-8">
+            <div class="flex flex-col">
+                <span class="text-xs font-bold text-blue-500 tracking-widest uppercase">Crumbs Trade</span>
+                <div class="flex items-center gap-2">
+                    <span id="active-instrument-label" class="text-lg font-bold">NIFTY</span>
+                    <span id="live-dot" class="live-dot" title="SSE Disconnected"></span>
+                </div>
+            </div>
+
+            <div class="flex theme-select p-1 rounded-md border theme-border">
+                <button onclick="changeInstrument('NIFTY')" id="btn-NIFTY" class="instr-btn px-4 py-1 text-sm rounded bg-blue-600 text-white font-semibold transition-colors">NIFTY</button>
+                <button onclick="changeInstrument('CRUDEOIL')" id="btn-CRUDEOIL" class="instr-btn px-4 py-1 text-sm rounded font-semibold transition-colors">CRUDE OIL</button>
+            </div>
+
+            <select id="timeFrame" onchange="handleTimeframeChange()" class="theme-select text-sm rounded px-3 py-1 outline-none focus:ring-1 focus:ring-blue-500 border">
+                <option value="ONE_MINUTE">1 Min</option>
+                <option value="FIVE_MINUTE" selected>5 Min</option>
+                <option value="FIFTEEN_MINUTE">15 Min</option>
+                <option value="ONE_HOUR">1 Hour</option>
+                <option value="ONE_DAY">1 Day</option>
+            </select>
+            
+            <button onclick="toggleTheme()" class="theme-select border px-3 py-1 rounded text-sm font-semibold hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all">
+                🌓 Theme
+            </button>
+        </div>
+
+        <div class="flex items-center space-x-10">
+            <div class="text-right">
+                <p class="text-[10px] uppercase font-bold" style="color: #6b7280;">Active Position</p>
+                <p id="trade-status" class="text-sm font-mono font-bold text-gray-400">NONE</p>
+            </div>
+            <div class="theme-select px-4 py-1 rounded border">
+                <p class="text-[10px] uppercase font-bold text-center" style="color: #6b7280;">Live PnL</p>
+                <p id="pnl-val" class="text-xl font-mono font-bold text-gray-400">0.00</p>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex h-full">
+        <div class="w-64 theme-header border-r theme-border p-4 flex flex-col gap-4">
+            
+            <!-- NEW EXECUTION SIDEBAR -->
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">Strategy Mode</label>
+                    <div class="flex gap-2">
+                        <label class="flex-1">
+                            <input type="radio" name="strategy" value="STRADDLE" onchange="toggleNakedOptions()" checked style="display:none;">
+                            <div class="trade-radio-label straddle-btn theme-select theme-border">STRADDLE</div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="strategy" value="NAKED" onchange="toggleNakedOptions()" style="display:none;">
+                            <div class="trade-radio-label naked-btn theme-select theme-border">NAKED</div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Naked Trade Options (Hidden for Straddle) -->
+                <div id="naked-options" class="space-y-3 hidden">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">Transaction Type</label>
+                        <div class="flex gap-2">
+                            <label class="flex-1">
+                                <input type="radio" name="txnType" value="BUY" checked style="display:none;">
+                                <div class="trade-radio-label buy-btn theme-select theme-border">BUY</div>
+                            </label>
+                            <label class="flex-1">
+                                <input type="radio" name="txnType" value="SELL" style="display:none;">
+                                <div class="trade-radio-label sell-btn theme-select theme-border">SELL</div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">Option Leg</label>
+                        <select id="naked-leg" class="w-full theme-select text-sm rounded px-3 py-2 outline-none border theme-border font-bold">
+                            <option value="CE">CALL (CE)</option>
+                            <option value="PE">PUT (PE)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="space-y-2 pt-2">
+                    <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">Execution</label>
+                    <button onclick="executeTrade('entry')" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded font-bold transition-all shadow-lg active:scale-95">
+                        ENTER POSITION
+                    </button>
+                    <button onclick="executeTrade('exit')" class="w-full bg-rose-600 hover:bg-rose-500 text-white py-3 rounded font-bold transition-all shadow-lg active:scale-95">
+                        EXIT ALL
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col flex-1 gap-2 min-h-0 pb-6 pt-4">
+                <label class="text-[10px] font-bold uppercase" style="color: #6b7280;">System Logs</label>
+                <div id="status-log" class="flex-1 text-[11px] font-mono theme-select border theme-border p-2 rounded overflow-y-auto">
+                    <div style="color: var(--text-color);">System ready...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 relative">
+            <div id="loader" class="absolute inset-0 z-50 flex items-center justify-center theme-loader transition-opacity duration-300">
+                <div class="loader rounded-full border-4 theme-border h-12 w-12"></div>
+            </div>
+            <div id="chart-container"></div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        const CONFIG = {
+            API: {
+                INTRADAY: "/api/intraday",
+                KEY_RESOLVER: "/api/websocket/instrument/key",
+                MARKET_STREAM: "/api/stream/market",
+                PNL_STREAM: "/api/global/pnl/stream",
+                EXECUTION: "/api/global"
+            },
+            TIMERS: {
+                POLLING_INTERVAL_MS: 30000,
+                RECONNECT_DELAY_MS: 3000
+            },
+            TRADING: {
+                DEFAULT_INSTRUMENT: "NIFTY", // Restored original
+                CRUDE_START_MINUTES: 16 * 60,
+                CRUDE_END_MINUTES: (23 * 60) + 30,
+                TRADE_TYPE: "STRADDLE" 
+            },
+            CHART: {
+                IST_OFFSET: 19800,
+                COLORS: {
+                    BULL: '#10b981', BEAR: '#ef4444', SUPPORT: '#10b981', RESISTANCE: '#ef4444',
+                    TEXT_LIGHT: '#374151', TEXT_DARK: '#9ca3af', GRID_LIGHT: '#d1d5db', GRID_DARK: '#374151'
+                }
+            }
+        };
+
+        const AppState = { chart: null, series: { candle: null }, data: { candles: [] }, srLines: [], currentName: CONFIG.TRADING.DEFAULT_INSTRUMENT };
+        const StreamState = { marketSource: null, pnlSource: null, reconnectTimeout: null, candlePollingInterval: null, iKeyCurrent: null, iKeyCache: {}, pendingTicks: [], TF_SECS: 300, isSyncing: false };
+
+        // ==========================================
+        // UI & THEME LOGIC
+        // ==========================================
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            syncChartColors();
+        }
+
+        function syncChartColors() {
+            if (!AppState.chart) return;
+            const isLight = document.body.classList.contains('light-mode');
+            AppState.chart.applyOptions({
+                layout: { textColor: isLight ? CONFIG.CHART.COLORS.TEXT_LIGHT : CONFIG.CHART.COLORS.TEXT_DARK }, 
+                priceScale: { borderColor: isLight ? CONFIG.CHART.COLORS.GRID_LIGHT : CONFIG.CHART.COLORS.GRID_DARK },
+                timeScale: { borderColor: isLight ? CONFIG.CHART.COLORS.GRID_LIGHT : CONFIG.CHART.COLORS.GRID_DARK }
+            });
+        }
+
+        // NEW LOGIC: Toggles the Naked Leg/Type selection UI
+        function toggleNakedOptions() {
+            const strat = document.querySelector('input[name="strategy"]:checked').value;
+            const nakedDiv = document.getElementById('naked-options');
+            if (strat === 'NAKED') {
+                nakedDiv.classList.remove('hidden');
+            } else {
+                nakedDiv.classList.add('hidden');
+            }
+        }
+
+        function showLoader() { document.getElementById('loader').style.display = 'flex'; }
+        function hideLoader() { document.getElementById('loader').style.display = 'none'; }
+
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        function initApp() {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            if (hour >= 9 && hour < 16) document.body.classList.add('light-mode');
+            
+            setupChart();
+            syncChartColors(); 
+            
+            window.addEventListener('resize', () => {
+                const container = document.getElementById('chart-container');
+                if (AppState.chart) AppState.chart.applyOptions({ width: container.clientWidth });
+            });
+
+            const currentMinutes = (hour * 60) + minute;
+            if (currentMinutes >= CONFIG.TRADING.CRUDE_START_MINUTES && currentMinutes <= CONFIG.TRADING.CRUDE_END_MINUTES) {
+                changeInstrument('CRUDEOIL'); // Restored original
+            } else {
+                changeInstrument(CONFIG.TRADING.DEFAULT_INSTRUMENT); // Restored original
+            }
+            startCandlePolling();
+        }
+
+        function setupChart() {
+            const container = document.getElementById('chart-container');
+            AppState.chart = LightweightCharts.createChart(container, {
+                layout: { backgroundColor: 'transparent' }, 
+                grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                priceScale: { autoScale: true },
+                timeScale: { timeVisible: true, secondsVisible: false, barSpacing: 12, rightOffset: 5 }
+            });
+            AppState.series.candle = AppState.chart.addCandlestickSeries({
+                upColor: CONFIG.CHART.COLORS.BULL, downColor: CONFIG.CHART.COLORS.BEAR, borderVisible: false,
+                wickUpColor: CONFIG.CHART.COLORS.BULL, wickDownColor: CONFIG.CHART.COLORS.BEAR
+            });
+        }
+
+        function clearChart() {
+            if (AppState.series.candle) AppState.chart.removeSeries(AppState.series.candle);
+            AppState.series.candle = AppState.chart.addCandlestickSeries({
+                upColor: CONFIG.CHART.COLORS.BULL, downColor: CONFIG.CHART.COLORS.BEAR, borderVisible: false,
+                wickUpColor: CONFIG.CHART.COLORS.BULL, wickDownColor: CONFIG.CHART.COLORS.BEAR
+            });
+            AppState.srLines = [];
+            AppState.data.candles = [];
+        }
+
+        // ==========================================
+        // CORE DATA & EXECUTION
+        // ==========================================
+        function handleTimeframeChange() {
+            const val = document.getElementById('timeFrame').value;
+            const tfMap = { 'ONE_MINUTE': 60, 'FIVE_MINUTE': 300, 'FIFTEEN_MINUTE': 900, 'ONE_HOUR': 3600, 'ONE_DAY': 86400 };
+            StreamState.TF_SECS = tfMap[val] || 300; 
+            showLoader();
+            setTimeout(async () => { clearChart(); await loadData(false); }, 50);
+        }
+
+        // Restored exactly to your original version
+        async function changeInstrument(name) {
+            showLoader(); 
+            await new Promise(resolve => setTimeout(resolve, 50));
+            AppState.currentName = name;
+            document.getElementById('active-instrument-label').innerText = name;
+            document.querySelectorAll('.instr-btn').forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white');
+                b.style.color = 'var(--text-color)';
+            });
+            const activeBtn = document.getElementById(`btn-${name}`);
+            if(activeBtn) {
+                activeBtn.classList.add('bg-blue-600', 'text-white');
+                activeBtn.style.color = ''; 
+            }
+            clearChart(); 
+            await loadData(false);
+            resolveStreamKey(name);
+            startPnLStream();
+            connectMarketSSE(); 
+        }
+
+        async function loadData(isSilent = false) {
+            try {
+                StreamState.isSyncing = true; 
+                const tf = document.getElementById('timeFrame').value;
+                const response = await fetch(`${CONFIG.API.INTRADAY}?timeFrame=${tf}&name=${AppState.currentName}`);
+                const payload = await response.json();
+                
+                if (!payload || !payload.candles || payload.candles.length === 0) {
+                    StreamState.isSyncing = false;
+                    return;
+                }
+
+                const uniqueCandles = new Map();
+                payload.candles.forEach(d => {
+                    let ts = parseInt(d.time);
+                    if (ts > 10000000000) ts = Math.floor(ts / 1000); 
+                    const timeKey = ts + CONFIG.CHART.IST_OFFSET;
+                    uniqueCandles.set(timeKey, {
+                        time: timeKey, open: parseFloat(d.open) || 0, high: parseFloat(d.high) || 0,
+                        low: parseFloat(d.low) || 0, close: parseFloat(d.close) || 0
+                    });
+                });
+
+                AppState.data.candles = Array.from(uniqueCandles.values()).sort((a, b) => a.time - b.time);
+                AppState.series.candle.setData(AppState.data.candles);
+                drawSR(payload.supportLevels, payload.resistanceLevels);
+                
+            } catch (e) { 
+                if (!isSilent) logStatus("Error loading background data."); 
+            } finally { 
+                StreamState.isSyncing = false; 
+                if (!isSilent) hideLoader(); 
+            }
+        }
+
+        function drawSR(supports, resistances) {
+            if (AppState.srLines && AppState.srLines.length > 0) {
+                AppState.srLines.forEach(line => { try { AppState.series.candle.removePriceLine(line); } catch(e) {} });
+                AppState.srLines = []; 
+            }
+            const config = (p, c, t) => ({ price: p, color: c, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: t });
+            if (supports) supports.forEach(s => AppState.srLines.push(AppState.series.candle.createPriceLine(config(s.price, CONFIG.CHART.COLORS.SUPPORT, 'SUPP'))));
+            if (resistances) resistances.forEach(r => AppState.srLines.push(AppState.series.candle.createPriceLine(config(r.price, CONFIG.CHART.COLORS.RESISTANCE, 'RES'))));
+        }
+
+        function startCandlePolling() {
+            clearInterval(StreamState.candlePollingInterval);
+            StreamState.candlePollingInterval = setInterval(() => { if (document.visibilityState === 'visible') loadData(true); }, CONFIG.TIMERS.POLLING_INTERVAL_MS); 
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') { 
+                loadData(true); 
+                startCandlePolling(); 
+                connectMarketSSE(); 
+            } else { 
+                clearInterval(StreamState.candlePollingInterval);
+            }
+        });
+
+        // ==========================================
+        // NEW LOGIC: EXECUTION (STRADDLE OR NAKED)
+        // ==========================================
+        async function executeTrade(action) {
+            logStatus(`Initiating ${action.toUpperCase()} sequence...`);
+            const statusEl = document.getElementById('trade-status');
+            
+            const strat = document.querySelector('input[name="strategy"]:checked').value;
+            const typeToSend = (strat === 'STRADDLE') ? 'STRADDLE' : document.getElementById('naked-leg').value;
+            const txnType = (strat === 'STRADDLE') ? 'BUY' : document.querySelector('input[name="txnType"]:checked').value;
+
+            try {
+                // Pass txnType in the URL
+                const url = `${CONFIG.API.EXECUTION}/${action}?name=${AppState.currentName}&type=${typeToSend}&txnType=${txnType}`;
+                const res = await fetch(url, { method: 'POST' });
+                const msg = await res.text();
+                logStatus(msg);
+                
+                if (msg.includes('SUCCESS')) {
+                    if (action === 'entry') {
+                        statusEl.innerText = (strat === 'STRADDLE') ? 'STRADDLE' : `${txnType} ${typeToSend}`;
+                        statusEl.className = `text-sm font-mono font-bold ${txnType === 'BUY' ? 'text-green-500' : 'text-red-500'}`;
+                        CONFIG.TRADING.TRADE_TYPE = typeToSend;
+                        startPnLStream();
+                    } else if (action === 'exit') {
+                        statusEl.innerText = 'NONE';
+                        statusEl.className = 'text-sm font-mono font-bold text-gray-400';
+                        if (StreamState.pnlSource) StreamState.pnlSource.close();
+                        document.getElementById('pnl-val').innerText = '0.00';
+                        document.getElementById('pnl-val').className = 'text-xl font-mono font-bold text-gray-400';
+                    }
+                }
+            } catch (e) { 
+                logStatus("Trade network request failed."); 
+            }
+        }
+
+        function startPnLStream() {
+            if (StreamState.pnlSource) StreamState.pnlSource.close();
+            const pnlDisplay = document.getElementById('pnl-val');
+            
+            StreamState.pnlSource = new EventSource(`${CONFIG.API.PNL_STREAM}?name=${AppState.currentName}&type=${CONFIG.TRADING.TRADE_TYPE}`);
+            StreamState.pnlSource.addEventListener('pnl-update', (e) => {
+                const val = parseFloat(e.data);
+                pnlDisplay.innerText = val.toFixed(2);
+                pnlDisplay.className = `text-xl font-mono font-bold ${val > 0 ? 'text-green-500' : val < 0 ? 'text-red-500' : 'text-gray-400'}`;
+            });
+            StreamState.pnlSource.onerror = () => StreamState.pnlSource.close();
+        }
+
+        function logStatus(msg) {
+            const div = document.getElementById('status-log');
+            const logEntry = document.createElement('div');
+            logEntry.style.color = 'var(--text-color)';
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            div.prepend(logEntry);
+            while (div.children.length > 50) div.lastChild.remove();
+        }
+
+        // ==========================================
+        // WEBSOCKET LOGIC
+        // ==========================================
+        async function getInstrumentKey(name) {
+            if (StreamState.iKeyCache[name]) return StreamState.iKeyCache[name];
+            try {
+                const res = await fetch(`${CONFIG.API.KEY_RESOLVER}?name=${encodeURIComponent(name)}`);
+                const data = await res.json();
+                const key = data.key || data.instrumentKey;
+                if (key) StreamState.iKeyCache[name] = key;
+                return key;
+            } catch (e) { return null; }
+        }
+
+        async function resolveStreamKey(symbol) {
+            StreamState.iKeyCurrent = null;
+            const key = await getInstrumentKey(symbol);
+            StreamState.iKeyCurrent = key;
+            if (StreamState.pendingTicks.length) {
+                StreamState.pendingTicks.forEach(t => applyTick(t.price));
+                StreamState.pendingTicks.length = 0;
+            }
+        }
+
+        function connectMarketSSE() {
+            if (StreamState.reconnectTimeout) clearTimeout(StreamState.reconnectTimeout);
+            if (StreamState.marketSource) StreamState.marketSource.close();
+            
+            StreamState.marketSource = new EventSource(CONFIG.API.MARKET_STREAM);
+            StreamState.marketSource.onopen = () => document.getElementById('live-dot').className = 'live-dot connected';
+            StreamState.marketSource.onerror = () => {
+                document.getElementById('live-dot').className = 'live-dot';
+                StreamState.marketSource.close();
+                StreamState.reconnectTimeout = setTimeout(connectMarketSSE, CONFIG.TIMERS.RECONNECT_DELAY_MS); 
+            };
+            StreamState.marketSource.addEventListener('ltp', e => {
+                let d; try { d = JSON.parse(e.data); } catch (ex) { return; }
+                if (!d || d.price == null) return;
+                const price = +d.price;
+                const tickKey = d.key ? String(d.key) : null;
+                if (tickKey && !StreamState.iKeyCurrent) { StreamState.pendingTicks.push({ price, tickKey }); return; }
+                if (tickKey !== StreamState.iKeyCurrent) return;
+                applyTick(price);
+            });
+        }
+
+        let pendingChartUpdate = null;
+        function applyTick(price) {
+            if (StreamState.isSyncing) return; 
+
+            const candles = AppState.data.candles;
+            if (!candles.length || !AppState.series.candle) return;
+            
+            const last = candles[candles.length - 1];
+            const nowIST = Math.floor(Date.now() / 1000) + CONFIG.CHART.IST_OFFSET;
+            const barFloor = Math.floor(nowIST / StreamState.TF_SECS) * StreamState.TF_SECS;
+
+            let targetCandle;
+            if (barFloor > last.time) {
+                targetCandle = { time: barFloor, open: price, high: price, low: price, close: price };
+                candles.push(targetCandle);
+            } else {
+                targetCandle = { time: last.time, open: +last.open, high: Math.max(+last.high, price), low: Math.min(+last.low, price), close: price };
+                candles[candles.length - 1] = targetCandle;
+            }
+
+            if (!pendingChartUpdate) {
+                pendingChartUpdate = requestAnimationFrame(() => {
+                    try { AppState.series.candle.update(candles[candles.length - 1]); } catch(e) {}
+                    pendingChartUpdate = null;
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>

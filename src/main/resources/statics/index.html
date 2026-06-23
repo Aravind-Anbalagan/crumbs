@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crumbs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Dark Theme (Default) */
+            --bg: #020617;
+            --glass: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --primary: #00f2ff;
+            --accent: #bc13fe;
+            --text: #f8fafc;
+            --text-dim: rgba(248, 250, 252, 0.5);
+            --error: #ff4b4b;
+            --nav-h: 44px;
+        }
+
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --glass: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(0, 0, 0, 0.06);
+            --primary: #0ea5e9;
+            --accent: #7c3aed;
+            --text: #0f172a;
+            --text-dim: rgba(15, 23, 42, 0.6);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: background 0.4s ease;
+        }
+
+        /* --- Candle Design Background Animation --- */
+        .candle-container {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            opacity: 0.1;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .candle {
+            position: absolute;
+            bottom: -20px;
+            width: 4px;
+            background: var(--primary);
+            animation: float-candle 15s infinite linear;
+        }
+
+        .candle::after {
+            content: '';
+            position: absolute;
+            top: 20%; bottom: 20%;
+            left: -4px; right: -4px;
+            background: inherit;
+            opacity: 0.5;
+        }
+
+        @keyframes float-candle {
+            from { transform: translateY(0); opacity: 0; }
+            50% { opacity: 0.5; }
+            to { transform: translateY(-110vh); opacity: 0; }
+        }
+
+        /* --- Floating Glass Header --- */
+        nav {
+            height: var(--nav-h);
+            background: var(--glass);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.5rem;
+            flex-shrink: 0;
+            z-index: 1000;
+        }
+
+        .nav-left { flex: 0 0 120px; display: flex; align-items: center; }
+        .nav-center { flex: 1; display: flex; justify-content: center; }
+        .nav-right { flex: 0 0 250px; display: flex; align-items: center; justify-content: flex-end; gap: 1rem; }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1rem;
+            letter-spacing: -1px;
+            color: var(--primary);
+            text-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+        }
+
+        .menu { display: flex; gap: 4px; list-style: none; align-items: center; }
+
+        .menu-link {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            padding: 4px 12px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+        }
+
+        .menu-link:hover {
+            color: var(--text);
+            background: rgba(255,255,255,0.06);
+        }
+
+        .active-menu .menu-link {
+            color: var(--primary);
+            background: rgba(0, 242, 255, 0.08);
+            box-shadow: inset 0 0 0 1px var(--glass-border);
+        }
+
+        .theme-toggle, .btn-signout {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text);
+            cursor: pointer;
+            border-radius: 6px;
+            transition: 0.2s;
+        }
+
+        .theme-toggle { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+        .btn-signout {
+            padding: 4px 10px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            border-color: rgba(255, 75, 75, 0.2);
+            color: var(--error);
+        }
+
+        .btn-signout:hover { background: var(--error); color: #fff; }
+
+        #clock { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--primary); font-weight: 600; }
+
+        /* --- Max-View Iframe --- */
+        #iframeContainer {
+            flex-grow: 1;
+            width: 100%;
+            background: #000;
+            position: relative;
+        }
+
+        iframe { width: 100%; height: 100%; border: none; display: block; }
+
+        /* --- Stylish Login --- */
+        #loginPopup {
+            position: fixed; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--bg);
+            z-index: 2000;
+            transition: all 0.8s cubic-bezier(0.85, 0, 0.15, 1);
+        }
+
+        .login-card {
+            width: 380px;
+            padding: 3.5rem;
+            background: var(--glass);
+            backdrop-filter: blur(40px);
+            border: 1px solid var(--glass-border);
+            border-radius: 32px;
+            text-align: center;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+        }
+
+        .access-input {
+            width: 100%;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--glass-border);
+            padding: 1rem;
+            border-radius: 12px;
+            color: var(--primary);
+            font-family: 'JetBrains Mono', monospace;
+            text-align: center;
+            margin: 2rem 0 0.5rem 0;
+            font-size: 1.1rem;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        .access-input:focus { border-color: var(--primary); }
+
+        #loginError {
+            color: var(--error);
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            height: 1rem;
+            opacity: 0;
+            transition: 0.3s;
+        }
+
+        .btn-init {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0, 242, 255, 0.2);
+        }
+
+        /* --- States & Animations --- */
+        .authenticated #loginPopup { transform: scale(1.1); opacity: 0; pointer-events: none; }
+        
+        #spinner {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px; height: 30px;
+            border: 3px solid var(--glass-border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: none;
+        }
+        @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        .shake { animation: shake 0.4s ease-in-out; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+    </style>
+</head>
+<body data-theme="dark">
+
+    <div class="candle-container" id="candleBg"></div>
+
+    <div id="loginPopup">
+        <div class="login-card" id="loginCard">
+            <h1 style="font-weight:800; letter-spacing:-2px; font-size: 2.5rem;">CRUMBS</h1>
+            <input id="loginCodeInput" class="access-input" type="password" placeholder="ACCESS_KEY">
+            <div id="loginError">INVALID ACCESS KEY</div>
+            <button id="loginBtn" class="btn-init">DECRYPT & START</button>
+        </div>
+    </div>
+
+    <nav>
+        <div class="nav-left">
+            <div class="logo">CRUMBS</div>
+        </div>
+        <div class="nav-center">
+            <ul class="menu">
+                <li class="menu-item active-menu" data-url="stock.html"><button class="menu-link">Stocks</button></li>
+                <li class="menu-item" data-url="premarket.html"><button class="menu-link">PreMarket</button></li>
+                <li class="menu-item" data-url="shortstraddle.html"><button class="menu-link">Short Straddle</button></li>
+                <li class="menu-item" data-url="trend.html"><button class="menu-link">Trend</button></li>
+                <li class="menu-item" data-url="future.html"><button class="menu-link">Futures</button></li>
+                <li class="menu-item" data-url="intraday.html"><button class="menu-link">Intraday</button></li>
+                <li class="menu-item" data-url="orders.html"><button class="menu-link">Orders</button></li>
+                <li class="menu-item" data-url="log.html"><button class="menu-link">Log</button></li>
+            </ul>
+        </div>
+        <div class="nav-right">
+            <div id="clock">00:00:00</div>
+            <button id="themeToggle" class="theme-toggle" title="Toggle Theme">🌓</button>
+            <button id="signOutBtn" class="btn-signout">Sign Out</button>
+        </div>
+    </nav>
+
+    <div id="iframeContainer">
+        <div id="spinner"></div>
+        <iframe id="contentFrame" src="stock.html"></iframe>
+    </div>
+
+    <script>
+        // --- Candle Background Animation ---
+        const candleBg = document.getElementById('candleBg');
+        for (let i = 0; i < 20; i++) {
+            const candle = document.createElement('div');
+            candle.className = 'candle';
+            candle.style.left = Math.random() * 100 + 'vw';
+            candle.style.height = (Math.random() * 100 + 50) + 'px';
+            candle.style.animationDelay = (Math.random() * 15) + 's';
+            candle.style.background = Math.random() > 0.5 ? '#00f2ff' : '#bc13fe';
+            candleBg.appendChild(candle);
+        }
+
+        // --- Theme Logic ---
+        const themeToggle = document.getElementById('themeToggle');
+        themeToggle.onclick = () => {
+            const current = document.body.getAttribute('data-theme');
+            const target = current === 'dark' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', target);
+            localStorage.setItem('crumbs-theme', target);
+        };
+        if(localStorage.getItem('crumbs-theme')) {
+            document.body.setAttribute('data-theme', localStorage.getItem('crumbs-theme'));
+        }
+
+        // --- Clock ---
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
+        }, 1000);
+
+        const loginBtn = document.getElementById('loginBtn');
+        const loginInput = document.getElementById('loginCodeInput');
+        const loginCard = document.getElementById('loginCard');
+        const loginError = document.getElementById('loginError');
+        const iframe = document.getElementById('contentFrame');
+        const spinner = document.getElementById('spinner');
+
+        // --- Auth Logic ---
+        async function authenticate() {
+            const code = loginInput.value.trim();
+            loginError.style.opacity = '0';
+            
+            try {
+                const res = await fetch('/key/1/validate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ secret: code })
+                });
+                const ok = await res.json();
+                
+                if (ok === true) {
+                    sessionStorage.setItem('isLoggedIn', 'true');
+                    document.body.classList.add('authenticated');
+                    loginInput.value = '';
+                } else {
+                    triggerError();
+                }
+            } catch (e) { 
+                triggerError("CONNECTION ERROR");
+            }
+        }
+
+        function triggerError(msg = "INVALID ACCESS KEY") {
+            loginError.innerText = msg;
+            loginError.style.opacity = '1';
+            loginCard.classList.add('shake');
+            setTimeout(() => loginCard.classList.remove('shake'), 400);
+        }
+
+        function signOut() {
+            sessionStorage.clear();
+            localStorage.removeItem('isLoggedIn');
+            document.body.classList.remove('authenticated');
+            iframe.src = 'stock.html';
+        }
+
+        loginBtn.onclick = authenticate;
+        document.getElementById('signOutBtn').onclick = signOut;
+        loginInput.onkeyup = e => e.key === 'Enter' && authenticate();
+
+        // --- Nav Handling ---
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.onclick = () => {
+                document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active-menu'));
+                item.classList.add('active-menu');
+                spinner.style.display = 'block';
+                iframe.src = item.dataset.url;
+            };
+        });
+
+        iframe.onload = () => { spinner.style.display = 'none'; };
+
+        // Maintain Session
+        if(sessionStorage.getItem('isLoggedIn') === 'true') {
+            document.body.classList.add('authenticated');
+        }
+    </script>
+</body>
+</html>

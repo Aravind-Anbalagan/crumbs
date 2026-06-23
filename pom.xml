@@ -89,6 +89,15 @@
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>2.2.0</version>
 		</dependency>
+	<dependency>
+		<groupId>org.mindrot</groupId>
+		<artifactId>jbcrypt</artifactId>
+		<version>0.4</version>
+	</dependency>
+	<dependency>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-devtools</artifactId>
+	</dependency>
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>
@@ -133,6 +142,46 @@
 					</archive>
 				</configuration>
 			</plugin>
+			<plugin>
+    <groupId>com.github.eirslett</groupId>
+    <artifactId>frontend-maven-plugin</artifactId>
+    <version>1.15.0</version>
+    <configuration>
+        <workingDirectory>frontend-app</workingDirectory>
+        <installDirectory>target</installDirectory>
+    </configuration>
+    <executions>
+        <execution>
+            <id>install node and npm</id>
+            <phase>generate-resources</phase> <goals>
+                <goal>install-node-and-npm</goal>
+            </goals>
+            <configuration>
+                <nodeVersion>v22.14.0</nodeVersion>
+            </configuration>
+        </execution>
+        
+        <execution>
+            <id>npm install</id>
+            <phase>generate-resources</phase> <goals>
+                <goal>npm</goal>
+            </goals>
+            <configuration>
+                <arguments>install</arguments>
+            </configuration>
+        </execution>
+        
+        <execution>
+            <id>npm run build</id>
+            <phase>generate-resources</phase> <goals>
+                <goal>npm</goal>
+            </goals>
+            <configuration>
+                <arguments>run build</arguments>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
 		</plugins>
 	</build>
 	<repositories>

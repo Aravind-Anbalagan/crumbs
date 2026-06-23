@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crumbs | CrudeOil & Nifty Straddle Engine</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root { 
+            --bg: #0b0e11; 
+            --card: #151921; 
+            --border: #2a2e39; 
+            --text: #d1d4dc; 
+        }
+        
+        body.light-mode {
+            --bg: #f0f3fa; 
+            --card: #ffffff; 
+            --border: #e2e8f0; 
+            --text: #1e293b; 
+        }
+
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 10px; overflow: hidden; transition: background-color 0.3s, color 0.3s; }
+        
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 5px 10px 5px; }
+        .controls { display: flex; gap: 8px; align-items: center; }
+        .controls-right { display: flex; gap: 8px; align-items: center; }
+        
+        select {
+            background: var(--card); color: var(--text); border: 1px solid var(--border);
+            padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 12px;
+            font-weight: bold; outline: none; cursor: pointer; appearance: auto;
+            transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+        }
+        select:focus { border-color: #2962ff; }
+        
+        .btn { border: none; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; display: flex; align-items: center; justify-content: center;}
+        .reset-btn { background: #2962ff; color: white; }
+        .reset-btn:hover { background: #1e4bd8; }
+        
+        .theme-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 14px; padding: 4px 8px; }
+        .theme-btn:hover { background: var(--border); }
+
+        /* TABS CSS */
+        .tabs { display: flex; gap: 8px; padding: 0 5px 10px 5px; }
+        .tab-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 12px; font-family: inherit; }
+        .tab-btn.active { background: #2962ff; color: white; border-color: #2962ff; }
+        .tab-btn:hover:not(.active) { background: var(--border); }
+
+        /* DASHBOARD CSS UPDATED FOR TABS */
+        .dashboard { display: flex; flex-direction: column; gap: 6px; height: calc(100vh - 120px); }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; display: none; flex-direction: column; padding: 6px 12px; height: 100%; transition: background-color 0.3s, border-color 0.3s; }
+
+        .pane-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; }
+        .pane-title { font-size: 10px; font-weight: bold; color: #848e9c; text-transform: uppercase; letter-spacing: 1px; }
+        .chart-div { flex-grow: 1; width: 100%; }
+
+        .live-dot { height: 8px; width: 8px; background-color: #444; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .live-active { background-color: #00ff88; box-shadow: 0 0 8px #00ff88; }
+
+        #loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; transition: background-color 0.3s;}
+        .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top: 3px solid #2962ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px;}
+        
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner" id="loader-spinner"></div>
+    <div id="loader-msg" style="font-size:12px; color:var(--text); letter-spacing: 1px; font-weight: bold;">INITIALIZING APP...</div>
+</div>
+
+<div class="top-bar">
+    <div class="controls">
+        <select id="sel-symbol" onchange="handleSymbolChange()"></select>
+        <select id="sel-strike" onchange="loadSelectedChart()"></select>
+    </div>
+    <div class="controls-right">
+        <button class="btn theme-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle Light/Dark Mode">☀️</button>
+        <button class="btn reset-btn" onclick="resetZoom()">FIT ALL / RESET ZOOM</button>
+    </div>
+</div>
+
+<!-- TAB NAVIGATION -->
+<div class="tabs">
+    <button class="tab-btn active" id="btn-tab-p" onclick="openTab('p')">Combined Premium</button>
+    <button class="tab-btn" id="btn-tab-d" onclick="openTab('d')">Net Delta</button>
+    <button class="tab-btn" id="btn-tab-g" onclick="openTab('g')">Net Gamma</button>
+    <button class="tab-btn" id="btn-tab-t" onclick="openTab('t')">Net Theta</button>
+    <button class="tab-btn" id="btn-tab-iv" onclick="openTab('iv')">Avg IV</button>
+</div>
+
+<div class="dashboard">
+    <div class="card" id="card-p" style="display: flex;">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-p" class="live-dot"></span>Combined Premium</span>
+            <span id="val-p" style="color: #2962ff; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
+        </div>
+        <div id="chart-p" class="chart-div"></div>
+    </div>
+    <div class="card" id="card-d">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-d" class="live-dot"></span>Net Delta</span>
+            <span id="val-d" style="color: #ff9800; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
+        </div>
+        <div id="chart-d" class="chart-div"></div>
+    </div>
+    <div class="card" id="card-g">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-g" class="live-dot"></span>Net Gamma</span>
+            <span id="val-g" style="color: #f44336; font-family: monospace; font-size: 13px; font-weight: bold;">0.0000</span>
+        </div>
+        <div id="chart-g" class="chart-div"></div>
+    </div>
+    <div class="card" id="card-t">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-t" class="live-dot"></span>Net Theta</span>
+            <span id="val-t" style="color: #9c27b0; font-family: monospace; font-size: 13px; font-weight: bold;">0.00</span>
+        </div>
+        <div id="chart-t" class="chart-div"></div>
+    </div>
+    <div class="card" id="card-iv">
+        <div class="pane-header">
+            <span class="pane-title"><span id="dot-iv" class="live-dot"></span>Avg Implied Volatility</span>
+            <span id="val-iv" style="color: #00c076; font-family: monospace; font-size: 13px; font-weight: bold;">0.00%</span>
+        </div>
+        <div id="chart-iv" class="chart-div"></div>
+    </div>
+</div>
+
+<script>
+    const API_GROUPED = '/api/straddle/grouped';
+    const BASE_CHART_URL = '/api/v1/chart';
+
+    let groupedData = {}; 
+    let activeSSE = null; 
+    let isSyncing = false;
+    let isHydrated = false;
+    let lastKnownTime = 0;
+    let isDarkMode = true;
+    let activeTab = 'p'; 
+
+    // Custom Data Range Tracker
+    let dataExtremes = {
+        p: { min: Infinity, max: -Infinity },
+        d: { min: Infinity, max: -Infinity },
+        g: { min: Infinity, max: -Infinity },
+        t: { min: Infinity, max: -Infinity },
+        iv: { min: Infinity, max: -Infinity }
+    };
+
+    function resetExtremes() {
+        Object.keys(dataExtremes).forEach(k => {
+            dataExtremes[k] = { min: Infinity, max: -Infinity };
+        });
+    }
+
+    function updateExtreme(key, val) {
+        if (val < dataExtremes[key].min) dataExtremes[key].min = val;
+        if (val > dataExtremes[key].max) dataExtremes[key].max = val;
+    }
+
+    // This forces the chart to accurately frame negative (and positive) bounds based purely on math
+    function createAutoscaleProvider(key) {
+        return () => {
+            const ex = dataExtremes[key];
+            if (ex.min === Infinity || ex.max === -Infinity) return null;
+            const range = ex.max - ex.min;
+            const pad = range === 0 ? (Math.abs(ex.min) * 0.1 || 1) : range * 0.15; // 15% Padding
+            return {
+                priceRange: {
+                    minValue: ex.min - pad,
+                    maxValue: ex.max + pad,
+                }
+            };
+        };
+    }
+
+    function logDebug(step, detail = "") { console.log(`[DEBUG] ${step}`, detail); }
+
+    function killLoaderWithError(msg) {
+        document.getElementById('loader-spinner').style.display = 'none';
+        const msgEl = document.getElementById('loader-msg');
+        msgEl.innerText = "CRASH: " + msg;
+        msgEl.style.color = '#ff5252'; 
+    }
+
+    function openTab(tabId) {
+        document.querySelectorAll('.card').forEach(c => c.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+        document.getElementById(`card-${tabId}`).style.display = 'flex';
+        document.getElementById(`btn-tab-${tabId}`).classList.add('active');
+
+        activeTab = tabId;
+        resizeActiveChart();
+        
+        setTimeout(() => {
+            if (charts[activeTab]) charts[activeTab].timeScale().fitContent();
+        }, 20);
+    }
+
+    function resizeActiveChart() {
+        const chartDiv = document.getElementById(`chart-${activeTab}`);
+        if (chartDiv && charts[activeTab]) {
+            charts[activeTab].applyOptions({ width: chartDiv.clientWidth, height: chartDiv.clientHeight });
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        resizeActiveChart();
+        resetZoom(); 
+    });
+
+    function getChartThemeOptions() {
+        return {
+            layout: { 
+                background: { color: isDarkMode ? '#151921' : '#ffffff' }, 
+                textColor: isDarkMode ? '#d1d4dc' : '#1e293b' 
+            },
+            grid: { 
+                vertLines: { color: isDarkMode ? '#1c2128' : '#f1f5f9' }, 
+                horzLines: { color: isDarkMode ? '#1c2128' : '#f1f5f9' } 
+            },
+            timeScale: { borderColor: isDarkMode ? '#2a2e39' : '#e2e8f0' },
+            rightPriceScale: { borderColor: isDarkMode ? '#2a2e39' : '#e2e8f0' }
+        };
+    }
+
+    function toggleTheme() {
+        isDarkMode = !isDarkMode;
+        document.body.classList.toggle('light-mode', !isDarkMode);
+        document.getElementById('theme-toggle').innerText = isDarkMode ? '☀️' : '🌙';
+        const themeOpts = getChartThemeOptions();
+        Object.values(charts).forEach(c => c.applyOptions(themeOpts));
+    }
+
+    const baseOpt = {
+        layout: { fontSize: 11 },
+        localization: {
+            timeFormatter: (time) => {
+                const date = new Date(time * 1000);
+                return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium', hour12: false });
+            }
+        },
+        timeScale: { 
+            timeVisible: true, secondsVisible: true, shiftVisibleRangeOnNewBar: true,
+            tickMarkFormatter: (time, tickMarkType) => {
+                const date = new Date(time * 1000);
+                switch (tickMarkType) {
+                    case 0: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' });
+                    case 1: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short' });
+                    case 2: return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric' });
+                    case 3: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+                    case 4: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    default: return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+                }
+            }
+        },
+        crosshair: { mode: 0 },
+        rightPriceScale: { autoScale: true }
+    };
+
+    const opt = { ...baseOpt, ...getChartThemeOptions() };
+
+    const charts = {
+        p: LightweightCharts.createChart(document.getElementById('chart-p'), opt),
+        d: LightweightCharts.createChart(document.getElementById('chart-d'), opt),
+        g: LightweightCharts.createChart(document.getElementById('chart-g'), opt),
+        t: LightweightCharts.createChart(document.getElementById('chart-t'), opt),
+        iv: LightweightCharts.createChart(document.getElementById('chart-iv'), opt)
+    };
+
+    // Note the added autoscaleInfoProvider which hooks into our custom mathematical boundary logic
+    const series = {
+        p: charts.p.addAreaSeries({ lineColor: '#2962ff', topColor: 'rgba(41,98,255,0.15)', bottomColor: 'transparent', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('p') }),
+        d: charts.d.addLineSeries({ color: '#ff9800', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('d') }),
+        g: charts.g.addLineSeries({ color: '#f44336', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('g') }), 
+        t: charts.t.addLineSeries({ color: '#9c27b0', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('t') }),
+        iv: charts.iv.addLineSeries({ color: '#00c076', lineWidth: 2, autoscaleInfoProvider: createAutoscaleProvider('iv') })
+    };
+
+    function getSyncHandler(callerId) {
+        return (logicalRange) => {
+            if (!isHydrated || isSyncing || !logicalRange) return;
+            isSyncing = true;
+            Object.keys(charts).forEach(id => {
+                if (id !== callerId) {
+                    try { charts[id].timeScale().setVisibleLogicalRange(logicalRange); } catch (e) {}
+                }
+            });
+            isSyncing = false;
+        };
+    }
+
+    Object.keys(charts).forEach(id => {
+        charts[id].timeScale().subscribeVisibleLogicalRangeChange(getSyncHandler(id));
+    });
+
+    function resetZoom() {
+        if (charts[activeTab]) {
+            charts[activeTab].timeScale().fitContent();
+        }
+    }
+
+    async function initApp() {
+        setTimeout(resizeActiveChart, 100);
+
+        try {
+            let res = await fetch(API_GROUPED);
+            const textData = await res.text();
+            if (!res.ok) { killLoaderWithError(`Server Error HTTP ${res.status}`); return; }
+
+            let rawData = JSON.parse(textData);
+            groupedData = {};
+            
+            if (Array.isArray(rawData)) {
+                rawData.forEach(item => {
+                    if (item.name && item.expiries) {
+                        const expiryKeys = Object.keys(item.expiries);
+                        if (expiryKeys.length > 0) {
+                            groupedData[item.name] = {
+                                strikes: item.expiries[expiryKeys[0]],
+                                atmStrike: item.atmStrike
+                            };
+                        }
+                    }
+                });
+            }
+
+            populateSymbols();
+        } catch (e) {
+            killLoaderWithError("Unexpected critical error.");
+        }
+    }
+
+    function populateSymbols() {
+        try {
+            const symbols = Object.keys(groupedData || {});
+            if (symbols.length === 0) return killLoaderWithError("API returned empty data.");
+
+            const sel = document.getElementById('sel-symbol');
+            sel.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+            
+            const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+            const [istHour, istMinute] = formatter.format(new Date()).split(':').map(Number);
+            const timeVal = (istHour * 100) + istMinute; 
+
+            let targetSymbol = symbols[0]; 
+            if (timeVal >= 915 && timeVal <= 1530) {
+                targetSymbol = "NIFTY";
+            } else if (timeVal >= 1600 && timeVal <= 2330) {
+                targetSymbol = "CRUDEOIL";
+            }
+
+            if (symbols.includes(targetSymbol)) { sel.value = targetSymbol; } 
+            else if (symbols.includes("NIFTY")) { sel.value = "NIFTY"; }
+
+            handleSymbolChange();
+        } catch (e) { killLoaderWithError("UI Population Error"); }
+    }
+
+    function handleSymbolChange() {
+        try {
+            const sym = document.getElementById('sel-symbol').value;
+            const symbolData = groupedData[sym];
+            
+            if (!symbolData || !symbolData.strikes) return killLoaderWithError(`No strike data found for ${sym}`);
+
+            let strikes = [...symbolData.strikes];
+            strikes.sort((a, b) => parseFloat(a) - parseFloat(b));
+
+            const sel = document.getElementById('sel-strike');
+            sel.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
+            
+            if (strikes.length > 0) {
+                if (symbolData.atmStrike && strikes.includes(symbolData.atmStrike)) {
+                    sel.value = symbolData.atmStrike;
+                } else {
+                    const atmIndex = Math.floor(strikes.length / 2);
+                    sel.selectedIndex = atmIndex;
+                }
+                
+                loadSelectedChart();
+            } else { killLoaderWithError(`Strike array is empty for ${sym}`); }
+        } catch (e) { killLoaderWithError("Strike calculation error"); }
+    }
+
+    async function loadSelectedChart() {
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('loader-msg').innerText = "LOADING CHART DATA...";
+        document.getElementById('loader-spinner').style.display = 'block';
+        
+        if (activeSSE) {
+            activeSSE.close();
+            activeSSE = null;
+        }
+
+        const symbol = document.getElementById('sel-symbol').value;
+        const strike = document.getElementById('sel-strike').value;
+
+        isHydrated = false;
+        lastKnownTime = 0;
+        resetExtremes(); // Critical: Clear mathematical boundaries on new load
+        document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
+        updateUI({ combinedPremium: 0, ceDelta: 0, peDelta: 0, ceGamma: 0, peGamma: 0, ceTheta: 0, peTheta: 0, ceIv: 0, peIv: 0 });
+
+        try {
+            const urlParams = `symbol=${symbol}&ceStrike=${strike}&peStrike=${strike}`;
+            const res = await fetch(`${BASE_CHART_URL}/historical?${urlParams}`);
+            
+            if (!res.ok) throw new Error(`Historical data fetch failed with HTTP ${res.status}`);
+            const data = await res.json();
+
+            if (data && data.length > 0) {
+                data.sort((a,b) => a.time - b.time);
+
+                const pD = [], dD = [], gD = [], tD = [], ivD = [];
+                
+                // Pre-process Data boundaries BEFORE loading the chart
+                data.forEach(d => {
+                    const vP = d.combinedPremium;
+                    const vD = d.ceDelta + d.peDelta;
+                    const vG = (d.ceGamma || 0) + (d.peGamma || 0);
+                    const vT = d.ceTheta + d.peTheta;
+                    const vIV = (d.ceIv + d.peIv) / 2;
+
+                    updateExtreme('p', vP); updateExtreme('d', vD); updateExtreme('g', vG); updateExtreme('t', vT); updateExtreme('iv', vIV);
+
+                    pD.push({ time: d.time, value: vP });
+                    dD.push({ time: d.time, value: vD });
+                    gD.push({ time: d.time, value: vG });
+                    tD.push({ time: d.time, value: vT });
+                    ivD.push({ time: d.time, value: vIV });
+                });
+
+                series.p.setData(pD); series.d.setData(dD); series.g.setData(gD); series.t.setData(tD); series.iv.setData(ivD);
+
+                lastKnownTime = data[data.length - 1].time;
+                updateUI(data[data.length - 1]);
+            } else {
+                series.p.setData([]); series.d.setData([]); series.g.setData([]); series.t.setData([]); series.iv.setData([]);
+            }
+
+            isHydrated = true;
+            resizeActiveChart();
+            setTimeout(() => resetZoom(), 50);
+            
+            connectStream(urlParams);
+
+        } catch(e) {
+            killLoaderWithError("FAILED TO LOAD CHART DATA.");
+        } finally {
+            if (isHydrated) { setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 1000); }
+        }
+    }
+
+    function connectStream(urlParams) {
+        activeSSE = new EventSource(`${BASE_CHART_URL}/stream?${urlParams}`);
+        
+        activeSSE.onmessage = (event) => {
+            const d = JSON.parse(event.data);
+            const ts = Number(d.time);
+
+            if (ts > lastKnownTime) {
+                lastKnownTime = ts;
+                
+                const vP = d.combinedPremium;
+                const vD = d.ceDelta + d.peDelta;
+                const vG = (d.ceGamma || 0) + (d.peGamma || 0);
+                const vT = d.ceTheta + d.peTheta;
+                const vIV = (d.ceIv + d.peIv) / 2;
+
+                // Continuously track boundaries on stream 
+                updateExtreme('p', vP); updateExtreme('d', vD); updateExtreme('g', vG); updateExtreme('t', vT); updateExtreme('iv', vIV);
+
+                series.p.update({ time: ts, value: vP });
+                series.d.update({ time: ts, value: vD });
+                series.g.update({ time: ts, value: vG });
+                series.t.update({ time: ts, value: vT });
+                series.iv.update({ time: ts, value: vIV });
+
+                updateUI(d);
+                document.querySelectorAll('.live-dot').forEach(dot => dot.classList.add('live-active'));
+            }
+        };
+
+        activeSSE.onerror = (e) => {
+            document.querySelectorAll('.live-dot').forEach(dot => dot.classList.remove('live-active'));
+        }
+    }
+
+    function updateUI(d) {
+        document.getElementById('val-p').innerText = (d.combinedPremium || 0).toFixed(2);
+        document.getElementById('val-d').innerText = ((d.ceDelta || 0) + (d.peDelta || 0)).toFixed(4);
+        document.getElementById('val-g').innerText = ((d.ceGamma || 0) + (d.peGamma || 0)).toFixed(4);
+        document.getElementById('val-t').innerText = ((d.ceTheta || 0) + (d.peTheta || 0)).toFixed(2);
+        document.getElementById('val-iv').innerText = (((d.ceIv || 0) + (d.peIv || 0))/2).toFixed(2) + "%";
+    }
+
+    initApp();
+</script>
+</body>
+</html>
