@@ -6,7 +6,7 @@ WORKDIR /app
 COPY pom.xml .
 COPY lib ./lib
 COPY src ./src
-
+COPY frontend-app ./frontend-app
 # Inject custom JAR into local Maven repo before Maven resolves dependencies
 RUN mkdir -p /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6 && \
     cp lib/smartapi-java-2.2.6.jar /root/.m2/repository/com/angelbroking/smartapi/smartapi-java/2.2.6/smartapi-java-2.2.6.jar && \
