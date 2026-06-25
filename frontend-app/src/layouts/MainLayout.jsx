@@ -76,7 +76,7 @@ export default function MainLayout() {
 
       <div className={`layout-canvas theme-${theme}`}>
         <header className="glass-topbar">
-          <Link to="/" className="brand">🍞 Crumbs</Link>
+          <Link to="/dashboard" className="brand">🍞 Crumbs</Link>
           
           <nav className="center-menu">
             <Link to="/dashboard/stock" className={`nav-link ${isActive('/dashboard/stock') ? 'active' : ''}`}>Stock Analysis</Link>
