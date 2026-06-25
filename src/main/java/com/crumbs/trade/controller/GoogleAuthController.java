@@ -17,7 +17,7 @@ import java.util.Optional;
 @RequestMapping("/api/auth")
 public class GoogleAuthController {
 
-    // 1. Initialize the Log4j2 Logger for this specific controller
+    // Initialize the Log4j2 Logger for this controller
     private static final Logger logger = LogManager.getLogger(GoogleAuthController.class);
 
     @Autowired
@@ -29,7 +29,7 @@ public class GoogleAuthController {
         
         String accessToken = payload.get("token");
         
-        // Parameterized logging is cleaner and more memory-efficient
+        // Log the presence of the token
         logger.info("STEP 1: Token received from React? {}", 
             (accessToken != null && !accessToken.isEmpty() ? "YES" : "NO (Token is missing!)"));
 
@@ -38,9 +38,15 @@ public class GoogleAuthController {
             String googleUrl = "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + accessToken;
             
             logger.info("STEP 2: Calling Google API to verify token...");
+            
+            // Google responds with the user's profile data
             Map<String, Object> googleProfile = restTemplate.getForObject(googleUrl, Map.class);
             
             logger.info("STEP 3: Google Response Received! Profile Data: {}", googleProfile);
+
+            if (googleProfile == null) {
+                throw new Exception("Google API returned null response");
+            }
 
             String email = (String) googleProfile.get("email");
             String name = (String) googleProfile.get("name");
@@ -48,13 +54,15 @@ public class GoogleAuthController {
             logger.info("STEP 4: Extracted Email: [{}], Name: [{}]", email, name);
             
             if (email == null) {
-                logger.warn("🚨 ERROR: Google did not return an email address. Check frontend scopes!");
+                logger.warn("🚨 ERROR: Google did not return an email address.");
+                throw new Exception("No email found in Google profile");
             }
 
-            logger.info("STEP 5: Attempting to query PostgreSQL database for email...");
+            // Database coupling: Find user, if not, save new
+            logger.info("STEP 5: Attempting to query PostgreSQL database for email: {}", email);
             Optional<User> existingUser = userRepository.findByEmail(email);
             
-            logger.info("STEP 6: Database query successful. User found? {}", 
+            logger.info("STEP 6: Database query result. User exists? {}", 
                 (existingUser.isPresent() ? "YES" : "NO"));
             
             if (existingUser.isEmpty()) {
@@ -74,12 +82,10 @@ public class GoogleAuthController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            // Using logger.error to properly capture the stack trace
+            // Detailed error logging
             logger.error("🚨 === [CRITICAL ERROR DURING GOOGLE LOGIN] === 🚨");
             logger.error("Exception Type: {}", e.getClass().getName());
             logger.error("Error Message: {}", e.getMessage());
-            
-            // Passing the raw exception object 'e' as the last argument prints the full stack trace cleanly
             logger.error("Full Stack Trace: ", e);
             
             return ResponseEntity.status(401).body("Invalid Google Token or Server Error");
