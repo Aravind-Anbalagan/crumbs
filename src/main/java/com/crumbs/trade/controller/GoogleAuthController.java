@@ -1,7 +1,9 @@
 package com.crumbs.trade.controller;
 
-import com.crumbs.trade.entity.User; // Make sure this matches your User entity package path!
-import com.crumbs.trade.repo.UserRepository; // Make sure this matches your Repository path!
+import com.crumbs.trade.entity.User;
+import com.crumbs.trade.repo.UserRepository;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,48 +17,72 @@ import java.util.Optional;
 @RequestMapping("/api/auth")
 public class GoogleAuthController {
 
-    // Inject the database repository waiter
+    // 1. Initialize the Log4j2 Logger for this specific controller
+    private static final Logger logger = LogManager.getLogger(GoogleAuthController.class);
+
     @Autowired
     private UserRepository userRepository;
 
     @PostMapping("/google")
     public ResponseEntity<?> handleGoogleLogin(@RequestBody Map<String, String> payload) {
+        logger.info("=== [START] GOOGLE LOGIN ATTEMPT ===");
+        
         String accessToken = payload.get("token");
+        
+        // Parameterized logging is cleaner and more memory-efficient
+        logger.info("STEP 1: Token received from React? {}", 
+            (accessToken != null && !accessToken.isEmpty() ? "YES" : "NO (Token is missing!)"));
 
         try {
-            // 1. Send the token to Google's official user info endpoint
             RestTemplate restTemplate = new RestTemplate();
             String googleUrl = "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + accessToken;
             
-            // 2. Google responds with the user's profile data (as a Map)
+            logger.info("STEP 2: Calling Google API to verify token...");
             Map<String, Object> googleProfile = restTemplate.getForObject(googleUrl, Map.class);
+            
+            logger.info("STEP 3: Google Response Received! Profile Data: {}", googleProfile);
 
-            // 3. Extract user properties
             String email = (String) googleProfile.get("email");
             String name = (String) googleProfile.get("name");
-
-            // 4. DATABASE COUPLING: Check if user exists, if not, write a new row
-            Optional<User> existingUser = userRepository.findByEmail(email);
             
-            if (existingUser.isEmpty()) {
-                // If the email isn't in our PostgreSQL database, create it!
-                User newUser = new User(email, name, "GOOGLE");
-                userRepository.save(newUser);
-                System.out.println("🎉 Successfully stored NEW Google user in DB: " + email);
-            } else {
-                System.out.println("👋 Welcome back existing Google user: " + email);
+            logger.info("STEP 4: Extracted Email: [{}], Name: [{}]", email, name);
+            
+            if (email == null) {
+                logger.warn("🚨 ERROR: Google did not return an email address. Check frontend scopes!");
             }
 
-            // 5. Send a success message back to React
+            logger.info("STEP 5: Attempting to query PostgreSQL database for email...");
+            Optional<User> existingUser = userRepository.findByEmail(email);
+            
+            logger.info("STEP 6: Database query successful. User found? {}", 
+                (existingUser.isPresent() ? "YES" : "NO"));
+            
+            if (existingUser.isEmpty()) {
+                logger.info("STEP 7: Creating new user in database...");
+                User newUser = new User(email, name, "GOOGLE");
+                userRepository.save(newUser);
+                logger.info("🎉 Successfully stored NEW Google user in DB: {}", email);
+            } else {
+                logger.info("👋 Welcome back existing Google user: {}", email);
+            }
+
             Map<String, String> response = new HashMap<>();
             response.put("message", "Welcome " + name + "! Backend verification successful.");
             response.put("email", email);
             
+            logger.info("=== [END] GOOGLE LOGIN SUCCESS ===");
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(401).body("Invalid Google Token");
+            // Using logger.error to properly capture the stack trace
+            logger.error("🚨 === [CRITICAL ERROR DURING GOOGLE LOGIN] === 🚨");
+            logger.error("Exception Type: {}", e.getClass().getName());
+            logger.error("Error Message: {}", e.getMessage());
+            
+            // Passing the raw exception object 'e' as the last argument prints the full stack trace cleanly
+            logger.error("Full Stack Trace: ", e);
+            
+            return ResponseEntity.status(401).body("Invalid Google Token or Server Error");
         }
     }
 }
