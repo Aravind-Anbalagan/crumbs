@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pre-Market Cross-Plot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg1:#0f1117; --panel:#1a2035; --panel-border:rgba(255,255,255,.07);
+            --text:#e8eaf0; --text-dim:#7a8099; --metric-bg:rgba(255,255,255,.04);
+            --shadow:rgba(0,0,0,.45); --grid:rgba(255,255,255,.06); --dd-bg:#19203a;
+        }
+        [data-theme="light"] {
+            --bg1:#eef2f9; --panel:#fff; --panel-border:rgba(0,0,0,.09);
+            --text:#1a2035; --text-dim:#5a6280; --metric-bg:#f4f6fb;
+            --shadow:rgba(0,0,0,.10); --grid:rgba(0,0,0,.06); --dd-bg:#f0f3fa;
+        }
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{
+            font-family:'Sora',sans-serif; background:var(--bg1);
+            height:100vh; overflow:hidden;
+            display:flex; align-items:center; justify-content:center;
+            padding:10px; transition:background .3s;
+        }
+        .container{
+            width:100%; max-width:1700px; height:96vh;
+            display:flex; flex-direction:column; gap:10px;
+        }
+
+        /* ══ HEADER ══ */
+        .header{
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;
+            background:linear-gradient(135deg,#1e3c72 0%,#2a5298 100%);
+            border-radius:12px; padding:10px 16px; flex-shrink:0;
+            box-shadow:0 4px 20px rgba(0,0,0,.5);
+        }
+        .header-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+        .header h1{font-size:1.1em;font-weight:700;color:#fff;letter-spacing:-.3px;white-space:nowrap;}
+        
+        /* Strategy Toggle */
+        .strategy-toggle {
+            display: flex;
+            background: rgba(0,0,0,0.25);
+            border-radius: 8px;
+            padding: 3px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .strategy-toggle input[type="radio"] { display: none; }
+        .strategy-toggle label {
+            padding: 4px 12px;
+            font-size: 0.75em;
+            font-weight: 700;
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        .strategy-toggle input[type="radio"]:checked + label {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .hdr-info{
+            font-family:'JetBrains Mono',monospace; font-size:.72em;
+            color:rgba(255,255,255,.85); background:rgba(255,255,255,.13);
+            padding:3px 10px; border-radius:6px; border:1px solid rgba(255,255,255,.18);
+        }
+
+        .header-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+
+        /* ══ 2ND MID POINT ══ */
+        .hdr-mid2{
+            display:flex; align-items:center; gap:7px;
+            background:rgba(255,159,64,.13); border:1px solid rgba(255,159,64,.32);
+            border-radius:9px; padding:5px 11px;
+        }
+        .hdr-mid2 label{font-size:.75em;font-weight:700;color:#ff9f40;white-space:nowrap;}
+        .mid2-stored{
+            font-family:'JetBrains Mono',monospace; font-size:.78em; font-weight:700;
+            color:#ff9f40; background:rgba(255,159,64,.18);
+            border:1px solid rgba(255,159,64,.35); border-radius:5px;
+            padding:3px 9px; white-space:nowrap; min-width:54px; text-align:center;
+            letter-spacing:.3px;
+        }
+        .mid2-stored.set{ color:#ffe0a8; background:rgba(255,159,64,.25); border-color:rgba(255,159,64,.5); }
+        .hdr-mid2 input[type=number]{
+            width:88px; padding:4px 8px; border-radius:5px;
+            border:1px solid rgba(255,159,64,.35); background:rgba(0,0,0,.25);
+            color:#fff; font-family:'JetBrains Mono',monospace; font-size:.82em; outline:none;
+        }
+        .hdr-mid2 input:focus{border-color:#ff9f40; background:rgba(0,0,0,.4);}
+        .hdr-mid2 input::placeholder{color:rgba(255,255,255,.3);}
+        .btn{
+            padding:5px 12px; border:none; border-radius:7px;
+            font-size:.78em; font-weight:600; font-family:'Sora',sans-serif;
+            cursor:pointer; transition:all .18s; color:#fff; white-space:nowrap;
+        }
+        .btn:hover{filter:brightness(1.15);transform:translateY(-1px);}
+        .btn:active{transform:scale(.97) translateY(0);}
+        .btn-theme{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.25);}
+        .btn-mid2{background:#ff9f40;color:#000;font-weight:700;}
+        .btn-max{background:#e67e22;}
+        .btn-reset{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--panel-border);}
+        .btn-reset-view{background:rgba(100,120,200,.15);color:#8aa4f0;border:1px solid rgba(100,120,200,.25);font-size:.74em;padding:4px 10px;}
+        .btn-reset-view:hover{background:rgba(100,120,200,.25);filter:none;}
+        .btn-lines{
+            background:rgba(255,255,255,.07); color:var(--text);
+            border:1px solid var(--panel-border); font-size:.74em; padding:4px 10px;
+        }
+        .btn-lines:hover{background:rgba(255,255,255,.13);filter:none;transform:none;}
+
+        /* ══ CHARTS GRID ══ */
+        .charts-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0;}
+        .charts-grid.single{grid-template-columns:1fr;}
+
+        /* ══ CHART PANEL ══ */
+        .chart-panel{
+            background:var(--panel); border:1px solid var(--panel-border);
+            border-radius:12px; box-shadow:0 4px 24px var(--shadow);
+            display:flex; flex-direction:column; padding:10px 12px;
+            min-height:0; transition:background .3s;
+        }
+        .chart-panel.ce{border-top:3px solid #ff4f6d;}
+        .chart-panel.pe{border-top:3px solid #3b9eff;}
+
+        /* ══ PANEL HEADER ══ */
+        .panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;gap:8px;}
+        .ph-left{display:flex;align-items:center;gap:7px;}
+        .panel-title{font-size:.95em;font-weight:700;letter-spacing:.3px;}
+        .panel-title.ce{color:#ff4f6d;}
+        .panel-title.pe{color:#3b9eff;}
+
+        /* ══ LINES DROPDOWN ══ */
+        .dd-wrap{position:relative;}
+        .dd-menu{
+            display:none; position:absolute; top:calc(100% + 5px); left:0;
+            background:var(--dd-bg); border:1px solid var(--panel-border);
+            border-radius:10px; padding:8px 12px; z-index:300;
+            box-shadow:0 8px 32px rgba(0,0,0,.5); min-width:220px;
+        }
+        .dd-menu.open{display:block;}
+        .dd-title{
+            font-size:.67em;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+            color:var(--text-dim);margin-bottom:6px;padding-bottom:5px;
+            border-bottom:1px solid var(--panel-border);
+            display:flex;align-items:center;justify-content:space-between;
+        }
+        .dd-select-all{
+            display:flex;align-items:center;gap:6px;padding:5px 4px 5px;
+            margin-bottom:5px;border-bottom:1px solid var(--panel-border);
+            cursor:pointer;border-radius:5px;
+        }
+        .dd-select-all:hover{background:rgba(255,255,255,.07);}
+        .dd-select-all input[type=checkbox]{cursor:pointer;accent-color:#00e5cc;width:13px;height:13px;flex-shrink:0;}
+        .dd-select-all-lbl{
+            font-size:.76em;font-weight:700;color:var(--text);letter-spacing:.2px;flex:1;
+        }
+        .dd-select-badge{
+            font-size:.62em;font-weight:700;padding:1px 7px;border-radius:4px;
+            background:rgba(0,229,204,.12);color:#00e5cc;border:1px solid rgba(0,229,204,.2);
+            white-space:nowrap;
+        }
+        .dd-row{
+            display:flex;align-items:center;gap:6px;padding:3px 2px;
+            cursor:pointer;border-radius:5px;user-select:none;
+        }
+        .dd-row:hover{background:rgba(255,255,255,.05);}
+        .dd-row input[type=checkbox]{cursor:pointer;accent-color:#00e5cc;width:13px;height:13px;flex-shrink:0;}
+        .dd-swatch{width:18px;height:2px;border-radius:2px;flex-shrink:0;}
+        .dd-dot2{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+        .dd-lbl{font-size:.74em;font-weight:600;color:var(--text-dim);flex:1;transition:color .12s;}
+        .dd-row:hover .dd-lbl{color:var(--text);}
+
+        /* ══ LEGEND ══ */
+        .legend-row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
+        .lc{
+            display:flex;align-items:center;gap:3px;padding:2px 7px;
+            border-radius:20px;background:var(--metric-bg);border:1px solid var(--panel-border);
+            font-size:.65em;font-weight:600;color:var(--text);white-space:nowrap;
+        }
+        .lc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+        .lc-dash{width:13px;height:2px;border-radius:2px;flex-shrink:0;}
+
+        /* ══ METRICS ══ */
+        .metrics-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:7px;}
+        .metric{
+            text-align:center;padding:5px 3px;
+            background:var(--metric-bg);border-radius:7px;border:1px solid var(--panel-border);
+        }
+        .metric-label{font-size:.56em;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+        .metric-value{font-family:'JetBrains Mono',monospace;font-size:.84em;font-weight:700;color:var(--text);}
+        .mv-lg{font-size:.98em;}
+        .c-ce{color:#ff4f6d;} .c-pe{color:#3b9eff;} .c-high{color:#f5a623;}
+        .c-low{color:#2ecc71;} .c-cross{color:#e879a0;} .c-mid{color:#00e5cc;}
+
+        /* ══ CHART ══ */
+        .chart-wrapper{flex:1;position:relative;min-height:0;}
+    </style>
+</head>
+<body data-theme="dark">
+<div class="container">
+
+    <div class="header">
+        <div class="header-left">
+            <h1>📊 Pre-Market Cross-Plot</h1>
+            
+            <div class="strategy-toggle">
+                <input type="radio" id="strat-nifty" name="strategy" value="NIFTY">
+                <label for="strat-nifty">NIFTY</label>
+                
+                <input type="radio" id="strat-crude" name="strategy" value="CRUDEOIL">
+                <label for="strat-crude">CRUDEOIL</label>
+            </div>
+
+            <div class="hdr-info" id="headerInfo">Loading...</div>
+        </div>
+        <div class="header-right">
+            <div class="hdr-mid2">
+                <label>⚡ 2nd Mid</label>
+                <div class="mid2-stored" id="mid2Stored" title="Currently stored value">—</div>
+                <input type="number" id="mid2Input" placeholder="new value" step="0.5"/>
+                <button class="btn btn-mid2" onclick="setSecondMidPoint()">Set</button>
+            </div>
+            <button class="btn btn-theme" onclick="toggleTheme()" id="themeToggle">☀️ Light</button>
+        </div>
+    </div>
+
+    <div class="charts-grid" id="chartsGrid">
+
+        <div class="chart-panel ce" id="cePanel">
+            <div class="panel-header">
+                <div class="ph-left">
+                    <div class="panel-title ce">▲ CALL (CE)</div>
+                    <div class="dd-wrap">
+                        <button class="btn btn-lines" onclick="toggleDropdown('ce')">⚙ Lines ▾</button>
+                        <div class="dd-menu" id="ddCE">
+                            <div class="dd-title">Line Visibility — CE Chart</div>
+                            <div class="dd-select-all" onclick="toggleSelectAll('ce', event)">
+                                <input type="checkbox" id="selAll-ce" checked>
+                                <span class="dd-select-all-lbl">All</span>
+                                <span class="dd-select-badge" id="selAllBadge-ce">4 / 7</span>
+                            </div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-0" checked onchange="onVis('ce',0,this.checked)"><span class="dd-dot2" style="background:#ff4f6d"></span><span class="dd-lbl">CE Current Price</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-1" checked onchange="onVis('ce',1,this.checked)"><span class="dd-swatch" style="background:#f5a623"></span><span class="dd-lbl">CE Prev High</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-2"         onchange="onVis('ce',2,this.checked)"><span class="dd-swatch" style="background:#2ecc71"></span><span class="dd-lbl">CE Prev Low</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-3" checked onchange="onVis('ce',3,this.checked)"><span class="dd-swatch" style="background:#e879a0"></span><span class="dd-lbl">PE Prev Low (✕ cross)</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-4" checked onchange="onVis('ce',4,this.checked)"><span class="dd-swatch" style="background:#00e5cc"></span><span class="dd-lbl">Mid Point</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-5"         onchange="onVis('ce',5,this.checked)"><span class="dd-swatch" style="background:#ffd166"></span><span class="dd-lbl">PE Prev High (✕ cross)</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-ce-6"         onchange="onVis('ce',6,this.checked)"><span class="dd-swatch" style="background:#ff9f40"></span><span class="dd-lbl">2nd Mid Point</span></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-reset-view" onclick="resetLines('ce')" title="Reset to default lines">↺ Reset</button>
+                </div>
+                <button class="btn btn-max" id="cePanelBtn" onclick="setView('ce')">⛶ MAX</button>
+            </div>
+
+            <div class="legend-row" id="ceLegend"></div>
+
+            <div class="metrics-row">
+                <div class="metric"><div class="metric-label">Current</div><div class="metric-value mv-lg c-ce" id="ceCurrent">—</div></div>
+                <div class="metric"><div class="metric-label">CE Prev High</div><div class="metric-value c-high" id="ceHigh">—</div></div>
+                <div class="metric"><div class="metric-label">CE Prev Low</div><div class="metric-value c-low" id="ceLow">—</div></div>
+                <div class="metric"><div class="metric-label">PE Prev Low ✕</div><div class="metric-value c-cross" id="cePeLow">—</div></div>
+                <div class="metric"><div class="metric-label">Mid Point</div><div class="metric-value c-mid" id="ceMid">—</div></div>
+            </div>
+
+            <div class="chart-wrapper"><canvas id="ceChart"></canvas></div>
+        </div>
+
+        <div class="chart-panel pe" id="pePanel">
+            <div class="panel-header">
+                <div class="ph-left">
+                    <div class="panel-title pe">▼ PUT (PE)</div>
+                    <div class="dd-wrap">
+                        <button class="btn btn-lines" onclick="toggleDropdown('pe')">⚙ Lines ▾</button>
+                        <div class="dd-menu" id="ddPE">
+                            <div class="dd-title">Line Visibility — PE Chart</div>
+                            <div class="dd-select-all" onclick="toggleSelectAll('pe', event)">
+                                <input type="checkbox" id="selAll-pe" checked>
+                                <span class="dd-select-all-lbl">All</span>
+                                <span class="dd-select-badge" id="selAllBadge-pe">4 / 7</span>
+                            </div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-0" checked onchange="onVis('pe',0,this.checked)"><span class="dd-dot2" style="background:#3b9eff"></span><span class="dd-lbl">PE Current Price</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-1" checked onchange="onVis('pe',1,this.checked)"><span class="dd-swatch" style="background:#f5a623"></span><span class="dd-lbl">PE Prev High</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-2"         onchange="onVis('pe',2,this.checked)"><span class="dd-swatch" style="background:#2ecc71"></span><span class="dd-lbl">PE Prev Low</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-3" checked onchange="onVis('pe',3,this.checked)"><span class="dd-swatch" style="background:#e879a0"></span><span class="dd-lbl">CE Prev Low (✕ cross)</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-4" checked onchange="onVis('pe',4,this.checked)"><span class="dd-swatch" style="background:#00e5cc"></span><span class="dd-lbl">Mid Point</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-5"         onchange="onVis('pe',5,this.checked)"><span class="dd-swatch" style="background:#ffd166"></span><span class="dd-lbl">CE Prev High (✕ cross)</span></div>
+                            <div class="dd-row"><input type="checkbox" id="vis-pe-6"         onchange="onVis('pe',6,this.checked)"><span class="dd-swatch" style="background:#ff9f40"></span><span class="dd-lbl">2nd Mid Point</span></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-reset-view" onclick="resetLines('pe')" title="Reset to default lines">↺ Reset</button>
+                </div>
+                <button class="btn btn-max" id="pePanelBtn" onclick="setView('pe')">⛶ MAX</button>
+            </div>
+
+            <div class="legend-row" id="peLegend"></div>
+
+            <div class="metrics-row">
+                <div class="metric"><div class="metric-label">Current</div><div class="metric-value mv-lg c-pe" id="peCurrent">—</div></div>
+                <div class="metric"><div class="metric-label">PE Prev High</div><div class="metric-value c-high" id="peHigh">—</div></div>
+                <div class="metric"><div class="metric-label">PE Prev Low</div><div class="metric-value c-low" id="peLow">—</div></div>
+                <div class="metric"><div class="metric-label">CE Prev Low ✕</div><div class="metric-value c-cross" id="peCeLow">—</div></div>
+                <div class="metric"><div class="metric-label">Mid Point</div><div class="metric-value c-mid" id="peMid">—</div></div>
+            </div>
+
+            <div class="chart-wrapper"><canvas id="peChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ── Theme ── */
+let currentTheme = localStorage.getItem('theme') || 'dark';
+function applyTheme() {
+    document.body.setAttribute('data-theme', currentTheme);
+    document.getElementById('themeToggle').textContent =
+        currentTheme === 'dark' ? '☀️ Light' : '🌙 Dark';
+}
+function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', currentTheme);
+    applyTheme();
+    rebuildCharts();
+}
+function cc() {
+    const d = currentTheme === 'dark';
+    return {
+        grid:      d ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.07)',
+        tick:      d ? '#7a8099' : '#5a6280',
+        ttBg:      d ? 'rgba(15,17,23,.97)'   : 'rgba(255,255,255,.97)',
+        ttTxt:     d ? '#e8eaf0' : '#1a2035',
+    };
+}
+
+/* ── App state ── */
+const state = {
+    ce:{ current:0, high:0, low:0 },
+    pe:{ current:0, high:0, low:0 },
+    midPoint:0, secondMidPoint:null,
+    name:'NIFTY', atmStrike:0, expiry:'', tradingDate:''
+};
+
+const DEFAULT_VIS = [true, true, false, true, true, false, false];
+
+const vis = {
+    ce: [...DEFAULT_VIS],
+    pe: [...DEFAULT_VIS],
+};
+
+let times=[], cePrices=[], pePrices=[];
+let ceChart, peChart;
+let currentView = 'split';
+
+/* ── Strategy Selection ── */
+function switchStrategy(strategy) {
+    // 1. Update active strategy name
+    state.name = strategy;
+    
+    // 2. Update header to show loading state immediately
+    document.getElementById('headerInfo').textContent = 'Loading ' + strategy + '...';
+    
+    // 3. Clear existing data arrays and state
+    times = []; 
+    cePrices = []; 
+    pePrices = [];
+    state.ce = { current:0, high:0, low:0 };
+    state.pe = { current:0, high:0, low:0 };
+    state.midPoint = 0;
+    
+    // 4. Reset the metrics UI (sets values back to '—')
+    updateMetrics(); 
+    
+    // 5. Destroy the old charts completely to clear the canvas
+    if (ceChart) { ceChart.destroy(); ceChart = null; }
+    if (peChart) { peChart.destroy(); peChart = null; }
+    
+    // 6. Load the 2nd Mid setting for the new strategy and fetch data
+    loadMid2FromStorage(); 
+    fetchChartData(strategy);
+}
+
+// Attach listeners to strategy radio buttons
+document.querySelectorAll('input[name="strategy"]').forEach(radio => {
+    radio.addEventListener('change', (e) => switchStrategy(e.target.value));
+});
+
+
+/* ── Dropdown open/close ── */
+function toggleDropdown(side) {
+    const el = document.getElementById(side === 'ce' ? 'ddCE' : 'ddPE');
+    const wasOpen = el.classList.contains('open');
+    document.querySelectorAll('.dd-menu').forEach(d => d.classList.remove('open'));
+    if (!wasOpen) el.classList.add('open');
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.dd-wrap'))
+        document.querySelectorAll('.dd-menu').forEach(d => d.classList.remove('open'));
+});
+
+/* ── Visibility toggle ── */
+function syncSelectAll(side) {
+    const count = vis[side].filter(Boolean).length;
+    const total = vis[side].length;
+    const allChk = document.getElementById('selAll-' + side);
+    const badge  = document.getElementById('selAllBadge-' + side);
+    if (allChk) {
+        allChk.checked = count === total;
+        allChk.indeterminate = count > 0 && count < total;
+    }
+    if (badge) badge.textContent = `${count} / ${total}`;
+}
+
+function toggleSelectAll(side, event) {
+    if (event.target.tagName === 'INPUT') return;
+    const allChk = document.getElementById('selAll-' + side);
+    const anyOn  = vis[side].some(Boolean);
+    const newVal = !anyOn;
+    for (let i = 0; i < vis[side].length; i++) {
+        vis[side][i] = newVal;
+        const chk = document.getElementById(`vis-${side}-${i}`);
+        if (chk) chk.checked = newVal;
+    }
+    const chart = side === 'ce' ? ceChart : peChart;
+    if (chart) {
+        chart.data.datasets.forEach((ds, i) => { ds.hidden = !vis[side][i]; });
+        chart.update('none');
+    }
+    syncSelectAll(side);
+    rebuildLegend(side);
+}
+
+document.addEventListener('change', e => {
+    if (!e.target.matches('#selAll-ce, #selAll-pe')) return;
+    const side   = e.target.id === 'selAll-ce' ? 'ce' : 'pe';
+    const newVal = e.target.checked;
+    for (let i = 0; i < vis[side].length; i++) {
+        vis[side][i] = newVal;
+        const chk = document.getElementById(`vis-${side}-${i}`);
+        if (chk) chk.checked = newVal;
+    }
+    const chart = side === 'ce' ? ceChart : peChart;
+    if (chart) {
+        chart.data.datasets.forEach((ds, i) => { ds.hidden = !vis[side][i]; });
+        chart.update('none');
+    }
+    syncSelectAll(side);
+    rebuildLegend(side);
+});
+
+function onVis(side, idx, checked) {
+    vis[side][idx] = checked;
+    const chart = side === 'ce' ? ceChart : peChart;
+    if (chart && chart.data.datasets[idx]) {
+        chart.data.datasets[idx].hidden = !checked;
+        chart.update('none');
+    }
+    syncSelectAll(side);
+    rebuildLegend(side);
+}
+
+/* ── Legend config ── */
+const CE_LEGEND_DEF = [
+    ['CE Current Price',  '#ff4f6d','dot'],
+    ['CE Prev High',      '#f5a623','dash'],
+    ['CE Prev Low',       '#2ecc71','dash'],
+    ['PE Prev Low ✕',     '#e879a0','dash'],
+    ['Mid Point',         '#00e5cc','dash'],
+    ['PE Prev High ✕',    '#ffd166','dash'],
+    ['2nd Mid Point',     '#ff9f40','dash'],
+];
+const PE_LEGEND_DEF = [
+    ['PE Current Price',  '#3b9eff','dot'],
+    ['PE Prev High',      '#f5a623','dash'],
+    ['PE Prev Low',       '#2ecc71','dash'],
+    ['CE Prev Low ✕',     '#e879a0','dash'],
+    ['Mid Point',         '#00e5cc','dash'],
+    ['CE Prev High ✕',    '#ffd166','dash'],
+    ['2nd Mid Point',     '#ff9f40','dash'],
+];
+
+function chip(label, color, type) {
+    const sw = type === 'dot'
+        ? `<span class="lc-dot" style="background:${color}"></span>`
+        : `<span class="lc-dash" style="background:${color}"></span>`;
+    return `<div class="lc">${sw}${label}</div>`;
+}
+
+function rebuildLegend(side) {
+    const el  = document.getElementById(side + 'Legend');
+    if (!el) return;
+    const def = side === 'ce' ? CE_LEGEND_DEF : PE_LEGEND_DEF;
+    el.innerHTML = def
+        .map((d, i) => {
+            if (!vis[side][i]) return '';
+            if (i === 7 && state.secondMidPoint === null)
+                return chip('2nd Mid (not set)', d[1], d[2], 'opacity:.38');
+            return chip(d[0], d[1], d[2]);
+        }).join('');
+}
+function rebuildLegends() { rebuildLegend('ce'); rebuildLegend('pe'); }
+
+/* ── Dataset factories ── */
+function fl(label, value, color, dash, hidden) {
+    return {
+        label, data: Array(times.length).fill(value),
+        borderColor:color, borderWidth:1.8, borderDash:dash||[],
+        fill:false, hidden:!!hidden,
+        pointRadius:0, pointHoverRadius:0, tension:0
+    };
+}
+
+function buildCE() {
+    const m2 = state.secondMidPoint;
+    return [
+        /* 0 */ { label:'CE Price', data:[...cePrices],
+            borderColor:'#ff4f6d', backgroundColor:'rgba(255,79,109,.07)',
+            borderWidth:2.4, fill:true, tension:.4, hidden:!vis.ce[0],
+            pointRadius:0, pointHoverRadius:0 },
+        /* 1 */ fl('CE Prev High',    state.ce.high,   '#f5a623', [7,4],  !vis.ce[1]),
+        /* 2 */ fl('CE Prev Low',     state.ce.low,    '#2ecc71', [7,4],  !vis.ce[2]),
+        /* 3 */ fl('PE Prev Low (✕)', state.pe.low,    '#e879a0', [5,3],  !vis.ce[3]),
+        /* 4 */ fl('Mid Point',       state.midPoint,  '#00e5cc', [10,5], !vis.ce[4]),
+        /* 5 */ fl('PE Prev High (✕)',state.pe.high,   '#ffd166', [4,3],  !vis.ce[5]),
+        /* 6 */ fl('2nd Mid Point',   m2||0,           '#ff9f40', [6,3],  m2===null||!vis.ce[6]),
+    ];
+}
+function buildPE() {
+    const m2 = state.secondMidPoint;
+    return [
+        /* 0 */ { label:'PE Price', data:[...pePrices],
+            borderColor:'#3b9eff', backgroundColor:'rgba(59,158,255,.07)',
+            borderWidth:2.4, fill:true, tension:.4, hidden:!vis.pe[0],
+            pointRadius:0, pointHoverRadius:0 },
+        /* 1 */ fl('PE Prev High',    state.pe.high,   '#f5a623', [7,4],  !vis.pe[1]),
+        /* 2 */ fl('PE Prev Low',     state.pe.low,    '#2ecc71', [7,4],  !vis.pe[2]),
+        /* 3 */ fl('CE Prev Low (✕)', state.ce.low,    '#e879a0', [5,3],  !vis.pe[3]),
+        /* 4 */ fl('Mid Point',       state.midPoint,  '#00e5cc', [10,5], !vis.pe[4]),
+        /* 5 */ fl('CE Prev High (✕)',state.ce.high,   '#ffd166', [4,3],  !vis.pe[5]),
+        /* 6 */ fl('2nd Mid Point',   m2||0,           '#ff9f40', [6,3],  m2===null||!vis.pe[6]),
+    ];
+}
+
+/* ── Crosshair plugin ── */
+const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+        if (!chart._crosshairX) return;
+        const { ctx, chartArea: { top, bottom, left, right } } = chart;
+        const x = chart._crosshairX;
+        const y = chart._crosshairY;
+        const dark = currentTheme === 'dark';
+        const lineColor = dark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
+        const dotColor  = dark ? 'rgba(255,255,255,0.8)'  : 'rgba(0,0,0,0.7)';
+
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = lineColor;
+
+        ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor; ctx.fill();
+        ctx.restore();
+    }
+};
+Chart.register(crosshairPlugin);
+
+function attachCrosshair(canvas, getChart) {
+    canvas.addEventListener('mousemove', e => {
+        const chart = getChart();
+        if (!chart) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const ca = chart.chartArea;
+        if (x >= ca.left && x <= ca.right && y >= ca.top && y <= ca.bottom) {
+            chart._crosshairX = x; chart._crosshairY = y;
+        } else {
+            chart._crosshairX = null; chart._crosshairY = null;
+        }
+        chart.draw();
+    });
+    canvas.addEventListener('mouseleave', () => {
+        const chart = getChart();
+        if (!chart) return;
+        chart._crosshairX = null; chart._crosshairY = null;
+        chart.draw();
+    });
+}
+
+function chartOptions(priceColor, priceLabel) {
+    const c = cc();
+    return {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        plugins:{
+            legend:{ display:false },
+            tooltip:{
+                backgroundColor: c.ttBg, titleColor: c.ttTxt,
+                bodyColor:  priceColor, borderColor: priceColor, borderWidth:1.5,
+                padding:10, cornerRadius:8,
+                titleFont:{ size:11, family:'JetBrains Mono' },
+                bodyFont: { size:13, weight:'700', family:'JetBrains Mono' },
+                displayColors: false,
+                callbacks:{
+                    title: ctx => '🕐 ' + ctx[0].label,
+                    label: ctx => {
+                        if (ctx.datasetIndex !== 0) return null;
+                        return `  ${priceLabel}: ₹${ctx.parsed.y.toFixed(2)}`;
+                    },
+                    afterLabel: () => null
+                }
+            }
+        },
+        scales:{
+            y:{
+                beginAtZero:false, grid:{ color:c.grid },
+                ticks:{ callback:v=>'₹'+v.toFixed(0), color:c.tick, font:{size:10,family:'JetBrains Mono'} }
+            },
+            x:{
+                grid:{ color:c.grid },
+                ticks:{ color:c.tick, font:{size:10}, maxTicksLimit:8 }
+            }
+        }
+    };
+}
+
+function createCEChart() {
+    const canvas = document.getElementById('ceChart');
+    if (!canvas) return;
+    if (ceChart) { ceChart.destroy(); ceChart=null; }
+    ceChart = new Chart(canvas.getContext('2d'), {
+        type:'line', data:{ labels:[...times], datasets:buildCE() },
+        options: chartOptions('#ff4f6d','CE Price')
+    });
+    attachCrosshair(canvas, () => ceChart);
+}
+function createPEChart() {
+    const canvas = document.getElementById('peChart');
+    if (!canvas) return;
+    if (peChart) { peChart.destroy(); peChart=null; }
+    peChart = new Chart(canvas.getContext('2d'), {
+        type:'line', data:{ labels:[...times], datasets:buildPE() },
+        options: chartOptions('#3b9eff','PE Price')
+    });
+    attachCrosshair(canvas, () => peChart);
+}
+function rebuildCharts() {
+    if (currentView !== 'pe') createCEChart();
+    if (currentView !== 'ce') createPEChart();
+    rebuildLegends();
+}
+
+function patchChart(chart, priceData, own, cross) {
+    if (!chart) return;
+    const ds = chart.data.datasets;
+    const n  = times.length;
+    const f  = v => Array(n).fill(v);
+    const m2 = state.secondMidPoint;
+    const side = chart === ceChart ? 'ce' : 'pe';
+    chart.data.labels = [...times];
+    ds[0].data = [...priceData];
+    ds[1].data = f(own.high);
+    ds[2].data = f(own.low);
+    ds[3].data = f(cross.low);
+    ds[4].data = f(state.midPoint);
+    ds[5].data = f(cross.high);
+    if (ds[6]) {
+        ds[6].data   = f(m2 || 0);
+        ds[6].hidden = m2 === null || !vis[side][6];
+    }
+    chart.update('none');
+}
+function updateCharts() {
+    patchChart(ceChart, cePrices, state.ce, state.pe);
+    patchChart(peChart, pePrices, state.pe, state.ce);
+}
+
+const fmt = v => (v!==null && v!==undefined && +v!==0) ? '₹'+Number(v).toFixed(2) : '—';
+const setTxt = (id, v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+function updateMetrics() {
+    setTxt('ceCurrent', fmt(state.ce.current));
+    setTxt('ceHigh',    fmt(state.ce.high));
+    setTxt('ceLow',     fmt(state.ce.low));
+    setTxt('cePeLow',   fmt(state.pe.low));
+    setTxt('ceMid',     fmt(state.midPoint));
+
+    setTxt('peCurrent', fmt(state.pe.current));
+    setTxt('peHigh',    fmt(state.pe.high));
+    setTxt('peLow',     fmt(state.pe.low));
+    setTxt('peCeLow',   fmt(state.ce.low));
+    setTxt('peMid',     fmt(state.midPoint));
+}
+
+function setView(view) {
+    currentView = view;
+    const grid  = document.getElementById('chartsGrid');
+    const ceP   = document.getElementById('cePanel');
+    const peP   = document.getElementById('pePanel');
+    const ceBtn = document.getElementById('cePanelBtn');
+    const peBtn = document.getElementById('pePanelBtn');
+    if (view === 'split') {
+        grid.classList.remove('single');
+        ceP.style.display = peP.style.display = '';
+        ceBtn.textContent = peBtn.textContent = '⛶ MAX';
+        ceBtn.onclick = ()=>setView('ce');
+        peBtn.onclick = ()=>setView('pe');
+    } else if (view === 'ce') {
+        grid.classList.add('single');
+        ceP.style.display=''; peP.style.display='none';
+        ceBtn.textContent='↶ Split'; ceBtn.onclick=()=>setView('split');
+    } else {
+        grid.classList.add('single');
+        ceP.style.display='none'; peP.style.display='';
+        peBtn.textContent='↶ Split'; peBtn.onclick=()=>setView('split');
+    }
+    setTimeout(rebuildCharts, 30);
+}
+
+function resetLines(side) {
+    DEFAULT_VIS.forEach((v, i) => {
+        vis[side][i] = v;
+        const chk = document.getElementById(`vis-${side}-${i}`);
+        if (chk) chk.checked = v;
+    });
+    const chart = side === 'ce' ? ceChart : peChart;
+    if (chart) {
+        chart.data.datasets.forEach((ds, i) => { ds.hidden = !vis[side][i]; });
+        chart.update('none');
+    }
+    syncSelectAll(side);
+    rebuildLegend(side);
+}
+
+function updateMid2Display() {
+    const el = document.getElementById('mid2Stored');
+    if (!el) return;
+    if (state.secondMidPoint !== null && state.secondMidPoint !== 0) {
+        el.textContent = '₹' + Number(state.secondMidPoint).toFixed(2);
+        el.classList.add('set');
+        el.title = 'Stored: ₹' + Number(state.secondMidPoint).toFixed(2);
+    } else {
+        el.textContent = '—';
+        el.classList.remove('set');
+        el.title = 'No value set yet';
+    }
+}
+
+function loadMid2FromStorage() {
+    const saved = localStorage.getItem('secondMidPoint_' + (state.name || 'NIFTY'));
+    if (saved !== null && !isNaN(parseFloat(saved))) {
+        state.secondMidPoint = parseFloat(saved);
+        updateMid2Display();
+    } else {
+        state.secondMidPoint = null;
+        updateMid2Display();
+    }
+}
+
+async function setSecondMidPoint() {
+    const input  = document.getElementById('mid2Input');
+    const stored = document.getElementById('mid2Stored');
+    const val    = parseFloat(input.value);
+    if (isNaN(val)) {
+        stored.textContent = '⚠ Invalid';
+        stored.style.color = '#ff6b6b';
+        setTimeout(() => { stored.style.color=''; updateMid2Display(); }, 1500);
+        return;
+    }
+    stored.textContent = '⏳';
+    stored.style.color = 'rgba(255,255,255,.5)';
+    try {
+        const res = await fetch('/api/straddle/second-mid-point', {
+            method:'POST',
+            headers:{'Content-Type':'application/json','accept':'*/*'},
+            body: JSON.stringify({ name:state.name||'NIFTY', secondMidPoint:val })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        state.secondMidPoint = val;
+        localStorage.setItem('secondMidPoint_' + (state.name||'NIFTY'), val);
+        input.value = '';
+        stored.style.color = '';
+        updateMid2Display();
+        rebuildCharts();
+    } catch(err) {
+        stored.textContent = '✗ Error';
+        stored.style.color = '#ff6b6b';
+        setTimeout(() => { stored.style.color=''; updateMid2Display(); }, 2000);
+        console.error(err);
+    }
+}
+
+async function fetchChartData(strategyName='NIFTY') {
+    try {
+        const res  = await fetch(`/api/straddle/pre-market/chart/${strategyName}`);
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+            const d = json.data;
+            state.ce.high   = d.ce.prevHigh;
+            state.ce.low    = d.ce.prevLow;
+            state.pe.high   = d.pe.prevHigh;
+            state.pe.low    = d.pe.prevLow;
+            state.atmStrike = d.selectedAtm?.strike   ?? d.atmStrike ?? d.strike ?? 0;
+            state.midPoint  = d.selectedAtm?.midPoint ?? d.midPoint  ?? 0;
+            state.name        = d.strategy || d.name   || strategyName;
+            state.expiry      = d.expiry      || '';
+            state.tradingDate = d.tradingDate || '';
+
+            times    = d.timestamps;
+            cePrices = d.ce.pricesSeries;
+            pePrices = d.pe.pricesSeries;
+            state.ce.current = cePrices[cePrices.length-1] ?? 0;
+            state.pe.current = pePrices[pePrices.length-1] ?? 0;
+
+            const parts = [
+                state.name,
+                state.atmStrike ? `Strike: ${state.atmStrike}` : null,
+                state.midPoint  ? `Mid: ₹${Number(state.midPoint).toFixed(2)}` : null,
+                state.expiry    || null,
+                state.tradingDate || null,
+            ].filter(Boolean);
+            document.getElementById('headerInfo').textContent = parts.join('  |  ');
+
+            const first = !ceChart && !peChart;
+            if (first) rebuildCharts();
+            else { updateCharts(); rebuildLegends(); }
+
+            updateMid2Display();
+            updateMetrics();
+        }
+    } catch(err) {
+        console.error(err);
+        document.getElementById('headerInfo').textContent = '⚠ Failed to load data';
+    }
+}
+
+/* ── Boot ── */
+window.addEventListener('DOMContentLoaded', async () => {
+    applyTheme();
+    syncSelectAll('ce');
+    syncSelectAll('pe');
+
+    // Auto-select based on Time: Switches to CRUDEOIL starting at 4:00 PM (16:00)
+    const currentHour = new Date().getHours();
+    const initialStrategy = currentHour >= 16 ? 'CRUDEOIL' : 'NIFTY';
+    
+    // Set matching Radio Button
+    document.getElementById(initialStrategy === 'NIFTY' ? 'strat-nifty' : 'strat-crude').checked = true;
+    state.name = initialStrategy;
+
+    loadMid2FromStorage();
+    await fetchChartData(initialStrategy);
+    
+    // Interval dynamically references `state.name`
+    setInterval(()=>fetchChartData(state.name), 60_000);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Indicators Pro</title>
+  <script>
+    (function () {
+      const isTop = window.self === window.top;
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+      if (isTop && !isLoggedIn) window.location.href = '/';
+    })();
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    /* ==========================================================================
+       1. THEME VARIABLES (Pro FinTech Aesthetic)
+       ========================================================================== */
+    :root {
+      --bg:        #f3f4f6;
+      --surface:   #ffffff;
+      --surface2:  #f8fafc;
+      --border:    #e5e7eb;
+      --border2:   #d1d5db;
+      --text:      #0f172a;
+      --text2:     #475569;
+      --text3:     #94a3b8;
+      
+      --accent:    #10b981;
+      --accent-bg: #ecfdf5;
+      --red:       #ef4444;
+      --red-bg:    #fef2f2;
+      --amber:     #f59e0b;
+      --amber-bg:  #fffbeb;
+      --blue:      #3b82f6;
+      --blue-bg:   #eff6ff;
+      
+      --primary:   #4f46e5;
+      --primary-hover: #4338ca;
+      
+      --radius:    12px;
+      --shadow:    0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    body.dark {
+      --bg:        #020617;
+      --surface:   #0f172a;
+      --surface2:  #1e293b;
+      --border:    #1e293b;
+      --border2:   #334155;
+      --text:      #f8fafc;
+      --text2:     #cbd5e1;
+      --text3:     #64748b;
+      
+      --accent:    #34d399;
+      --accent-bg: rgba(16, 185, 129, 0.1);
+      --red:       #f87171;
+      --red-bg:    rgba(239, 68, 68, 0.1);
+      --amber:     #fbbf24;
+      --amber-bg:  rgba(245, 158, 11, 0.1);
+      --blue:      #60a5fa;
+      --blue-bg:   rgba(59, 130, 246, 0.1);
+      
+      --primary:   #6366f1;
+      --primary-hover: #818cf8;
+      --shadow:    0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ==========================================================================
+       2. LOCKED APP LAYOUT (100vh, No Scroll)
+       ========================================================================== */
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      height: 100vh;      
+      overflow: hidden;   
+      display: flex;
+      flex-direction: column;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .page { 
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 1600px; 
+      width: 100%;
+      margin: 0 auto; 
+      padding: 16px 20px; 
+      gap: 16px;
+      overflow: hidden; 
+    }
+
+    /* ==========================================================================
+       3. COMPONENTS
+       ========================================================================== */
+    /* Toolbar */
+    .toolbar {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 16px;
+      box-shadow: var(--shadow);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+      flex-shrink: 0;
+    }
+    .spacer { flex: 1; }
+    .divider { width: 1px; height: 26px; background: var(--border); flex-shrink: 0; }
+
+    .status-label {
+      display: flex; align-items: center; gap: 6px;
+      font-weight: 700; font-size: 13px; color: var(--primary);
+    }
+
+    /* Segments (Toggles) */
+    .seg {
+      display: flex; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 4px; gap: 4px;
+    }
+    .seg label {
+      padding: 6px 14px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-weight: 600; color: var(--text2);
+      transition: all 0.2s; user-select: none; white-space: nowrap;
+    }
+    .seg label:hover { color: var(--text); }
+    .seg label.checked {
+      background: var(--surface); color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* Select & Inputs */
+    select, .search-wrap input {
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      padding: 8px 12px; background: var(--bg);
+      border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+      outline: none; transition: all 0.2s;
+    }
+    select {
+      padding-right: 32px; cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+    select:focus, .search-wrap input:focus { border-color: var(--primary); background: var(--surface); }
+    
+    .search-wrap { position: relative; display: flex; align-items: center; }
+    .search-wrap svg { position: absolute; left: 12px; color: var(--text3); pointer-events: none; }
+    .search-wrap input { padding-left: 36px; width: 220px; }
+    .search-wrap input:focus { width: 260px; }
+
+    /* Buttons */
+    .btn {
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+      padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;
+    }
+    .btn:hover { background: var(--surface2); border-color: var(--border2); }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: #fff; }
+
+    /* COMPACT Stats Grid */
+    .stats { display: flex; gap: 12px; flex-shrink: 0; }
+    .stat-card {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .stat-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--text3);
+    }
+    .stat-val { font-size: 18px; font-weight: 600; font-family: 'DM Mono', monospace; color: var(--text); }
+    .stat-val.g { color: var(--accent); }
+    .stat-val.r { color: var(--red); }
+    .stat-val.a { color: var(--amber); }
+
+    #errorMessage {
+      display: none; background: var(--red-bg); color: var(--red); flex-shrink: 0;
+      border: 1px solid rgba(239,68,68,0.2); border-radius: var(--radius);
+      padding: 12px 16px; font-size: 13px; font-weight: 600;
+    }
+
+    /* ==========================================================================
+       4. FLEXIBLE TABLE CONTAINER (The No-Scroll Magic)
+       ========================================================================== */
+    .table-container {
+      flex: 1; 
+      display: flex;
+      flex-direction: column;
+      background: var(--surface); 
+      border: 1px solid var(--border);
+      border-radius: var(--radius); 
+      box-shadow: var(--shadow);
+      overflow: hidden; 
+      min-height: 0; 
+    }
+
+    .table-scroll-area {
+      flex: 1; 
+      overflow-y: auto; 
+      overflow-x: auto;
+    }
+
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    
+    /* Sticky Header */
+    thead th {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--surface2); padding: 12px 16px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--text3); border-bottom: 1px solid var(--border);
+      cursor: pointer; user-select: none; white-space: nowrap; transition: color 0.15s;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sort-asc::after { content: " ↑"; color: var(--primary); }
+    thead th.sort-desc::after { content: " ↓"; color: var(--primary); }
+    
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg); }
+    td { padding: 12px 16px; font-size: 13px; color: var(--text); white-space: nowrap; }
+
+    /* Custom Cell Formatting */
+    .c-name { font-weight: 700; font-size: 14px; color: var(--text); }
+    .c-sub   { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; margin-top: 2px; }
+    .c-price { font-family: 'DM Mono', monospace; font-weight: 600; font-size: 14px; }
+    .c-rsi   { font-family: 'DM Mono', monospace; font-weight: 700; font-size: 14px; }
+    .c-rsi.hot  { color: var(--red); }
+    .c-rsi.warm { color: var(--amber); }
+    .c-rsi.ok   { color: var(--accent); }
+    .c-rsi.cold { color: var(--blue); }
+    .c-sector   { font-size: 12px; color: var(--text2); }
+    .c-dt       { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text2); }
+    .c-num      { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 500;}
+
+    /* Badges */
+    .badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 4px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap;
+    }
+    .badge.buy  { background: var(--accent-bg); color: var(--accent); }
+    .badge.sell { background: var(--red-bg);    color: var(--red); }
+    .badge.hold { background: var(--amber-bg);  color: var(--amber); }
+    .badge.info { background: var(--blue-bg);   color: var(--blue); }
+    .badge.na   { background: var(--surface2);  color: var(--text3); font-weight: 500; }
+
+    /* Pinned Pagination Bar */
+    .pager {
+      flex-shrink: 0; 
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-top: 1px solid var(--border);
+      background: var(--surface); font-size: 13px; color: var(--text2); font-weight: 500;
+    }
+    .pg-btns { display: flex; gap: 4px; }
+    .pg-btn {
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+      padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--bg); color: var(--text2); cursor: pointer;
+      transition: all 0.15s; min-width: 36px; text-align: center;
+    }
+    .pg-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .pg-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* Loader */
+    #loader {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(243, 244, 246, 0.8); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+    }
+    body.dark #loader { background: rgba(2, 6, 23, 0.85); }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border2);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    #loader p { font-weight: 600; color: var(--text); font-size: 15px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="page">
+  <!-- Toolbar (Now the topmost element with all controls) -->
+  <div class="toolbar">
+    <!-- Active filter status -->
+    <div class="status-label">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+      <span id="headerSub">Daily · All</span>
+    </div>
+    <div class="divider"></div>
+
+    <div class="seg" id="timeframeSeg">
+      <label class="checked" data-val="DAILY">Daily</label>
+      <label data-val="WEEKLY">Weekly</label>
+      <label data-val="COMBINE">Combine</label>
+      <label data-val="INTRADAY">Intraday</label>
+    </div>
+    <div class="divider"></div>
+    <select id="secondaryFilter"></select>
+    <div class="seg" id="intradaySeg" style="display:none">
+      <label class="checked" data-val="HOURLY">Hourly</label>
+      <label data-val="DAILY">Daily</label>
+    </div>
+    <div class="divider"></div>
+    <div class="seg" id="optionSeg">
+      <label class="checked" data-val="ALL">Nifty 500</label>
+      <label data-val="OPTIONS">Options</label>
+    </div>
+    
+    <div class="spacer"></div>
+    
+    <div class="search-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search" placeholder="Search symbol..." oninput="filterTable()" autocomplete="off"/>
+    </div>
+    
+    <button class="btn" onclick="resetTable()">↺ Reset</button>
+    
+    <div class="divider"></div>
+    
+    <!-- Restored Theme and Results Buttons -->
+    <button class="btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙 Theme</button>
+    <button class="btn btn-primary" onclick="window.location.href='result.html'">📊 Results</button>
+  </div>
+
+  <!-- Error Message -->
+  <div id="errorMessage"></div>
+
+  <!-- COMPACT Stats Section -->
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">Total Stocks</div><div class="stat-val" id="sTotal">—</div></div>
+    <div class="stat-card"><div class="stat-label">Buy Signals</div><div class="stat-val g" id="sBuy">—</div></div>
+    <div class="stat-card"><div class="stat-label">Sell Signals</div><div class="stat-val r" id="sSell">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg RSI</div><div class="stat-val a" id="sRsi">—</div></div>
+  </div>
+
+  <!-- Flex Table Module (Pinned Pagination) -->
+  <div class="table-container">
+    <div class="table-scroll-area" id="tableScrollArea">
+      <table>
+        <thead><tr id="tableHead"></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span id="pageInfo">—</span>
+      <div class="pg-btns" id="pagination"></div>
+    </div>
+  </div>
+</div>
+
+<div id="loader"><div class="spinner"></div><p>Fetching Data…</p></div>
+
+<script>
+// ==========================================================================
+// YOUR EXACT ORIGINAL JAVASCRIPT LOGIC 
+// ==========================================================================
+let tableData=[], filteredData=[], visibleKeys=[];
+let sortState={column:null,order:null};
+let currentPage=1, currentTF='DAILY';
+const PAGE=15;
+let intradayType=localStorage.getItem('intradayType')||'HOURLY';
+
+function initSeg(id, cb) {
+  document.getElementById(id).querySelectorAll('label').forEach(l => {
+    l.addEventListener('click', () => {
+      document.getElementById(id).querySelectorAll('label').forEach(x=>x.classList.remove('checked'));
+      l.classList.add('checked'); cb(l.dataset.val);
+    });
+  });
+}
+function getSegVal(id) {
+  const c = document.getElementById(id).querySelector('label.checked');
+  return c ? c.dataset.val : null;
+}
+
+function buildSecondaryFilter(tf) {
+  const sf = document.getElementById('secondaryFilter');
+  sf.innerHTML = tf==='INTRADAY'
+    ? `<option value="ALL">All Trends</option><option value="UP">↑ Uptrend</option><option value="DOWN">↓ Downtrend</option>`
+    : `<option value="ALL">All Signals</option><option value="FIRST BUY">↑ First Buy</option><option value="FIRST SELL">↓ First Sell</option>`;
+}
+
+function setStatLabels(tf) {
+  const cards = document.querySelectorAll('.stat-card .stat-label');
+  if (tf === 'INTRADAY') {
+    cards[1].textContent = 'Uptrend'; cards[2].textContent = 'Downtrend'; cards[3].textContent = 'Win / Loss';
+  } else {
+    cards[1].textContent = 'Buy Signals'; cards[2].textContent = 'Sell Signals'; cards[3].textContent = 'Avg RSI';
+  }
+}
+
+initSeg('timeframeSeg', val => {
+  currentTF = val; buildSecondaryFilter(val); setStatLabels(val);
+  document.getElementById('intradaySeg').style.display = val==='INTRADAY' ? 'flex' : 'none';
+  updateSub(); currentPage=1; loadTable();
+});
+initSeg('intradaySeg', val => { intradayType=val; localStorage.setItem('intradayType',val); currentPage=1; loadTable(); });
+initSeg('optionSeg', ()=>{ currentPage=1; loadTable(); });
+document.getElementById('secondaryFilter').addEventListener('change', ()=>{ updateSub(); currentPage=1; loadTable(); });
+
+function updateSub() {
+  const sf = document.getElementById('secondaryFilter');
+  const t = currentTF.charAt(0)+currentTF.slice(1).toLowerCase();
+  document.getElementById('headerSub').textContent = `${t} · ${sf.options[sf.selectedIndex]?.text||'All'}`;
+}
+
+async function loadTable() {
+  const sf = document.getElementById('secondaryFilter').value;
+  const optionFlag = getSegVal('optionSeg')==='OPTIONS';
+  const loader = document.getElementById('loader');
+  const err = document.getElementById('errorMessage');
+  err.style.display='none'; loader.style.display='flex';
+  tableData=filteredData=[]; updateStats(); renderTable();
+  try {
+    const url = `/api/indicators/flagged?flag=${currentTF}&heikinPsarFilter=${encodeURIComponent(sf)}&optionFlag=${optionFlag}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    let data = await res.json();
+    if (currentTF==='INTRADAY') {
+      data = data.filter(r => (r.headers?.TYPE?.[0] || '').toUpperCase() === intradayType.toUpperCase());
+    }
+    if (!data.length) throw new Error('No stocks matched your filters.');
+    visibleKeys = Object.entries(data[0].headers).filter(([,v])=>v[1]).map(([k])=>k);
+    tableData = data.map(row=>{
+      const b = Object.fromEntries(visibleKeys.map(k=>[k,row.headers[k]?.[0]??'']));
+      if ('exchange' in row.headers) b['exchange']=row.headers['exchange'][0];
+      if ('symbol'   in row.headers) b['symbol']=row.headers['symbol'][0];
+      return b;
+    });
+    filteredData=[...tableData]; currentPage=1; updateStats(); renderTable();
+  } catch(e) {
+    err.textContent=e.message||'Could not load data.'; err.style.display='block';
+  } finally { loader.style.display='none'; }
+}
+
+function updateStats() {
+  if (!filteredData.length) {
+    ['sTotal','sBuy','sSell','sRsi'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  if (currentTF === 'INTRADAY') {
+    let up=0, down=0, win=0, loss=0;
+    filteredData.forEach(r => {
+      const intra = (r['INTRADAY']||'').toUpperCase();
+      const res = (r['RESULT']||'').toUpperCase();
+      if (intra==='UP') up++; if (intra==='DOWN') down++;
+      if (res==='WIN'||res==='W') win++; if (res==='LOSS'||res==='L') loss++;
+    });
+    document.getElementById('sTotal').textContent = filteredData.length;
+    document.getElementById('sBuy').textContent = up;
+    document.getElementById('sSell').textContent = down;
+    document.getElementById('sRsi').textContent = (win||loss) ? `${win} / ${loss}` : '—';
+    document.getElementById('sRsi').className = 'stat-val';
+  } else {
+    let buy=0,sell=0,rs=0,rc=0;
+    filteredData.forEach(r=>{
+      const st=(r['SUPERTREND']||r['D_SUPERTREND']||'').toUpperCase();
+      if(st.includes('BUY')) buy++; if(st.includes('SELL')) sell++;
+      const n=parseFloat(r['RSI']); if(!isNaN(n)){rs+=n;rc++;}
+    });
+    document.getElementById('sTotal').textContent = filteredData.length;
+    document.getElementById('sBuy').textContent = buy;
+    document.getElementById('sSell').textContent = sell;
+    document.getElementById('sRsi').textContent = rc?(rs/rc).toFixed(1):'—';
+    document.getElementById('sRsi').className = 'stat-val a';
+  }
+}
+
+function filterTable() {
+  const q=document.getElementById('search').value.toLowerCase();
+  filteredData=q?tableData.filter(r=>visibleKeys.some(k=>(r[k]+'').toLowerCase().includes(q))):[...tableData];
+  currentPage=1; updateStats(); renderTable();
+}
+
+function resetTable() {
+  document.getElementById('search').value='';
+  ['timeframeSeg','optionSeg','intradaySeg'].forEach(id=>{
+    const seg=document.getElementById(id);
+    seg.querySelectorAll('label').forEach((l,i)=>l.classList.toggle('checked',i===0));
+  });
+  currentTF='DAILY'; document.getElementById('intradaySeg').style.display='none';
+  buildSecondaryFilter('DAILY'); setStatLabels('DAILY'); currentPage=1; updateSub(); loadTable();
+}
+
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+  const d=document.body.classList.contains('dark');
+  localStorage.setItem('theme',d?'dark':'light');
+  document.getElementById('themeBtn').innerHTML = d ? '☀️ Theme' : '🌙 Theme';
+}
+
+function renderTable() { buildHead(); buildBody(); buildPager(); }
+function fmtKey(k) { return k.replace(/_+/g,' ').replace(/\b\w/g,l=>l.toUpperCase()); }
+
+function buildHead() {
+  document.getElementById('tableHead').innerHTML = visibleKeys.map(k=>{
+    const cls=sortState.column===k?(sortState.order==='asc'?'sort-asc':'sort-desc'):'';
+    let style = '';
+    if (k.toUpperCase() === 'OPTION') style = 'text-align:center;width:80px;';
+    return `<th class="${cls}" style="${style}" onclick="sortBy('${k}')">${fmtKey(k)}</th>`;
+  }).join('');
+}
+
+const SIG = new Set(['SUPERTREND','VWAP','SR','FIBO','AI','INTRADAY','VOLUME','D_HEIKIN','D_PSAR','D_SUPERTREND','D_VWAP','W_HEIKIN','W_PSAR','W_SUPERTREND','W_VWAP','COMBINE_SIGNAL','VOLUMEFLAG','WEEKLYVOLUMEFLLAG','HEIKINASHIDAY','HEIKINASHIWEEKLY','HEIKINASHIHOURLY']);
+
+function cellHTML(k, val, row) {
+  if (val===null||val===undefined||val==='') return `<span style="color:var(--text3)">—</span>`;
+  const K=k.toUpperCase();
+
+  if (K==='OPTION') {
+    const isY = val.toString().toUpperCase().startsWith('Y') || val === true || val === 'true';
+    return `<div style="text-align:center; font-weight:600; font-family:'DM Mono'; color:${isY?'var(--accent)':'var(--text3)'}">${isY?'Y':'N'}</div>`;
+  }
+
+  if (K==='NAME') {
+    const sym=row['symbol']||'', exc=row['exchange']||'';
+    return `<div class="c-name">${val}</div><div class="c-sub">${sym}${exc?' · '+exc:''}</div>`;
+  }
+  if (K==='SYMBOL'||K==='EXCHANGE') return '';
+  if (K==='PRICE') {
+    const n=parseFloat(val);
+    return `<span class="c-price">₹${isNaN(n)?val:n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+  }
+  if (K==='RSI') {
+    const n=parseFloat(val);
+    const c=n>=70?'hot':n>=55?'warm':n<=30?'cold':'ok';
+    return `<span class="c-rsi ${c}">${isNaN(n)?val:n.toFixed(1)}</span>`;
+  }
+  if (K==='TYPE') return `<span class="badge info">${val}</span>`;
+  if (K==='RESULT') {
+    const v=val.toString().toUpperCase();
+    if (v==='WIN'||v==='W') return `<span class="badge buy">WIN</span>`;
+    if (v==='LOSS'||v==='L') return `<span class="badge sell">LOSS</span>`;
+    return `<span class="badge hold">${val}</span>`;
+  }
+  if (K==='EXECUTED_AT'||K==='UPDATED_AT'||K.includes('DATE')||K.includes('TIME')) return `<span class="c-dt">${val}</span>`;
+  if (SIG.has(K)||K.endsWith('SIGNAL')||K.endsWith('FLAG')) return mkBadge(val);
+  const n=parseFloat(val);
+  if (!isNaN(n)&&val.toString().trim()!=='') return `<span class="c-num">${n.toLocaleString('en-IN')}</span>`;
+  return `<span>${val}</span>`;
+}
+
+function mkBadge(val) {
+  const v=(val||'').toString().toUpperCase();
+  if (v.includes('BUY')||v==='UP'||v==='BULLISH'||v==='WIN'||v==='Y') return `<span class="badge buy">${val}</span>`;
+  if (v.includes('SELL')||v==='DOWN'||v==='BEARISH'||v==='LOSS') return `<span class="badge sell">${val}</span>`;
+  if (v==='HOLD'||v==='NEUTRAL') return `<span class="badge hold">${val}</span>`;
+  return `<span class="badge info">${val}</span>`;
+}
+
+function buildBody() {
+  const body=document.getElementById('tableBody');
+  if (!filteredData.length) {
+    body.innerHTML=`<tr><td colspan="${visibleKeys.length||1}"><div class="empty">No stocks found</div></td></tr>`; return;
+  }
+  let sorted=[...filteredData];
+  if (sortState.column) {
+    const col=sortState.column, dir=sortState.order==='asc'?1:-1;
+    sorted.sort((a,b)=>{
+      let av=a[col]??'', bv=b[col]??'';
+      const K=col.toUpperCase();
+      if (K.includes('AT')||K.includes('DATE')||K.includes('TIME')) return (parseDT(av)-parseDT(bv))*dir;
+      const na=parseFloat(av),nb=parseFloat(bv);
+      if (!isNaN(na)&&!isNaN(nb)) return (na-nb)*dir;
+      return av.toString().localeCompare(bv.toString())*dir;
+    });
+  }
+  const start=(currentPage-1)*PAGE;
+  body.innerHTML = sorted.slice(start,start+PAGE).map((row,ri)=>
+    `<tr style="animation:rowIn 0.2s ease ${ri*0.025}s both">${visibleKeys.map(k=>`<td>${cellHTML(k,row[k],row)}</td>`).join('')}</tr>`
+  ).join('');
+}
+
+function buildPager() {
+  const total=filteredData.length, pages=Math.ceil(total/PAGE);
+  document.getElementById('pageInfo').textContent = total?`${(currentPage-1)*PAGE+1}–${Math.min(currentPage*PAGE,total)} of ${total}`:'No results';
+  const c=document.getElementById('pagination'); c.innerHTML='';
+  if (pages<=1) return;
+  
+  const mk=(lbl,pg,act=false)=>{
+    const b=document.createElement('button'); b.className='pg-btn'+(act?' active':''); b.textContent=lbl;
+    b.onclick=()=>{ 
+        currentPage=pg; 
+        renderTable(); 
+        document.getElementById('tableScrollArea').scrollTo({top:0,behavior:'smooth'}); 
+    }; 
+    return b;
+  };
+  if (currentPage>1) c.append(mk('‹',currentPage-1));
+  for (let i=Math.max(1,currentPage-2);i<=Math.min(pages,currentPage+2);i++) c.append(mk(i,i,i===currentPage));
+  if (currentPage<pages) c.append(mk('›',currentPage+1));
+}
+
+function sortBy(col) { const asc=sortState.column===col&&sortState.order==='asc'; sortState={column:col,order:asc?'desc':'asc'}; renderTable(); }
+function parseDT(str) { 
+  if (!str) return Infinity; 
+  const m=str.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  return m ? new Date(m[3],m[2]-1,m[1],m[4],m[5],m[6]).getTime() : new Date(str).getTime() || Infinity; 
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  if (localStorage.getItem('theme')==='dark') { 
+      document.body.classList.add('dark'); 
+      document.getElementById('themeBtn').innerHTML = '☀️ Theme';
+  }
+  document.getElementById('intradaySeg').querySelectorAll('label').forEach(l=>l.classList.toggle('checked', l.dataset.val===intradayType));
+  buildSecondaryFilter(currentTF); setStatLabels(currentTF); updateSub(); loadTable();
+});
+</script>
+</body>
+</html>

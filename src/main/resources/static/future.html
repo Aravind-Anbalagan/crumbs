@@ -1,0 +1,2034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Futures Filter Dashboard</title>
+  <script>
+    // Authentication check - must be at the top
+    if (!sessionStorage.getItem('isLoggedIn')) {
+      window.location.href = '/login';
+    }
+  </script>
+  <style>
+    :root {
+      /* Light theme colors */
+      --bg-gradient-start: #667eea;
+      --bg-gradient-end: #764ba2;
+      --card-bg: #ffffff;
+      --text-primary: #333333;
+      --text-secondary: #555555;
+      --text-tertiary: #666666;
+      --border-color: #e0e0e0;
+      --border-light: #f0f0f0;
+      --input-bg: #ffffff;
+      --input-border: #e0e0e0;
+      --input-focus: #667eea;
+      --hover-bg: #f8f9ff;
+      --secondary-bg: #f0f0f0;
+      --secondary-hover: #e0e0e0;
+      --shadow-color: rgba(0, 0, 0, 0.2);
+      --table-header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --table-header-text: #ffffff;
+      --empty-state-color: #999999;
+      --breakout-color: #10b981;
+      --breakdown-color: #ef4444;
+    }
+
+    [data-theme="dark"] {
+      /* Dark theme colors */
+      --bg-gradient-start: #1a1a2e;
+      --bg-gradient-end: #16213e;
+      --card-bg: #1c1f26;
+      --text-primary: #e4e6eb;
+      --text-secondary: #b0b3b8;
+      --text-tertiary: #8a8d91;
+      --border-color: #2f3336;
+      --border-light: #38444d;
+      --input-bg: #2a2f3a;
+      --input-border: #3a3f4a;
+      --input-focus: #667eea;
+      --hover-bg: #252a35;
+      --secondary-bg: #2a2f3a;
+      --secondary-hover: #353a45;
+      --shadow-color: rgba(0, 0, 0, 0.5);
+      --table-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      --table-header-text: #e4e6eb;
+      --empty-state-color: #666666;
+      --breakout-color: #51cf66;
+      --breakdown-color: #ff6b6b;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+      min-height: 100vh;
+      padding: 10px;
+      transition: all 0.3s ease;
+    }
+
+    .container {
+      max-width: 98%;
+      margin: 0 auto;
+    }
+
+    /* View Toggle Section */
+    .view-toggle-section {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      padding: 15px 20px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+
+    .view-toggle-buttons {
+      display: flex;
+      gap: 0;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 3px;
+      border-radius: 50px;
+    }
+
+    .view-toggle-btn {
+      padding: 8px 24px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      border-radius: 50px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .view-toggle-btn.active {
+      background: white;
+      color: var(--bg-gradient-start);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .view-toggle-btn:hover:not(.active) {
+      color: white;
+    }
+
+    /* Compact Header - All in one row */
+    .compact-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .header-center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .header-title {
+      color: white;
+      font-size: 1.3rem;
+      font-weight: 700;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+      white-space: nowrap;
+    }
+
+    .theme-toggle {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      padding: 8px 12px;
+      border-radius: 50px;
+      cursor: pointer;
+      color: white;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
+    }
+
+    .index-toggle-buttons {
+      display: flex;
+      gap: 0;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 3px;
+      border-radius: 50px;
+    }
+
+    .index-toggle-btn {
+      padding: 6px 20px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      border-radius: 50px;
+    }
+
+    .index-toggle-btn.active {
+      background: white;
+      color: var(--bg-gradient-start);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .index-toggle-btn:hover:not(.active) {
+      color: white;
+    }
+
+    .index-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 15px;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .index-badge-icon {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .index-badge.nifty50 .index-badge-icon { background: #10b981; }
+    .index-badge.niftyNext50 .index-badge-icon { background: #3b82f6; }
+    .index-badge.nifty100 .index-badge-icon { background: #8b5cf6; }
+    .index-badge.nifty200 .index-badge-icon { background: #ec4899; }
+    .index-badge.nifty500 .index-badge-icon { background: #f59e0b; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .data-section {
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 12px 15px;
+      box-shadow: 0 5px 15px var(--shadow-color);
+      transition: all 0.3s ease;
+    }
+
+    .data-controls-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .data-controls-left {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--text-tertiary);
+      transition: color 0.3s ease;
+      flex-wrap: wrap;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      padding: 4px 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      backdrop-filter: blur(5px);
+    }
+
+    .stat-item span:first-child {
+      font-size: 1rem;
+    }
+
+    [data-theme="dark"] .stat-item {
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    .search-box {
+      padding: 6px 10px;
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      min-width: 180px;
+      transition: all 0.3s ease;
+    }
+
+    .search-box:focus {
+      outline: none;
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--secondary-bg);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--secondary-hover);
+    }
+
+    .filter-select {
+      padding: 6px 10px;
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      cursor: pointer;
+      min-width: 150px;
+      transition: all 0.3s ease;
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .table-container {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      transition: opacity 0.2s ease, border-color 0.3s ease;
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+
+    .table-container.updating {
+      opacity: 0.6;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-bg);
+      transition: background 0.3s ease;
+    }
+
+    thead {
+      background: var(--table-header-bg);
+      color: var(--table-header-text);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    th {
+      position: relative;
+      overflow: visible;
+    }
+
+    th {
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      transition: background 0.3s ease;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      transition: all 0.3s ease;
+    }
+
+    tbody tr {
+      transition: background 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background: var(--hover-bg);
+    }
+
+    .positive {
+      color: #10b981;
+      font-weight: 600;
+    }
+
+    .negative {
+      color: #ef4444;
+      font-weight: 600;
+    }
+
+    .breakout-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--breakout-color);
+      color: white;
+    }
+
+    .breakdown-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--breakdown-color);
+      color: white;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text-tertiary);
+    }
+
+    .spinner {
+      border: 3px solid var(--border-color);
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 35px;
+      height: 35px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #991b1b;
+      font-size: 0.85rem;
+    }
+
+    .success {
+      background: #d1fae5;
+      color: #065f46;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #065f46;
+      font-size: 0.85rem;
+    }
+
+    [data-theme="dark"] .error {
+      background: #3d1a1a;
+      color: #ff6b6b;
+    }
+
+    [data-theme="dark"] .success {
+      background: #1a3d1a;
+      color: #51cf66;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 50px 20px;
+      color: var(--empty-state-color);
+      transition: color 0.3s ease;
+    }
+
+    .empty-state svg {
+      width: 60px;
+      height: 60px;
+      margin-bottom: 15px;
+      opacity: 0.3;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 2px solid var(--border-light);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pagination-info {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      transition: color 0.3s ease;
+    }
+
+    .pagination-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pagination-btn {
+      padding: 6px 12px;
+      border: 2px solid var(--input-border);
+      background: var(--card-bg);
+      color: var(--text-primary);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.3s ease;
+    }
+
+    .pagination-btn:hover:not(:disabled) {
+      background: var(--hover-bg);
+      border-color: var(--input-focus);
+    }
+
+    .pagination-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .page-size-select {
+      padding: 6px 10px;
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .sort-icon {
+      margin-left: 4px;
+      font-size: 0.75rem;
+      opacity: 0.5;
+    }
+
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th.sortable:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Tooltip styling */
+    .tooltip-wrapper {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      position: relative;
+    }
+
+    .tooltip-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      font-weight: bold;
+      cursor: help;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      position: relative;
+      z-index: 1001;
+    }
+
+    .tooltip-icon:hover {
+      opacity: 1;
+      z-index: 1002;
+    }
+
+    .tooltip-text {
+      visibility: hidden;
+      position: fixed;
+      background: rgba(0, 0, 0, 0.95);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: normal;
+      white-space: normal;
+      width: 280px;
+      max-width: 90vw;
+      z-index: 9999;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      line-height: 1.5;
+      text-align: left;
+      opacity: 0;
+      transition: opacity 0.3s, visibility 0.3s;
+      pointer-events: none;
+      transform: translateY(-10px);
+    }
+
+    .tooltip-icon:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    [data-theme="dark"] .tooltip-text {
+      background: rgba(255, 255, 255, 0.98);
+      color: #1a1a2e;
+      box-shadow: 0 4px 16px rgba(255, 255, 255, 0.3);
+    }
+
+    [data-theme="dark"] .tooltip-text::after {
+      border-top-color: rgba(255, 255, 255, 0.98);
+    }
+
+    [data-theme="dark"] .tooltip-icon {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+      .compact-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+      }
+      
+      .header-left, 
+      .header-center {
+        justify-content: center;
+        width: 100%;
+      }
+      
+      .header-center {
+        order: 2;
+      }
+      .stats {
+        order: 3;
+        justify-content: center;
+      }
+      .stat-item {
+        padding: 3px 6px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header-title {
+        font-size: 1.1rem;
+      }
+      .header-center {
+        flex-direction: column;
+        gap: 8px;
+      }
+      .index-toggle-buttons {
+        flex-wrap: wrap;
+        gap: 2px;
+        padding: 4px;
+      }
+      .index-toggle-btn {
+        padding: 4px 12px;
+        font-size: 0.75rem;
+      }
+      .table-container {
+        font-size: 0.75rem;
+      }
+      .data-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .data-controls-left {
+        width: 100%;
+      }
+      .stats {
+        font-size: 0.8rem;
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .stat-item {
+        padding: 3px 6px;
+        gap: 4px;
+        font-size: 0.75rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- View Toggle Section -->
+    <div class="view-toggle-section">
+      <div class="view-toggle-buttons">
+        <button class="view-toggle-btn active" id="filteredViewBtn" onclick="switchView('filtered')">
+          📊 Filtered View
+        </button>
+        <button class="view-toggle-btn" id="breakoutViewBtn" onclick="switchView('breakout')">
+          📈 Breakout/Breakdown
+        </button>
+      </div>
+    </div>
+
+    <!-- Filtered View Content -->
+    <div id="filteredView">
+      <!-- Compact Header -->
+      <div class="compact-header">
+        <div class="header-left">
+          <h1 class="header-title">Futures Filter Dashboard</h1>
+          <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
+        </div>
+        <div class="header-center">
+          <div class="index-toggle-buttons">
+            <button class="index-toggle-btn active" id="nifty50Btn" onclick="switchIndex('NIFTY_50')">NIFTY 50</button>
+            <button class="index-toggle-btn" id="niftyNext50Btn" onclick="switchIndex('NIFTY_NEXT_50')">NEXT 50</button>
+            <button class="index-toggle-btn" id="nifty100Btn" onclick="switchIndex('NIFTY_100')">NIFTY 100</button>
+            <button class="index-toggle-btn" id="nifty200Btn" onclick="switchIndex('NIFTY_200')">NIFTY 200</button>
+            <button class="index-toggle-btn" id="nifty500Btn" onclick="switchIndex('NIFTY_500')">NIFTY 500</button>
+          </div>
+          <div class="index-badge nifty50" id="currentIndexBadge">
+            <span class="index-badge-icon"></span>
+            <span id="currentIndexText">Active</span>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat-item">
+            <span>📊</span>
+            <span>Total:</span>
+            <strong id="totalCount">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>👁️</span>
+            <span>Showing:</span>
+            <strong id="showingCount">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>🕒</span>
+            <span>Last Update:</span>
+            <strong id="lastUpdate">-</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Section -->
+      <div class="data-section">
+        <div class="data-controls-row">
+          <div class="data-controls-left">
+            <select class="filter-select" id="percentFilter" onchange="filterByPercentage()">
+              <option value="all">All Moves</option>
+              <option value="-5">&lt; -5%</option>
+              <option value="-5to-4">-5 to -4%</option>
+              <option value="-4to-3">-4 to -3%</option>
+              <option value="-3to-2">-3 to -2%</option>
+              <option value="-2to-1">-2 to -1%</option>
+              <option value="-1to0">-1 to 0%</option>
+              <option selected value="0to1">0 to 1%</option>
+              <option value="1to2">1 to 2%</option>
+              <option value="2to3">2 to 3%</option>
+              <option value="3to4">3 to 4%</option>
+              <option value="4to5">4 to 5%</option>
+              <option value="5">&gt; 5%</option>
+            </select>
+            <input type="text" class="search-box" id="searchBox" placeholder="Search..." onkeyup="filterTable()">
+          </div>
+          <div class="data-controls-right">
+            <button class="btn btn-primary" onclick="exportToCSV()">
+              <span>📥</span>Export CSV
+            </button>
+            <button class="btn btn-secondary" onclick="loadFilteredData()">
+              <span>🔄</span>Refresh
+            </button>
+          </div>
+        </div>
+
+        <div id="dataMessage"></div>
+        <div id="dataLoading" class="loading" style="display: none">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+        <div id="tableContainer"></div>
+        <div id="paginationContainer" style="display: none">
+          <div class="pagination">
+            <div class="pagination-info">
+              <span>Rows per page:</span>
+              <select class="page-size-select" id="pageSize" onchange="changePageSize()">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+            <div class="pagination-controls">
+              <button class="pagination-btn" onclick="goToFirstPage()">&laquo;</button>
+              <button class="pagination-btn" onclick="previousPage()">&lt;</button>
+              <span class="pagination-info" id="pageInfo">1/1</span>
+              <button class="pagination-btn" onclick="nextPage()">&gt;</button>
+              <button class="pagination-btn" onclick="goToLastPage()">&raquo;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Breakout View Content -->
+    <div id="breakoutView" style="display: none;">
+      <div class="compact-header">
+        <div class="header-left">
+          <h1 class="header-title">Breakout/Breakdown Analysis</h1>
+          <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle2">🌙</button>
+        </div>
+        <div class="header-center">
+          <div class="index-toggle-buttons">
+            <button class="index-toggle-btn active" id="bo_nifty50Btn" onclick="switchBreakoutIndex('NIFTY_50')">NIFTY 50</button>
+            <button class="index-toggle-btn" id="bo_niftyNext50Btn" onclick="switchBreakoutIndex('NIFTY_NEXT_50')">NEXT 50</button>
+            <button class="index-toggle-btn" id="bo_nifty100Btn" onclick="switchBreakoutIndex('NIFTY_100')">NIFTY 100</button>
+            <button class="index-toggle-btn" id="bo_nifty200Btn" onclick="switchBreakoutIndex('NIFTY_200')">NIFTY 200</button>
+            <button class="index-toggle-btn" id="bo_nifty500Btn" onclick="switchBreakoutIndex('NIFTY_500')">NIFTY 500</button>
+          </div>
+          <div class="index-badge nifty50" id="breakoutIndexBadge">
+            <span class="index-badge-icon"></span>
+            <span id="breakoutIndexText">Active</span>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat-item">
+            <span>✓</span>
+            <span>Active:</span>
+            <strong id="activeCount">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>✗</span>
+            <span>Inactive:</span>
+            <strong id="inactiveCount">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>👁️</span>
+            <span>Showing:</span>
+            <strong id="boShowingCount">0</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="data-section">
+        <div class="data-controls-row">
+          <div class="data-controls-left">
+            <select class="filter-select" id="statusFilter" onchange="filterBreakoutData()">
+              <option value="all">All Status</option>
+              <option value="ACTIVE" selected>Active Only</option>
+              <option value="INACTIVE">Inactive Only</option>
+            </select>
+            <select class="filter-select" id="breakTypeFilter" onchange="filterBreakoutData()">
+              <option value="all">All Types</option>
+              <option value="BREAKOUT">Breakouts Only</option>
+              <option value="BREAKDOWN">Breakdowns Only</option>
+            </select>
+            <input type="text" class="search-box" id="boSearchBox" placeholder="Search..." onkeyup="filterBreakoutData()">
+          </div>
+          <div class="data-controls-right">
+            <button class="btn btn-primary" onclick="exportBreakoutToCSV()">
+              <span>📥</span>Export CSV
+            </button>
+            <button class="btn btn-secondary" onclick="loadBreakoutData()">
+              <span>🔄</span>Refresh
+            </button>
+          </div>
+        </div>
+
+        <div id="boDataMessage"></div>
+        <div id="boDataLoading" class="loading" style="display: none">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+        <div id="boTableContainer"></div>
+        <div id="boPaginationContainer" style="display: none">
+          <div class="pagination">
+            <div class="pagination-info">
+              <span>Rows per page:</span>
+              <select class="page-size-select" id="boPageSize" onchange="changeBreakoutPageSize()">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+            <div class="pagination-controls">
+              <button class="pagination-btn" onclick="goToFirstBreakoutPage()">&laquo;</button>
+              <button class="pagination-btn" onclick="previousBreakoutPage()">&lt;</button>
+              <span class="pagination-info" id="boPageInfo">1/1</span>
+              <button class="pagination-btn" onclick="nextBreakoutPage()">&gt;</button>
+              <button class="pagination-btn" onclick="goToLastBreakoutPage()">&raquo;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = '/api/futures';
+
+    // Global state - Filtered View
+    window.fullData = null;
+    window.filteredData = null;
+    window.currentPage = 1;
+    window.pageSize = 10;
+    window.sortColumn = null;
+    window.sortDirection = 'asc';
+    window.percentColumnName = null;
+    window.currentIndex = 'NIFTY_50';
+
+    // Global state - Breakout View
+    window.breakoutFullData = null;
+    window.breakoutFilteredData = null;
+    window.breakoutCurrentPage = 1;
+    window.breakoutPageSize = 10;
+    window.breakoutSortColumn = null;
+    window.breakoutSortDirection = 'asc';
+    window.breakoutCurrentIndex = 'NIFTY_50';
+    window.currentView = 'filtered';
+
+    // View Switching
+    function switchView(view) {
+      window.currentView = view;
+      
+      // Update toggle buttons
+      document.querySelectorAll('.view-toggle-btn').forEach(btn => btn.classList.remove('active'));
+      if (view === 'filtered') {
+        document.getElementById('filteredViewBtn').classList.add('active');
+        document.getElementById('filteredView').style.display = 'block';
+        document.getElementById('breakoutView').style.display = 'none';
+        if (!window.fullData) loadFilteredData();
+      } else {
+        document.getElementById('breakoutViewBtn').classList.add('active');
+        document.getElementById('filteredView').style.display = 'none';
+        document.getElementById('breakoutView').style.display = 'block';
+        if (!window.breakoutFullData) loadBreakoutData();
+      }
+      
+      localStorage.setItem('selectedView', view);
+    }
+
+    // Date format functions - DD-MMM-YYYY for expiry, full timestamp for LTP
+    function formatExpiryDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      
+      return `${day}-${month}-${year}`;
+    }
+
+    function formatCurrentLTPDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      
+      return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+    }
+
+    // Theme Management
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      const themeToggle = document.getElementById('themeToggle');
+      const themeToggle2 = document.getElementById('themeToggle2');
+      if (themeToggle) themeToggle.textContent = theme === 'light' ? '🌙' : '☀️';
+      if (themeToggle2) themeToggle2.textContent = theme === 'light' ? '🌙' : '☀️';
+    }
+
+    // Index Management - Filtered View
+    function switchIndex(indexType) {
+      window.currentIndex = indexType;
+      
+      document.querySelectorAll('#filteredView .index-toggle-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(getButtonId(indexType)).classList.add('active');
+      
+      const badge = document.getElementById('currentIndexBadge');
+      const badgeText = document.getElementById('currentIndexText');
+      badge.className = `index-badge ${getBadgeClass(indexType)}`;
+      badgeText.textContent = getIndexDisplayName(indexType);
+      
+      localStorage.setItem('selectedIndex', indexType);
+      loadFilteredData();
+    }
+
+    // Index Management - Breakout View
+    function switchBreakoutIndex(indexType) {
+      window.breakoutCurrentIndex = indexType;
+      
+      document.querySelectorAll('#breakoutView .index-toggle-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(getBreakoutButtonId(indexType)).classList.add('active');
+      
+      const badge = document.getElementById('breakoutIndexBadge');
+      const badgeText = document.getElementById('breakoutIndexText');
+      badge.className = `index-badge ${getBadgeClass(indexType)}`;
+      badgeText.textContent = getIndexDisplayName(indexType);
+      
+      localStorage.setItem('selectedBreakoutIndex', indexType);
+      loadBreakoutData();
+    }
+
+    function getButtonId(indexType) {
+      const idMap = {
+        'NIFTY_50': 'nifty50Btn',
+        'NIFTY_NEXT_50': 'niftyNext50Btn',
+        'NIFTY_100': 'nifty100Btn',
+        'NIFTY_200': 'nifty200Btn',
+        'NIFTY_500': 'nifty500Btn'
+      };
+      return idMap[indexType] || 'nifty50Btn';
+    }
+
+    function getBreakoutButtonId(indexType) {
+      const idMap = {
+        'NIFTY_50': 'bo_nifty50Btn',
+        'NIFTY_NEXT_50': 'bo_niftyNext50Btn',
+        'NIFTY_100': 'bo_nifty100Btn',
+        'NIFTY_200': 'bo_nifty200Btn',
+        'NIFTY_500': 'bo_nifty500Btn'
+      };
+      return idMap[indexType] || 'bo_nifty50Btn';
+    }
+
+    function getBadgeClass(indexType) {
+      const classMap = {
+        'NIFTY_50': 'nifty50',
+        'NIFTY_NEXT_50': 'niftyNext50',
+        'NIFTY_100': 'nifty100',
+        'NIFTY_200': 'nifty200',
+        'NIFTY_500': 'nifty500'
+      };
+      return classMap[indexType] || 'nifty50';
+    }
+
+    function getIndexDisplayName(indexType) {
+      const nameMap = {
+        'NIFTY_50': 'NIFTY 50 Active',
+        'NIFTY_NEXT_50': 'NEXT 50 Active',
+        'NIFTY_100': 'NIFTY 100 Active',
+        'NIFTY_200': 'NIFTY 200 Active',
+        'NIFTY_500': 'NIFTY 500 Active'
+      };
+      return nameMap[indexType] || 'NIFTY 50 Active';
+    }
+
+    function loadIndexPreference() {
+      const savedIndex = localStorage.getItem('selectedIndex') || 'NIFTY_50';
+      const savedBreakoutIndex = localStorage.getItem('selectedBreakoutIndex') || 'NIFTY_50';
+      const savedView = localStorage.getItem('selectedView') || 'filtered';
+      
+      switchIndex(savedIndex);
+      switchBreakoutIndex(savedBreakoutIndex);
+      switchView(savedView);
+    }
+
+    // Page initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      loadIndexPreference();
+    });
+
+    // ========== FILTERED VIEW FUNCTIONS ==========
+
+    // Load data from API
+    async function loadFilteredData() {
+      const loadingDiv = document.getElementById('dataLoading');
+      const tableContainer = document.getElementById('tableContainer');
+      clearMessage('dataMessage');
+
+      if (tableContainer.innerHTML) {
+        const tableDiv = tableContainer.querySelector('.table-container');
+        if (tableDiv) tableDiv.classList.add('updating');
+      } else {
+        loadingDiv.style.display = 'block';
+      }
+
+      try {
+        const url = `${API_BASE_URL}/filtered/${window.currentIndex}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load data: HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        loadingDiv.style.display = 'none';
+
+        if (!data || data.length === 0) {
+          tableContainer.innerHTML = showEmptyState();
+          document.getElementById('paginationContainer').style.display = 'none';
+          window.fullData = [];
+          window.filteredData = [];
+          updateStats();
+          return;
+        }
+
+        window.fullData = data;
+        window.filteredData = data;
+        detectPercentColumn(data);
+        applyFilters();
+        document.getElementById('paginationContainer').style.display = 'block';
+
+        setTimeout(() => {
+          const tableDiv = tableContainer.querySelector('.table-container');
+          if (tableDiv) tableDiv.classList.remove('updating');
+        }, 100);
+
+        updateStats();
+      } catch (error) {
+        console.error('Error loading data:', error);
+        loadingDiv.style.display = 'none';
+        const tableDiv = tableContainer.querySelector('.table-container');
+        if (tableDiv) tableDiv.classList.remove('updating');
+        showMessage('dataMessage', `Unable to load data for ${window.currentIndex}. Please try refreshing.`, 'error');
+      }
+    }
+
+    function detectPercentColumn(data) {
+      if (!data || data.length === 0) {
+        window.percentColumnName = null;
+        return;
+      }
+
+      const firstRow = data[0];
+      const keys = Object.keys(firstRow);
+      let percentKey = keys.find(key => 
+        key.toLowerCase().includes('percentmove') ||
+        key.toLowerCase().includes('percentMove') ||
+        key.toLowerCase().includes('percentmove')
+      );
+
+      if (!percentKey) {
+        percentKey = keys.find(key => {
+          const lower = key.toLowerCase();
+          return lower.includes('percent') || lower.includes('move');
+        });
+      }
+
+      if (!percentKey) {
+        percentKey = keys.find(key => {
+          const lower = key.toLowerCase();
+          return lower.includes('percent') || lower.includes('change');
+        });
+      }
+
+      window.percentColumnName = percentKey;
+    }
+
+    function getPercentValue(row) {
+      if (!window.percentColumnName) return null;
+      return row[window.percentColumnName];
+    }
+
+    function applyFilters() {
+      const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+      const percentFilter = document.getElementById('percentFilter').value;
+
+      if (!window.fullData) return;
+
+      let filtered = [...window.fullData];
+
+      if (percentFilter !== 'all' && window.percentColumnName) {
+        filtered = filtered.filter(row => {
+          const percentValue = getPercentValue(row);
+          if (percentValue !== undefined && percentValue !== null) {
+            const pct = parseFloat(percentValue);
+            if (!isNaN(pct)) {
+              if (percentFilter.startsWith('<')) {
+                const threshold = parseFloat(percentFilter.substring(1));
+                return pct < threshold;
+              } else if (percentFilter.startsWith('>')) {
+                const threshold = parseFloat(percentFilter.substring(1));
+                return pct > threshold;
+              } else if (percentFilter.includes('to')) {
+                const [start, end] = percentFilter.split('to').map(v => parseFloat(v));
+                return pct >= start && pct <= end;
+              }
+            }
+          }
+          return false;
+        });
+      }
+
+      if (searchTerm) {
+        filtered = filtered.filter(row => 
+          Object.values(row).some(val => 
+            String(val).toLowerCase().includes(searchTerm)
+          )
+        );
+      }
+
+      window.filteredData = filtered;
+      window.currentPage = 1;
+      renderTable();
+      updateStats();
+    }
+
+    function filterTable() {
+      applyFilters();
+    }
+
+    function filterByPercentage() {
+      applyFilters();
+    }
+
+    function sortTable(column) {
+      if (window.sortColumn === column) {
+        window.sortDirection = window.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        window.sortColumn = column;
+        window.sortDirection = 'asc';
+      }
+
+      window.filteredData.sort((a, b) => {
+        let valA = a[column];
+        let valB = b[column];
+
+        if (valA === null) return 1;
+        if (valB === null) return -1;
+
+        const numA = parseFloat(valA);
+        const numB = parseFloat(valB);
+
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return window.sortDirection === 'asc' ? numA - numB : numB - numA;
+        }
+
+        const strA = String(valA).toLowerCase();
+        const strB = String(valB).toLowerCase();
+
+        return window.sortDirection === 'asc' ?
+          strA.localeCompare(strB) :
+          strB.localeCompare(strA);
+      });
+
+      renderTable();
+    }
+
+    function changePageSize() {
+      window.pageSize = parseInt(document.getElementById('pageSize').value);
+      window.currentPage = 1;
+      renderTable();
+    }
+
+    function goToFirstPage() {
+      window.currentPage = 1;
+      renderTable();
+    }
+
+    function previousPage() {
+      if (window.currentPage > 1) {
+        window.currentPage--;
+        renderTable();
+      }
+    }
+
+    function nextPage() {
+      const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+      if (window.currentPage < totalPages) {
+        window.currentPage++;
+        renderTable();
+      }
+    }
+
+    function goToLastPage() {
+      const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+      window.currentPage = totalPages;
+      renderTable();
+    }
+
+    function renderTable() {
+      const tableContainer = document.getElementById('tableContainer');
+
+      if (!window.filteredData || window.filteredData.length === 0) {
+        tableContainer.innerHTML = showEmptyState();
+        return;
+      }
+
+      const columnsToShow = [
+        'name', 
+        'lastExpiryDate', 
+        'lastExpiryPrice', 
+        'lastTradedDate', 
+        'lastTradedPrice', 
+        'percentMove', 
+        'direction', 
+        'status'
+      ];
+      
+      const allKeys = Object.keys(window.filteredData[0]);
+      const columns = columnsToShow.filter(col => allKeys.includes(col));
+
+      if (columns.length === 0) {
+        tableContainer.innerHTML = showEmptyState();
+        return;
+      }
+
+      const startIndex = (window.currentPage - 1) * window.pageSize;
+      const endIndex = startIndex + window.pageSize;
+      const paginatedData = window.filteredData.slice(startIndex, endIndex);
+
+      const getSortIcon = (col) => {
+        if (window.sortColumn === col) {
+          return window.sortDirection === 'asc' ? '▲' : '▼';
+        }
+        return '';
+      };
+
+      let tableHTML = `
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                ${columns.map(col => {
+                  const tooltip = getColumnTooltip(col);
+                  return `
+                    <th class="sortable" onclick="sortTable('${col}')">
+                      <div class="tooltip-wrapper">
+                        ${formatColumnName(col)}
+                        ${tooltip ? `
+                          <span class="tooltip-icon">
+                            ℹ️
+                            <span class="tooltip-text">${tooltip}</span>
+                          </span>
+                        ` : ''}
+                      </div>
+                      <span class="sort-icon">${getSortIcon(col)}</span>
+                    </th>
+                  `;
+                }).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${paginatedData.map((row, index) => `
+                <tr>
+                  <td>${startIndex + index + 1}</td>
+                  ${columns.map(col => `<td>${formatCellValue(col, row[col])}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      tableContainer.innerHTML = tableHTML;
+      updatePaginationInfo();
+      attachTooltipListeners();
+    }
+
+    function attachTooltipListeners() {
+      document.querySelectorAll('.tooltip-icon').forEach(icon => {
+        icon.addEventListener('mouseenter', function(e) {
+          const tooltip = this.querySelector('.tooltip-text');
+          if (!tooltip) return;
+          
+          const rect = this.getBoundingClientRect();
+          const tooltipRect = tooltip.getBoundingClientRect();
+          
+          // Position above the icon
+          tooltip.style.left = (rect.left + rect.width / 2) + 'px';
+          tooltip.style.top = (rect.top - 10) + 'px';
+          tooltip.style.transform = 'translate(-50%, -100%)';
+        });
+      });
+    }
+
+    function updatePaginationInfo() {
+      if (!window.filteredData) return;
+
+      const totalPages = Math.ceil(window.filteredData.length / window.pageSize);
+      const pageInfoElem = document.getElementById('pageInfo');
+      if (pageInfoElem) {
+        pageInfoElem.textContent = `${window.currentPage}/${totalPages}`;
+      }
+    }
+
+    function updateStats() {
+      const totalCountElem = document.getElementById('totalCount');
+      const showingCountElem = document.getElementById('showingCount');
+      const lastUpdateElem = document.getElementById('lastUpdate');
+
+      if (totalCountElem) totalCountElem.textContent = window.fullData ? window.fullData.length : 0;
+      if (showingCountElem) showingCountElem.textContent = window.filteredData ? window.filteredData.length : 0;
+      
+      if (lastUpdateElem) {
+        let latestDate = null;
+        if (window.fullData && window.fullData.length > 0) {
+          window.fullData.forEach(row => {
+            if (row.lastTradedDate) {
+              const d = new Date(row.lastTradedDate);
+              if (!isNaN(d.getTime()) && (!latestDate || d > latestDate)) {
+                latestDate = d;
+              }
+            }
+          });
+        }
+        lastUpdateElem.textContent = latestDate ? formatCurrentLTPDate(latestDate.toISOString()) : '-';
+      }
+    }
+
+    function formatColumnName(name) {
+      const nameMap = {
+        'name': 'Stock Name',
+        'lastExpiryDate': 'Last Expiry Date',
+        'lastExpiryPrice': 'Last Expiry Price',
+        'lastTradedDate': 'Current Date',
+        'lastTradedPrice': 'CurrentPrice',
+        'percentMove': '% Move',
+        'direction': 'Direction',
+        'status': 'Status'
+      };
+      
+      return nameMap[name] || name
+        .replace(/[A-Z]/g, ' $&')
+        .replace(/^\w/, str => str.toUpperCase())
+        .trim();
+    }
+
+    function getColumnTooltip(name) {
+      const tooltips = {
+        'name': 'Stock symbol/name',
+        'lastExpiryDate': 'Last futures expiry date',
+        'lastExpiryPrice': 'Closing price on last expiry day',
+        'lastTradedDate': 'Current timestamp of latest price',
+        'lastTradedPrice': 'Current market price (LTP)',
+        'percentMove': 'Percentage change in price from last expiry close to current trading price',
+        'direction': 'Direction of price movement (UP/DOWN)',
+        'status': 'Position status (PROFIT/LOSS/NEUTRAL)',
+        'rangePercent': 'Intraday price range as percentage on expiry day (measures volatility)'
+      };
+      return tooltips[name] || '';
+    }
+
+    function formatCellValue(column, value) {
+      if (value === null || value === undefined) return '-';
+
+      // Last Expiry Date - DD-MMM-YYYY format only
+      if (column === 'lastExpiryDate') {
+        return formatExpiryDate(value);
+      }
+
+      // Current LTP Date - Full timestamp format DD-MMM-YYYY HH:MM:SS
+      if (column === 'lastTradedDate') {
+        return formatCurrentLTPDate(value);
+      }
+
+      // Percentage columns
+      if (column.toLowerCase().includes('percent') || column.toLowerCase().includes('move')) {
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          const className = num >= 0 ? 'positive' : 'negative';
+          return `<span class="${className}">${num.toFixed(2)}%</span>`;
+        }
+      }
+
+      // Direction column
+      if (column.toLowerCase().includes('direction')) {
+        const className = value === 'UP' ? 'positive' : 'negative';
+        return `<span class="${className}">${value}</span>`;
+      }
+
+      // Price columns - 2 decimal places
+      if (column.toLowerCase().includes('price')) {
+        const num = parseFloat(value);
+        if (!isNaN(num)) return num.toFixed(2);
+      }
+
+      // Numbers - 2 decimal places
+      if (typeof value === 'number') return value.toFixed(2);
+      
+      return String(value);
+    }
+
+    function exportToCSV() {
+      if (!window.fullData || window.fullData.length === 0) {
+        alert('No data to export');
+        return;
+      }
+
+      const data = window.filteredData.length > 0 ? window.filteredData : window.fullData;
+      const columns = Object.keys(data[0]);
+      let csv = columns.join(',') + '\n';
+
+      data.forEach(row => {
+        const values = columns.map(col => {
+          const val = row[col];
+          if (val === null || val === undefined) return '';
+          const str = String(val);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        });
+        csv += values.join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const filename = `Futures_${window.currentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // ========== BREAKOUT VIEW FUNCTIONS ==========
+
+    async function loadBreakoutData() {
+      const loadingDiv = document.getElementById('boDataLoading');
+      const tableContainer = document.getElementById('boTableContainer');
+      clearMessage('boDataMessage');
+
+      if (tableContainer.innerHTML) {
+        const tableDiv = tableContainer.querySelector('.table-container');
+        if (tableDiv) tableDiv.classList.add('updating');
+      } else {
+        loadingDiv.style.display = 'block';
+      }
+
+      try {
+        const url = `${API_BASE_URL}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load breakout data: HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        loadingDiv.style.display = 'none';
+
+        if (!data || data.length === 0) {
+          tableContainer.innerHTML = showBreakoutEmptyState();
+          document.getElementById('boPaginationContainer').style.display = 'none';
+          window.breakoutFullData = [];
+          window.breakoutFilteredData = [];
+          updateBreakoutStats();
+          return;
+        }
+
+        window.breakoutFullData = data;
+        window.breakoutFilteredData = data.filter(item => 
+          item.indexType === window.breakoutCurrentIndex && item.status === 'ACTIVE'
+        );
+        window.breakoutCurrentPage = 1;
+        // Default sort: latest breakDate (createdAt) first
+window.breakoutSortColumn = 'breakDate';
+window.breakoutSortDirection = 'desc';
+window.breakoutFilteredData.sort((a, b) =>
+  String(b['createdAt'] || '').localeCompare(String(a['createdAt'] || ''))
+);
+        renderBreakoutTable();
+        document.getElementById('boPaginationContainer').style.display = 'block';
+
+        setTimeout(() => {
+          const tableDiv = tableContainer.querySelector('.table-container');
+          if (tableDiv) tableDiv.classList.remove('updating');
+        }, 100);
+
+        updateBreakoutStats();
+      } catch (error) {
+        console.error('Error loading breakout data:', error);
+        loadingDiv.style.display = 'none';
+        const tableDiv = tableContainer.querySelector('.table-container');
+        if (tableDiv) tableDiv.classList.remove('updating');
+        showMessage('boDataMessage', `Unable to load breakout/breakdown data. Please try refreshing.`, 'error');
+      }
+    }
+
+    function filterBreakoutData() {
+      if (!window.breakoutFullData) return;
+
+      const searchTerm = document.getElementById('boSearchBox').value.toLowerCase();
+      const breakTypeFilter = document.getElementById('breakTypeFilter').value;
+      const statusFilter = document.getElementById('statusFilter').value;
+
+      let filtered = window.breakoutFullData.filter(item => item.indexType === window.breakoutCurrentIndex);
+
+      if (statusFilter !== 'all') {
+        filtered = filtered.filter(item => item.status === statusFilter);
+      }
+
+      if (breakTypeFilter !== 'all') {
+        filtered = filtered.filter(item => item.breakType === breakTypeFilter);
+      }
+
+      if (searchTerm) {
+        filtered = filtered.filter(row => 
+          Object.values(row).some(val => 
+            String(val).toLowerCase().includes(searchTerm)
+          )
+        );
+      }
+
+      window.breakoutFilteredData = filtered;
+      window.breakoutCurrentPage = 1;
+      // Re-apply current sort (default: latest breakDate first)
+const sortCol = window.breakoutSortColumn || 'breakDate';
+const sortDir = window.breakoutSortDirection || 'desc';
+window.breakoutFilteredData.sort((a, b) => {
+  let valA = sortCol === 'breakDate' ? (a['createdAt'] || '') : (a[sortCol] ?? '');
+  let valB = sortCol === 'breakDate' ? (b['createdAt'] || '') : (b[sortCol] ?? '');
+  if (!valA) return 1;
+  if (!valB) return -1;
+  const numA = parseFloat(valA), numB = parseFloat(valB);
+  if (!isNaN(numA) && !isNaN(numB)) return sortDir === 'asc' ? numA - numB : numB - numA;
+  return sortDir === 'asc'
+    ? String(valA).localeCompare(String(valB))
+    : String(valB).localeCompare(String(valA));
+});
+      renderBreakoutTable();
+      updateBreakoutStats();
+    }
+
+    function sortBreakoutTable(column) {
+  if (window.breakoutSortColumn === column) {
+    window.breakoutSortDirection = window.breakoutSortDirection === 'asc' ? 'desc' : 'asc';
+  } else {
+    window.breakoutSortColumn = column;
+    window.breakoutSortDirection = 'desc';
+  }
+
+  window.breakoutFilteredData.sort((a, b) => {
+    // breakDate uses createdAt as the real value
+    let valA = column === 'breakDate' ? a['createdAt'] : a[column];
+    let valB = column === 'breakDate' ? b['createdAt'] : b[column];
+
+    // Nulls always go last
+    if (!valA && !valB) return 0;
+    if (!valA) return 1;
+    if (!valB) return -1;
+
+    // Date columns
+    // Date columns — normalize space separator to T for reliable parsing
+if (column === 'breakDate' || column === 'lastExpiryDate') {
+  const dateA = new Date(String(valA).replace(' ', 'T'));
+  const dateB = new Date(String(valB).replace(' ', 'T'));
+  return window.breakoutSortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+}
+
+    // Numeric columns
+    const numA = parseFloat(valA);
+    const numB = parseFloat(valB);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return window.breakoutSortDirection === 'asc' ? numA - numB : numB - numA;
+    }
+
+    // String columns
+    const strA = String(valA).toLowerCase();
+    const strB = String(valB).toLowerCase();
+    return window.breakoutSortDirection === 'asc'
+      ? strA.localeCompare(strB)
+      : strB.localeCompare(strA);
+  });
+
+  renderBreakoutTable();
+}
+
+    function changeBreakoutPageSize() {
+      window.breakoutPageSize = parseInt(document.getElementById('boPageSize').value);
+      window.breakoutCurrentPage = 1;
+      renderBreakoutTable();
+    }
+
+    function goToFirstBreakoutPage() {
+      window.breakoutCurrentPage = 1;
+      renderBreakoutTable();
+    }
+
+    function previousBreakoutPage() {
+      if (window.breakoutCurrentPage > 1) {
+        window.breakoutCurrentPage--;
+        renderBreakoutTable();
+      }
+    }
+
+    function nextBreakoutPage() {
+      const totalPages = Math.ceil(window.breakoutFilteredData.length / window.breakoutPageSize);
+      if (window.breakoutCurrentPage < totalPages) {
+        window.breakoutCurrentPage++;
+        renderBreakoutTable();
+      }
+    }
+
+    function goToLastBreakoutPage() {
+      const totalPages = Math.ceil(window.breakoutFilteredData.length / window.breakoutPageSize);
+      window.breakoutCurrentPage = totalPages;
+      renderBreakoutTable();
+    }
+
+    function renderBreakoutTable() {
+      const tableContainer = document.getElementById('boTableContainer');
+
+      if (!window.breakoutFilteredData || window.breakoutFilteredData.length === 0) {
+        tableContainer.innerHTML = showBreakoutEmptyState();
+        return;
+      }
+
+      const startIndex = (window.breakoutCurrentPage - 1) * window.breakoutPageSize;
+      const endIndex = startIndex + window.breakoutPageSize;
+      const paginatedData = window.breakoutFilteredData.slice(startIndex, endIndex);
+
+      const getSortIcon = (col) => {
+        if (window.breakoutSortColumn === col) {
+          return window.breakoutSortDirection === 'asc' ? '▲' : '▼';
+        }
+        return '';
+      };
+
+      const columns = ['name', 'breakType', 'status', 'referenceLevel', 'breakPrice', 'stopLoss', 'lastExpiryDate', 'breakDate', 'percentMove', 'rangePercent'];
+
+      let tableHTML = `
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                ${columns.map(col => {
+                  const tooltip = getBreakoutColumnTooltip(col);
+                  return `
+                    <th class="sortable" onclick="sortBreakoutTable('${col}')">
+                      <div class="tooltip-wrapper">
+                        ${formatBreakoutColumnName(col)}
+                        ${tooltip ? `
+                          <span class="tooltip-icon">
+                            ℹ️
+                            <span class="tooltip-text">${tooltip}</span>
+                          </span>
+                        ` : ''}
+                      </div>
+                      <span class="sort-icon">${getSortIcon(col)}</span>
+                    </th>
+                  `;
+                }).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${paginatedData.map((row, index) => `
+                <tr>
+                  <td>${startIndex + index + 1}</td>
+                 ${columns.map(col => `<td>${formatBreakoutCellValue(col, row[col], row)}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      tableContainer.innerHTML = tableHTML;
+      updateBreakoutPaginationInfo();
+      attachTooltipListeners();
+    }
+
+    function updateBreakoutPaginationInfo() {
+      if (!window.breakoutFilteredData) return;
+
+      const totalPages = Math.ceil(window.breakoutFilteredData.length / window.breakoutPageSize);
+      const pageInfoElem = document.getElementById('boPageInfo');
+      if (pageInfoElem) {
+        pageInfoElem.textContent = `${window.breakoutCurrentPage}/${totalPages}`;
+      }
+    }
+
+    function updateBreakoutStats() {
+      const activeCountElem = document.getElementById('activeCount');
+      const inactiveCountElem = document.getElementById('inactiveCount');
+      const showingCountElem = document.getElementById('boShowingCount');
+
+      if (window.breakoutFullData) {
+        const indexData = window.breakoutFullData.filter(item => item.indexType === window.breakoutCurrentIndex);
+        const activeCount = indexData.filter(item => item.status === 'ACTIVE').length;
+        const inactiveCount = indexData.filter(item => item.status === 'INACTIVE').length;
+
+        if (activeCountElem) activeCountElem.textContent = activeCount;
+        if (inactiveCountElem) inactiveCountElem.textContent = inactiveCount;
+      }
+
+      if (showingCountElem) showingCountElem.textContent = window.breakoutFilteredData ? window.breakoutFilteredData.length : 0;
+    }
+
+    function formatBreakoutColumnName(name) {
+      const nameMap = {
+        'name': 'Stock Name',
+        'breakType': 'Type',
+        'status': 'Status',
+        'referenceLevel': 'Reference Level',
+        'breakPrice': 'Break Price',
+        'stopLoss': 'Stop Loss',
+        'lastExpiryDate':  'Last Expiry', 
+        'breakDate': 'Break Date/Time',
+        'percentMove': '% Move',
+        'rangePercent': 'Range %'
+      };
+      
+      return nameMap[name] || name
+        .replace(/[A-Z]/g, ' $&')
+        .replace(/^\w/, str => str.toUpperCase())
+        .trim();
+    }
+
+    function getBreakoutColumnTooltip(name) {
+      const tooltips = {
+        'name': 'Stock symbol/name',
+        'breakType': 'Type of break: BREAKOUT (price moved above expiry high) or BREAKDOWN (price moved below expiry low)',
+        'status': 'Signal status: ACTIVE (being tracked) or INACTIVE (closed/SL hit)',
+        'referenceLevel': 'Entry trigger level - expiry high for breakout, expiry low for breakdown',
+        'breakPrice': 'Entry price - the hourly candle close that triggered the breakout/breakdown',
+        'stopLoss': 'Stop loss level - expiry low for breakout, expiry high for breakdown',
+        'lastExpiryDate': 'Last futures expiry date used as reference for OHLC calculation',
+        'breakDate': 'Date and time when breakout/breakdown occurred',
+        'percentMove': 'Percentage change in price from last expiry close to current trading price',
+        'rangePercent': 'Intraday price range percentage on expiry day - indicates how volatile the stock was'
+      };
+      return tooltips[name] || '';
+    }
+
+    function formatBreakoutCellValue(column, value, row) {
+
+// Last Expiry Date → DD-MMM-YYYY
+if (column === 'lastExpiryDate') {
+    if (!value) return '-';
+    const [year, month, day] = value.split('-');
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
+                        'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${day}-${monthNames[parseInt(month) - 1]}-${year}`;
+}
+  // ✅ Break Date/Time → use createdAt ONLY
+  if (column === 'breakDate') {
+    const createdAt = row?.createdAt;
+    if (!createdAt) return '-';
+
+    // createdAt = 2026-02-01T11:10:15.029632
+    const [date, time] = createdAt.split('T');
+    const cleanTime = time.split('.')[0]; // remove microseconds
+
+    return `${date} ${cleanTime}`;
+  }
+
+  // Normal null check
+  if (value === null || value === undefined) return '-';
+
+  if (column === 'breakType') {
+    return value === 'BREAKOUT'
+      ? `<span class="breakout-badge">BREAKOUT</span>`
+      : `<span class="breakdown-badge">BREAKDOWN</span>`;
+  }
+
+  if (column === 'status') {
+    return value === 'ACTIVE'
+      ? `<span class="positive" style="font-weight:700">✓ ACTIVE</span>`
+      : `<span class="negative" style="font-weight:700">✗ INACTIVE</span>`;
+  }
+
+  if (column === 'percentMove') {
+    const num = parseFloat(value);
+    if (!isNaN(num)) {
+      const cls = num >= 0 ? 'positive' : 'negative';
+      const sign = num >= 0 ? '+' : '';
+      return `<span class="${cls}" style="font-weight:700">${sign}${num.toFixed(2)}%</span>`;
+    }
+  }
+
+  if (column === 'rangePercent') {
+    const num = parseFloat(value);
+    if (!isNaN(num)) return `${num.toFixed(2)}%`;
+  }
+
+  if (
+    column === 'breakPrice' ||
+    column.toLowerCase().includes('price') ||
+    column.toLowerCase().includes('level') ||
+    column.toLowerCase().includes('loss')
+  ) {
+    const num = parseFloat(value);
+    if (!isNaN(num)) return num.toFixed(2);
+  }
+
+  if (typeof value === 'number') return value.toFixed(2);
+
+  return String(value);
+}
+
+
+
+    function exportBreakoutToCSV() {
+      if (!window.breakoutFullData || window.breakoutFullData.length === 0) {
+        alert('No data to export');
+        return;
+      }
+
+      const data = window.breakoutFilteredData.length > 0 ? window.breakoutFilteredData : window.breakoutFullData;
+      const columns = Object.keys(data[0]);
+      let csv = columns.join(',') + '\n';
+
+      data.forEach(row => {
+        const values = columns.map(col => {
+          const val = row[col];
+          if (val === null || val === undefined) return '';
+          const str = String(val);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        });
+        csv += values.join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const filename = `Breakout_${window.breakoutCurrentIndex}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function showEmptyState() {
+      return `
+        <div class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+          </svg>
+          <h3>No Data</h3>
+          <p>No futures found for <strong>${window.currentIndex}</strong></p>
+        </div>
+      `;
+    }
+
+    function showBreakoutEmptyState() {
+      return `
+        <div class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          </svg>
+          <h3>No Breakouts/Breakdowns</h3>
+          <p>No breakout or breakdown data found for <strong>${window.breakoutCurrentIndex}</strong></p>
+        </div>
+      `;
+    }
+
+    function showMessage(elementId, message, type = 'error') {
+      const element = document.getElementById(elementId);
+      element.innerHTML = `<div class="${type}">${message}</div>`;
+    }
+
+    function clearMessage(elementId) {
+      document.getElementById(elementId).innerHTML = '';
+    }
+
+    // Auto-refresh every 5 minutes
+    setInterval(() => {
+      if (window.currentView === 'filtered') {
+        loadFilteredData();
+      } else {
+        loadBreakoutData();
+      }
+    }, 300000);
+  </script>
+</body>
+</html>

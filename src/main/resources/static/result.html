@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Result Dashboard</title>
+  <script>
+    // Authentication check - must be at the top
+    if (!sessionStorage.getItem('isLoggedIn')) {
+        window.location.href = '/';
+    }
+</script>
+  <style>
+    :root {
+      --primary-color: #111827;
+      --primary-hover: #020617;
+      --bg-primary: #ffffff;
+      --bg-secondary: #f3f4f6;
+      --bg-tertiary: #e5e7eb;
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --text-muted: #9ca3af;
+      --border-primary: #e5e7eb;
+      --border-secondary: #d1d5db;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --shadow-md: 0 10px 15px -3px rgba(15, 23, 42, 0.1),
+                   0 4px 6px -4px rgba(15, 23, 42, 0.1);
+      --bg-col-trade: linear-gradient(135deg, #eef2ff 0%, #e0f2fe 100%);
+      --bg-col-default: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
+      --bg-col-even: #f9fafb;
+      --green: #059669;
+      --green-bg: #dcfce7;
+      --red: #b91c1c;
+      --red-bg: #fee2e2;
+    }
+
+    html[data-theme="dark"] {
+      --primary-color: #22c55e;
+      --primary-hover: #16a34a;
+      --bg-primary: #020617;
+      --bg-secondary: #020617;
+      --bg-tertiary: #0f172a;
+      --text-primary: #e5e7eb;
+      --text-secondary: #cbd5f5;
+      --text-muted: #6b7280;
+      --border-primary: #1e293b;
+      --border-secondary: #334155;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.6);
+      --shadow-md: 0 10px 20px -3px rgba(15, 23, 42, 0.9),
+                   0 4px 6px -4px rgba(15, 23, 42, 0.9);
+      --bg-col-trade: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      --bg-col-default: linear-gradient(135deg, #020617 0%, #0f172a 100%);
+      --bg-col-even: #020617;
+      --green: #22c55e;
+      --green-bg: rgba(34, 197, 94, 0.18);
+      --red: #fb7185;
+      --red-bg: rgba(248, 113, 113, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #e0f2fe 0, var(--bg-secondary) 45%, #0f172a 100%);
+      margin: 0;
+      padding: 24px;
+      color: var(--text-primary);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--bg-primary);
+      padding: 14px 16px;
+      border-radius: 16px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
+
+    .controls-card {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .controls input,
+    .controls select,
+    .controls button {
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-primary);
+      font-size: 13px;
+      font-weight: 500;
+      background: #f9fafb;
+      color: var(--text-primary);
+      transition: all 0.18s ease;
+      cursor: pointer;
+    }
+    html[data-theme="dark"] .controls input,
+    html[data-theme="dark"] .controls select,
+    html[data-theme="dark"] .controls button {
+      background: #020617;
+      color: var(--text-primary);
+      border-color: var(--border-secondary);
+    }
+    .controls input {
+      min-width: 220px;
+      padding-left: 30px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' class='icon icon-tabler icon-tabler-search' width='16' height='16' viewBox='0 0 24 24' stroke-width='1.5' stroke='%239ca3af' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath stroke='none' d='M0 0h24v24H0z'/%3E%3Ccircle cx='10' cy='10' r='7'/%3E%3Cline x1='21' y1='21' x2='15' y2='15' /%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: 10px center;
+      background-size: 14px 14px;
+    }
+    .controls input::placeholder {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    .controls input:focus,
+    .controls select:focus,
+    .controls button:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06);
+      background-color: #ffffff;
+    }
+    html[data-theme="dark"] .controls input:focus,
+    html[data-theme="dark"] .controls select:focus,
+    html[data-theme="dark"] .controls button:focus {
+      background-color: #020617;
+    }
+    button.primary-btn {
+      background: var(--primary-color);
+      color: var(--bg-primary);
+      border: none;
+      font-weight: 600;
+      padding-inline: 16px;
+    }
+    button.primary-btn:hover { background: var(--primary-hover); }
+    button.export-btn {
+      background: var(--green);
+      color: white;
+      border: none;
+      font-weight: 600;
+    }
+    button.export-btn:hover { background: #047857; }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-primary);
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .theme-toggle span {
+      font-size: 16px;
+    }
+
+    .table-shell {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      box-shadow: var(--shadow-md);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      display: none;
+    }
+    thead {
+      background: #0f172a;
+      color: #e5e7eb;
+      user-select: none;
+    }
+    html[data-theme="dark"] thead {
+      background: #020617;
+      color: #e5e7eb;
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(30, 64, 175, 0.6);
+      cursor: pointer;
+      position: relative;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    th:hover { background: #020617; }
+    th.sorted::after {
+      content: '';
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+    }
+    th.sorted.asc::after { border-bottom: 6px solid #e5e7eb; }
+    th.sorted.desc::after { border-top: 6px solid #e5e7eb; }
+
+    td {
+      padding: 11px 14px;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 500;
+      border-bottom: 1px solid var(--border-primary);
+      vertical-align: middle;
+      white-space: nowrap;
+      color: var(--text-secondary);
+    }
+    tbody tr:nth-child(even) { background: var(--bg-col-even); }
+    tbody tr:hover {
+      background-color: #e5f3ff;
+      cursor: pointer;
+      transition: background-color 0.18s ease;
+    }
+    html[data-theme="dark"] tbody tr:hover {
+      background-color: #020617;
+    }
+    tbody tr.sl-hit-row {
+      background-color: var(--red-bg) !important;
+      border-left: 4px solid var(--red);
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 11px;
+      background: var(--bg-col-default);
+      color: var(--text-primary);
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .badge.up { background: var(--green-bg); color: var(--green); }
+    .badge.down { background: var(--red-bg); color: var(--red); }
+    .badge.sideways { background: #fef08a; color: #854d0e; }
+
+    .return-positive { color: var(--green); font-weight: 700; }
+    .return-negative { color: var(--red); font-weight: 700; }
+
+    .status-active {
+      background-color: var(--green-bg);
+      color: var(--green);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 11px;
+      white-space: nowrap;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .status-sl-hit {
+      background-color: var(--red-bg);
+      color: var(--red);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 11px;
+      white-space: nowrap;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .loader {
+      border: 5px solid var(--bg-col-default);
+      border-top: 5px solid var(--primary-color);
+      border-radius: 50%;
+      width: 42px;
+      height: 42px;
+      animation: spin 1s linear infinite;
+      margin: 40px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(400px); opacity: 0; }
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      padding: 8px 4px 4px;
+      font-size: 12px;
+    }
+    .pagination button {
+      padding: 7px 11px;
+      border: 1px solid var(--border-primary);
+      background: #f9fafb;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 999px;
+      font-weight: 500;
+      transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+      user-select: none;
+    }
+    html[data-theme="dark"] .pagination button {
+      background: #020617;
+      color: var(--text-secondary);
+    }
+    .pagination button:hover:not(:disabled) {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    html[data-theme="dark"] .pagination button:hover:not(:disabled) {
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .pagination button.active {
+      background: var(--primary-color);
+      color: var(--bg-primary);
+      border-color: var(--primary-color);
+      font-weight: 600;
+      user-select: none;
+    }
+    .pagination button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      user-select: none;
+    }
+
+    .has-option-badge {
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      user-select: none;
+    }
+
+    .info-text {
+      text-align: right;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+      cursor: pointer;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #e5e7eb;
+      transition: 0.3s;
+      border-radius: 999px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 999px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--green);
+    }
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(22px);
+    }
+
+    @media (max-width: 768px) {
+      body { padding: 16px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .table-shell { box-shadow: none; border-radius: 12px; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr {
+        margin-bottom: 12px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-primary);
+        border-radius: 14px;
+        padding: 10px 10px 8px;
+        box-shadow: var(--shadow-sm);
+      }
+      td {
+        padding-left: 48%;
+        text-align: right;
+        white-space: normal;
+        position: relative;
+        font-weight: 500;
+        border: none;
+        border-bottom: 1px solid var(--border-primary);
+      }
+      td:last-child { border-bottom: none; }
+      td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 12px;
+        width: 40%;
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="stats" class="stats-grid" style="display: none;"></div>
+
+    <div class="controls-card">
+      <div class="controls">
+        <button id="themeToggle" class="theme-toggle" type="button">
+          <span id="themeIcon">🌞</span>
+          <span id="themeLabel">Light</span>
+        </button>
+
+        <input type="text" id="searchBox" placeholder="Search by name..." />
+        <select id="typeFilter">
+          <option value="ALL">All Types</option>
+          <option value="UP">UP</option>
+          <option value="DOWN">DOWN</option>
+          <option value="SIDEWAYS">SIDEWAYS</option>
+        </select>
+        <select id="statusFilter">
+          <option value="ALL">All Status</option>
+          <option value="ACTIVE">Active</option>
+          <option value="SL HIT">SL Hit</option>
+        </select>
+        <select id="optionsFilter">
+          <option value="ALL">All Options</option>
+          <option value="Y">Has Options (Y)</option>
+          <option value="N">No Options (N)</option>
+        </select>
+        <select id="tradeFilter">
+          <option value="Y">Active Trades Only</option>
+          <option value="N">Inactive Trades Only</option>
+          <option value="ALL" selected>All Trades</option>
+        </select>
+        <select id="periodFilter">
+          <option value="current" selected>Current Month</option>
+          <option value="previous">Previous Month</option>
+          <option value="last3">Last 3 Months</option>
+          <option value="all">All Time</option>
+        </select>
+        <button id="resetBtn" class="primary-btn">Reset</button>
+        <button id="exportBtn" class="export-btn">Export CSV</button>
+        <button id="backBtn" class="primary-btn">Back</button>
+      </div>
+    </div>
+
+    <div id="loader" class="loader"></div>
+
+    <div class="table-shell">
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th data-key="active">Trade</th>
+            <th data-key="hasOption">Options</th>
+            <th data-key="name">Name</th>
+            <th data-key="exchange">Exchange</th>
+            <th data-key="entryTime">Entry Time</th>
+            <th data-key="modifiedDate">Modified Date</th>
+            <th data-key="type">Type</th>
+            <th data-key="executedltp">Executed LTP</th>
+            <th data-key="currentltp">Current LTP</th>
+            <th data-key="sl">SL</th>
+            <th data-key="returnPercent">Return %</th>
+            <th data-key="status">Status</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div id="pagination" class="pagination"></div>
+    <div class="info-text" id="infoText"></div>
+  </div>
+
+  <script>
+    let stockData = [];
+    let currentSort = { key: null, asc: true };
+    let currentPage = 1;
+    const rowsPerPage = 10;
+
+    // THEME SETUP
+    const rootEl = document.documentElement;
+    const themeToggleBtn = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+    const themeLabel = document.getElementById('themeLabel');
+
+    function applyTheme(theme) {
+      rootEl.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      if (theme === 'dark') {
+        themeIcon.textContent = '🌙';
+        themeLabel.textContent = 'Dark';
+      } else {
+        themeIcon.textContent = '🌞';
+        themeLabel.textContent = 'Light';
+      }
+    }
+
+    (function initTheme() {
+      const stored = localStorage.getItem('theme');
+      if (stored) {
+        applyTheme(stored);
+      } else {
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        applyTheme(prefersDark ? 'dark' : 'light');
+      }
+    })();
+
+    themeToggleBtn.addEventListener('click', () => {
+      const current = rootEl.getAttribute('data-theme') || 'light';
+      const next = current === 'light' ? 'dark' : 'light';
+      applyTheme(next);
+    });
+
+    document.getElementById("backBtn").addEventListener("click", () => {
+      window.location.href = "stock.html";
+    });
+
+    async function loadData() {
+      const loader = document.getElementById("loader");
+      const table = document.getElementById("data-table");
+      const stats = document.getElementById("stats");
+      loader.style.display = "block";
+      table.style.display = "none";
+      stats.style.display = "none";
+      const periodVal = document.getElementById("periodFilter").value;
+      try {
+        const response = await fetch(`/api/getDetailsResults?period=${periodVal}`);
+        if (!response.ok) throw new Error("Network error");
+        stockData = await response.json();
+        stockData.forEach(item => {
+          const returnMatch = (item.comment || "").match(/Return:\s*(-?[\d.]+)%/);
+          item.returnPercent = returnMatch ? parseFloat(returnMatch[1]) : 0;
+        });
+        renderStats();
+        renderTable();
+        loader.style.display = "none";
+        table.style.display = "table";
+        stats.style.display = "grid";
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        loader.style.display = "none";
+        document.getElementById("infoText").innerHTML =
+          '<p style="color:red;">Failed to load data. Please try again.</p>';
+      }
+    }
+
+    function renderStats() {
+      const stats = document.getElementById("stats");
+      const totalTrades = stockData.length;
+      const activeTrades = stockData.filter(i => (i.status || "").toUpperCase() === "ACTIVE").length;
+      const closedTrades = totalTrades - activeTrades;
+      const totalReturn = stockData.reduce((sum, item) => sum + (item.returnPercent || 0), 0);
+      const avgReturn = totalTrades > 0 ? totalReturn / totalTrades : 0;
+      const winningTrades = stockData.filter(i => (i.returnPercent || 0) > 0).length;
+      const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+      const upTrades = stockData.filter(i => (i.type || "").toUpperCase() === "UP").length;
+      const downTrades = stockData.filter(i => (i.type || "").toUpperCase() === "DOWN").length;
+      const sidewaysTrades = stockData.filter(i => (i.type || "").toUpperCase().includes("SIDEWAY")).length;
+      stats.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">Total Trades</div>
+          <div class="stat-value">${totalTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active Trades</div>
+          <div class="stat-value">${activeTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Closed Trades</div>
+          <div class="stat-value">${closedTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Win Rate</div>
+          <div class="stat-value ${winRate >= 50 ? 'positive' : 'negative'}">${winRate.toFixed(1)}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Return</div>
+          <div class="stat-value ${avgReturn >= 0 ? 'positive' : 'negative'}">${avgReturn >= 0 ? '+' : ''}${avgReturn.toFixed(2)}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">UP Trades</div>
+          <div class="stat-value">${upTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">DOWN Trades</div>
+          <div class="stat-value">${downTrades}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">SIDEWAYS Trades</div>
+          <div class="stat-value">${sidewaysTrades}</div>
+        </div>
+      `;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("table-body");
+      const searchVal = document.getElementById("searchBox").value.toLowerCase();
+      const typeVal = document.getElementById("typeFilter").value;
+      const statusVal = document.getElementById("statusFilter").value;
+      const optionsVal = document.getElementById("optionsFilter").value;
+      const tradeVal = document.getElementById("tradeFilter").value;
+      tbody.innerHTML = "";
+
+      let filtered = stockData.filter((item) => {
+        const displayType = (item.type || "").toUpperCase();
+        const displayStatus = (item.status || "").toUpperCase();
+        const hasOption = (item.hasOption || "N").toUpperCase();
+        const isActive = (item.active || "N").toUpperCase();
+        const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
+        const matchesType = typeVal === "ALL" || displayType === typeVal;
+        const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
+        const matchesOptions = optionsVal === "ALL" || hasOption === optionsVal;
+        const matchesTrade = tradeVal === "ALL" || isActive === tradeVal;
+        return matchesSearch && matchesType && matchesStatus && matchesOptions && matchesTrade;
+      });
+
+      if (currentSort.key) {
+        filtered.sort((a, b) => {
+          let valA = a[currentSort.key];
+          let valB = b[currentSort.key];
+          if (currentSort.key === 'returnPercent') {
+            valA = valA || 0;
+            valB = valB || 0;
+          } else if (currentSort.key === 'entryTime' || currentSort.key === 'modifiedDate') {
+            valA = new Date(valA || 0).getTime();
+            valB = new Date(valB || 0).getTime();
+          } else if (!isNaN(valA) && !isNaN(valB)) {
+            valA = parseFloat(valA) || 0;
+            valB = parseFloat(valB) || 0;
+          } else {
+            valA = (valA || "").toString().toLowerCase();
+            valB = (valB || "").toString().toLowerCase();
+          }
+          if (valA < valB) return currentSort.asc ? -1 : 1;
+          if (valA > valB) return currentSort.asc ? 1 : -1;
+          return 0;
+        });
+      }
+
+      const totalPages = Math.ceil(filtered.length / rowsPerPage);
+      if (currentPage > totalPages) currentPage = totalPages || 1;
+      const start = (currentPage - 1) * rowsPerPage;
+      const paginated = filtered.slice(start, start + rowsPerPage);
+
+      updateSortIndicators();
+
+      if (paginated.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:40px;">No records found</td></tr>`;
+      } else {
+        paginated.forEach((item) => {
+          const displayType = (item.type || "").toUpperCase().trim();
+          let badgeClass = "";
+          if (displayType === "UP") badgeClass = "up";
+          else if (displayType === "DOWN") badgeClass = "down";
+          else if (displayType.includes("SIDE")) badgeClass = "sideways";
+
+          const slValue = (item.sl || "").toString().toUpperCase().trim();
+          let slBadgeClass = "";
+          if (slValue === "UP") slBadgeClass = "up";
+          else if (slValue === "DOWN") slBadgeClass = "down";
+          else if (slValue.includes("SIDE")) slBadgeClass = "sideways";
+
+          const returnPercent = item.returnPercent || 0;
+          const returnPercentClass = returnPercent >= 0 ? "return-positive" : "return-negative";
+          const returnText = `${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%`;
+          let statusClass = "";
+          let statusText = item.status || "";
+          const isSlHit = statusText.toUpperCase() === "SL HIT";
+          if (statusText.toUpperCase() === "ACTIVE") statusClass = "status-active";
+          else if (isSlHit) statusClass = "status-sl-hit";
+          const optionsDisplay = item.hasOption === "Y"
+            ? '<span class="has-option-badge">Y</span>'
+            : '<span class="has-option-badge">N</span>';
+
+          const activeFlag = item.active === "Y";
+          const row = document.createElement("tr");
+          if (isSlHit) {
+            row.classList.add("sl-hit-row");
+          }
+          row.innerHTML = `
+            <td data-label="Trade"></td>
+            <td data-label="Options">${optionsDisplay}</td>
+            <td data-label="Name">${item.name || ""}</td>
+            <td data-label="Exchange">${item.exchange || ""}</td>
+            <td data-label="Entry Time">${formatDate(item.entryTime)}</td>
+            <td data-label="Modified Date">${formatDate(item.modifiedDate)}</td>
+            <td data-label="Type"><span class="badge ${badgeClass}">${displayType}</span></td>
+            <td data-label="Executed LTP">${item.executedltp ?? ""}</td>
+            <td data-label="Current LTP">${item.currentltp ?? ""}</td>
+            <td data-label="SL"><span class="badge ${slBadgeClass}">${item.sl ?? ""}</span></td>
+            <td data-label="Return %" class="${returnPercentClass}">${returnText}</td>
+            <td data-label="Status"><span class="${statusClass}">${statusText}</span></td>
+          `;
+
+          const toggleLabel = document.createElement("label");
+          toggleLabel.className = "toggle-switch";
+          toggleLabel.title = activeFlag ? "Click to mark as inactive" : "Click to mark as active";
+
+          const toggleInput = document.createElement("input");
+          toggleInput.type = "checkbox";
+          toggleInput.checked = activeFlag;
+
+          const toggleSlider = document.createElement("span");
+          toggleSlider.className = "toggle-slider";
+
+          toggleLabel.appendChild(toggleInput);
+          toggleLabel.appendChild(toggleSlider);
+
+          toggleInput.addEventListener("change", async (e) => {
+            const newActiveVal = e.target.checked ? "Y" : "N";
+            const originalVal = item.active;
+
+            toggleInput.disabled = true;
+            item.active = newActiveVal;
+
+            try {
+              const apiUrl = `/api/${item.id}/active?active=${newActiveVal}`;
+              const resp = await fetch(apiUrl, {
+                method: "PATCH",
+                headers: { "accept": "*/*" }
+              });
+
+              if (resp.ok) {
+                showToast(`Trade "${item.name}" marked as ${newActiveVal === "Y" ? "active" : "inactive"}`, "success");
+                renderStats();
+              } else {
+                item.active = originalVal;
+                e.target.checked = originalVal === "Y";
+                showToast("Failed to update trade status", "error");
+              }
+            } catch (error) {
+              console.error("API Error:", error);
+              item.active = originalVal;
+              e.target.checked = originalVal === "Y";
+              showToast("Network error. Please try again.", "error");
+            } finally {
+              toggleInput.disabled = false;
+            }
+          });
+
+          row.children[0].appendChild(toggleLabel);
+          tbody.appendChild(row);
+        });
+      }
+      renderPagination(totalPages);
+      updateInfoText(filtered.length, stockData.length);
+    }
+
+    function updateSortIndicators() {
+      document.querySelectorAll("thead th").forEach(th => {
+        th.classList.remove("sorted", "asc", "desc");
+        if (th.getAttribute("data-key") === currentSort.key) {
+          th.classList.add("sorted");
+          th.classList.add(currentSort.asc ? "asc" : "desc");
+        }
+      });
+    }
+
+    function updateInfoText(filtered, total) {
+      const infoText = document.getElementById("infoText");
+      const text = filtered < total
+        ? `Showing ${filtered} of ${total} trades`
+        : `Showing all ${total} trades`;
+      infoText.textContent = text;
+    }
+
+    function renderPagination(totalPages) {
+      const pagination = document.getElementById("pagination");
+      pagination.innerHTML = "";
+      if (totalPages <= 1) return;
+
+      const prev = document.createElement("button");
+      prev.textContent = "← Prev";
+      prev.disabled = currentPage === 1;
+      prev.onclick = () => { currentPage--; renderTable(); };
+      pagination.appendChild(prev);
+
+      const maxButtons = 5;
+      let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+      let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+
+      if (endPage - startPage < maxButtons - 1) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+      }
+
+      if (startPage > 1) {
+        const firstBtn = document.createElement("button");
+        firstBtn.textContent = "1";
+        if (1 === currentPage) firstBtn.classList.add("active");
+        firstBtn.onclick = () => { currentPage = 1; renderTable(); };
+        pagination.appendChild(firstBtn);
+        if (startPage > 2) {
+          const dots = document.createElement("button");
+          dots.textContent = "...";
+          dots.disabled = true;
+          pagination.appendChild(dots);
+        }
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        const btn = document.createElement("button");
+        btn.textContent = i;
+        if (i === currentPage) btn.classList.add("active");
+        btn.onclick = () => { currentPage = i; renderTable(); };
+        pagination.appendChild(btn);
+      }
+
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          const dots = document.createElement("button");
+          dots.textContent = "...";
+          dots.disabled = true;
+          pagination.appendChild(dots);
+        }
+        const lastBtn = document.createElement("button");
+        lastBtn.textContent = totalPages;
+        if (totalPages === currentPage) lastBtn.classList.add("active");
+        lastBtn.onclick = () => { currentPage = totalPages; renderTable(); };
+        pagination.appendChild(lastBtn);
+      }
+
+      const next = document.createElement("button");
+      next.textContent = "Next →";
+      next.disabled = currentPage === totalPages;
+      next.onclick = () => { currentPage++; renderTable(); };
+      pagination.appendChild(next);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    function showToast(message, type = 'info') {
+      const existingToast = document.querySelector('.toast-notification');
+      if (existingToast) existingToast.remove();
+
+      const toast = document.createElement('div');
+      toast.className = 'toast-notification';
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 16px 24px;
+        border-radius: 12px;
+        color: white;
+        font-weight: 600;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        max-width: 300px;
+      `;
+
+      if (type === 'success') {
+        toast.style.background = 'var(--green)';
+        toast.innerHTML = `✓ ${message}`;
+      } else if (type === 'error') {
+        toast.style.background = 'var(--red)';
+        toast.innerHTML = `✕ ${message}`;
+      } else {
+        toast.style.background = 'var(--primary-color)';
+        toast.innerHTML = message;
+      }
+
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    function exportToCSV() {
+      const searchVal = document.getElementById("searchBox").value.toLowerCase();
+      const typeVal = document.getElementById("typeFilter").value;
+      const statusVal = document.getElementById("statusFilter").value;
+      const optionsVal = document.getElementById("optionsFilter").value;
+      const tradeVal = document.getElementById("tradeFilter").value;
+      let filtered = stockData.filter((item) => {
+        const displayType = (item.type || "").toUpperCase();
+        const displayStatus = (item.status || "").toUpperCase();
+        const hasOption = (item.hasOption || "N").toUpperCase();
+        const isActive = (item.active || "N").toUpperCase();
+        const matchesSearch = (item.name || "").toLowerCase().includes(searchVal);
+        const matchesType = typeVal === "ALL" || displayType === typeVal;
+        const matchesStatus = statusVal === "ALL" || displayStatus === statusVal;
+        const matchesOptions = optionsVal === "ALL" || hasOption === optionsVal;
+        const matchesTrade = tradeVal === "ALL" || isActive === tradeVal;
+        return matchesSearch && matchesType && matchesStatus && matchesOptions && matchesTrade;
+      });
+      const headers = [
+        "Trade", "Options", "Name", "Exchange",
+        "Entry Time", "Modified Date",
+        "Type", "Executed LTP", "Current LTP",
+        "SL", "Return %", "Status"
+      ];
+      const csvContent = [
+        headers.join(","),
+        ...filtered.map(item => [
+          item.active || "N",
+          item.hasOption || "N",
+          `"${item.name || ""}"`,
+          item.exchange || "",
+          formatDate(item.entryTime),
+          formatDate(item.modifiedDate),
+          item.type || "",
+          item.executedltp || "",
+          item.currentltp || "",
+          item.sl || "",
+          (item.returnPercent || 0).toFixed(2),
+          item.status || ""
+        ].join(","))
+      ].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stock_results_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      document.getElementById("searchBox").value = "";
+      document.getElementById("typeFilter").value = "ALL";
+      document.getElementById("statusFilter").value = "ALL";
+      document.getElementById("optionsFilter").value = "ALL";
+      document.getElementById("tradeFilter").value = "Y";
+      document.getElementById("periodFilter").value = "current";
+      currentPage = 1;
+      currentSort = { key: null, asc: true };
+      loadData();
+    });
+
+    document.getElementById("exportBtn").addEventListener("click", exportToCSV);
+
+    document.getElementById("searchBox").addEventListener("input", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("typeFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("statusFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("optionsFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("tradeFilter").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("periodFilter").addEventListener("change", () => {
+      currentPage = 1;
+      loadData();
+    });
+
+    document.querySelectorAll("thead th").forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = th.getAttribute("data-key");
+        if (!key) return;
+        if (currentSort.key === key) {
+          currentSort.asc = !currentSort.asc;
+        } else {
+          currentSort.key = key;
+          currentSort.asc = true;
+        }
+        renderTable();
+      });
+    });
+
+    window.onload = loadData;
+  </script>
+</body>
+</html>
