@@ -20,10 +20,10 @@ export default function MainLayout() {
   return (
     <>
       <style>{`
-        /* Reset & Base */
         * { box-sizing: border-box; }
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; }
 
+        /* Theme Variables */
         .theme-dark {
           --bg-main: #0b0f19; --text-main: #f1f5f9; --text-muted: rgba(255, 255, 255, 0.6);
           --glass-bg: rgba(11, 15, 25, 0.8); --glass-border: rgba(255, 255, 255, 0.08);
@@ -32,13 +32,22 @@ export default function MainLayout() {
           --danger-bg: rgba(239, 68, 68, 0.1); --danger-text: #ef4444;
         }
 
+        .theme-light {
+          --bg-main: #ffffff; --text-main: #0f172a; --text-muted: rgba(0, 0, 0, 0.6);
+          --glass-bg: rgba(255, 255, 255, 0.8); --glass-border: rgba(0, 0, 0, 0.08);
+          --brand-gradient: linear-gradient(to right, #006064, #0288d1);
+          --nav-hover: rgba(2, 136, 209, 0.1); --nav-active: #0288d1;
+          --danger-bg: rgba(239, 68, 68, 0.1); --danger-text: #b91c1c;
+        }
+
         .layout-canvas {
-          height: 100vh; /* Fixed height for the entire viewport */
+          height: 100vh;
           display: flex;
           flex-direction: column;
           background: var(--bg-main);
           color: var(--text-main);
           font-family: 'Inter', system-ui, sans-serif;
+          transition: background 0.3s ease;
         }
 
         .glass-topbar {
@@ -46,12 +55,15 @@ export default function MainLayout() {
           display: flex; justify-content: space-between; align-items: center; 
           padding: 0 1.5rem; background: var(--glass-bg);
           backdrop-filter: blur(12px); border-bottom: 1px solid var(--glass-border);
-          flex-shrink: 0; /* Prevents topbar from being crushed */
+          flex-shrink: 0;
         }
 
         .brand {
-          font-size: 1.2rem; font-weight: 800; background: var(--brand-gradient);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-decoration: none;
+          font-size: 1.2rem; font-weight: 800; 
+          background: var(--brand-gradient);
+          -webkit-background-clip: text; 
+          -webkit-text-fill-color: transparent; 
+          text-decoration: none;
         }
 
         .center-menu { display: flex; gap: 0.5rem; }
@@ -66,12 +78,7 @@ export default function MainLayout() {
         .icon-btn { background: transparent; border: 1px solid var(--glass-border); color: var(--text-main); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; }
         .logout-btn { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-text); padding: 4px 12px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer; }
         
-        .main-content {
-          flex: 1; /* Occupies all remaining space */
-          display: flex;
-          flex-direction: column;
-          overflow: hidden; /* Important for iframe containment */
-        }
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
       `}</style>
 
       <div className={`layout-canvas theme-${theme}`}>
