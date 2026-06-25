@@ -2,39 +2,35 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import Dashboard from './pages/Dashboard';
+import MainLayout from './layouts/MainLayout';
 
-// A simple wrapper to protect private pages
 const ProtectedRoute = ({ children }) => {
-  // For now, we just check if we saved an email in memory. 
-  // Later, we will check for the actual JWT VIP Pass here!
-  const isAuthenticated = localStorage.getItem('userEmail') !== null;
-  
-  if (!isAuthenticated) {
-    return <Navigate to="/signin" replace />;
-  }
-  return children;
+  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+  return isLoggedIn ? children : <Navigate to="/signin" replace />;
 };
 
 export default function App() {
   return (
     <Router>
       <Routes>
+        {/* 1. Add this line: Redirect root path to signin */}
+        <Route path="/" element={<Navigate to="/signin" replace />} />
+        
         {/* Public Routes */}
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
 
-        {/* Protected SPA Route */}
-        <Route 
-          path="/dashboard" 
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } 
-        />
+        {/* Protected Routes */}
+        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+          <Route path="dashboard/:pageName" element={<Dashboard />} />
+          <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
+          
+          {/* Also handle direct access to modules if you want */}
+          <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
+        </Route>
 
-        {/* Catch-all: Redirect to dashboard if logged in, or signin if not */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* 2. Keep your catch-all for bad URLs */}
+        <Route path="*" element={<Navigate to="/signin" replace />} />
       </Routes>
     </Router>
   );
