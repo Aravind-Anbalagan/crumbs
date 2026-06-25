@@ -9,12 +9,13 @@ export default function SignIn() {
   
   const navigate = useNavigate();
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8080' : '');
-
+  // 1. Google Sign-In Flow
   const handleGoogleSignIn = useGoogleLogin({
     onSuccess: (tokenResponse) => {
       setMessage('⏳ Verifying ...');
-      fetch(`${API_BASE_URL}/api/auth/google`, {
+      
+      // RELATIVE PATH FIX: Works locally and in the cloud!
+      fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: tokenResponse.access_token })
@@ -26,9 +27,8 @@ export default function SignIn() {
       .then((data) => {
         if (data.email) {
           localStorage.setItem('userEmail', data.email);
-          // Add these two lines!
           localStorage.setItem('isLoggedIn', 'true');
-          sessionStorage.setItem('isLoggedIn', 'true'); // The static HTML iframes need this one
+          sessionStorage.setItem('isLoggedIn', 'true'); 
           navigate('/dashboard'); 
         } else {
           setMessage('❌ Backend verification failed.');
@@ -42,11 +42,13 @@ export default function SignIn() {
     onError: () => setMessage('❌ Google Login Popup Window Closed or Failed'),
   });
 
+  // 2. Standard Credential Form Submission Flow
   const handleSubmit = (e) => {
     e.preventDefault();
     setMessage('⏳ Connecting to Spring Boot to Login...');
     
-    fetch(`${API_BASE_URL}/api/auth/signin`, {
+    // RELATIVE PATH FIX: Works locally and in the cloud!
+    fetch('/api/auth/signin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, password })
@@ -59,9 +61,8 @@ export default function SignIn() {
     .then((data) => {
       if (data.email) {
         localStorage.setItem('userEmail', data.email);
-        // Add these two lines!
         localStorage.setItem('isLoggedIn', 'true');
-        sessionStorage.setItem('isLoggedIn', 'true'); // The static HTML iframes need this one
+        sessionStorage.setItem('isLoggedIn', 'true'); 
         navigate('/dashboard');
       } else {
         setMessage('❌ Login failed. No email returned.');
@@ -72,7 +73,6 @@ export default function SignIn() {
 
   return (
     <>
-      {/* Heavy CSS Injection for Glassmorphism & Animations */}
       <style>{`
         .glass-canvas {
           margin: 0;
@@ -81,7 +81,6 @@ export default function SignIn() {
           justify-content: center;
           align-items: center;
           font-family: 'Inter', system-ui, sans-serif;
-          /* Animated Mesh Gradient Background */
           background: linear-gradient(-45deg, #1f1c2c, #928DAB, #2c3e50, #3498db);
           background-size: 400% 400%;
           animation: gradientBg 15s ease infinite;
@@ -95,7 +94,6 @@ export default function SignIn() {
           100% { background-position: 0% 50%; }
         }
 
-        /* Floating decorative orbs */
         .orb {
           position: absolute;
           border-radius: 50%;
@@ -127,7 +125,6 @@ export default function SignIn() {
           width: 100%;
           max-width: 400px;
           padding: 3rem 2.5rem;
-          /* The Glass Effect */
           background: rgba(255, 255, 255, 0.05);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
@@ -300,7 +297,6 @@ export default function SignIn() {
       `}</style>
 
       <div className="glass-canvas">
-        {/* Decorative background orbs for the glass to distort */}
         <div className="orb orb-1"></div>
         <div className="orb orb-2"></div>
 
