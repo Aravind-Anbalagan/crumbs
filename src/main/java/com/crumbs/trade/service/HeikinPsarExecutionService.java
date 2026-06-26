@@ -159,13 +159,10 @@ public class HeikinPsarExecutionService {
         String tradeName = "HEIKIN_" + baseSymbol;
 
         // Timeframes
-     // Timeframes
         boolean isNiftyValid = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 20));
-        // Updated Crude validity to 23:20
         boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 20));
         
         boolean isNiftySquareOff = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(15, 20));
-        // Updated Crude square-off to 23:20
         boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 20));
 
         // ---------------------------------------------------------
@@ -174,16 +171,17 @@ public class HeikinPsarExecutionService {
         Orders openTrade = ordersRepository.findByNameAndActive(tradeName, STATUS_ACTIVE);
         
         if (openTrade != null) {
-            
+            boolean tradeClosedThisCycle = false;
+
             // 1. Force EOD Square Off (Always applies)
             if (isNiftySquareOff || isCrudeSquareOff) {
                 logger.info("🕒 [{}][EXIT] Square-off time reached.", tradeName);
                 processExit(openTrade, latestCandle, "EOD_SQUARE_OFF", strategy);
-                return;
+                tradeClosedThisCycle = true;
             }
             
             // 2. SCALPING EXIT (Only for Buyers with Fixed Targets)
-            if ("SCALPING".equalsIgnoreCase(TRADE_MODE) && IS_OPTION_BUYER) {
+            else if ("SCALPING".equalsIgnoreCase(TRADE_MODE) && IS_OPTION_BUYER) {
                 BigDecimal currentPremium = getCurrentOptionPremium(baseSymbol, openTrade.getStrike(), openTrade.getOptionType());
                 BigDecimal entryPremium = openTrade.getAskPrice();
                 
@@ -193,19 +191,18 @@ public class HeikinPsarExecutionService {
                     if (pointsGained.compareTo(SCALP_TARGET_POINTS) >= 0) {
                         logger.info("🎯 [{}][SCALP] Target Hit! Secured: +{} pts", tradeName, pointsGained.setScale(2, RoundingMode.HALF_UP));
                         processExit(openTrade, latestCandle, "SCALP_TARGET_HIT", strategy);
-                        return;
+                        tradeClosedThisCycle = true;
                     }
-                    
-                    if (pointsGained.compareTo(SCALP_SL_POINTS.negate()) <= 0) { 
+                    else if (pointsGained.compareTo(SCALP_SL_POINTS.negate()) <= 0) { 
                         logger.info("🛑 [{}][SCALP] Stop Loss Hit! Loss: {} pts", tradeName, pointsGained.setScale(2, RoundingMode.HALF_UP));
                         processExit(openTrade, latestCandle, "SCALP_SL_HIT", strategy);
-                        return;
+                        tradeClosedThisCycle = true;
                     }
                 }
             }
             
             // 3. TREND FOLLOWING EXIT (Applies to Sellers, or if TRADE_MODE is Trend Following)
-            if ("TREND_FOLLOWING".equalsIgnoreCase(TRADE_MODE) || !IS_OPTION_BUYER) {
+            else if ("TREND_FOLLOWING".equalsIgnoreCase(TRADE_MODE) || !IS_OPTION_BUYER) {
                 String currentSignal = latestCandle.getSignal();
                 boolean isLongReversal = "CE".equalsIgnoreCase(openTrade.getOptionType()) && "SELL".equalsIgnoreCase(currentSignal);
                 boolean isShortReversal = "PE".equalsIgnoreCase(openTrade.getOptionType()) && "BUY".equalsIgnoreCase(currentSignal);
@@ -213,10 +210,18 @@ public class HeikinPsarExecutionService {
                 if (isLongReversal || isShortReversal) {
                     logger.info("🔄 [{}][EXIT] Trend Reversal detected. Closing position.", tradeName);
                     processExit(openTrade, latestCandle, "TREND_REVERSAL", strategy);
+                    tradeClosedThisCycle = true;
                 }
             }
             
-            return; // If trade is open but no exit condition met, keep holding.
+            // Flow Control: If trade is still open, stop here. Wait for next candle.
+            if (!tradeClosedThisCycle) {
+                return; 
+            }
+            
+            // If we reached here, a trade was closed. 
+            // We set openTrade to null so the system can immediately evaluate Phase 2.
+            openTrade = null; 
         }
 
         // ---------------------------------------------------------
@@ -224,19 +229,28 @@ public class HeikinPsarExecutionService {
         // ---------------------------------------------------------
         if (!isNiftyValid && !isCrudeValid) return; 
 
-        String signal = latestCandle.getSignal();
-        if (signal == null || "NONE".equalsIgnoreCase(signal)) return;
+        String currentSignal = latestCandle.getSignal();
+        if (currentSignal == null || "NONE".equalsIgnoreCase(currentSignal)) return;
+        
+        // --- THE FIX: Signal-Direction Lock ---
+        // Check if the last trade was an SL hit and if it was caused by the same signal
+        String lastFailedSignal = getLastFailedSignal(tradeName);
+        
+        if (currentSignal.equalsIgnoreCase(lastFailedSignal)) {
+            logger.info("⏳ [{}][BLOCKED] Ignoring {} signal to prevent whipsaw (SL just hit).", tradeName, currentSignal);
+            return; // Block entry, wait for a signal swap
+        }
         
         String orderType = "";
         String optionType = "";
 
-        if ("BUY".equalsIgnoreCase(signal)) { // BULLISH
+        if ("BUY".equalsIgnoreCase(currentSignal)) { // BULLISH
             if (IS_OPTION_BUYER) {
                 orderType = "BUY"; optionType = "CE"; // Scalper/Buyer goes Long Call
             } else {
                 orderType = "SELL"; optionType = "PE"; // Trend Seller goes Short Put
             }
-        } else if ("SELL".equalsIgnoreCase(signal)) { // BEARISH
+        } else if ("SELL".equalsIgnoreCase(currentSignal)) { // BEARISH
             if (IS_OPTION_BUYER) {
                 orderType = "BUY"; optionType = "PE"; // Scalper/Buyer goes Long Put
             } else {
@@ -315,7 +329,6 @@ public class HeikinPsarExecutionService {
             order.setStatus(STATUS_OPEN); 
             order.setTradePhase(PHASE_ENTRY);
             
-            // Set Creation Timestamp (Change to setCreatedDate() if your DB entity uses that naming)
             order.setCreatedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
             
             ordersRepository.save(order);
@@ -383,6 +396,27 @@ public class HeikinPsarExecutionService {
     // =========================================================
     // 🧰 UTILITY HELPER METHODS
     // =========================================================
+
+    /**
+     * Checks the database for the last closed trade. If it was a Stop Loss hit,
+     * it returns the original signal direction ("BUY" or "SELL") to lock it.
+     */
+    private String getLastFailedSignal(String tradeName) {
+        Optional<Orders> lastOrderOpt = ordersRepository.findTopByNameOrderByClosedOnDesc(tradeName);
+        
+        if (lastOrderOpt.isPresent()) {
+            Orders lastOrder = lastOrderOpt.get();
+            
+            if ("SCALP_SL_HIT".equalsIgnoreCase(lastOrder.getExitReason())) {
+                if (IS_OPTION_BUYER) {
+                    return "CE".equalsIgnoreCase(lastOrder.getOptionType()) ? "BUY" : "SELL";
+                } else {
+                    return "CE".equalsIgnoreCase(lastOrder.getOptionType()) ? "SELL" : "BUY";
+                }
+            }
+        }
+        return "NONE"; 
+    }
 
     private BigDecimal getCurrentOptionPremium(String baseSymbol, BigDecimal strike, String optionType) {
         StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, strike).orElse(null);

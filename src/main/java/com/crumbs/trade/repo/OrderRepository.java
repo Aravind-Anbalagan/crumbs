@@ -20,7 +20,7 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
 	void deleteAll();
 	
 	Optional<Orders> findTopByNameAndActiveOrderByIdDesc(String name, int active);
-
+	Optional<Orders> findTopByNameOrderByClosedOnDesc(String name);
 	List<Orders> findByName(String name);
 	
 	Orders findByTokenAndActive(String token, int active);
