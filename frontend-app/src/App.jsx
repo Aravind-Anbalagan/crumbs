@@ -9,12 +9,18 @@ const ProtectedRoute = ({ children }) => {
   return isLoggedIn ? children : <Navigate to="/signin" replace />;
 };
 
+// ADD THIS NEW COMPONENT
+const RootRedirect = () => {
+  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+  return isLoggedIn ? <Navigate to="/dashboard/stock" replace /> : <Navigate to="/signin" replace />;
+};
+
 export default function App() {
   return (
     <Router>
       <Routes>
-        {/* 1. Add this line: Redirect root path to signin */}
-        <Route path="/" element={<Navigate to="/signin" replace />} />
+        {/* REPLACE THE OLD HARDCODED ROUTE WITH YOUR NEW SMART ROUTE */}
+        <Route path="/" element={<RootRedirect />} />
         
         {/* Public Routes */}
         <Route path="/signin" element={<SignIn />} />
@@ -25,11 +31,13 @@ export default function App() {
           <Route path="dashboard/:pageName" element={<Dashboard />} />
           <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
           
-          {/* Also handle direct access to modules if you want */}
           <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
+          <Route path="result" element={<Navigate to="/dashboard/result" replace />} />
+          <Route path="pre-market" element={<Navigate to="/dashboard/pre-market" replace />} />
+          <Route path="short-straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
         </Route>
 
-        {/* 2. Keep your catch-all for bad URLs */}
+        {/* Catch-all for bad URLs */}
         <Route path="*" element={<Navigate to="/signin" replace />} />
       </Routes>
     </Router>
