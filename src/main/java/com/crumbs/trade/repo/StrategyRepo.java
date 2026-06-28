@@ -44,5 +44,13 @@ public interface StrategyRepo extends JpaRepository<Strategy, Long> {
 	List<StraddleIntraday> findLastTwo(@Param("name") String name, 
 	                                   @Param("strike") BigDecimal strike, 
 	                                   Pageable pageable);
+	// Basic filter: find by active status (Y/N)
+    List<Strategy> findByActive(String active);
+    
+    // Search by name (case-insensitive partial match)
+    List<Strategy> findByNameContainingIgnoreCase(String name);
+    
+    // Combined filter
+    List<Strategy> findByActiveAndNameContainingIgnoreCase(String active, String name);
 
 }

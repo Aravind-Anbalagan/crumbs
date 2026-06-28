@@ -72,5 +72,6 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     
  // Add this line to fix the error:
     List<Orders> findByActive(int active);
+    List<Orders> findByStatus(String status);
 
 }

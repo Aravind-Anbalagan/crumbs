@@ -91,6 +91,11 @@ export default function MainLayout() {
             <Link to="/dashboard/straddle" className={`nav-link ${isActive('/dashboard/straddle') ? 'active' : ''}`}>Short Straddle</Link>
             <Link to="/dashboard/trend" className={`nav-link ${isActive('/dashboard/trend') ? 'active' : ''}`}>Market Trend</Link>
             <Link to="/dashboard/orders" className={`nav-link ${isActive('/dashboard/orders') ? 'active' : ''}`}>Order Book</Link>
+            
+            {/* NEW ANALYTICS LINK ADDED HERE */}
+            <Link to="/history" className={`nav-link ${isActive('/history') ? 'active' : ''}`}>Analytics</Link>
+            
+            <Link to="/dashboard/strategy-setup" className="nav-link">⚙️ Strategy Setup</Link>
             <Link to="/dashboard/log" className={`nav-link ${isActive('/dashboard/log') ? 'active' : ''}`}>Logs</Link>
           </nav>
 

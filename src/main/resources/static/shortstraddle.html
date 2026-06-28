@@ -6,12 +6,7 @@
     <title>Nifty — CE/PE Chart</title>
     <link rel="stylesheet" href="/css/straddle.css" />
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-    <script>
-        // Authentication check - must be at the top to prevent UI flicker
-        if (!sessionStorage.getItem('isLoggedIn')) {
-            window.location.href = '/';
-        }
-    </script>
+    
     <style>
         /* Force true fullscreen layout */
         html, body {
