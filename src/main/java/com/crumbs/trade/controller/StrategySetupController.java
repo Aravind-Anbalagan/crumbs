@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/strategies")
+@RequestMapping("/api/v1/strategies")
 public class StrategySetupController {
 
     @Autowired
