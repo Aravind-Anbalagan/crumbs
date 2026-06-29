@@ -136,7 +136,7 @@ export default function StrategySetup() {
   const handleSaveClick = async (id) => {
     if (!canEdit) return;
     try {
-      const response = await api.put(`/strategies/${id}`, editFormData);
+      const response = await api.put(`/api/v1/strategies/${id}`, editFormData);
       // Normalize response data too
       const updated = normalizeStrategy(response.data) || response.data;
       setStrategies(prev => prev.map(s => (s.id === id ? updated : s)));
