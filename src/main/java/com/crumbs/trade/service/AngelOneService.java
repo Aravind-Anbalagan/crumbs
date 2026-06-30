@@ -230,7 +230,7 @@ public class AngelOneService {
 		pricesMcxRepo.deleteAll();
 		pricesIndexRepo.deleteAll();
 		priceHeikinashiNiftyRepo.deleteAll();
-		priceHeikinashiMcxRepo.deleteAll();;
+		priceHeikinashiMcxRepo.deleteAll();
 		psarMcxRepo.deleteAll();
 		psarNiftyRepo.deleteAll();
 		resultMcxRepo.deleteAll();
@@ -253,14 +253,40 @@ public class AngelOneService {
 		optionsGreeksRepo.deleteAll();
 		}
 	/*
-	 * Get current price
+	 * Get current price (Dynamic Keyword) - Simple rate limit handling with exponential backoff.
+	 * No caching involved.
 	 */
-	public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol,
-			String symboltoken,String keyword) {
-		JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
-        //currentPrice = new BigDecimal(String.valueOf(jsonObject.get(keyword)));
-        //System.out.println(currentPrice);
-		return new BigDecimal(String.valueOf(jsonObject.get(keyword)));
+	public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol, String symboltoken, String keyword) {
+		int maxRetries = 3;
+		long delay = 300; // start with 300ms delay
+
+		for (int attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
+				
+				if (jsonObject != null && jsonObject.has(keyword)) {
+					Object valObj = jsonObject.get(keyword);
+					if (valObj != null) {
+						return new BigDecimal(valObj.toString());
+					}
+				}
+			} catch (Exception e) {
+				logger.warn("Rate limit or error fetching '{}' for {} (Attempt {}/{}): {}", 
+						keyword, tradingSymbol, attempt, maxRetries, e.getMessage());
+			}
+
+			// Backoff before retrying
+			try {
+				Thread.sleep(delay);
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+				break;
+			}
+			delay *= 2; // Double the delay for the next attempt
+		}
+
+		logger.error("Failed to fetch '{}' for {} after {} attempts. Returning 0 to prevent crash.", keyword, tradingSymbol, maxRetries);
+		return BigDecimal.ZERO;
 	}
 	
 	// 🟢 CHANGE: Added 'int breakEven' parameter to the method signature

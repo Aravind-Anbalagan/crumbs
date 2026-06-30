@@ -137,10 +137,11 @@ public class CPRStraddleService {
             logger.info("ATM={} | CE entry={} SL={} | PE entry={} SL={}",
                     atmStrike, ceEntryPremium, ceSLPrice, peEntryPremium, peSLPrice);
 
-            // ── Place CE leg ──────────────────────────────────────────────────
+         // ── Place CE leg ──────────────────────────────────────────────────
             try {
                 orderService.orderPlaceWithToken(
-                        buildToken(atmDto.getCeToken(), atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
+                        buildToken(atmDto.getCeToken(), atmStrike, ceEntryPremium), // <-- Updated
+                        AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
                 ceLegPlaced.set(true);
                 logger.info("CE leg placed → {}", atmDto.getCeToken().getSymbol());
             } catch (Exception | SmartAPIException e) {
@@ -150,7 +151,8 @@ public class CPRStraddleService {
             // ── Place PE leg ──────────────────────────────────────────────────
             try {
                 orderService.orderPlaceWithToken(
-                        buildToken(atmDto.getPeToken(), atmStrike), AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
+                        buildToken(atmDto.getPeToken(), atmStrike, peEntryPremium), // <-- Updated
+                        AppConstant.CPR_STRADDLE_STRATEGY, "SELL", true);
                 peLegPlaced.set(true);
                 logger.info("PE leg placed → {}", atmDto.getPeToken().getSymbol());
             } catch (Exception | SmartAPIException e) {
@@ -371,13 +373,16 @@ public class CPRStraddleService {
         return value == null || value.compareTo(BigDecimal.ZERO) <= 0;
     }
 
-    private Token buildToken(Token source, BigDecimal strike) {
+    private Token buildToken(Token source, BigDecimal strike,BigDecimal entryPremium) {
         Token t = new Token();
         t.setToken(source.getToken());
         t.setSymbol(source.getSymbol());
         t.setExch_seg(source.getExch_seg());
         t.setQuantity(source.getQuantity());
         t.setStrike(strike);
+        t.setStrike(strike);
+        t.setAskPrice(entryPremium); 
+        t.setEntryPrice(entryPremium);
         return t;
     }
 
