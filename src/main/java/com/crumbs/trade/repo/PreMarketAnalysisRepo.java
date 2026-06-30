@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.crumbs.trade.entity.PreMarketAnalysis;
 
@@ -35,5 +36,8 @@ public interface PreMarketAnalysisRepo extends JpaRepository<PreMarketAnalysis, 
     @Modifying
 	@Query("delete from PreMarketAnalysis p")
 	void deleteAll();
+    
+    @Modifying
+    void deleteByName(String name);
     
 }

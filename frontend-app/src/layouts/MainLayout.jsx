@@ -5,6 +5,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [theme, setTheme] = useState('dark');
+  const [logoClicked, setLogoClicked] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('userEmail');
@@ -17,6 +18,14 @@ export default function MainLayout() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
 
   const isActive = (path) => location.pathname.startsWith(path);
+
+  const handleLogoClick = () => {
+    setLogoClicked(true);
+
+    setTimeout(() => {
+      setLogoClicked(false);
+    }, 450);
+  };
 
   return (
     <>
@@ -55,8 +64,6 @@ export default function MainLayout() {
           --danger-bg: rgba(239, 68, 68, 0.1);
           --danger-text: #ef4444;
 
-          --logo-line: #ffffff;
-          --logo-fill: rgba(79, 172, 254, 0.08);
           --logo-shadow: rgba(79, 172, 254, 0.6);
         }
 
@@ -81,8 +88,6 @@ export default function MainLayout() {
           --danger-bg: rgba(239, 68, 68, 0.1);
           --danger-text: #b91c1c;
 
-          --logo-line: #0f172a;
-          --logo-fill: rgba(2, 136, 209, 0.08);
           --logo-shadow: rgba(2, 136, 209, 0.45);
         }
 
@@ -112,9 +117,11 @@ export default function MainLayout() {
         }
 
         .brand {
+          position: relative;
           font-size: 1.35rem;
           font-weight: 900;
           background: var(--brand-gradient);
+          background-size: 220% 220%;
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
@@ -124,16 +131,69 @@ export default function MainLayout() {
           gap: 0.7rem;
           letter-spacing: -0.6px;
           white-space: nowrap;
+          transition: transform 0.3s ease, letter-spacing 0.3s ease;
         }
 
         .brand svg {
           flex-shrink: 0;
-          transition: transform 0.3s ease, filter 0.3s ease;
+          transition: transform 0.35s ease, filter 0.35s ease;
+        }
+
+        .brand:hover {
+          animation: brandTextFlow 1.8s linear infinite;
+          transform: translateY(-1px);
         }
 
         .brand:hover svg {
-          transform: scale(1.08) rotate(2deg);
-          filter: drop-shadow(0 0 10px var(--logo-shadow));
+          transform: scale(1.1) rotate(4deg);
+          filter: drop-shadow(0 0 14px var(--logo-shadow));
+        }
+
+        .brand.logo-clicked {
+          animation: logoTextPop 0.45s ease;
+        }
+
+        .brand.logo-clicked svg {
+          animation: logoClickPop 0.45s ease;
+        }
+
+        @keyframes brandTextFlow {
+          0% {
+            background-position: 0% 50%;
+          }
+          100% {
+            background-position: 220% 50%;
+          }
+        }
+
+        @keyframes logoClickPop {
+          0% {
+            transform: scale(1) rotate(0deg);
+          }
+          35% {
+            transform: scale(1.22) rotate(-8deg);
+          }
+          70% {
+            transform: scale(0.96) rotate(3deg);
+          }
+          100% {
+            transform: scale(1) rotate(0deg);
+          }
+        }
+
+        @keyframes logoTextPop {
+          0% {
+            letter-spacing: -0.6px;
+            transform: scale(1);
+          }
+          50% {
+            letter-spacing: 1px;
+            transform: scale(1.04);
+          }
+          100% {
+            letter-spacing: -0.6px;
+            transform: scale(1);
+          }
         }
 
         .center-menu {
@@ -234,22 +294,26 @@ export default function MainLayout() {
 
       <div className={`layout-canvas theme-${theme}`}>
         <header className="glass-topbar">
-          {/* Rich Vibrant Logo */}
-          <Link to="/dashboard" className="brand">
+          {/* New Crumbs C-Orbit Animated Logo */}
+          <Link
+            to="/dashboard"
+            className={`brand ${logoClicked ? 'logo-clicked' : ''}`}
+            onClick={handleLogoClick}
+          >
             <svg
-              width="40"
-              height="40"
+              width="42"
+              height="42"
               viewBox="0 0 100 100"
               xmlns="http://www.w3.org/2000/svg"
               aria-hidden="true"
             >
               <defs>
                 <linearGradient
-                  id="richGrad"
-                  x1="0%"
-                  y1="100%"
-                  x2="100%"
-                  y2="0%"
+                  id="crumbsLogoGrad"
+                  x1="10%"
+                  y1="90%"
+                  x2="90%"
+                  y2="10%"
                 >
                   <stop
                     offset="0%"
@@ -265,11 +329,11 @@ export default function MainLayout() {
                   />
                 </linearGradient>
 
-                <radialGradient id="innerGlow" cx="50%" cy="45%" r="60%">
+                <radialGradient id="crumbsInnerGlow" cx="48%" cy="45%" r="62%">
                   <stop
                     offset="0%"
                     stopColor={theme === 'dark' ? '#4facfe' : '#0288d1'}
-                    stopOpacity="0.35"
+                    stopOpacity="0.32"
                   />
                   <stop
                     offset="100%"
@@ -279,7 +343,7 @@ export default function MainLayout() {
                 </radialGradient>
 
                 <filter
-                  id="logoGlow"
+                  id="crumbsGlow"
                   x="-50%"
                   y="-50%"
                   width="200%"
@@ -293,70 +357,83 @@ export default function MainLayout() {
                 </filter>
               </defs>
 
-              {/* Outer rich hexagon */}
-              <polygon
-                points="50,8 86,29 86,71 50,92 14,71 14,29"
-                fill="none"
-                stroke="url(#richGrad)"
-                strokeWidth="6"
-                strokeLinejoin="round"
-                filter="url(#logoGlow)"
-              />
-
-              {/* Inner soft glass fill */}
-              <polygon
-                points="50,17 78,33 78,67 50,83 22,67 22,33"
-                fill="url(#innerGlow)"
-                stroke="rgba(255,255,255,0.14)"
-                strokeWidth="1"
-              />
-
-              {/* Connection line base */}
-              <path
-                d="M 28 38 L 50 50 L 72 62"
-                stroke={theme === 'dark' ? '#ffffff' : '#0f172a'}
-                strokeWidth="5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity="0.95"
-              />
-
-              {/* Vibrant neural nodes */}
+              {/* Outer soft orbit circle */}
               <circle
                 cx="50"
                 cy="50"
-                r="10"
-                fill="url(#richGrad)"
-                filter="url(#logoGlow)"
+                r="39"
+                fill="url(#crumbsInnerGlow)"
+                stroke="url(#crumbsLogoGrad)"
+                strokeWidth="3"
+                opacity="0.95"
               />
+
+              {/* Bold C mark */}
+              <path
+                d="M 67 31 C 60 24, 47 22, 37 28 C 25 35, 21 51, 28 64 C 35 78, 53 82, 66 71"
+                fill="none"
+                stroke="url(#crumbsLogoGrad)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                filter="url(#crumbsGlow)"
+              />
+
+              {/* Crumb/data dots */}
               <circle
-                cx="28"
-                cy="38"
-                r="7"
-                fill="url(#richGrad)"
-                filter="url(#logoGlow)"
+                cx="69"
+                cy="31"
+                r="5.5"
+                fill="url(#crumbsLogoGrad)"
+                filter="url(#crumbsGlow)"
               />
               <circle
                 cx="72"
-                cy="62"
-                r="7"
-                fill="url(#richGrad)"
-                filter="url(#logoGlow)"
+                cy="50"
+                r="4.5"
+                fill="url(#crumbsLogoGrad)"
               />
-
-              {/* Premium highlight dots */}
-              <circle cx="46" cy="46" r="2.2" fill="#ffffff" opacity="0.85" />
-              <circle cx="25" cy="35" r="1.8" fill="#ffffff" opacity="0.75" />
-              <circle cx="69" cy="59" r="1.8" fill="#ffffff" opacity="0.75" />
-
-              {/* Small orbit accent */}
               <circle
-                cx="64"
-                cy="35"
-                r="3"
-                fill={theme === 'dark' ? '#a855f7' : '#7c3aed'}
-                opacity="0.95"
+                cx="67"
+                cy="70"
+                r="5.5"
+                fill="url(#crumbsLogoGrad)"
+                filter="url(#crumbsGlow)"
               />
+
+              {/* Inner analytics signal line */}
+              <path
+                d="M 36 52 L 48 44 L 59 55 L 72 50"
+                fill="none"
+                stroke={theme === 'dark' ? '#ffffff' : '#0f172a'}
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.9"
+              />
+
+              {/* Inner signal nodes */}
+              <circle
+                cx="36"
+                cy="52"
+                r="3.8"
+                fill={theme === 'dark' ? '#ffffff' : '#0f172a'}
+              />
+              <circle
+                cx="48"
+                cy="44"
+                r="3.8"
+                fill={theme === 'dark' ? '#ffffff' : '#0f172a'}
+              />
+              <circle
+                cx="59"
+                cy="55"
+                r="3.8"
+                fill={theme === 'dark' ? '#ffffff' : '#0f172a'}
+              />
+
+              {/* Premium highlight */}
+              <circle cx="39" cy="30" r="2.5" fill="#ffffff" opacity="0.8" />
             </svg>
 
             crumbs

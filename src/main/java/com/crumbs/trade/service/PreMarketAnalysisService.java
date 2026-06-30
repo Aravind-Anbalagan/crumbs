@@ -43,7 +43,7 @@ public class PreMarketAnalysisService {
         
         try {
             logger.info("=== PRE-MARKET ANALYSIS STARTED FOR {} ===", name);
-            preMarketAnalysisRepo.deleteAll();
+            preMarketAnalysisRepo.deleteByName(name);
             // 1. Get strategy details
             Strategy strategy = strategyRepo.findByName(name);
             if (strategy == null) {

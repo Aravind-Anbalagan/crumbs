@@ -26,6 +26,14 @@ public class DirectionalOptionSellingScheduler {
     public void preMarketNifty() {
         executionService.executePreMarket("NIFTY");
     }
+    
+   // ==================== CRUDE OIL PRE-MARKET ANALYSIS (4:00:30 PM) ====================
+
+    @Scheduled(cron = "30 0 16 * * MON-FRI", zone = "Asia/Kolkata")
+    public void preMarketCrudeOil() {
+        executionService.executePreMarket("CRUDEOIL");
+    }
+    
    
     // ==================== UPDATED MARKET STRATEGY (Starts at 9:20) ====================
     
