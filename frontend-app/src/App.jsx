@@ -31,7 +31,7 @@ export default function App() {
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           {/* 2. Add your new native React route */}
           <Route path="dashboard/strategy-setup" element={<StrategySetup />} />
-          <Route path="/history" element={<OrderHistory />} />
+          <Route path="dashboard/history" element={<OrderHistory />} />
           {/* Dynamic dashboard route for legacy iframes */}
           <Route path="dashboard/:pageName" element={<Dashboard />} />
           <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />

@@ -486,8 +486,8 @@ export default function MainLayout() {
             </Link>
 
             <Link
-              to="/history"
-              className={`nav-link ${isActive('/history') ? 'active' : ''}`}
+              to="/dashboard/history"
+              className={`nav-link ${isActive('/dashboard/history') ? 'active' : ''}`}
             >
               Analytics
             </Link>

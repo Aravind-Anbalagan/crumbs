@@ -58,4 +58,9 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     List<Indexes> findByNameInAndExchange(List<String> names,String exchange);
 
     Indexes findByToken(String token);
+    
+ // Finds records by Name (e.g. "NIFTY") where Symbol contains a specific word (e.g. "FUT")
+    List<Indexes> findByNameAndSymbolContaining(String name, String symbolPart);
+    
+    List<Indexes> findByName(String name);
 }
