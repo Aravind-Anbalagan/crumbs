@@ -19,9 +19,11 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -90,30 +92,38 @@ public class ShortStraddleService {
         if (tradeName.contains("CRUDE") && now.isBefore(CRUDE_START)) return;
         if (tradeName.contains("NATURALGAS") && now.isBefore(NATURALGAS_START)) return; 
 
-        List<Orders> activeOrders = ordersRepository.findByNameAndSignalAndActive(tradeName, STRATEGY_SIGNAL, STATUS_ACTIVE);
+        List<Orders> allActiveOrders = ordersRepository.findByNameAndSignalAndActive(tradeName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
-        if (!activeOrders.isEmpty()) {
-            if (activeOrders.size() != 2) {
-                log.error("🚨 [{}][SAFETY] Imbalance! Found {} legs. Cleaning up orphan.", tradeName, activeOrders.size());
-                BigDecimal tradedStrike = activeOrders.get(0).getStrike();
-                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
-                    closeAll(activeOrders, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
-                return;
+        if (!allActiveOrders.isEmpty()) {
+            
+            // Group by Cycle ID to isolate concurrent straddles internally
+            Map<String, List<Orders>> ordersByCycle = allActiveOrders.stream()
+                    .collect(Collectors.groupingBy(o -> o.getTradeCycleId() != null ? o.getTradeCycleId() : "LEGACY_" + o.getId()));
+
+            for (Map.Entry<String, List<Orders>> entry : ordersByCycle.entrySet()) {
+                String cycleId = entry.getKey();
+                List<Orders> cycleOrders = entry.getValue();
+                BigDecimal tradedStrike = cycleOrders.get(0).getStrike();
+
+                if (cycleOrders.size() != 2) {
+                    log.error("🚨 [{}][SAFETY] Imbalance in Cycle {}! Found {} legs. Cleaning up orphan.", tradeName, cycleId, cycleOrders.size());
+                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
+                        closeAll(cycleOrders, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
+                    continue; 
+                }
+
+                if (isSquareOffTime(baseSymbol, now)) {
+                    log.info("🕒 [{}][EXIT] Square-off time reached for Cycle {}.", tradeName, cycleId);
+                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
+                        closeAll(cycleOrders, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
+                    continue;
+                }
+
+                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresentOrElse(
+                    tick -> processExitSequence(tradeName, tick, cycleOrders, strategyConfig, sourceConfig, cycleId),
+                    () -> log.error("❌ [{}][MONITOR] Missing price data for strike: {}", tradeName, tradedStrike)
+                );
             }
-
-            if (isSquareOffTime(baseSymbol, now)) {
-                log.info("🕒 [{}][EXIT] Square-off time reached.", tradeName);
-                BigDecimal tradedStrike = activeOrders.get(0).getStrike();
-                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
-                    closeAll(activeOrders, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
-                return;
-            }
-
-            BigDecimal tradedStrike = activeOrders.get(0).getStrike();
-            straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresentOrElse(
-                tick -> processExitSequence(tradeName, tick, activeOrders, strategyConfig, sourceConfig),
-                () -> log.error("❌ [{}][MONITOR] Missing price data for strike: {}", tradeName, tradedStrike)
-            );
             
         } else {
             if (straddlesUsed >= maxAllowed) {
@@ -159,7 +169,7 @@ public class ShortStraddleService {
         boolean isGapAcceptable = currentGap.compareTo(safeDistance) <= 0;
 
         log.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}", 
-                tradeName, currentStrike, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
+                 tradeName, currentStrike, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
 
         if (isCpBelowCv && isGapAcceptable) {
             String strikeKey = tradeName + "_STRIKE";
@@ -173,8 +183,8 @@ public class ShortStraddleService {
             }
             
             lastSeenStrikes.put(strikeKey, currentStrike);
-            
             int count = hitCounters.getOrDefault(tradeName + "_ENTRY", 0);
+            
             log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) on Strike: {}", tradeName, count, reqHits, currentStrike);
             
             if (count >= reqHits) {
@@ -193,7 +203,9 @@ public class ShortStraddleService {
         }
     }
 
-    private void processExitSequence(String tradeName, StraddleIntraday tick, List<Orders> activeOrders, Strategy strategyConfig, Strategy sourceConfig) {
+    private void processExitSequence(String tradeName, StraddleIntraday tick, List<Orders> activeOrders, Strategy strategyConfig, Strategy sourceConfig, String cycleId) {
+        String exitKey = tradeName + "_" + cycleId + "_EXIT"; 
+
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp);
@@ -212,12 +224,12 @@ public class ShortStraddleService {
         int reqSlHits = sourceConfig.getExitHitsRequired() > 0 ? sourceConfig.getExitHitsRequired() : 3;
         
         if (isVwapCrossover) {
-            hitCounters.merge(tradeName + "_EXIT", 1, Integer::sum);
+            hitCounters.merge(exitKey, 1, Integer::sum);
         } else {
-            hitCounters.put(tradeName + "_EXIT", 0); 
+            hitCounters.put(exitKey, 0); 
         }
         
-        int currentSlHits = hitCounters.getOrDefault(tradeName + "_EXIT", 0);
+        int currentSlHits = hitCounters.getOrDefault(exitKey, 0);
         boolean isHitsMet = currentSlHits >= reqSlHits;
 
         BigDecimal tradedStrike = activeOrders.get(0).getStrike();
@@ -241,7 +253,7 @@ public class ShortStraddleService {
         }
 
         log.info("================================================================================");
-        log.info("📊 [{}] Strike: {} | Status: {} | Floating PnL: {}{} pts", tradeName, tradedStrike, tradeStatus, cushionSign, currentPnL.setScale(2, RoundingMode.HALF_UP));
+        log.info("📊 [{}] Cycle: {} | Strike: {} | Status: {} | Floating PnL: {}{} pts", tradeName, cycleId, tradedStrike, tradeStatus, cushionSign, currentPnL.setScale(2, RoundingMode.HALF_UP));
         log.info("🎯 GOAL: {} pts gap | Distance: {} pts to go", targetGap.setScale(2, RoundingMode.HALF_UP), distToTarget.setScale(2, RoundingMode.HALF_UP));
         log.info("{}", defenseMode);
         log.info("🛡️ SHIELD STATUS -> [Trend: {}] && [Price: {}]", vStatus, pStatus);
@@ -250,7 +262,7 @@ public class ShortStraddleService {
         if (currentGap.compareTo(targetGap) >= 0) {
             log.info("💰 [{}][EXIT] TARGET REACHED!", tradeName);
             closeAll(activeOrders, tick, "TARGET_REACHED", strategyConfig, sourceConfig);
-            hitCounters.put(tradeName + "_EXIT", 0);
+            hitCounters.remove(exitKey);
             return;
         }
 
@@ -272,7 +284,7 @@ public class ShortStraddleService {
         if (shouldExit) {
             log.warn("🚨 [{}][EXIT] STOP LOSS TRIGGERED! Reason: {}", tradeName, reason);
             closeAll(activeOrders, tick, reason, strategyConfig, sourceConfig);
-            hitCounters.put(tradeName + "_EXIT", 0);
+            hitCounters.remove(exitKey);
         }
     }
 
@@ -298,7 +310,6 @@ public class ShortStraddleService {
             closeAll(partialOrdersToClose, tick, "PARTIAL_FILL_ROLLBACK", strategyConfig, sourceConfig);
             
         } else if (ceSuccess) {
-            // Evaluates Strategy config properly
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER";
             telegramService.sendMessage(String.format("🚀 **ENTRY [%s]: %s**\nStrike: %s\nGap: %.2f\nTarget: +%.2f", 
                     mode, tradeName, tick.getStrike(), entryGap, sourceConfig.getTargetPoints()));
@@ -325,21 +336,15 @@ public class ShortStraddleService {
 
             Orders order;
 
-            // =========================================================
-            // 1. LIVE EXECUTION & DB FETCH vs PAPER MOCK CREATION
-            // Evaluates Strategy config correctly
-            // =========================================================
             if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                 log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...", tradeName, type);
                 try {
-                    // Call global service. This executes the trade AND inserts an initial row
                     orderService.orderPlaceWithToken(t, sourceConfig.getName(), "SELL", true);
                 } catch (Exception | SmartAPIException e) {
                     log.error("⚠️ [{}][LEG] Broker/Global insert failed for {}. Reason: {}", tradeName, type, e.getMessage());
                     return null;
                 }
 
-                // Fetch the row OrderService JUST created
                 order = ordersRepository.findByNameAndTokenAndActive(
                         sourceConfig.getName(), tokenStr, STATUS_ACTIVE).orElse(null);
 
@@ -349,8 +354,6 @@ public class ShortStraddleService {
                 }
             } else {
                 log.info("📄 [{}][{}] PAPER MODE: Skipping broker execution, tracking via DB...", tradeName, type);
-                
-                // Construct a mock order entity manually safely
                 order = new Orders();
                 order.setToken(tokenStr);
                 order.setSymbol(symbol);
@@ -359,10 +362,6 @@ public class ShortStraddleService {
                 order.setActive(STATUS_ACTIVE);
             }
 
-            // =========================================================
-            // 2. UPGRADE STRATEGY ROW
-            // =========================================================
-            // Take ownership of the row by changing its name to your specific strategy
             order.setName(tradeName); 
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type);
@@ -385,15 +384,16 @@ public class ShortStraddleService {
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategyConfig, Strategy sourceConfig) {
         BigDecimal totalEntryPoints = BigDecimal.ZERO;
         BigDecimal totalExitPoints = BigDecimal.ZERO;
-        BigDecimal totalRupeePnL = BigDecimal.ZERO; // Track Rupee PnL instead of just points
+        BigDecimal totalRupeePnL = BigDecimal.ZERO; 
         boolean allSuccess = true;
 
         for (Orders order : activeOrders) {
             if (order.getActive() == STATUS_INACTIVE) continue;
             try {
-                // Evaluates Strategy config correctly
                 if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                     try {
+                        // Using your existing untouched OrderService method
+                        // This relies on the strategyName parameter to avoid Token Collision
                         orderService.exitActiveTradeByToken(
                                 order.getToken(), 
                                 sourceConfig.getName(), 
@@ -413,15 +413,14 @@ public class ShortStraddleService {
                 totalEntryPoints = totalEntryPoints.add(entryPrice);
                 totalExitPoints = totalExitPoints.add(exitPrice);
 
-                // --- NEW PNL CALCULATION IN RUPEES ---
-                BigDecimal pointsCollected = entryPrice.subtract(exitPrice); // Short trade: entry(sell) - exit(buy)
+                BigDecimal pointsCollected = entryPrice.subtract(exitPrice); 
                 BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
                 BigDecimal legRupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
                 
                 totalRupeePnL = totalRupeePnL.add(legRupeePnL);
 
                 order.setExitPrice(exitPrice);
-                order.setPl(legRupeePnL); // Save Rupee PnL to DB
+                order.setPl(legRupeePnL); 
                 order.setClosedOn(LocalDateTime.now());
                 order.setTradePhase(PHASE_EXIT);
                 order.setStatus(STATUS_CLOSED);
@@ -439,7 +438,6 @@ public class ShortStraddleService {
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER"; 
             String tradeName = activeOrders.get(0).getName(); 
 
-            // Updated Telegram message to reflect the Rupee value
             telegramService.sendMessage(String.format(
                 "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**", 
                 emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL

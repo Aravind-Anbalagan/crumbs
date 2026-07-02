@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.crumbs.trade.dto.SecondMidPointRequest;
 import com.crumbs.trade.dto.StraddlePremiumDto;
@@ -39,6 +40,7 @@ public class PreMarketAnalysisService {
      * Main method: Analyze 9:10 AM data and save to PreMarketAnalysis table
      * Uses in-memory data from getPreMarketLTP() - does NOT query database
      */
+    @Transactional
     public void analyzeAndStore(String name) {
         
         try {

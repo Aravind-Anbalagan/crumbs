@@ -34,10 +34,12 @@ public interface PreMarketAnalysisRepo extends JpaRepository<PreMarketAnalysis, 
     Optional<PreMarketAnalysis> findTopByNameOrderByTimestampDesc(String name);
     
     @Modifying
-	@Query("delete from PreMarketAnalysis p")
-	void deleteAll();
+    @Transactional
+    @Query("delete from PreMarketAnalysis p")
+    void deleteAll();
     
-    @Modifying
+    // Option A: Use Spring's automatic naming (No annotations needed!)
+    @Transactional
     void deleteByName(String name);
     
 }
