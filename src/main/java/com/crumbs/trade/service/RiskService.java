@@ -2,8 +2,11 @@ package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -88,6 +91,9 @@ public class RiskService {
      */
     @Scheduled(fixedDelay = 3000)
     public void pollBrokerPositions() {
+        // 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
+        if (!isMarketHours()) return;
+
         int maxRetries = 3;
         int attempt = 0;
         long backoffDelay = 1000;
@@ -135,6 +141,9 @@ public class RiskService {
      */
     @Scheduled(fixedDelay = 1000)
     public void processSystemRiskMatrix() {
+        // 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
+        if (!isMarketHours()) return;
+
         LocalDateTime now = LocalDateTime.now(MARKET_ZONE);
         int currentHour = now.getHour();
         int currentMinute = now.getMinute();
@@ -494,5 +503,26 @@ public class RiskService {
             case "BFO": return com.angelbroking.smartapi.smartstream.models.ExchangeType.BSE_FO;
             default: return null;
         }
+    }
+
+    /**
+     * Evaluates if the current Indian market time is within active trading hours:
+     * Monday to Friday, 09:15 AM to 11:30 PM.
+     */
+    private boolean isMarketHours() {
+        ZonedDateTime now = ZonedDateTime.now(MARKET_ZONE);
+        DayOfWeek day = now.getDayOfWeek();
+
+        // 1. Block Weekends
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+            return false;
+        }
+
+        // 2. Check Window: 09:15:00 to 23:30:00
+        LocalTime time = now.toLocalTime();
+        LocalTime startTime = LocalTime.of(9, 15);
+        LocalTime endTime = LocalTime.of(23, 30);
+
+        return !time.isBefore(startTime) && !time.isAfter(endTime);
     }
 }
