@@ -89,7 +89,7 @@ public class StrategyService {
     @Autowired PriceUtilService          priceUtilService;
     @Autowired StraddleIntradayService   straddleIntradayService;
     @Autowired CPRStraddleService        cprStraddleService;
-
+    @Autowired StraddleMarketDataService straddleMarketDataService;
     // =========================================================================
     // STEP 1 — Fetch CPR + First 5-min candle  (called at 09:20)
     // =========================================================================
@@ -469,7 +469,7 @@ public class StrategyService {
         req.put("fromdate",    fromDate);
         req.put("todate",      toDate);
 
-        JSONArray candles = straddleIntradayService.fetchCandleWithRetry(smartconnect, req, strategy.getToken());
+        JSONArray candles = straddleMarketDataService.fetchCandleWithRetry(smartconnect, req, strategy.getToken());
 
         if (candles == null || candles.isEmpty()) return dto;
 
@@ -524,7 +524,7 @@ public class StrategyService {
         req.put("fromdate",    fromDate);
         req.put("todate",      toDate);
 
-        JSONArray ohlc = straddleIntradayService.fetchCandleWithRetry(smartConnect, req, strategy.getToken());
+        JSONArray ohlc = straddleMarketDataService.fetchCandleWithRetry(smartConnect, req, strategy.getToken());
 
         if (ohlc == null || ohlc.isEmpty()) return null;
 

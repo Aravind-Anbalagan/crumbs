@@ -25,6 +25,8 @@ import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.AngelOneService;
 import com.crumbs.trade.service.OrderService;
 import com.crumbs.trade.service.StraddleIntradayService;
+import com.crumbs.trade.service.StraddleMarketDataService;
+import com.crumbs.trade.service.StraddleTokenService;
 import com.crumbs.trade.utility.AppConstant;
 
 @Service
@@ -70,7 +72,8 @@ public class CPRStraddleService {
     @Autowired AngelOneService         angelOneService;
     @Autowired StrategyRepo            strategyRepo;
     @Autowired OrderService            orderService;
-    @Autowired StraddleIntradayService straddleIntradayService;
+    @Autowired StraddleTokenService tokenService; 
+    @Autowired StraddleMarketDataService marketDataService;
     @Autowired CPRRepo                 cprRepo;
 
     // =========================================================================
@@ -95,12 +98,12 @@ public class CPRStraddleService {
                 return;
             }
 
-            BigDecimal atmStrike = straddleIntradayService.getATMStrike(
+            BigDecimal atmStrike = tokenService.getATMStrike(
                     AppConstant.CPR_STRATEGY, optionStrategy, ltp);
             logger.info("LTP={} → ATM Strike={}", ltp, atmStrike);
 
             List<StraddlePremiumDto> strikeList = 
-                    straddleIntradayService.buildStraddleDtos("NIFTY",atmStrike, 50)
+            		tokenService.buildStraddleDtos("NIFTY",atmStrike, 50,600)
                             .stream()
                             .filter(dto -> dto.getStrikePrice().compareTo(atmStrike) == 0)
                             .collect(Collectors.toList());
@@ -110,7 +113,7 @@ public class CPRStraddleService {
                 return;
             }
 
-            strikeList = straddleIntradayService.getAllTokenDetails(strikeList, optionStrategy);
+            strikeList = tokenService.getAllTokenDetails(strikeList, optionStrategy);
             StraddlePremiumDto candidate = strikeList.get(0);
 
             if (candidate.getCeToken() == null || candidate.getPeToken() == null) {
@@ -118,7 +121,7 @@ public class CPRStraddleService {
                 return;
             }
 
-            strikeList = straddleIntradayService.getPriceForAllTheStrikesBatch(
+            strikeList = marketDataService.getPriceForAllTheStrikesBatch(
                     strikeList, sc, optionStrategy.getExchange());
 
             atmDto = strikeList.get(0);
@@ -203,7 +206,7 @@ public class CPRStraddleService {
                 return;
             }
 
-            List<StraddlePremiumDto> updated = straddleIntradayService.getPriceForAllTheStrikesBatch(
+            List<StraddlePremiumDto> updated = marketDataService.getPriceForAllTheStrikesBatch(
                     Collections.singletonList(atmDto), sc, optionStrategy.getExchange());
 
             if (updated == null || updated.isEmpty()) {

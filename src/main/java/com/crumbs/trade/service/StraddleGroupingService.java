@@ -30,6 +30,7 @@ public class StraddleGroupingService {
     @Autowired StraddleIntradayRepo straddleIntradayRepo;
     @Autowired StrategyRepo strategyRepo;
     @Autowired StraddleIntradayService straddleIntradayService;
+    @Autowired StraddleTokenService straddleTokenService; // ✅ INJECTED NEW SERVICE HERE
     @Autowired AngelOne angelOne;
     @Autowired AngelOneService angelOneService;
     
@@ -90,8 +91,8 @@ public class StraddleGroupingService {
                     
                     logger.info("Spot price for {}: {}", instrumentName, spotPrice);
                     
-                    // Calculate ATM strike for THIS instrument
-                    BigDecimal atmStrike = straddleIntradayService.getATMStrike(
+                    // Calculate ATM strike for THIS instrument using the new Token Service
+                    BigDecimal atmStrike = straddleTokenService.getATMStrike( // ✅ CHANGED THIS LINE
                         instrumentName,
                         strategy,
                         spotPrice

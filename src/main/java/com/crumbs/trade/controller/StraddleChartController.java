@@ -29,6 +29,7 @@ import com.crumbs.trade.service.PreMarketAnalysisService;
 import com.crumbs.trade.service.StraddleExecutionService;
 import com.crumbs.trade.service.StraddleGroupingService;
 import com.crumbs.trade.service.StraddleIntradayService;
+import com.crumbs.trade.service.StraddlePersistenceService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -41,6 +42,7 @@ public class StraddleChartController {
     private final StraddleGroupingService straddleGroupingService;
     private final PreMarketAnalysisService preMarketAnalysisService;
     private final StraddleExecutionService straddleExecutionService;
+    private final StraddlePersistenceService straddlePersistenceService;
     
     @GetMapping("/combined-chart")
     public ResponseEntity<?> getCombinedChart(
@@ -93,7 +95,7 @@ public class StraddleChartController {
             PreMarketAnalysis preMarket = preMarketOpt.get();
             
             // 2. Get time-series data from STRADDLE_INTRADAY table
-            List<StraddleIntraday> timeSeries = straddleIntradayService.getTimeSeriesByStrike(
+            List<StraddleIntraday> timeSeries = straddlePersistenceService.getTimeSeriesByStrike(
                 name,
                 preMarket.getExpiry(),
                 preMarket.getAtmStrike()
@@ -188,7 +190,7 @@ public class StraddleChartController {
     
     @GetMapping("/atmAnalysis")
     public void getPreMartketLevels(@RequestParam(defaultValue = "NIFTY") String name) {
-    	straddleIntradayService.prevDayDataDate = null;
+    	straddlePersistenceService.prevDayDataDate = null;
         straddleExecutionService.executePreMarket(name);
     }
 }

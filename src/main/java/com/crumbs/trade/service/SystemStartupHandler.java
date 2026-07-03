@@ -18,7 +18,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SystemStartupHandler {
 
-    private final StraddleIntradayService straddleService;
+    // ✅ INJECT THE NEW VWAP SERVICE INSTEAD OF INTRADAY SERVICE
+    private final StraddleVwapService vwapService; 
     private final StrategyRepo strategyRepo;
     private static final Logger logger = LoggerFactory.getLogger(SystemStartupHandler.class);
 
@@ -36,7 +37,7 @@ public class SystemStartupHandler {
         // Warm up NIFTY
         Strategy nifty = strategyRepo.findByName("NIFTY");
         if (nifty != null) {
-            straddleService.warmUpVwap("NIFTY", nifty);
+            vwapService.warmUpVwap("NIFTY", nifty); // ✅ USE VWAP SERVICE
         } else {
             logger.warn("Startup Warm-up: NIFTY strategy configuration not found in DB.");
         }
@@ -44,7 +45,7 @@ public class SystemStartupHandler {
         // Warm up CRUDE
         Strategy crude = strategyRepo.findByName("CRUDEOILM");
         if (crude != null) {
-            straddleService.warmUpVwap("CRUDEOILM", crude);
+            vwapService.warmUpVwap("CRUDEOILM", crude); // ✅ USE VWAP SERVICE
         } else {
             logger.warn("Startup Warm-up: CRUDEOILM strategy configuration not found in DB.");
         }
