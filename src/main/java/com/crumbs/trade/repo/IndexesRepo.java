@@ -1,5 +1,7 @@
 package com.crumbs.trade.repo;
 import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -63,4 +65,14 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     List<Indexes> findByNameAndSymbolContaining(String name, String symbolPart);
     
     List<Indexes> findByName(String name);
+    
+    @Query("SELECT i FROM Indexes i WHERE UPPER(i.name) = UPPER(:name) " +
+            "AND UPPER(i.symbol) LIKE CONCAT('%', UPPER(:strikeSuffix)) " +
+            "AND (UPPER(i.expiry) = :expiryShort OR UPPER(i.expiry) = :expiryLong)")
+     Optional<Indexes> findOptionToken(
+         @Param("name") String name,
+         @Param("strikeSuffix") String strikeSuffix,
+         @Param("expiryShort") String expiryShort,
+         @Param("expiryLong") String expiryLong
+     );
 }

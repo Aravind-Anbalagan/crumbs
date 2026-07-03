@@ -47,6 +47,7 @@ import com.crumbs.trade.repo.StraddleIntradayRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.AlertType;
 import com.crumbs.trade.utility.ConditionalLogger;
+import com.crumbs.trade.utility.ExpiryUtil;
 import com.crumbs.trade.utility.NSEWorkingDays;
 import com.crumbs.trade.utility.SamcoSessionManager;
 
@@ -957,49 +958,58 @@ public class StraddleIntradayService {
 
 
 	// =====================================================
-    // TOKEN DETAILS - DYNAMIC WEEKLY & MONTHLY ROUTING
+    // TOKEN DETAILS - ROBUST SUFFIX & EXPIRY ROUTING
     // =====================================================
     public List<StraddlePremiumDto> getAllTokenDetails(
         List<StraddlePremiumDto> strikeList, 
         Strategy strategy
     ) {
-        logger.info("Fetching tokens for strategy: {}, expiry: {}", 
+        logger.info("Fetching tokens for strategy: {}, raw expiry: {}", 
             strategy.getName(), strategy.getExpiry());
+
+        // 1. Normalize expiry once before entering the loop (e.g., ["09JUL26", "09JUL2026"])
+        String[] normalizedExpiries = ExpiryUtil.getNormalizedExpiries(strategy.getExpiry());
+        String expiryShort = normalizedExpiries[0];
+        String expiryLong = normalizedExpiries[1];
 
         for (StraddlePremiumDto dto : strikeList) {
             int strike = dto.getStrikePrice().intValue();
 
-            // Generate accurate database lookup symbols dynamically
-            String ceSymbol = generateSymbol(strategy.getName(), strategy.getExpiry(), strike, "CE");
-            String peSymbol = generateSymbol(strategy.getName(), strategy.getExpiry(), strike, "PE");
+            // 2. Generate universal suffixes instead of full symbols
+            String ceSuffix = strike + "CE"; // E.g., "66500CE" or "23800CE"
+            String peSuffix = strike + "PE"; // E.g., "66500PE" or "23800PE"
 
-            // Fetch CE token
-            Indexes ceIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), ceSymbol);
-            if (ceIndex != null) {
-                Token t = new Token();
-                t.setToken(ceIndex.getToken());
-                t.setSymbol(ceIndex.getSymbol());
-                t.setExch_seg(ceIndex.getExchange());
-                t.setQuantity(ceIndex.getLotsize());
-                dto.setCeToken(t);
-                logger.debug("Found CE token for {}: {}", ceSymbol, t.getToken());
-            } else {
-                logger.warn("CE token NOT found for symbol: {}", ceSymbol);
-            }
+            // 3. Fetch CE token using Suffix Matching
+            indexesRepo.findOptionToken(strategy.getName(), ceSuffix, expiryShort, expiryLong)
+                .ifPresentOrElse(
+                    ceIndex -> {
+                        Token t = new Token();
+                        t.setToken(ceIndex.getToken());
+                        t.setSymbol(ceIndex.getSymbol());
+                        t.setExch_seg(ceIndex.getExchange());
+                        t.setQuantity(ceIndex.getLotsize());
+                        dto.setCeToken(t);
+                        logger.info("Found CE token for suffix {}: {} ({})", ceSuffix, t.getToken(), ceIndex.getSymbol());
+                    },
+                    () -> logger.info("CE token NOT found for name: {}, suffix: {}, expiries: [{}, {}]", 
+                        strategy.getName(), ceSuffix, expiryShort, expiryLong)
+                );
 
-            // Fetch PE token
-            Indexes peIndex = indexesRepo.findByNameAndSymbol(strategy.getName(), peSymbol);
-            if (peIndex != null) {
-                Token t = new Token();
-                t.setToken(peIndex.getToken());
-                t.setSymbol(peIndex.getSymbol());
-                t.setExch_seg(peIndex.getExchange());
-                t.setQuantity(peIndex.getLotsize());
-                dto.setPeToken(t);
-                logger.debug("Found PE token for {}: {}", peSymbol, t.getToken());
-            } else {
-                logger.warn("PE token NOT found for symbol: {}", peSymbol);
-            }
+            // 4. Fetch PE token using Suffix Matching
+            indexesRepo.findOptionToken(strategy.getName(), peSuffix, expiryShort, expiryLong)
+                .ifPresentOrElse(
+                    peIndex -> {
+                        Token t = new Token();
+                        t.setToken(peIndex.getToken());
+                        t.setSymbol(peIndex.getSymbol());
+                        t.setExch_seg(peIndex.getExchange());
+                        t.setQuantity(peIndex.getLotsize());
+                        dto.setPeToken(t);
+                        logger.info("Found PE token for suffix {}: {} ({})", peSuffix, t.getToken(), peIndex.getSymbol());
+                    },
+                    () -> logger.info("PE token NOT found for name: {}, suffix: {}, expiries: [{}, {}]", 
+                        strategy.getName(), peSuffix, expiryShort, expiryLong)
+                );
         }
         
         return strikeList;
