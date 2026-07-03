@@ -36,7 +36,8 @@ public class StraddleAlertService {
     private final Map<String, LocalDateTime> sentAlertKeys = new HashMap<>();
     private static final int ALERT_COOLDOWN_MINUTES = 5;
     private static final BigDecimal MIN_DOMINANCE_GAP = BigDecimal.valueOf(2);
-
+    private final Map<String, Boolean> triggeredAlerts = new HashMap<>();
+    
     public void detectCrossoverEvent(StraddlePremiumDto dto, String name, LocalDateTime currentTs) {
         dto.setCeCrossoverAbove(false);
         dto.setPeCrossoverAbove(false);
@@ -81,22 +82,33 @@ public class StraddleAlertService {
     public void checkAndSendAlerts(StraddleIntraday entity) {
         if (entity == null) return;
 
-        // ── CE–PE Crossover ─────────────────────────────────────
-        if (isCeCrossoverAbove(entity)) {
-            sendTelegramAlert(entity, AlertType.CE_PE_CROSSOVER);
+        // Helper to process alerts
+        processAlert(entity, AlertType.CE_PE_CROSSOVER, isCeCrossoverAbove(entity));
+        processAlert(entity, AlertType.PE_CE_CROSSOVER, isPeCrossoverAbove(entity));
+        processAlert(entity, AlertType.VWAP_DOMINANCE_CE, isVwapDominanceCe(entity));
+        processAlert(entity, AlertType.VWAP_DOMINANCE_PE, isVwapDominancePe(entity));
+    }
+
+    private void processAlert(StraddleIntraday entity, AlertType type, boolean conditionMet) {
+        String alertKey = entity.getStrike().toPlainString() + "_" + type.name();
+        
+        if (conditionMet) {
+            // Only send if we haven't triggered this specific alert for this strike yet
+            if (!triggeredAlerts.getOrDefault(alertKey, false)) {
+                sendTelegramAlert(entity, type);
+                triggeredAlerts.put(alertKey, true); // Mark as triggered
+            }
+        } else {
+            // OPTIONAL: Reset the trigger if the condition stops being true
+            // This allows the alert to fire again if the condition clears and then re-triggers later
+            triggeredAlerts.put(alertKey, false);
         }
-        // ── PE–CE Crossover ─────────────────────────────────────
-        if (isPeCrossoverAbove(entity)) {
-            sendTelegramAlert(entity, AlertType.PE_CE_CROSSOVER);
-        }
-        // ── VWAP Dominance CE ───────────────────────────────────
-        if (isVwapDominanceCe(entity)) {
-            sendTelegramAlert(entity, AlertType.VWAP_DOMINANCE_CE);
-        }
-        // ── VWAP Dominance PE ───────────────────────────────────
-        if (isVwapDominancePe(entity)) {
-            sendTelegramAlert(entity, AlertType.VWAP_DOMINANCE_PE);
-        }
+    }
+
+    // Call this at 9:00 AM in your scheduler to clear the memory
+    public void resetTriggeredAlerts() {
+        triggeredAlerts.clear();
+        logger.info("Alert triggers reset for new trading day.");
     }
 
     // =========================================================================
