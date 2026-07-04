@@ -289,7 +289,13 @@ public class ShortStraddleService {
     }
 
     protected void executeShortStraddle(String tradeName, StraddleIntraday tick, BigDecimal entryGap, Strategy strategyConfig, Strategy sourceConfig) {
-        log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
+    	// 🛑 BULLETPROOF GUARD: Never allow order placement if we are past the entry cutoff time!
+        String baseSymbol = tradeName.replace(NAME_PREFIX, "");
+        if (!isWithinEntryWindow(baseSymbol, LocalTime.now())) {
+            log.warn("🛑 [{}][BLOCKED] Attempted to execute entry past the cutoff time! Aborting order.", tradeName);
+            return;
+        }
+    	log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
         BigDecimal targetValue = entryGap.add(sourceConfig.getTargetPoints());
 
@@ -386,20 +392,32 @@ public class ShortStraddleService {
         BigDecimal totalExitPoints = BigDecimal.ZERO;
         BigDecimal totalRupeePnL = BigDecimal.ZERO; 
         boolean allSuccess = true;
+        int closedCount = 0;
 
         for (Orders order : activeOrders) {
             if (order.getActive() == STATUS_INACTIVE) continue;
+            
+            boolean legClosedSuccessfully = true;
+
             try {
                 if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                     try {
-                        // Using your existing untouched OrderService method
-                        // This relies on the strategyName parameter to avoid Token Collision
-                        orderService.exitActiveTradeByToken(
+                        // 1. Capture the boolean result from our updated OrderService
+                        legClosedSuccessfully = orderService.exitActiveTradeByToken(
                                 order.getToken(), 
                                 sourceConfig.getName(), 
-                                order.getName()         
+                                order.getName()          
                         );
+                        
+                        if (!legClosedSuccessfully) {
+                            allSuccess = false;
+                            log.error("❌ [{}][EXIT] Broker rejected exit for {}. DB left ACTIVE.", order.getName(), order.getOptionType());
+                        } else {
+                            // 2. ANTI-RATE-LIMIT DELAY: Pause 1 second before sending the next leg to Angel One
+                            Thread.sleep(1000); 
+                        }
                     } catch (Exception | SmartAPIException e) {
+                        legClosedSuccessfully = false;
                         allSuccess = false;
                         log.error("❌ [{}][EXIT] Broker failed to close {}: {}", order.getName(), order.getOptionType(), e.getMessage());
                     }
@@ -407,40 +425,44 @@ public class ShortStraddleService {
                     log.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit for {}.", order.getName(), order.getOptionType());
                 }
 
-                BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
-                BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
-                
-                totalEntryPoints = totalEntryPoints.add(entryPrice);
-                totalExitPoints = totalExitPoints.add(exitPrice);
+                // 3. CRITICAL GUARD: Only update local DB status if the broker exit actually succeeded!
+                if (legClosedSuccessfully) {
+                    BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
+                    BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
+                    
+                    totalEntryPoints = totalEntryPoints.add(entryPrice);
+                    totalExitPoints = totalExitPoints.add(exitPrice);
 
-                BigDecimal pointsCollected = entryPrice.subtract(exitPrice); 
-                BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
-                BigDecimal legRupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
-                
-                totalRupeePnL = totalRupeePnL.add(legRupeePnL);
+                    BigDecimal pointsCollected = entryPrice.subtract(exitPrice); 
+                    BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
+                    BigDecimal legRupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
+                    
+                    totalRupeePnL = totalRupeePnL.add(legRupeePnL);
 
-                order.setExitPrice(exitPrice);
-                order.setPl(legRupeePnL); 
-                order.setClosedOn(LocalDateTime.now());
-                order.setTradePhase(PHASE_EXIT);
-                order.setStatus(STATUS_CLOSED);
-                order.setActive(STATUS_INACTIVE);
-                order.setExitReason(reason);
-                ordersRepository.save(order); 
+                    order.setExitPrice(exitPrice);
+                    order.setPl(legRupeePnL); 
+                    order.setClosedOn(LocalDateTime.now());
+                    order.setTradePhase(PHASE_EXIT);
+                    order.setStatus(STATUS_CLOSED);
+                    order.setActive(STATUS_INACTIVE);
+                    ordersRepository.save(order);
+                    closedCount++;
+                }
                 
             } catch (Exception e) {
                 log.error("❌ [{}][EXIT] DB error closing leg: {}", order.getName(), e.getMessage());
             }
         }
         
-        if (allSuccess && !activeOrders.isEmpty()) {
+        // Only send the Telegram alert if we actually closed at least one leg successfully
+        if (closedCount > 0) {
             String emoji = totalRupeePnL.signum() >= 0 ? "✅" : "❌";
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER"; 
             String tradeName = activeOrders.get(0).getName(); 
 
             telegramService.sendMessage(String.format(
-                "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**", 
-                emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL
+                "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**\nLegs Closed: %d/%d", 
+                emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL, closedCount, activeOrders.size()
             ));
         }
     }

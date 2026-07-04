@@ -208,33 +208,40 @@ public class OrderService {
     }
 
  // =========================================================================
- // EXIT BY TOKEN (Updated with Exit Price & P&L Calculation)
+ // EXIT BY TOKEN (Updated with Safe Broker Execution & Boolean Return)
  // =========================================================================
-    @Transactional
- public void exitActiveTradeByToken(String token, String sourceName, String tradeName)
+ @Transactional
+ public boolean exitActiveTradeByToken(String token, String sourceName, String tradeName)
          throws IOException, SmartAPIException {
 
      Strategy strategy = strategyRepo.findByName(sourceName);
      Orders activeTrade = ordersRepo.findByNameAndTokenAndActive(tradeName, token, 1).orElse(null);
 
      if (activeTrade == null) {
-         logger.info("No active trade for token -> {} under strategy -> {}", token, tradeName);
-         return;
+         logger.info("ℹ️ No active trade for token -> {} under strategy -> {}", token, tradeName);
+         return true; // Treat as success if already closed or not found
      }
 
-     logger.info("Exiting trade by token -> {} | symbol={}", token, activeTrade.getSymbol());
-
+     logger.info("🚪 Exiting trade by token -> {} | symbol={}", token, activeTrade.getSymbol());
      SmartConnect sc = angelOne.signIn();
 
      // 1. Fetch current price at exit
      BigDecimal exitPrice = angelOneService.getcurrentPrice(sc, 
              activeTrade.getExchange(), activeTrade.getSymbol(), activeTrade.getToken(), "ltp");
      
-     if (exitPrice == null) exitPrice = BigDecimal.ZERO;
+     if (exitPrice == null || exitPrice.compareTo(BigDecimal.ZERO) == 0) {
+         exitPrice = BigDecimal.ZERO;
+     }
 
-     // 2. Execute market exit if Live
-     if ("Y".equalsIgnoreCase(strategy.getLive())) {
-         placeExitOrder(activeTrade);
+     // 2. Execute market exit if Live (CRITICAL: Only proceed to DB save if broker accepts!)
+     if (strategy != null && "Y".equalsIgnoreCase(strategy.getLive())) {
+         try {
+             placeExitOrder(activeTrade);
+         } catch (Exception | SmartAPIException e) {
+             logger.error("❌ Broker exit FAILED for token {} ({}). Leaving DB as ACTIVE for retry. Error: {}", 
+                     token, activeTrade.getSymbol(), e.getMessage());
+             return false; // Stop execution! Do NOT overwrite DB to CLOSED!
+         }
      }
 
      // 3. Compute P&L
@@ -249,15 +256,16 @@ public class OrderService {
          }
      }
 
-     // 4. Update details
+     // 4. Update details and commit to DB
      activeTrade.setExitPrice(exitPrice);
      activeTrade.setPl(pnl);
      activeTrade.setActive(0);
      activeTrade.setStatus("CLOSED");
 
      ordersRepo.save(activeTrade);
-     logger.info("Trade closed by token -> {} | Entry: {} | Exit: {} | PnL: {}", 
+     logger.info("✅ Trade closed by token -> {} | Entry: {} | Exit: {} | PnL: {}", 
              activeTrade.getSymbol(), entryPrice, exitPrice, pnl);
+     return true;
  }
 
 //=========================================================================
