@@ -5,10 +5,13 @@ import com.crumbs.trade.repo.StrategyRepo;
 import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 
+import org.slf4j.Logger;
+
 @Service
 @RequiredArgsConstructor
 public class StraddleExecutionService {
-    
+	private static final Logger logger =
+	        LoggerFactory.getLogger(StraddleExecutionService.class);
     private final StraddleIntradayService straddleIntradayService;
     private final PreMarketAnalysisService preMarketAnalysisService;
     private final StrategyRepo strategyRepo;
@@ -24,8 +27,7 @@ public class StraddleExecutionService {
             straddleIntradayService.getCombineStraddlePremium(name);
         } catch (Exception e) {
             // IMPORTANT: never let scheduler die
-            LoggerFactory.getLogger(getClass())
-                    .error("❌ Straddle execution failed for {}", name, e);
+        	logger.error("❌ Straddle execution failed for {}", name, e);
         }
     }
     
@@ -42,26 +44,24 @@ public class StraddleExecutionService {
                 return;
             }
             
-            LoggerFactory.getLogger(getClass())
-                .info("🚀 PRE-MARKET EXECUTION STARTED FOR {}", name);
+            logger.info("🚀 PRE-MARKET EXECUTION STARTED FOR {}", name);
             
             // Fetch pre-market data, analyze, and save to PreMarketAnalysis table
             // This internally calls straddleIntradayService.getPreMarketLTP()
             preMarketAnalysisService.analyzeAndStore(name);
             
-            LoggerFactory.getLogger(getClass())
-                .info("✅ PRE-MARKET EXECUTION COMPLETED FOR {}", name);
+            logger.info("✅ PRE-MARKET EXECUTION COMPLETED FOR {}", name);
             
         } catch (Exception e) {
             // IMPORTANT: never let scheduler die
-            LoggerFactory.getLogger(getClass())
-                    .error("❌ Pre-market execution failed for {}", name, e);
+        	logger.error("❌ Pre-market execution failed for {}", name, e);
         }
     }
     
     private boolean isActive(String strategy) {
-        return "Y".equalsIgnoreCase(
-                strategyRepo.findByName(strategy).getActive()
-        );
+        var config = strategyRepo.findByName(strategy);
+
+        return config != null
+                && "Y".equalsIgnoreCase(config.getActive());
     }
 }

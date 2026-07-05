@@ -74,4 +74,9 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     List<Orders> findByActive(int active);
     List<Orders> findByStatus(String status);
 
+ // Add this method:
+    List<Orders> findByStatusAndActive(String status, int active);
+    
+    // Also, if you need the one for specific names, add this too:
+    Orders findByNameAndStatusAndActive(String name, String status, int active);
 }

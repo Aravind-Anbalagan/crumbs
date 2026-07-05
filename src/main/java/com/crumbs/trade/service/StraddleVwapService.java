@@ -18,7 +18,7 @@ import org.json.JSONArray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
+import java.util.concurrent.ConcurrentHashMap;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.broker.Samco;
@@ -41,14 +41,12 @@ public class StraddleVwapService {
     private final AngelOne angelOne;
     private final Samco samco;
     private final SamcoSessionManager sessionManager;
-
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
     // ================= VWAP STATE =================
-    private final Map<String, BigDecimal> tpvMap = new HashMap<>();
-    private final Map<String, BigDecimal> volMap = new HashMap<>();
+    private final Map<String, BigDecimal> tpvMap = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> volMap = new ConcurrentHashMap<>();
+    private final Map<String, String> lastProcessedTimestamp = new ConcurrentHashMap<>();
     private LocalDate vwapDate = null;
-    
-    // Tracks the ISO String timestamp of the last processed 1-minute candle per token
-    private final Map<String, String> lastProcessedTimestamp = new HashMap<>();
 
     // =====================================================
     // VWAP RESET
@@ -103,7 +101,7 @@ public class StraddleVwapService {
     // =====================================================
     public void fetchVwapInParallel(List<StraddlePremiumDto> strikesWithPrices, SmartConnect smartConnect, String exchange) {
         // Create thread pool (limit to 5 concurrent requests to avoid rate limits)
-        ExecutorService executor = Executors.newFixedThreadPool(5);
+       
         List<Future<?>> futures = new ArrayList<>();
 
         for (StraddlePremiumDto dto : strikesWithPrices) {
@@ -150,15 +148,6 @@ public class StraddleVwapService {
             }
         }
 
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 
     // =====================================================

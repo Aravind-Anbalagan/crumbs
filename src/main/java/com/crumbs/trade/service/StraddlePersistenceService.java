@@ -25,7 +25,7 @@ import com.crumbs.trade.utility.ConditionalLogger;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-
+import java.util.ArrayList;
 @Service
 @RequiredArgsConstructor
 public class StraddlePersistenceService {
@@ -53,8 +53,10 @@ public class StraddlePersistenceService {
     }
 
     public int savePriceDetails(List<StraddlePremiumDto> strikeList, Strategy strategy, BigDecimal spotPrice, BigDecimal atmStrike) {
-        int count = 0;
-        LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
+    	int count = 0;
+    	LocalDateTime timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
+
+    	List<StraddleIntraday> entities = new ArrayList<>();
 
         for (StraddlePremiumDto dto : strikeList) {
             if (dto.getCeToken() == null && dto.getPeToken() == null) continue;
@@ -127,13 +129,29 @@ public class StraddlePersistenceService {
                 entity.setPeSymbol(dto.getPeToken().getSymbol());
             }
 
-            try {
-                straddleIntradayRepo.save(entity);
-                count++;
-                alertService.checkAndSendAlerts(entity);
-            } catch (Exception e) {
-                logger.error("Failed to save record for strike {}: {}", dto.getStrikePrice(), e.getMessage());
+            entities.add(entity);
+        }
+        try {
+            if (!entities.isEmpty()) {
+
+                straddleIntradayRepo.saveAll(entities);
+
+                count = entities.size();
+
+                for (StraddleIntraday entity : entities) {
+                    try {
+                        alertService.checkAndSendAlerts(entity);
+                    } catch (Exception e) {
+                        logger.error(
+                            "Alert failed for strike {}: {}",
+                            entity.getStrike(),
+                            e.getMessage()
+                        );
+                    }
+                }
             }
+        } catch (Exception e) {
+            logger.error("Batch save failed", e);
         }
         return count;
     }

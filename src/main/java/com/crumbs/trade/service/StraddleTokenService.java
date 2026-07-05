@@ -5,9 +5,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -15,9 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
-import com.crumbs.trade.broker.Samco;
 import com.crumbs.trade.dto.StraddlePremiumDto;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
@@ -26,10 +24,8 @@ import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.ConditionalLogger;
 import com.crumbs.trade.utility.ExpiryUtil;
-import com.crumbs.trade.utility.SamcoSessionManager;
-
 import lombok.RequiredArgsConstructor;
-
+import java.util.concurrent.ConcurrentHashMap;
 @Service
 @RequiredArgsConstructor
 public class StraddleTokenService {
@@ -41,10 +37,16 @@ public class StraddleTokenService {
     private final IndexesRepo indexesRepo;
     private final ChartService chartService;
     private final AngelOne angelOne;
+    private LocalDate optionCacheDate;
+	// State: Name -> Strike List Cache
 
-    // State: Name -> Strike List Cache
-    private final Map<String, List<StraddlePremiumDto>> strikeListCache = new HashMap<>();
-    private final Map<String, LocalDate> strikeInitDate = new HashMap<>();
+	private final Map<String, List<StraddlePremiumDto>> strikeListCache = new ConcurrentHashMap<>();
+
+	private final Map<String, LocalDate> strikeInitDate = new ConcurrentHashMap<>();
+
+	private final Map<String, Optional<Indexes>> optionTokenCache =
+	        new ConcurrentHashMap<>();
+
 
     public String getSymbolByName(String name) {
         if ("NIFTY".equalsIgnoreCase(name)) {
@@ -128,7 +130,8 @@ public class StraddleTokenService {
     }
 
     public List<StraddlePremiumDto> getAllTokenDetails(List<StraddlePremiumDto> strikeList, Strategy strategy) {
-        logger.info("Fetching tokens for strategy: {}, raw expiry: {}", strategy.getName(), strategy.getExpiry());
+    	resetOptionCacheIfNewDay();
+    	logger.info("Fetching tokens for strategy: {}, raw expiry: {}", strategy.getName(), strategy.getExpiry());
         String[] normalizedExpiries = ExpiryUtil.getNormalizedExpiries(strategy.getExpiry());
         String expiryShort = normalizedExpiries[0];
         String expiryLong = normalizedExpiries[1];
@@ -138,8 +141,9 @@ public class StraddleTokenService {
             String ceSuffix = strike + "CE"; 
             String peSuffix = strike + "PE"; 
 
-            indexesRepo.findOptionToken(strategy.getName(), ceSuffix, expiryShort, expiryLong)
-                .ifPresentOrElse(ceIndex -> {
+
+			getCachedOptionToken(strategy.getName(), ceSuffix, expiryShort,
+					expiryLong).ifPresentOrElse(ceIndex -> {
                     Token t = new Token();
                     t.setToken(ceIndex.getToken());
                     t.setSymbol(ceIndex.getSymbol());
@@ -149,17 +153,22 @@ public class StraddleTokenService {
                     logger.info("Found CE token for suffix {}: {} ({})", ceSuffix, t.getToken(), ceIndex.getSymbol());
                 }, () -> logger.info("CE token NOT found for name: {}, suffix: {}, expiries: [{}, {}]", strategy.getName(), ceSuffix, expiryShort, expiryLong));
 
-            indexesRepo.findOptionToken(strategy.getName(), peSuffix, expiryShort, expiryLong)
-                .ifPresentOrElse(peIndex -> {
-                    Token t = new Token();
-                    t.setToken(peIndex.getToken());
-                    t.setSymbol(peIndex.getSymbol());
-                    t.setExch_seg(peIndex.getExchange());
-                    t.setQuantity(peIndex.getLotsize());
-                    dto.setPeToken(t);
-                    logger.info("Found PE token for suffix {}: {} ({})", peSuffix, t.getToken(), peIndex.getSymbol());
-                }, () -> logger.info("PE token NOT found for name: {}, suffix: {}, expiries: [{}, {}]", strategy.getName(), peSuffix, expiryShort, expiryLong));
-        }
+
+			getCachedOptionToken(strategy.getName(), peSuffix, expiryShort,
+					expiryLong).ifPresentOrElse(peIndex -> {
+						Token t = new Token();
+						t.setToken(peIndex.getToken());
+						t.setSymbol(peIndex.getSymbol());
+						t.setExch_seg(peIndex.getExchange());
+						t.setQuantity(peIndex.getLotsize());
+						dto.setPeToken(t);
+						logger.info("Found PE token for suffix {}: {} ({})",
+								peSuffix, t.getToken(), peIndex.getSymbol());
+					}, () -> logger.info(
+							"PE token NOT found for name: {}, suffix: {}, expiries: [{}, {}]",
+							strategy.getName(), peSuffix, expiryShort,
+							expiryLong));
+		}
         return strikeList;
     }
 
@@ -191,5 +200,44 @@ public class StraddleTokenService {
         StraddlePremiumDto dto = new StraddlePremiumDto();
         dto.setStrikePrice(atmStrike);
         return Collections.singletonList(dto);
+    }
+    private Optional<Indexes> getCachedOptionToken(
+            String name,
+            String strikeSuffix,
+            String expiryShort,
+            String expiryLong) {
+
+        String key =
+                name + "|" +
+                strikeSuffix + "|" +
+                expiryShort + "|" +
+                expiryLong;
+
+        return optionTokenCache.computeIfAbsent(
+                key,
+                k -> indexesRepo.findOptionToken(
+                        name,
+                        strikeSuffix,
+                        expiryShort,
+                        expiryLong
+                )
+        );
+    }
+    private void resetOptionCacheIfNewDay() {
+
+        LocalDate today =
+                LocalDate.now(ZoneId.of("Asia/Kolkata"));
+
+        if (optionCacheDate == null
+                || !optionCacheDate.equals(today)) {
+
+            optionTokenCache.clear();
+            optionCacheDate = today;
+
+            logger.info(
+                    "Option token cache reset for {}",
+                    today
+            );
+        }
     }
 }

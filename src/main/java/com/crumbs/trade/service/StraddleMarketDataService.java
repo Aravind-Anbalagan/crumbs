@@ -36,7 +36,7 @@ public class StraddleMarketDataService {
 
     // Rate Limiting State
     private static final long CANDLE_API_DELAY_MS = 1000;
-    private long lastCandleApiCall = 0;
+    private volatile long lastCandleApiCall = 0;
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final long INITIAL_RETRY_DELAY_MS = 2000;
 
@@ -70,14 +70,16 @@ public class StraddleMarketDataService {
                 logger.error("No data fetched from market API");
                 return strikeList;
             }
+            int size = fetched.length();
+            logger.info("Received {} price records from API", size);
 
-            logger.info("Received {} price records from API", fetched.length());
-            Map<String, BigDecimal> ltpMap = new HashMap<>();
-            Map<String, BigDecimal> openMap = new HashMap<>();
-            Map<String, BigDecimal> oIMap = new HashMap<>();
-            Map<String, BigDecimal> volumeMap = new HashMap<>();
-            Map<String, BigDecimal> highMap = new HashMap<>();
-            Map<String, BigDecimal> lowMap = new HashMap<>();
+			Map<String, BigDecimal> ltpMap = new HashMap<>(size);
+			Map<String, BigDecimal> openMap = new HashMap<>(size);
+			Map<String, BigDecimal> oIMap = new HashMap<>(size);
+			Map<String, BigDecimal> volumeMap = new HashMap<>(size);
+			Map<String, BigDecimal> highMap = new HashMap<>(size);
+			Map<String, BigDecimal> lowMap = new HashMap<>(size);
+
 
             for (int i = 0; i < fetched.length(); i++) {
                 JSONObject item = fetched.getJSONObject(i);

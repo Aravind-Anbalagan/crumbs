@@ -23,11 +23,12 @@ public class HeikinPsarScheduler {
     // Execution Tags (for logging)
     private static final String TAG_NIFTY_EXEC = "NIFTY-EXEC";
     private static final String TAG_CRUDE_EXEC = "CRUDEOIL-EXEC";
+    private static final String TAG_SCALP_MONITOR = "SCALP-MONITOR";
 
     @Autowired
     private HeikinPsarExecutionService executionService;
 
-    // ------------------- NIFTY -------------------
+    // ------------------- NIFTY (5-Min Candle Generation & Entry) -------------------
 
     @Schedules({
         @Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = ZONE),
@@ -38,7 +39,7 @@ public class HeikinPsarScheduler {
         runSafely(TAG_NIFTY_EXEC, () -> executionService.commonExecutionNifty());
     }
 
-    // ------------------- CRUDEOILM (MCX) -------------------
+    // ------------------- CRUDEOILM (5-Min Candle Generation & Entry) -------------------
 
     @Schedules({
         @Scheduled(cron = "5 */5 16-22 * * MON-FRI", zone = ZONE),
@@ -46,6 +47,13 @@ public class HeikinPsarScheduler {
     })
     public void runCrudeOilM() {
         runSafely(TAG_CRUDE_EXEC, () -> executionService.commonExecutionMcx());
+    }
+
+    // ------------------- 🔥 POINT 1 FIX: FAST-LOOP SCALPING MONITOR -------------------
+    // Runs every 10 seconds to lock in profits or cut losses instantly
+    @Scheduled(fixedDelay = 10000, zone = ZONE)
+    public void monitorScalpPositions() {
+        runSafely(TAG_SCALP_MONITOR, () -> executionService.monitorActiveScalpTrades());
     }
 
     // ------------------- HEARTBEAT -------------------
@@ -67,4 +75,10 @@ public class HeikinPsarScheduler {
             logger.error("❌ {} failed", name, e);
         }
     }
+    
+    @Scheduled(fixedDelay = 1000, zone = ZONE)
+    public void monitorRetracements() {
+        runSafely("RETRACEMENT-MONITOR", () -> executionService.monitorPendingRetracements());
+    }
+
 }

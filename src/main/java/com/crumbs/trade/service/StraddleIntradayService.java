@@ -15,7 +15,6 @@ import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.broker.Samco;
 import com.crumbs.trade.dto.CombinedChartResponse;
 import com.crumbs.trade.dto.StraddlePremiumDto;
-import com.crumbs.trade.entity.StraddleIntraday;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.ConditionalLogger;
@@ -54,12 +53,9 @@ public class StraddleIntradayService {
             }
 
             String session = sessionManager.getSession();
-            BigDecimal spotPrice = null;
-            if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
-                spotPrice = samco.getIndexPrice(session, name);
-            } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
-                spotPrice = samco.getLtp(session, strategy.getExchange(), tokenService.getSymbolByName(name));
-            }
+
+			BigDecimal spotPrice = getSpotPrice(name, strategy, session);
+
 
             if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) {
                 logger.error("Invalid spot price for {}: {}", name, spotPrice);
@@ -72,8 +68,12 @@ public class StraddleIntradayService {
             List<StraddlePremiumDto> strikeList = tokenService.getOrBuildStrikeList(name, atmStrike);
             strikeList = tokenService.getAllTokenDetails(strikeList, strategy);
 
-            long validTokenCount = strikeList.stream().filter(dto -> dto.getCeToken() != null || dto.getPeToken() != null).count();
-            if (validTokenCount == 0) return;
+			boolean hasValidTokens = strikeList.stream()
+					.anyMatch(dto -> dto.getCeToken() != null
+							|| dto.getPeToken() != null);
+
+			if (!hasValidTokens)
+				return;
 
             // OHLC Handling
             persistenceService.resetPrevDayDataIfNewDay();
@@ -86,12 +86,18 @@ public class StraddleIntradayService {
 
             // Current Prices
             strikeList = marketDataService.getPriceForAllTheStrikesBatch(strikeList, smartconnect, strategy.getExchange());
-            long validPriceCount = strikeList.stream().filter(dto -> (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) || (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)).count();
+            long validPriceCount = strikeList.stream()
+                    .filter(this::hasValidPrice)
+                    .count();
+
             if (validPriceCount == 0) return;
 
             // VWAP
-            vwapService.resetVwapIfNewDay();
-            List<StraddlePremiumDto> strikesWithPrices = strikeList.stream().filter(dto -> (dto.getCePrice() != null && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0) || (dto.getPePrice() != null && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0)).collect(Collectors.toList());
+			vwapService.resetVwapIfNewDay();
+
+			List<StraddlePremiumDto> strikesWithPrices = strikeList.stream()
+					.filter(this::hasValidPrice).collect(Collectors.toList());
+
             vwapService.fetchVwapInParallel(strikesWithPrices, smartconnect, strategy.getExchange());
 
             // Save
@@ -150,5 +156,35 @@ public class StraddleIntradayService {
 
     public CombinedChartResponse getStraddleCombinedChart(String name, String expiry, BigDecimal ceStrike, BigDecimal peStrike) {
         return persistenceService.getStraddleCombinedChart(name, expiry, ceStrike, peStrike);
+    }
+    
+    private BigDecimal getSpotPrice(
+            String name,
+            Strategy strategy,
+            String session) {
+
+        if ("NIFTY".equalsIgnoreCase(name)
+                || "SENSEX".equalsIgnoreCase(name)) {
+            return samco.getIndexPrice(session, name);
+        }
+
+        if ("CRUDEOIL".equalsIgnoreCase(name)
+                || "CRUDEOILM".equalsIgnoreCase(name)
+                || "NATURALGAS".equalsIgnoreCase(name)) {
+
+            return samco.getLtp(
+                    session,
+                    strategy.getExchange(),
+                    tokenService.getSymbolByName(name)
+            );
+        }
+
+        return null;
+    }
+    private boolean hasValidPrice(StraddlePremiumDto dto) {
+        return (dto.getCePrice() != null
+                && dto.getCePrice().compareTo(BigDecimal.ZERO) > 0)
+            || (dto.getPePrice() != null
+                && dto.getPePrice().compareTo(BigDecimal.ZERO) > 0);
     }
 }
