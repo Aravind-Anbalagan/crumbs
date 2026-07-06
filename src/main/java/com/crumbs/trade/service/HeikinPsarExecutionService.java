@@ -87,32 +87,54 @@ public class HeikinPsarExecutionService {
     // =========================================================
     private final Map<String, Orders> pendingRetracementsCache = new ConcurrentHashMap<>();
     private final Map<String, Orders> activeScalpCache = new ConcurrentHashMap<>();
+    private static final long SUBSCRIPTION_RETRY_MS = 30000L;
 
+    private final Map<String, Strategy> strategyCache =
+            new ConcurrentHashMap<>();
+
+    private final Map<String, Long> subscriptionCooldownCache =
+            new ConcurrentHashMap<>();
     /**
      * Runs ONCE on application startup/restart. 
      * Restores active positions from the database into memory so state is never lost.
      */
-    @PostConstruct
+    //@PostConstruct
     public void restoreStateOnStartup() {
+
         try {
-            logger.info("🔄 [STARTUP] Restoring active orders from DB into memory cache...");
-            
-            // 1. Restore pending retracements
-            List<Orders> pending = ordersRepository.findByStatusAndActive("PENDING_RETRACEMENT", STATUS_ACTIVE);
+
+            List<Orders> pending =
+                    ordersRepository.findByStatusAndActive(
+                            "PENDING_RETRACEMENT",
+                            STATUS_ACTIVE);
+
             for (Orders order : pending) {
-                pendingRetracementsCache.put(order.getName(), order);
+                pendingRetracementsCache.put(
+                        order.getName(),
+                        order);
             }
 
-            // 2. Restore active open trades
-            List<Orders> openTrades = ordersRepository.findByStatusAndActive(STATUS_OPEN, STATUS_ACTIVE);
+            List<Orders> openTrades =
+                    ordersRepository.findByStatusAndActive(
+                            STATUS_OPEN,
+                            STATUS_ACTIVE);
+
             for (Orders order : openTrades) {
-                activeScalpCache.put(order.getName(), order);
+                activeScalpCache.put(
+                        order.getName(),
+                        order);
             }
 
-            logger.info("✅ [STARTUP] Restored {} pending retracements & {} active scalp trades into cache.", 
-                        pending.size(), openTrades.size());
+            logger.info(
+                    "✅ Restored Pending={} Active={}",
+                    pending.size(),
+                    openTrades.size());
+
         } catch (Exception e) {
-            logger.error("❌ [STARTUP] Failed to restore state from DB: {}", e.getMessage(), e);
+
+            logger.error(
+                    "Failed restoring cache",
+                    e);
         }
     }
 
@@ -133,7 +155,7 @@ public class HeikinPsarExecutionService {
     }
 
     private void executeNiftyInternal() throws Exception, SmartAPIException {
-        Strategy strategy = strategyRepo.findByName(NIFTY);
+        Strategy strategy = getStrategyCached(NIFTY);
         if (!isStrategyActive(strategy)) return;
 
         String to = chartService.getDate("TO", EXCHANGE_NSE, 1);
@@ -153,7 +175,7 @@ public class HeikinPsarExecutionService {
     }
 
     private void executeMcxInternal() throws Exception, SmartAPIException {
-        Strategy strategy = strategyRepo.findByName(SAMCO_CRUDEOIL);
+        Strategy strategy = getStrategyCached(SAMCO_CRUDEOIL);
         if (!isStrategyActive(strategy)) return;
 
         String to = chartService.getDate("TO", EXCHANGE_MCX, 1);
@@ -166,7 +188,7 @@ public class HeikinPsarExecutionService {
             from = chartService.getDate("FROM", EXCHANGE_MCX, 1);
         }
         
-        chartService.readChartData(TF_FIVE_MIN, strategy.getExchange(), false, CRUDEOIL, from, to, strategyRepo.findByName(CRUDEOIL).getTradingsymbol(), "SAMCO");
+        chartService.readChartData(TF_FIVE_MIN, strategy.getExchange(), false, CRUDEOIL, from, to, getStrategyCached(CRUDEOIL).getTradingsymbol(), "SAMCO");
         vixRepo.findFirstByNameOrderByTimestampDesc(CRUDEOIL).ifPresent(candle -> evaluateAndExecuteTrade(candle, strategy));
     }
 
@@ -307,8 +329,19 @@ public class HeikinPsarExecutionService {
                             tradeName, order.getTargetSpotPrice(), liveSpotPrice);
                 
                 // 2. Execute trade
-                Strategy strategyConfig = strategyRepo.findByName(getBaseSymbol(tradeName));
-                executeInstantAtmOrder(strategyConfig, order.getType(), tradeName);
+                String baseSymbol = getBaseSymbol(tradeName);
+
+				Strategy strategyConfig = "NIFTY".equalsIgnoreCase(baseSymbol)
+						? getStrategyCached(NIFTY)
+						: getStrategyCached(SAMCO_CRUDEOIL);
+
+				if (strategyConfig == null) {
+					logger.error("Strategy not found for {}", tradeName);
+					continue;
+				}
+
+				executeInstantAtmOrder(strategyConfig, order.getType(),
+						tradeName);
                 
                 // 3. Update DB state
                 order.setStatus("PROCESSED_TO_OPEN");
@@ -328,12 +361,12 @@ public class HeikinPsarExecutionService {
 
         Orders openNifty = activeScalpCache.get("HEIKIN_NIFTY");
         if (openNifty != null && STATUS_OPEN.equalsIgnoreCase(openNifty.getStatus())) {
-            evaluateScalpExit(openNifty, strategyRepo.findByName(NIFTY));
+            evaluateScalpExit(openNifty, getStrategyCached(NIFTY));
         }
 
         Orders openCrude = activeScalpCache.get("HEIKIN_CRUDEOIL");
         if (openCrude != null && STATUS_OPEN.equalsIgnoreCase(openCrude.getStatus())) {
-            evaluateScalpExit(openCrude, strategyRepo.findByName(SAMCO_CRUDEOIL));
+            evaluateScalpExit(openCrude, getStrategyCached(SAMCO_CRUDEOIL));
         }
     }
 
@@ -390,6 +423,14 @@ public class HeikinPsarExecutionService {
 
     private void executeInstantAtmOrder(Strategy strategyConfig, String signal, String tradeName) {
         BigDecimal liveSpotPrice = chartService.getCurrentPrice(strategyConfig.getName());
+        if (liveSpotPrice == null) {
+
+            logger.warn(
+                    "Live spot price unavailable for {}",
+                    strategyConfig.getName());
+
+            return;
+        }
         String baseSymbol = getBaseSymbol(strategyConfig.getName());
         BigDecimal atmStrike = calculateAtmStrike(baseSymbol, liveSpotPrice);
         
@@ -564,8 +605,32 @@ public class HeikinPsarExecutionService {
 
         // If price is missing/zero, trigger live subscription on the fly and fallback to DB price temporarily
         if (livePrice == null || livePrice.compareTo(BigDecimal.ZERO) == 0) {
-            logger.info("📡 [WS-AUTO] Live data missing for {}_{}. Sending dynamic subscription request...", exchangeType.name(), optionToken);
-            angelWebSocketService.subscribe(exchangeType, optionToken);
+
+            String subscriptionKey =
+                    exchangeType.name() + "_" + optionToken;
+
+            long now = System.currentTimeMillis();
+
+            long lastSubscription =
+                    subscriptionCooldownCache.getOrDefault(
+                            subscriptionKey,
+                            0L);
+
+            if ((now - lastSubscription) > SUBSCRIPTION_RETRY_MS) {
+
+                subscriptionCooldownCache.put(
+                        subscriptionKey,
+                        now);
+
+                logger.info(
+                        "📡 [WS-AUTO] Missing LTP. Subscribing {}",
+                        subscriptionKey);
+
+                angelWebSocketService.subscribe(
+                        exchangeType,
+                        optionToken);
+            }
+
             return dbFallbackPrice;
         }
 
@@ -594,4 +659,12 @@ public class HeikinPsarExecutionService {
 
     private void logApiError(String tag, SmartAPIException e) { logger.error("🚨 SmartAPI error [{}]", tag, e); }
     private void logGeneralError(String tag, Exception e) { logger.error("❌ Execution error [{}]", tag, e); }
+    
+    private Strategy getStrategyCached(String name) {
+        return strategyCache.computeIfAbsent(
+                name,
+                strategyRepo::findByName
+        );
+    }
+    
 }

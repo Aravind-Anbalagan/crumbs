@@ -24,7 +24,7 @@ public class HeikinPsarScheduler {
     private static final String TAG_NIFTY_EXEC = "NIFTY-EXEC";
     private static final String TAG_CRUDE_EXEC = "CRUDEOIL-EXEC";
     private static final String TAG_SCALP_MONITOR = "SCALP-MONITOR";
-
+    private volatile boolean stateRestored = false;
     @Autowired
     private HeikinPsarExecutionService executionService;
 
@@ -80,5 +80,18 @@ public class HeikinPsarScheduler {
     public void monitorRetracements() {
         runSafely("RETRACEMENT-MONITOR", () -> executionService.monitorPendingRetracements());
     }
+
+
+@Scheduled(initialDelay = 30000, fixedDelay = 60000)
+public void restoreState() {
+
+    if (stateRestored) {
+        return;
+    }
+
+    executionService.restoreStateOnStartup();
+
+    stateRestored = true;
+}
 
 }

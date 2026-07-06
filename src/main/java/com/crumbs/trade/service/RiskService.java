@@ -8,7 +8,6 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -17,8 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,202 +76,225 @@ public class RiskService {
     private final Map<String, BigDecimal> highWaterMarks = new ConcurrentHashMap<>();
     private final Map<String, BigDecimal> activeTrailingFloors = new ConcurrentHashMap<>();
     
-    // Decoupled global broker cache
-    private final Map<String, BigDecimal> globalLiveBrokerPnL = new ConcurrentHashMap<>();
+
 
     public Map<Long, BigDecimal> getLivePnLForUI() {
         return liveUiCachePnL;
     }
 
-    /**
-     * BACKGROUND DATA THREAD: Polls positions every 3 seconds to avoid 429 Rate Limits.
-     */
-    @Scheduled(fixedDelay = 3000)
-    public void pollBrokerPositions() {
-        // 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
-        if (!isMarketHours()) return;
-
-        int maxRetries = 3;
-        int attempt = 0;
-        long backoffDelay = 1000;
-
-        while (attempt < maxRetries) {
-            try {
-                
-                JSONObject rawPositionResponse = angelOneService.getRawPositions();
-                
-                if (rawPositionResponse != null && rawPositionResponse.optBoolean("status", false)) {
-                    JSONArray positions = rawPositionResponse.optJSONArray("data");
-                    if (positions != null) {
-                        Map<String, BigDecimal> freshPnL = new HashMap<>();
-                        for (int i = 0; i < positions.length(); i++) {
-                            JSONObject pos = positions.getJSONObject(i);
-                            String pnlString = pos.optString("pnl", "0.00");
-                            freshPnL.put(pos.optString("symboltoken", ""), new BigDecimal(pnlString));
-                        }
-                        globalLiveBrokerPnL.clear();
-                        globalLiveBrokerPnL.putAll(freshPnL);
-                        return; 
-                    }
-                } else {
-                    throw new RuntimeException("API returned empty data.");
-                }
-            } catch (Exception e) {
-                attempt++;
-                if (attempt >= maxRetries) {
-                    logger.error("🚨 [SYSTEM] Broker API Unresponsive. Falling back to internal caches.");
-                    break;
-                }
-                try {
-                    Thread.sleep(backoffDelay);
-                    backoffDelay *= 2; 
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        }
-    }
+    
 
     /**
      * RISK EVALUATOR: Runs every 1 second, reading from memory caches.
      */
     @Scheduled(fixedDelay = 1000)
-    public void processSystemRiskMatrix() {
-        // 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
-        if (!isMarketHours()) return;
+	public void processSystemRiskMatrix() {
+		// 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
+		if (!isMarketHours())
+			return;
 
-        LocalDateTime now = LocalDateTime.now(MARKET_ZONE);
-        int currentHour = now.getHour();
-        int currentMinute = now.getMinute();
+		LocalDateTime now = LocalDateTime.now(MARKET_ZONE);
+		int currentHour = now.getHour();
+		int currentMinute = now.getMinute();
 
-        // ONLY pulls legs where active = 1 (Ignores morning trades that are already closed)
-        List<Orders> rawOpenOrders = orderRepository.findByActive(1);
-        if (rawOpenOrders == null || rawOpenOrders.isEmpty()) {
-            clearAllMemoryCaches();
-            return;
-        }
+		// ONLY pulls legs where active = 1 (Ignores morning trades that are
+		// already closed)
+		List<Orders> rawOpenOrders = orderRepository.findByActive(1);
+		if (rawOpenOrders == null || rawOpenOrders.isEmpty()) {
+			clearAllMemoryCaches();
+			return;
+		}
 
-        // Heartbeat log
-        if (now.getSecond() == 0) {
-            logger.info("⚙️ [SYSTEM] Risk Engine Active | Monitoring {} live DB rows | UI Cache Size: {}", rawOpenOrders.size(), liveUiCachePnL.size());
-        }
+		// Heartbeat log
+		if (now.getSecond() == 0) {
+			logger.info(
+					"⚙️ [SYSTEM] Risk Engine Active | Monitoring {} live DB rows | UI Cache Size: {}",
+					rawOpenOrders.size(), liveUiCachePnL.size());
+		}
 
-        List<Orders> openOrders = rawOpenOrders.stream().filter(order -> {
-            String exch = order.getExchange() != null ? order.getExchange().toUpperCase() : "";
-            if ((EXCHANGE_NFO.equals(exch) || EXCHANGE_BSE.equals(exch) || EXCHANGE_NSE.equals(exch)) 
-                    && (currentHour >= 16 || (currentHour == 15 && currentMinute > 30))) {
-                return false; 
-            }
-            if (EXCHANGE_MCX.equals(exch) && currentHour < 9) {
-                return false; 
-            }
-            return true;
-        }).collect(Collectors.toList());
+		List<Orders> openOrders = rawOpenOrders.stream().filter(order -> {
+			String exch = order.getExchange() != null
+					? order.getExchange().toUpperCase()
+					: "";
+			if ((EXCHANGE_NFO.equals(exch) || EXCHANGE_BSE.equals(exch)
+					|| EXCHANGE_NSE.equals(exch))
+					&& (currentHour >= 16
+							|| (currentHour == 15 && currentMinute > 30))) {
+				return false;
+			}
+			if (EXCHANGE_MCX.equals(exch) && currentHour < 9) {
+				return false;
+			}
+			return true;
+		}).collect(Collectors.toList());
 
-        if (openOrders.isEmpty()) {
-            if (now.getSecond() == 0) {
-                logger.info("💤 [SYSTEM] Market Idle | {} rows found, but 0 are active in this trading session.", rawOpenOrders.size());
-            }
-            return; 
-        }
+		if (openOrders.isEmpty()) {
+			if (now.getSecond() == 0) {
+				logger.info(
+						"💤 [SYSTEM] Market Idle | {} rows found, but 0 are active in this trading session.",
+						rawOpenOrders.size());
+			}
+			return;
+		}
 
-        Set<String> strategyIdentifiers = openOrders.stream()
-                .map(Orders::getName)
-                .filter(Objects::nonNull)
-                .filter(name -> !name.isEmpty())
-                .collect(Collectors.toSet());
+		Set<String> strategyIdentifiers = openOrders.stream()
+				.map(Orders::getName).filter(Objects::nonNull)
+				.filter(name -> !name.isEmpty()).collect(Collectors.toSet());
 
-        Map<String, RiskConfiguration> configMap = new ConcurrentHashMap<>();
-        if (!strategyIdentifiers.isEmpty()) {
-            List<RiskConfiguration> configs = riskConfigRepository.findAllById(strategyIdentifiers);
-            configMap = configs.stream()
-                    .collect(Collectors.toMap(RiskConfiguration::getStrategyName, Function.identity())); 
-        }
+		Map<String, RiskConfiguration> configMap = new ConcurrentHashMap<>();
+		if (!strategyIdentifiers.isEmpty()) {
+			List<RiskConfiguration> configs = riskConfigRepository
+					.findAllById(strategyIdentifiers);
+			configMap = configs.stream().collect(Collectors.toMap(
+					RiskConfiguration::getStrategyName, Function.identity()));
+		}
 
-        Map<String, BigDecimal> brokerPnLMap = new ConcurrentHashMap<>(globalLiveBrokerPnL);
+		// GROUPING: Combine all active legs under their unique Strategy Name
+		Function<Orders, String> strategyNameClassifier = order -> (order
+				.getName() != null && !order.getName().trim().isEmpty())
+						? order.getName().trim()
+						: "ORPHAN_" + order.getId();
 
-        // GROUPING: Combine all active legs under their unique Strategy Name
-        Function<Orders, String> strategyNameClassifier = order -> 
-                (order.getName() != null && !order.getName().trim().isEmpty()) 
-                    ? order.getName().trim() 
-                    : "ORPHAN_" + order.getId();
+		Map<String, List<Orders>> strategyGroups = openOrders.stream()
+				.collect(Collectors.groupingBy(strategyNameClassifier));
 
-        Map<String, List<Orders>> strategyGroups = openOrders.stream()
-                .collect(Collectors.groupingBy(strategyNameClassifier));
+		// Purge dead memory
+		Set<Long> activeOrderIds = openOrders.stream().map(Orders::getId)
+				.collect(Collectors.toSet());
+		liveUiCachePnL.keySet().retainAll(activeOrderIds);
+		highWaterMarks.keySet().retainAll(strategyGroups.keySet());
+		activeTrailingFloors.keySet().retainAll(strategyGroups.keySet());
 
-        // Purge dead memory
-        Set<Long> activeOrderIds = openOrders.stream().map(Orders::getId).collect(Collectors.toSet());
-        liveUiCachePnL.keySet().retainAll(activeOrderIds);
-        highWaterMarks.keySet().retainAll(strategyGroups.keySet());
-        activeTrailingFloors.keySet().retainAll(strategyGroups.keySet());
+		SmartConnect connection = null;
+		try {
+			connection = angelOne.signIn();
+		} catch (Exception e) {
+			logger.error("❌ [SYSTEM] Broker Auth Failed: {}", e.getMessage());
+			return; // Needs connection for live execution safety
+		}
 
-        SmartConnect connection = null;
-        try {
-            connection = angelOne.signIn(); 
-        } catch (Exception e) {
-            logger.error("❌ [SYSTEM] Broker Auth Failed: {}", e.getMessage());
-            return; // Needs connection for live execution safety
-        }
+		// EVALUATE GROUPS (1 leg, 2 legs, 4 legs)
+		for (Map.Entry<String, List<Orders>> entry : strategyGroups
+				.entrySet()) {
+			String strategyKey = entry.getKey(); // Example:
+													// "SHORT_STRADDLE_NIFTY"
+			List<Orders> groupLegs = entry.getValue();
 
-        // EVALUATE GROUPS (1 leg, 2 legs, 4 legs)
-        for (Map.Entry<String, List<Orders>> entry : strategyGroups.entrySet()) {
-            String strategyKey = entry.getKey(); // Example: "SHORT_STRADDLE_NIFTY"
-            List<Orders> groupLegs = entry.getValue();
-            
-            RiskConfiguration config = configMap.get(strategyKey);
-            BigDecimal combinedGroupPnL = BigDecimal.ZERO;
-            boolean skipGroupEvaluation = false;
-            List<BigDecimal> calculatedLegPnLs = new ArrayList<>();
+			RiskConfiguration config = configMap.get(strategyKey);
+			BigDecimal combinedGroupPnL = BigDecimal.ZERO;
+			List<BigDecimal> calculatedLegPnLs = new ArrayList<>();
 
-            for (Orders leg : groupLegs) {
-                boolean isLiveTrade = leg.getOrderid() != null && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
-                BigDecimal legPnL = BigDecimal.ZERO;
+			for (Orders leg : groupLegs) {
+				try {
+					boolean isLiveTrade = leg.getOrderid() != null
+							&& !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
+					BigDecimal legPnL = BigDecimal.ZERO;
 
-                if (isLiveTrade) {
-                    if (brokerPnLMap.isEmpty()) {
-                        skipGroupEvaluation = true; 
-                        break;
-                    }
-                    legPnL = brokerPnLMap.getOrDefault(leg.getToken(), BigDecimal.ZERO);
-                } else {
-                    try {
-                        BigDecimal currentLtp = BigDecimal.ZERO;
-                        com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(leg.getExchange());
-                        
-                        if (exchangeType != null) {
-                            webSocketService.subscribe(exchangeType, leg.getToken());
-                            currentLtp = webSocketService.getLatestLTP(exchangeType, leg.getToken());
-                        }
-                        
-                        if (currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
-                            if (connection != null) {
-                                currentLtp = angelOneService.getcurrentPrice(connection, leg.getExchange(), leg.getSymbol(), leg.getToken());
-                            }
-                        }
+					if (isLiveTrade) {
 
-                        if (currentLtp != null && currentLtp.compareTo(BigDecimal.ZERO) > 0 && leg.getAskPrice() != null) {
-                            BigDecimal pointsDiff = SIDE_BUY.equalsIgnoreCase(leg.getType())
-                                ? currentLtp.subtract(leg.getAskPrice())
-                                : leg.getAskPrice().subtract(currentLtp);
-                            legPnL = pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
-                        }
-                    } catch (Exception e) {
-                        logger.error("❌ [SYSTEM] Math Error on Paper Leg {}: {}", leg.getId(), e.getMessage());
-                    }
-                }
-                
-                combinedGroupPnL = combinedGroupPnL.add(legPnL);
-                calculatedLegPnLs.add(legPnL);
-                liveUiCachePnL.put(leg.getId(), legPnL);
-            }
+						BigDecimal currentLtp = BigDecimal.ZERO;
 
-            if (!skipGroupEvaluation) {
-                self.syncActiveLegPnLsToDb(groupLegs, calculatedLegPnLs);
-                evaluateGroupRisk(groupLegs, strategyKey, combinedGroupPnL, connection, config);
-            }
-        }
-    }
+						com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(
+								leg.getExchange());
+
+						if (exchangeType != null) {
+							webSocketService.subscribe(exchangeType,
+									leg.getToken());
+
+							currentLtp = webSocketService
+									.getLatestLTP(exchangeType, leg.getToken());
+						}
+
+						if (currentLtp == null
+								|| currentLtp.compareTo(BigDecimal.ZERO) == 0) {
+
+							currentLtp = angelOneService.getcurrentPrice(
+									connection, leg.getExchange(),
+									leg.getSymbol(), leg.getToken());
+						}
+
+						if (currentLtp != null
+								&& currentLtp.compareTo(BigDecimal.ZERO) > 0
+								&& leg.getAskPrice() != null) {
+
+							BigDecimal pointsDiff;
+
+							if ("BUY".equalsIgnoreCase(leg.getType())) {
+								pointsDiff = currentLtp
+										.subtract(leg.getAskPrice());
+							} else {
+								pointsDiff = leg.getAskPrice()
+										.subtract(currentLtp);
+							}
+
+							legPnL = pointsDiff.multiply(
+									BigDecimal.valueOf(leg.getQuantity()));
+						}
+					} else {
+						try {
+							BigDecimal currentLtp = BigDecimal.ZERO;
+							com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(
+									leg.getExchange());
+
+							if (exchangeType != null) {
+								webSocketService.subscribe(exchangeType,
+										leg.getToken());
+								currentLtp = webSocketService.getLatestLTP(
+										exchangeType, leg.getToken());
+							}
+
+							if (currentLtp == null || currentLtp
+									.compareTo(BigDecimal.ZERO) == 0) {
+								if (connection != null) {
+									currentLtp = angelOneService
+											.getcurrentPrice(connection,
+													leg.getExchange(),
+													leg.getSymbol(),
+													leg.getToken());
+								}
+							}
+
+							if (currentLtp != null
+									&& currentLtp.compareTo(BigDecimal.ZERO) > 0
+									&& leg.getAskPrice() != null) {
+								BigDecimal pointsDiff = SIDE_BUY
+										.equalsIgnoreCase(leg.getType())
+												? currentLtp.subtract(
+														leg.getAskPrice())
+												: leg.getAskPrice()
+														.subtract(currentLtp);
+								legPnL = pointsDiff.multiply(
+										BigDecimal.valueOf(leg.getQuantity()));
+							}
+						} catch (Exception e) {
+							logger.error(
+									"❌ [SYSTEM] Math Error on Paper Leg {}: {}",
+									leg.getId(), e.getMessage());
+						}
+					}
+
+					combinedGroupPnL = combinedGroupPnL.add(legPnL);
+					calculatedLegPnLs.add(legPnL);
+					liveUiCachePnL.put(leg.getId(), legPnL);
+				}
+
+				catch (Exception e) {
+					logger.error("Failed PnL calculation for {}",
+							leg.getSymbol(), e);
+
+					calculatedLegPnLs.add(BigDecimal.ZERO);
+					liveUiCachePnL.put(leg.getId(), BigDecimal.ZERO);
+					continue;
+
+				}
+
+			}
+
+			self.syncActiveLegPnLsToDb(groupLegs, calculatedLegPnLs);
+			evaluateGroupRisk(groupLegs, strategyKey, combinedGroupPnL,
+					connection, config);
+		}
+	}
 
     @Transactional
     public void syncActiveLegPnLsToDb(List<Orders> groupLegs, List<BigDecimal> legPnLs) {
@@ -335,7 +355,10 @@ public class RiskService {
             return; 
         }
 
-        BigDecimal peakPnL = highWaterMarks.getOrDefault(strategyKey, currentCombinedPnL);
+        BigDecimal peakPnL = highWaterMarks.computeIfAbsent(
+                strategyKey,
+                k -> currentCombinedPnL);
+
         if (currentCombinedPnL.compareTo(peakPnL) > 0) {
             peakPnL = currentCombinedPnL;
             highWaterMarks.put(strategyKey, peakPnL);
@@ -488,7 +511,7 @@ public class RiskService {
             liveUiCachePnL.clear();
             highWaterMarks.clear();
             activeTrailingFloors.clear();
-            globalLiveBrokerPnL.clear();
+
             logger.info("🧹 [SYSTEM] Engine Flushed | Zero active trades remaining.");
         }
     }
