@@ -100,7 +100,7 @@ public class RiskService {
 
         while (attempt < maxRetries) {
             try {
-                SmartConnect connection = angelOne.signIn();
+                
                 JSONObject rawPositionResponse = angelOneService.getRawPositions();
                 
                 if (rawPositionResponse != null && rawPositionResponse.optBoolean("status", false)) {
