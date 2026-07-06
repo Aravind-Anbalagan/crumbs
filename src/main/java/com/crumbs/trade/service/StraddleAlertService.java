@@ -2,10 +2,9 @@ package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +31,9 @@ public class StraddleAlertService {
     private final StrategyRepo strategyRepo;
     private final TelegramService telegramService;
 
-    // Alert Deduplication State
-    private final Map<String, LocalDateTime> sentAlertKeys = new HashMap<>();
-    private static final int ALERT_COOLDOWN_MINUTES = 5;
+    // Alert Deduplication State (Thread-safe for multi-threaded tick processing)
     private static final BigDecimal MIN_DOMINANCE_GAP = BigDecimal.valueOf(2);
-    private final Map<String, Boolean> triggeredAlerts = new HashMap<>();
+    private final Map<String, Boolean> triggeredAlerts = new ConcurrentHashMap<>();
     
     public void detectCrossoverEvent(StraddlePremiumDto dto, String name, LocalDateTime currentTs) {
         dto.setCeCrossoverAbove(false);
@@ -95,13 +92,11 @@ public class StraddleAlertService {
         if (conditionMet) {
             // Only send if we haven't triggered this specific alert for this strike yet
             if (!triggeredAlerts.getOrDefault(alertKey, false)) {
-                sendTelegramAlert(entity, type);
-                triggeredAlerts.put(alertKey, true); // Mark as triggered
+                boolean sent = sendTelegramAlert(entity, type);
+                if (sent) {
+                    triggeredAlerts.put(alertKey, true); // Lock only if successfully sent
+                }
             }
-        } else {
-            // OPTIONAL: Reset the trigger if the condition stops being true
-            // This allows the alert to fire again if the condition clears and then re-triggers later
-            triggeredAlerts.put(alertKey, false);
         }
     }
 
@@ -144,13 +139,11 @@ public class StraddleAlertService {
     }
 
     // =========================================================================
-    // TELEGRAM DISPATCHER & DEDUPLICATION
+    // TELEGRAM DISPATCHER
     // =========================================================================
 
-    private void sendTelegramAlert(StraddleIntraday entity, AlertType alertType) {
+    private boolean sendTelegramAlert(StraddleIntraday entity, AlertType alertType) {
         try {
-            if (isAlertAlreadySent(entity.getStrike(), alertType)) return;
-
             String message = buildTelegramMessage(entity, alertType);
             boolean sent = telegramService.sendMessage(message);
 
@@ -173,25 +166,11 @@ public class StraddleAlertService {
                 entity.getCeVwap()  != null ? entity.getCeVwap().doubleValue()  : null,
                 entity.getPeVwap()  != null ? entity.getPeVwap().doubleValue()  : null
             );
+            return sent;
         } catch (Exception ex) {
             logger.error("Telegram alert failed [{}] for {} {}", alertType, entity.getName(), entity.getStrike(), ex);
+            return false;
         }
-    }
-
-    private boolean isAlertAlreadySent(BigDecimal strike, AlertType alertType) {
-        if (strike == null || alertType == null) return true;
-        String key = strike.toPlainString() + "_" + alertType.name();
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-        LocalDateTime lastSent = sentAlertKeys.get(key);
-
-        if (lastSent != null) {
-            long minutesSinceLastSent = java.time.Duration.between(lastSent, now).toMinutes();
-            if (minutesSinceLastSent < ALERT_COOLDOWN_MINUTES) {
-                return true; 
-            }
-        }
-        sentAlertKeys.put(key, now);
-        return false;
     }
 
     private String buildTelegramMessage(StraddleIntraday entity, AlertType alertType) {
