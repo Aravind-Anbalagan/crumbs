@@ -175,7 +175,7 @@ public class AngelWebSocketService {
         String key = exchangeType.name() + "_" + normalizedToken;
 
         if (subscribedTokens.containsKey(key)) {
-            log.info("Already subscribed | {}", key);
+            //log.info("Already subscribed | {}", key);
             return;
         }
 
@@ -188,7 +188,7 @@ public class AngelWebSocketService {
         // Store TokenID object so reconnect can re-subscribe correctly
         subscribedTokens.put(key, tokenId);
 
-        log.info("Subscribed successfully | {}", key);
+        //log.info("Subscribed successfully | {}", key);
     }
     
     public synchronized void unsubscribeAll() {
@@ -255,7 +255,7 @@ public class AngelWebSocketService {
                     Set<TokenID> tokenSet = new HashSet<>();
                     tokenSet.add(entry.getValue());
                     smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
-                    log.info("Resubscribed | {}", key);
+                    //log.info("Resubscribed | {}", key);
                 } catch (Exception e) {
                     log.error("Resubscribe failed for {} | {}", key, e.getMessage());
                 }
