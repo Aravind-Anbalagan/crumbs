@@ -76,14 +76,28 @@ public class StraddleAlertService {
         }
     }
 
-    public void checkAndSendAlerts(StraddleIntraday entity) {
-        if (entity == null) return;
+    /**
+     * ✅ UPDATED: Accepts currentAtmStrike to restrict VWAP Dominance alerts to the ATM strike.
+     */
+    public void checkAndSendAlerts(StraddleIntraday entity, BigDecimal currentAtmStrike) {
+        if (entity == null || entity.getStrike() == null) return;
 
-        // Helper to process alerts
+        boolean isAtm = currentAtmStrike != null && entity.getStrike().compareTo(currentAtmStrike) == 0;
+
+        // Crossover alerts trigger for ALL strikes
         processAlert(entity, AlertType.CE_PE_CROSSOVER, isCeCrossoverAbove(entity));
         processAlert(entity, AlertType.PE_CE_CROSSOVER, isPeCrossoverAbove(entity));
-        processAlert(entity, AlertType.VWAP_DOMINANCE_CE, isVwapDominanceCe(entity));
-        processAlert(entity, AlertType.VWAP_DOMINANCE_PE, isVwapDominancePe(entity));
+
+        // VWAP Dominance alerts trigger ONLY for the ATM strike
+        processAlert(entity, AlertType.VWAP_DOMINANCE_CE, isVwapDominanceCe(entity, isAtm));
+        processAlert(entity, AlertType.VWAP_DOMINANCE_PE, isVwapDominancePe(entity, isAtm));
+    }
+
+    /**
+     * Overload for backward compatibility in case other components call checkAndSendAlerts without ATM strike.
+     */
+    public void checkAndSendAlerts(StraddleIntraday entity) {
+        checkAndSendAlerts(entity, null);
     }
 
     private void processAlert(StraddleIntraday entity, AlertType type, boolean conditionMet) {
@@ -118,15 +132,17 @@ public class StraddleAlertService {
         return Boolean.TRUE.equals(entity.getPeCrossoverAbove());
     }
 
-    private boolean isVwapDominanceCe(StraddleIntraday entity) {
-        if (hasMissingVwapOrPrice(entity)) return false;
+    private boolean isVwapDominanceCe(StraddleIntraday entity, boolean isAtm) {
+        // Fast-fail if not ATM or if critical price/VWAP data is missing
+        if (!isAtm || hasMissingVwapOrPrice(entity)) return false;
         return entity.getCePrice().compareTo(entity.getCeVwap()) > 0
             && entity.getPePrice().compareTo(entity.getPeVwap()) < 0
             && entity.getCombinedPremium().compareTo(entity.getCombinedVwap()) > 0;
     }
 
-    private boolean isVwapDominancePe(StraddleIntraday entity) {
-        if (hasMissingVwapOrPrice(entity)) return false;
+    private boolean isVwapDominancePe(StraddleIntraday entity, boolean isAtm) {
+        // Fast-fail if not ATM or if critical price/VWAP data is missing
+        if (!isAtm || hasMissingVwapOrPrice(entity)) return false;
         return entity.getPePrice().compareTo(entity.getPeVwap()) > 0
             && entity.getCePrice().compareTo(entity.getCeVwap()) < 0
             && entity.getCombinedPremium().compareTo(entity.getCombinedVwap()) > 0;
@@ -200,7 +216,7 @@ public class StraddleAlertService {
                 """, entity.getName(), entity.getStrike(), entity.getTimestamp(), entity.getCePrice(), entity.getPePrice(), entity.getCombinedPremium());
 
             case VWAP_DOMINANCE_CE -> String.format("""
-                📊 VWAP Dominance Signal 📊
+                📊 VWAP Dominance Signal (ATM) 📊
                 📌 Symbol  : %s
                 📌 Strike  : %s
                 ⏰ Time    : %s
@@ -211,7 +227,7 @@ public class StraddleAlertService {
                 """, entity.getName(), entity.getStrike(), entity.getTimestamp(), entity.getCePrice(), entity.getCeVwap(), entity.getPePrice(), entity.getPeVwap(), entity.getCombinedPremium());
 
             case VWAP_DOMINANCE_PE -> String.format("""
-                📊 VWAP Dominance Signal 📊
+                📊 VWAP Dominance Signal (ATM) 📊
                 📌 Symbol  : %s
                 📌 Strike  : %s
                 ⏰ Time    : %s

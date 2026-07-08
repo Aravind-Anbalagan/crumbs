@@ -211,7 +211,10 @@ public class ShortStraddleService {
         BigDecimal currentGap = cv.subtract(cp);
         BigDecimal entryGap = activeOrders.get(0).getBreakeven();
         
-        BigDecimal targetGap = entryGap.add(sourceConfig.getTargetPoints());
+        BigDecimal targetPoints = sourceConfig.getTargetPoints() != null 
+                ? sourceConfig.getTargetPoints() 
+                : BigDecimal.ZERO;
+        BigDecimal targetGap = entryGap.add(targetPoints);
         BigDecimal distToTarget = targetGap.subtract(currentGap);
 
         BigDecimal slPoints = sourceConfig.getSlPoints();
@@ -297,7 +300,10 @@ public class ShortStraddleService {
         }
     	log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
-        BigDecimal targetValue = entryGap.add(sourceConfig.getTargetPoints());
+        BigDecimal targetPoints = sourceConfig.getTargetPoints() != null 
+                ? sourceConfig.getTargetPoints() 
+                : BigDecimal.ZERO;
+        BigDecimal targetValue = entryGap.add(targetPoints);
 
         Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), strategyConfig, sourceConfig, tick.getCePrice(), 
                 tick.getStrike(), tradeName, "CE", cycleId, entryGap, targetValue);

@@ -65,14 +65,26 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     List<Indexes> findByNameAndSymbolContaining(String name, String symbolPart);
     
     List<Indexes> findByName(String name);
-    
-    @Query("SELECT i FROM Indexes i WHERE UPPER(i.name) = UPPER(:name) " +
-            "AND UPPER(i.symbol) LIKE CONCAT('%', UPPER(:strikeSuffix)) " +
-            "AND (UPPER(i.expiry) = :expiryShort OR UPPER(i.expiry) = :expiryLong)")
-     Optional<Indexes> findOptionToken(
-         @Param("name") String name,
-         @Param("strikeSuffix") String strikeSuffix,
-         @Param("expiryShort") String expiryShort,
-         @Param("expiryLong") String expiryLong
-     );
+       
+    /**
+     * 1. Used by getEnrichedLivePositions() to map broker trades to database tokens.
+     */
+    @Query("SELECT i FROM Indexes i WHERE i.name = :underlying " +
+           "AND i.symbol LIKE %:strikeSuffix " +
+           "AND (i.expiry = :expiryShort OR i.expiry = :expiryLong)")
+    Optional<Indexes> findOptionToken(@Param("underlying") String underlying,
+                                      @Param("strikeSuffix") String strikeSuffix,
+                                      @Param("expiryShort") String expiryShort,
+                                      @Param("expiryLong") String expiryLong);
+
+    /**
+     * 2. Used by getOptionChainForSimulation() to fetch all available CE/PE strikes
+     * for a given index and expiry date, ordered cleanly by strike price.
+     */
+    @Query("SELECT i FROM Indexes i WHERE i.name = :underlying " +
+           "AND (i.expiry = :expiryShort OR i.expiry = :expiryLong) " +
+           "ORDER BY i.strike ASC")
+    List<Indexes> findActiveContractsByExpiry(@Param("underlying") String underlying,
+                                              @Param("expiryShort") String expiryShort,
+                                              @Param("expiryLong") String expiryLong);
 }

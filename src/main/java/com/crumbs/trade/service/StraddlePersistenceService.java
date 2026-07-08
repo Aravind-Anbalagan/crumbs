@@ -140,7 +140,7 @@ public class StraddlePersistenceService {
 
                 for (StraddleIntraday entity : entities) {
                     try {
-                        alertService.checkAndSendAlerts(entity);
+                    	alertService.checkAndSendAlerts(entity, atmStrike);
                     } catch (Exception e) {
                         logger.error(
                             "Alert failed for strike {}: {}",

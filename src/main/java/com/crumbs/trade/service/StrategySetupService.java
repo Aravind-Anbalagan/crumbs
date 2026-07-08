@@ -72,6 +72,7 @@ public class StrategySetupService {
         strategy.setToken(strategyDetails.getToken());
         strategy.setTradingsymbol(strategyDetails.getTradingsymbol());
         strategy.setLive(strategyDetails.getLive());
+        strategy.setExpiry(strategyDetails.getExpiry());
         // ... update remaining fields ...
         
         return repository.save(strategy);
