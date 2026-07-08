@@ -346,34 +346,27 @@ public class ShortStraddleService {
             log.info("📝 [{}][{}] Preparing -> Source: {}, Symbol: {}, Token: {}, Strike: {}, Qty: {}",
                     tradeName, type, sourceConfig.getName(), symbol, tokenStr, strike, sourceConfig.getQuantity());
 
-            Orders order;
-
             if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                 log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...", tradeName, type);
                 try {
+                    // 1. Fire the broker order via OrderService
                     orderService.orderPlaceWithToken(t, sourceConfig.getName(), "SELL", true);
                 } catch (Exception | SmartAPIException e) {
-                    log.error("⚠️ [{}][LEG] Broker/Global insert failed for {}. Reason: {}", tradeName, type, e.getMessage());
-                    return null;
-                }
-
-                order = ordersRepository.findByNameAndTokenAndActive(
-                        sourceConfig.getName(), tokenStr, STATUS_ACTIVE).orElse(null);
-
-                if (order == null) {
-                    log.error("❌ [{}][LEG] Critical Error: Global Order row not found after insertion for Token: {}", tradeName, tokenStr);
+                    log.error("⚠️ [{}][LEG] Broker execution failed for {}. Reason: {}", tradeName, type, e.getMessage());
                     return null;
                 }
             } else {
                 log.info("📄 [{}][{}] PAPER MODE: Skipping broker execution, tracking via DB...", tradeName, type);
-                order = new Orders();
-                order.setToken(tokenStr);
-                order.setSymbol(symbol);
-                order.setQuantity(sourceConfig.getQuantity()); 
-                order.setExchange(sourceConfig.getExchange()); 
-                order.setActive(STATUS_ACTIVE);
             }
 
+            // 2. ALWAYS create a dedicated strategy tracking row for this leg.
+            // This prevents race conditions with OrderService and keeps your cycle IDs isolated.
+            Orders order = new Orders();
+            order.setToken(tokenStr);
+            order.setSymbol(symbol);
+            order.setQuantity(sourceConfig.getQuantity()); 
+            order.setExchange(sourceConfig.getExchange()); 
+            order.setActive(STATUS_ACTIVE);
             order.setName(tradeName); 
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type);
@@ -384,20 +377,25 @@ public class ShortStraddleService {
             order.setStrike(strike);
             order.setStatus(STATUS_OPEN);
             order.setTradePhase(PHASE_ENTRY);
-
+            
+            // Thanks to @CreationTimestamp and @PrePersist in your Orders entity, 
+            // createdOn is automatically stamped here during save!
             return ordersRepository.save(order);
 
         } catch (Exception e) {
-            log.error("❌ [{}][LEG] System error during DB upgrade for {}: {}", tradeName, type, e.getMessage());
+            log.error("❌ [{}][LEG] System error during DB insert for {}: {}", tradeName, type, e.getMessage());
             return null;
         }
     }
     
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategyConfig, Strategy sourceConfig) {
+        if (activeOrders == null || activeOrders.isEmpty()) {
+            return;
+        }
+
         BigDecimal totalEntryPoints = BigDecimal.ZERO;
         BigDecimal totalExitPoints = BigDecimal.ZERO;
         BigDecimal totalRupeePnL = BigDecimal.ZERO; 
-        boolean allSuccess = true;
         int closedCount = 0;
 
         for (Orders order : activeOrders) {
@@ -408,30 +406,27 @@ public class ShortStraddleService {
             try {
                 if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                     try {
-                        // 1. Capture the boolean result from our updated OrderService
                         legClosedSuccessfully = orderService.exitActiveTradeByToken(
                                 order.getToken(), 
                                 sourceConfig.getName(), 
-                                order.getName()          
+                                order.getName()         
                         );
                         
                         if (!legClosedSuccessfully) {
-                            allSuccess = false;
                             log.error("❌ [{}][EXIT] Broker rejected exit for {}. DB left ACTIVE.", order.getName(), order.getOptionType());
                         } else {
-                            // 2. ANTI-RATE-LIMIT DELAY: Pause 1 second before sending the next leg to Angel One
+                            // ANTI-RATE-LIMIT DELAY: Pause 1 second before sending the next leg to Angel One
                             Thread.sleep(1000); 
                         }
                     } catch (Exception | SmartAPIException e) {
                         legClosedSuccessfully = false;
-                        allSuccess = false;
                         log.error("❌ [{}][EXIT] Broker failed to close {}: {}", order.getName(), order.getOptionType(), e.getMessage());
                     }
                 } else {
                     log.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit for {}.", order.getName(), order.getOptionType());
                 }
 
-                // 3. CRITICAL GUARD: Only update local DB status if the broker exit actually succeeded!
+                // CRITICAL GUARD: Only update local DB status if the broker exit actually succeeded!
                 if (legClosedSuccessfully) {
                     BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
                     BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
@@ -451,6 +446,8 @@ public class ShortStraddleService {
                     order.setTradePhase(PHASE_EXIT);
                     order.setStatus(STATUS_CLOSED);
                     order.setActive(STATUS_INACTIVE);
+                    order.setExitReason(reason);
+                    
                     ordersRepository.save(order);
                     closedCount++;
                 }
@@ -460,7 +457,7 @@ public class ShortStraddleService {
             }
         }
         
-        // Only send the Telegram alert if we actually closed at least one leg successfully
+        // Safe Telegram notification
         if (closedCount > 0) {
             String emoji = totalRupeePnL.signum() >= 0 ? "✅" : "❌";
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER"; 

@@ -70,13 +70,15 @@ public class CrumbsNewApplication {
                 new InetSocketAddress(proxyHost, proxyPort)
             ));
             return new RestTemplateBuilder()
-                    .setReadTimeout(Duration.ofSeconds(20))
+                    .setConnectTimeout(Duration.ofSeconds(5))  // 🛑 Abort fast if proxy is unreachable
+                    .setReadTimeout(Duration.ofSeconds(15))    // 🛑 Max wait for broker payload
                     .requestFactory(() -> factory)
                     .build();
         }
         log.info("RestTemplate using direct connection (no proxy)");
         return new RestTemplateBuilder()
-                .setReadTimeout(Duration.ofSeconds(20))
+                .setConnectTimeout(Duration.ofSeconds(5))
+                .setReadTimeout(Duration.ofSeconds(15))
                 .build();
     }
 

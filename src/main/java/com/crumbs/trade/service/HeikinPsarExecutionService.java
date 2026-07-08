@@ -15,7 +15,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-import jakarta.annotation.PostConstruct;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,10 +45,6 @@ public class HeikinPsarExecutionService {
     
     private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("20.00");
     private static final BigDecimal SCALP_SL_POINTS = new BigDecimal("10.00");
-
-    // Adaptive Entry Thresholds
-    private static final BigDecimal NIFTY_BIG_CANDLE_THRESHOLD = new BigDecimal("25.00");
-    private static final BigDecimal CRUDE_BIG_CANDLE_THRESHOLD = new BigDecimal("35.00");
 
     // =========================================================
     // 🏦 2. INSTRUMENT & STATUS CONSTANTS
@@ -85,35 +80,18 @@ public class HeikinPsarExecutionService {
     // =========================================================
     // 🔥 IN-MEMORY CACHES (Eliminates DB Polling in Fast-Loops)
     // =========================================================
-    private final Map<String, Orders> pendingRetracementsCache = new ConcurrentHashMap<>();
     private final Map<String, Orders> activeScalpCache = new ConcurrentHashMap<>();
     private static final long SUBSCRIPTION_RETRY_MS = 30000L;
 
-    private final Map<String, Strategy> strategyCache =
-            new ConcurrentHashMap<>();
+    private final Map<String, Strategy> strategyCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> subscriptionCooldownCache = new ConcurrentHashMap<>();
 
-    private final Map<String, Long> subscriptionCooldownCache =
-            new ConcurrentHashMap<>();
     /**
      * Runs ONCE on application startup/restart. 
      * Restores active positions from the database into memory so state is never lost.
      */
-    //@PostConstruct
     public void restoreStateOnStartup() {
-
         try {
-
-            List<Orders> pending =
-                    ordersRepository.findByStatusAndActive(
-                            "PENDING_RETRACEMENT",
-                            STATUS_ACTIVE);
-
-            for (Orders order : pending) {
-                pendingRetracementsCache.put(
-                        order.getName(),
-                        order);
-            }
-
             List<Orders> openTrades =
                     ordersRepository.findByStatusAndActive(
                             STATUS_OPEN,
@@ -125,16 +103,9 @@ public class HeikinPsarExecutionService {
                         order);
             }
 
-            logger.info(
-                    "✅ Restored Pending={} Active={}",
-                    pending.size(),
-                    openTrades.size());
-
+            logger.info("✅ Restored Active Trades = {}", openTrades.size());
         } catch (Exception e) {
-
-            logger.error(
-                    "Failed restoring cache",
-                    e);
+            logger.error("Failed restoring cache", e);
         }
     }
 
@@ -239,117 +210,26 @@ public class HeikinPsarExecutionService {
         }
 
         // ---------------------------------------------------------
-        // PHASE 2: EVALUATE NEW ENTRIES & PENDING RETRACEMENTS
+        // PHASE 2: EVALUATE NEW ENTRIES (INSTANT EXECUTION ONLY)
         // ---------------------------------------------------------
         if (!isNiftyValid && !isCrudeValid) return; 
 
         String currentSignal = latestCandle.getSignal();
         if (currentSignal == null || "NONE".equalsIgnoreCase(currentSignal)) return;
 
-        // 🧹 SIGNAL-BASED EXPIRY: CLEAN UP STALE RETRACEMENTS
-        Orders stalePendingOrder = ordersRepository.findByNameAndStatusAndActive(tradeName, "PENDING_RETRACEMENT", STATUS_ACTIVE);
-        
-        if (stalePendingOrder != null) {
-            String pendingDirection = stalePendingOrder.getType(); 
-            if (!currentSignal.equalsIgnoreCase(pendingDirection)) {
-                logger.warn("🚫 [{}][OVERRIDE] Trend Reversed to {}! Abandoning old retracement waiting at ₹{}. Marking as FAILED.", 
-                            tradeName, currentSignal, stalePendingOrder.getTargetSpotPrice());
-                
-                stalePendingOrder.setStatus("FAILED_NEW_SIGNAL");
-                stalePendingOrder.setActive(STATUS_INACTIVE);
-                ordersRepository.save(stalePendingOrder);
-                
-                // Remove from in-memory cache
-                pendingRetracementsCache.remove(tradeName);
-                
-                if (telegramService != null) telegramService.sendMessage(String.format("🚫 **[%s] RETRACEMENT ABORTED**\nNew %s signal formed.", tradeName, currentSignal));
-            } else {
-                logger.info("⏳ [{}][WAITING] Still waiting for {} retracement to ₹{}. Trend unchanged.", 
-                            tradeName, currentSignal, stalePendingOrder.getTargetSpotPrice());
-                return; // Let the fast-loop keep waiting
-            }
-        }
-
         // 🛡️ OVERTRADING GUARD
         if (!canEnterNewTrade(tradeName, currentSignal)) return; 
 
-        // 🚀 ADAPTIVE ENTRY LOGIC: BIG vs SMALL CANDLE
-        BigDecimal open = latestCandle.getOpen();
-        BigDecimal close = latestCandle.getClose();
-        BigDecimal bodySize = close.subtract(open).abs();
-
-        BigDecimal threshold = "NIFTY".equalsIgnoreCase(baseSymbol) ? NIFTY_BIG_CANDLE_THRESHOLD : CRUDE_BIG_CANDLE_THRESHOLD;
-        boolean isBigCandle = bodySize.compareTo(threshold) >= 0;
-
-        if (isBigCandle) {
-            // --- PATH A: BIG CANDLE (RETRACEMENT SCANNING MODE) ---
-            BigDecimal retracementDiscount = bodySize.multiply(new BigDecimal("0.50"));
-            BigDecimal targetSpotPrice = "BUY".equalsIgnoreCase(currentSignal) 
-                    ? close.subtract(retracementDiscount) 
-                    : close.add(retracementDiscount);
+        // 🚀 INSTANT MARKET EXECUTION
+        logger.info("🚀 [{}][BREAKOUT] Signal {} confirmed. Executing INSTANT Market Order!", 
+                    tradeName, currentSignal);
                     
-            logger.info("⚡ [{}][BIG CANDLE] Body: {} pts >= Threshold ({} pts). Entering Retracement Mode. Target Spot: ₹{}", 
-                        tradeName, bodySize, threshold, targetSpotPrice);
-                        
-            savePendingRetracementOrder(strategy, latestCandle, currentSignal, targetSpotPrice, tradeName);
-        } else {
-            // --- PATH B: SMALL CANDLE (INSTANT MARKET EXECUTION) ---
-            logger.info("🚀 [{}][SMALL CANDLE] Body: {} pts < Threshold. Quiet breakout detected. Executing INSTANT Market Order!", 
-                        tradeName, bodySize);
-                        
-            executeInstantAtmOrder(strategy, currentSignal, tradeName);
-        }
+        executeInstantAtmOrder(strategy, currentSignal, tradeName);
     }
 
     // =========================================================
     // ⚡ FAST-LOOPS (Triggered by Scheduler - NOW CACHE BASED!)
     // =========================================================
-
-    /**
-     * Call this via @Scheduled(fixedDelay = 1000) for instant entry polling.
-     * Reads directly from memory cache! Zero DB queries while waiting.
-     */
-    public void monitorPendingRetracements() {
-        if (pendingRetracementsCache.isEmpty()) return;
-
-        for (Orders order : pendingRetracementsCache.values()) {
-            String tradeName = order.getName();
-            BigDecimal liveSpotPrice = chartService.getCurrentPrice(tradeName);
-            
-            if (liveSpotPrice == null || liveSpotPrice.compareTo(BigDecimal.ZERO) == 0) continue;
-
-            boolean isBuyTriggered = "BUY".equalsIgnoreCase(order.getType()) && liveSpotPrice.compareTo(order.getTargetSpotPrice()) <= 0;
-            boolean isSellTriggered = "SELL".equalsIgnoreCase(order.getType()) && liveSpotPrice.compareTo(order.getTargetSpotPrice()) >= 0;
-
-            if (isBuyTriggered || isSellTriggered) {
-                // 1. Remove from cache immediately so it doesn't double-fire
-                pendingRetracementsCache.remove(tradeName);
-
-                logger.info("🎯 [{}][FILLED] Retracement target (₹{}) reached at live price ₹{}! Firing ATM Market Order.", 
-                            tradeName, order.getTargetSpotPrice(), liveSpotPrice);
-                
-                // 2. Execute trade
-                String baseSymbol = getBaseSymbol(tradeName);
-
-				Strategy strategyConfig = "NIFTY".equalsIgnoreCase(baseSymbol)
-						? getStrategyCached(NIFTY)
-						: getStrategyCached(SAMCO_CRUDEOIL);
-
-				if (strategyConfig == null) {
-					logger.error("Strategy not found for {}", tradeName);
-					continue;
-				}
-
-				executeInstantAtmOrder(strategyConfig, order.getType(),
-						tradeName);
-                
-                // 3. Update DB state
-                order.setStatus("PROCESSED_TO_OPEN");
-                order.setActive(STATUS_INACTIVE);
-                ordersRepository.save(order);
-            }
-        }
-    }
 
     /**
      * Call this via @Scheduled(fixedDelay = 10000) for profit booking.
@@ -395,40 +275,10 @@ public class HeikinPsarExecutionService {
     // 🧰 BROKER EXECUTION & STATE MANAGEMENT
     // =========================================================
 
-    private void savePendingRetracementOrder(Strategy strategyConfig, Vix candle, String signal, BigDecimal targetSpotPrice, String tradeName) {
-        Orders pendingOrder = new Orders();
-        pendingOrder.setName(tradeName);
-        pendingOrder.setExchange(strategyConfig.getExchange());
-        pendingOrder.setSignal(HEIKIN_SIGNAL);
-        pendingOrder.setType(signal); 
-        
-        String optionType = "";
-        if ("BUY".equalsIgnoreCase(signal)) optionType = IS_OPTION_BUYER ? "CE" : "PE";
-        else if ("SELL".equalsIgnoreCase(signal)) optionType = IS_OPTION_BUYER ? "PE" : "CE";
-        
-        pendingOrder.setOptionType(optionType);
-        pendingOrder.setTargetSpotPrice(targetSpotPrice); 
-        pendingOrder.setStrike(BigDecimal.ZERO); 
-        pendingOrder.setStatus("PENDING_RETRACEMENT");
-        pendingOrder.setTradePhase("SCANNING");
-        pendingOrder.setActive(STATUS_ACTIVE);
-        pendingOrder.setCreatedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-        
-        // Save to DB AND update memory cache
-        Orders savedOrder = ordersRepository.save(pendingOrder);
-        pendingRetracementsCache.put(tradeName, savedOrder);
-
-        if (telegramService != null) telegramService.sendMessage(String.format("⚡ **[%s] SCANNING**\nSignal: %s\nTarget Spot: ₹%.2f\nWaiting for pullback...", tradeName, signal, targetSpotPrice));
-    }
-
     private void executeInstantAtmOrder(Strategy strategyConfig, String signal, String tradeName) {
         BigDecimal liveSpotPrice = chartService.getCurrentPrice(strategyConfig.getName());
         if (liveSpotPrice == null) {
-
-            logger.warn(
-                    "Live spot price unavailable for {}",
-                    strategyConfig.getName());
-
+            logger.warn("Live spot price unavailable for {}", strategyConfig.getName());
             return;
         }
         String baseSymbol = getBaseSymbol(strategyConfig.getName());
@@ -510,9 +360,8 @@ public class HeikinPsarExecutionService {
         boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
         
         try {
-            // Remove from memory caches immediately upon exiting
+            // Remove from memory cache immediately upon exiting
             activeScalpCache.remove(tradeName);
-            pendingRetracementsCache.remove(tradeName);
 
             if (isLive) orderService.exitActiveTradeByToken(openTrade.getToken(), strategyConfig.getName(), tradeName);
 
@@ -605,32 +454,15 @@ public class HeikinPsarExecutionService {
 
         // If price is missing/zero, trigger live subscription on the fly and fallback to DB price temporarily
         if (livePrice == null || livePrice.compareTo(BigDecimal.ZERO) == 0) {
-
-            String subscriptionKey =
-                    exchangeType.name() + "_" + optionToken;
-
+            String subscriptionKey = exchangeType.name() + "_" + optionToken;
             long now = System.currentTimeMillis();
-
-            long lastSubscription =
-                    subscriptionCooldownCache.getOrDefault(
-                            subscriptionKey,
-                            0L);
+            long lastSubscription = subscriptionCooldownCache.getOrDefault(subscriptionKey, 0L);
 
             if ((now - lastSubscription) > SUBSCRIPTION_RETRY_MS) {
-
-                subscriptionCooldownCache.put(
-                        subscriptionKey,
-                        now);
-
-                logger.info(
-                        "📡 [WS-AUTO] Missing LTP. Subscribing {}",
-                        subscriptionKey);
-
-                angelWebSocketService.subscribe(
-                        exchangeType,
-                        optionToken);
+                subscriptionCooldownCache.put(subscriptionKey, now);
+                logger.info("📡 [WS-AUTO] Missing LTP. Subscribing {}", subscriptionKey);
+                angelWebSocketService.subscribe(exchangeType, optionToken);
             }
-
             return dbFallbackPrice;
         }
 

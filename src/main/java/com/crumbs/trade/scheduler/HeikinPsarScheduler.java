@@ -25,6 +25,7 @@ public class HeikinPsarScheduler {
     private static final String TAG_CRUDE_EXEC = "CRUDEOIL-EXEC";
     private static final String TAG_SCALP_MONITOR = "SCALP-MONITOR";
     private volatile boolean stateRestored = false;
+
     @Autowired
     private HeikinPsarExecutionService executionService;
 
@@ -49,7 +50,7 @@ public class HeikinPsarScheduler {
         runSafely(TAG_CRUDE_EXEC, () -> executionService.commonExecutionMcx());
     }
 
-    // ------------------- 🔥 POINT 1 FIX: FAST-LOOP SCALPING MONITOR -------------------
+    // ------------------- 🔥 FAST-LOOP SCALPING MONITOR -------------------
     // Runs every 10 seconds to lock in profits or cut losses instantly
     @Scheduled(fixedDelay = 10000, zone = ZONE)
     public void monitorScalpPositions() {
@@ -66,6 +67,17 @@ public class HeikinPsarScheduler {
         logger.info("🩵 Scheduler OK @ {}", LocalDateTime.now().format(timeFormat));
     }
 
+    // ------------------- STATE RESTORATION -------------------
+
+    @Scheduled(initialDelay = 30000, fixedDelay = 60000)
+    public void restoreState() {
+        if (stateRestored) {
+            return;
+        }
+        executionService.restoreStateOnStartup();
+        stateRestored = true;
+    }
+
     // ------------------- HELPER -------------------
 
     private void runSafely(String name, Runnable r) {
@@ -75,23 +87,5 @@ public class HeikinPsarScheduler {
             logger.error("❌ {} failed", name, e);
         }
     }
-    
-    @Scheduled(fixedDelay = 1000, zone = ZONE)
-    public void monitorRetracements() {
-        runSafely("RETRACEMENT-MONITOR", () -> executionService.monitorPendingRetracements());
-    }
-
-
-@Scheduled(initialDelay = 30000, fixedDelay = 60000)
-public void restoreState() {
-
-    if (stateRestored) {
-        return;
-    }
-
-    executionService.restoreStateOnStartup();
-
-    stateRestored = true;
-}
 
 }

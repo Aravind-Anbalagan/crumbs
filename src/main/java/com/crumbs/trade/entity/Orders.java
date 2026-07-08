@@ -8,9 +8,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Data;
-
+import org.hibernate.annotations.CreationTimestamp; // Add this import
 @Data
 @Entity
 @Table(name = "ORDERS")
@@ -21,7 +22,8 @@ public class Orders {
 	Long id;
 	@Column(name="orderid")
 	String orderid;
-	@Column(name="createdon")
+	@CreationTimestamp 
+    @Column(name="createdon", updatable = false)
 	private LocalDateTime createdOn;
 	@Column(name="symbol")
 	String symbol;
@@ -39,10 +41,16 @@ public class Orders {
 	String exchange;
 	@Column(name="quantity")
 	int quantity;
-	private String optionType; // CE / PE
+	@Column(name = "option_type")
+    private String optionType; // CE / PE
+
+    @Column(name = "side")
     private String side;       // BUY / SELL
 
+    @Column(name = "trade_phase")
     private String tradePhase; // ENTRY / EXIT / FLIP / STOP
+
+    @Column(name = "status")
     private String status;     // OPEN / CLOSED
     
     @Column(name = "trade_cycle_id")
@@ -80,5 +88,12 @@ public class Orders {
     
     @Column(name = "target_spot_price", precision = 19, scale = 2)
     private BigDecimal targetSpotPrice;
+    
+    @PrePersist
+    protected void onCreate() {
+        if (this.createdOn == null) {
+            this.createdOn = LocalDateTime.now();
+        }
+    }
   
 }
