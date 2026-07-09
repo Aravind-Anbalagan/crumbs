@@ -85,7 +85,7 @@ public class ShortStraddleService {
         LocalDateTime startOfDay = LocalDateTime.now().with(LocalTime.MIN);
         long totalLegs = ordersRepository.countLegsToday(tradeName, STRATEGY_SIGNAL, startOfDay);
         long straddlesUsed = totalLegs / 2; 
-        int maxAllowed = sourceConfig.getMaxDailyTrades() > 0 ? sourceConfig.getMaxDailyTrades() : 3;
+        int maxAllowed = strategyConfig.getMaxDailyTrades() > 0 ? strategyConfig.getMaxDailyTrades() : 3;
 
         if ("NIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(NIFTY_START)) return;
         if ("SENSEX".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return; 
@@ -300,10 +300,14 @@ public class ShortStraddleService {
         }
     	log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
-        BigDecimal targetPoints = sourceConfig.getTargetPoints() != null 
-                ? sourceConfig.getTargetPoints() 
-                : BigDecimal.ZERO;
-        BigDecimal targetValue = entryGap.add(targetPoints);
+        BigDecimal userTarget = sourceConfig.getTargetPoints();
+        BigDecimal finalTarget = (userTarget == null || userTarget.compareTo(BigDecimal.ZERO) <= 0) 
+                                 ? new BigDecimal("50.00") 
+                                 : userTarget;
+
+        log.info("🎯 [{}][TARGET] Setting target to {} pts (User input: {})", tradeName, finalTarget, userTarget);
+        
+        BigDecimal targetValue = entryGap.add(finalTarget);
 
         Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), strategyConfig, sourceConfig, tick.getCePrice(), 
                 tick.getStrike(), tradeName, "CE", cycleId, entryGap, targetValue);
