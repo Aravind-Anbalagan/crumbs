@@ -215,7 +215,12 @@ public class HeikinPsarExecutionService {
         if (!isNiftyValid && !isCrudeValid) return; 
 
         String currentSignal = latestCandle.getSignal();
-        if (currentSignal == null || "NONE".equalsIgnoreCase(currentSignal)) return;
+        logger.info("🕯️ [{}][EVAL] Timestamp: {} | Extracted Signal: '{}'", tradeName, latestCandle.getTimestamp(), currentSignal);
+
+        if (currentSignal == null || "NONE".equalsIgnoreCase(currentSignal)) {
+            logger.debug("⏳ [{}][SKIP] No actionable entry signal (Signal={}).", tradeName, currentSignal);
+            return;
+        }
 
         // 🛡️ OVERTRADING GUARD
         if (!canEnterNewTrade(tradeName, currentSignal)) return; 

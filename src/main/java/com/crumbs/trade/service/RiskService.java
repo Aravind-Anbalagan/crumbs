@@ -173,18 +173,26 @@ public class RiskService {
 			return; // Needs connection for live execution safety
 		}
 
+	
 		// EVALUATE GROUPS (1 leg, 2 legs, 4 legs)
-		for (Map.Entry<String, List<Orders>> entry : strategyGroups
-				.entrySet()) {
-			String strategyKey = entry.getKey(); // Example:
-													// "SHORT_STRADDLE_NIFTY"
-			List<Orders> groupLegs = entry.getValue();
+				for (Map.Entry<String, List<Orders>> entry : strategyGroups.entrySet()) {
+					String strategyKey = entry.getKey(); 
+					List<Orders> groupLegs = entry.getValue();
 
-			RiskConfiguration config = configMap.get(strategyKey);
-			BigDecimal combinedGroupPnL = BigDecimal.ZERO;
-			List<BigDecimal> calculatedLegPnLs = new ArrayList<>();
+					// 🛑 CONCURRENCY GUARD: Filter out any legs currently being exited by ShortStraddleService
+					List<Orders> safelyTrackedLegs = groupLegs.stream()
+							.filter(leg -> !"EXIT_IN_PROGRESS".equalsIgnoreCase(leg.getTradePhase()))
+							.collect(Collectors.toList());
 
-			for (Orders leg : groupLegs) {
+					if (safelyTrackedLegs.isEmpty()) {
+						continue; // Skip this strategy group completely; it is currently being torn down
+					}
+
+					RiskConfiguration config = configMap.get(strategyKey);
+					BigDecimal combinedGroupPnL = BigDecimal.ZERO;
+					List<BigDecimal> calculatedLegPnLs = new ArrayList<>();
+
+					for (Orders leg : safelyTrackedLegs) { // Iterate over the safe collection
 				try {
 					boolean isLiveTrade = leg.getOrderid() != null
 							&& !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
@@ -401,95 +409,151 @@ public class RiskService {
         }
     }
 
-    private void terminateEntireGroup(List<Orders> group, String strategyKey, String exitReason, 
-                                      BigDecimal closurePnL, SmartConnect backupConnection) {
-        
-        logger.warn("====================================================");
-        logger.warn("🛑 [ACTION] STRATEGY LIQUIDATED : {}", strategyKey);
-        logger.warn("🛑 Reason     : {}", exitReason);
-        logger.warn("🛑 Final PnL  : {}", closurePnL.setScale(2, RoundingMode.HALF_UP));
-        logger.warn("🛑 Leg Count  : {}", group.size());
-        logger.warn("====================================================");
+	private void terminateEntireGroup(List<Orders> group, String strategyKey,
+			String exitReason, BigDecimal closurePnL,
+			SmartConnect backupConnection) {
 
-        SmartConnect connection = null;
-        try {
-            connection = angelOne.signIn();
-        } catch (Exception e) {
-            connection = backupConnection;
-        }
+		logger.warn("====================================================");
+		logger.warn("🛑 [ACTION] STRATEGY LIQUIDATED VIA RISK SERVICE: {}",
+				strategyKey);
+		logger.warn("🛑 Reason     : {}", exitReason);
+		logger.warn("🛑 Final PnL  : {}",
+				closurePnL.setScale(2, RoundingMode.HALF_UP));
+		logger.warn("🛑 Leg Count  : {}", group.size());
+		logger.warn("====================================================");
 
-        for (Orders leg : group) {
-            boolean isLiveTrade = leg.getOrderid() != null && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
+		// 🛑 CONCURRENCY LOCK: Claims rows immediately to deny access to other
+		// thread workers
+		List<Orders> qualifiedLegsToExit = new ArrayList<>();
+		for (Orders leg : group) {
+			// Re-fetch or check instance state under memory context
+			if (leg.getActive() == 0 || "EXIT_IN_PROGRESS"
+					.equalsIgnoreCase(leg.getTradePhase())) {
+				continue; // Already processed elsewhere
+			}
 
-            if (isLiveTrade && connection != null) {
-                int maxExitRetries = 3;
-                int exitAttempt = 0;
-                long exitBackoff = 500; 
-                boolean orderPlaced = false;
+			// Mark state immediately before network execution
+			leg.setTradePhase("EXIT_IN_PROGRESS");
+			orderRepository.saveAndFlush(leg); // Write structural barrier to
+												// Postgres
+			qualifiedLegsToExit.add(leg);
+		}
 
-                Token exitToken = new Token();
-                exitToken.setSymbol(leg.getSymbol());
-                exitToken.setToken(leg.getToken());
-                exitToken.setExch_seg(leg.getExchange());
-                exitToken.setQuantity(leg.getQuantity());
-                exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
-                exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD); 
-                exitToken.setVariety(Constants.VARIETY_NORMAL);
-                
-                String exitSide = SIDE_BUY.equalsIgnoreCase(leg.getType()) 
-                    ? Constants.TRANSACTION_TYPE_SELL 
-                    : Constants.TRANSACTION_TYPE_BUY;
-                exitToken.setTransactionType(exitSide);
+		if (qualifiedLegsToExit.isEmpty()) {
+			logger.info(
+					"🛡️ [RISK] Intercepted race condition loop. Strategy already handling liquidation.");
+			return;
+		}
 
-                while (exitAttempt < maxExitRetries && !orderPlaced) {
-                    try {
-                        Token responseToken = angelOneService.placeOrder(connection, exitToken);
-                        if (responseToken != null && responseToken.getOrderId() != null) {
-                            logger.info("   -> ✅ [EXECUTION] LIVE Leg Executed | Symbol: {} | OrderID: {}", leg.getSymbol(), responseToken.getOrderId());
-                            orderPlaced = true;
-                        } else {
-                            throw new SmartAPIException("Empty Order ID");
-                        }
-                    } catch (Exception | SmartAPIException e) {
-                        exitAttempt++;
-                        logger.error("   -> ⚠️ [WARN] Execution Failed for {} (Attempt {}/{}): {}", leg.getSymbol(), exitAttempt, maxExitRetries, e.getMessage());
-                        if (exitAttempt >= maxExitRetries) break;
-                        try { Thread.sleep(exitBackoff); exitBackoff *= 2; } 
-                        catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
-                    }
-                }
-                if (!orderPlaced) continue; 
+		SmartConnect connection = null;
+		try {
+			connection = angelOne.signIn();
+		} catch (Exception e) {
+			connection = backupConnection;
+		}
 
-            } else {
-                logger.info("   -> 📝 [EXECUTION] PAPER Leg Simulated | Symbol: {} | DB Status Updated", leg.getSymbol());
-            }
-        }
+		// Execute orders only for legs safely claimed by this context thread
+		for (Orders leg : qualifiedLegsToExit) {
+			boolean isLiveTrade = leg.getOrderid() != null
+					&& !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
 
-        highWaterMarks.remove(strategyKey);
-        activeTrailingFloors.remove(strategyKey);
+			if (isLiveTrade && connection != null) {
+				int maxExitRetries = 3;
+				int exitAttempt = 0;
+				long exitBackoff = 500;
+				boolean orderPlaced = false;
 
-        for (Orders leg : group) {
-            BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO);
-            liveUiCachePnL.remove(leg.getId());
+				Token exitToken = new Token();
+				exitToken.setSymbol(leg.getSymbol());
+				exitToken.setToken(leg.getToken());
+				exitToken.setExch_seg(leg.getExchange());
+				exitToken.setQuantity(leg.getQuantity());
+				exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
+				exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD);
+				exitToken.setVariety(Constants.VARIETY_NORMAL);
 
-            BigDecimal calculatedExitPrice = BigDecimal.ZERO;
-            if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
-                BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
-                BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4, RoundingMode.HALF_UP);
-                
-                if (SIDE_BUY.equalsIgnoreCase(leg.getType())) {
-                    calculatedExitPrice = leg.getAskPrice().add(pnlPerUnit);
-                } else {
-                    calculatedExitPrice = leg.getAskPrice().subtract(pnlPerUnit);
-                }
-                calculatedExitPrice = calculatedExitPrice.setScale(2, RoundingMode.HALF_UP);
-            } else if (leg.getAskPrice() != null) {
-                calculatedExitPrice = leg.getAskPrice(); 
-            }
+				String exitSide = SIDE_BUY.equalsIgnoreCase(leg.getType())
+						? Constants.TRANSACTION_TYPE_SELL
+						: Constants.TRANSACTION_TYPE_BUY;
+				exitToken.setTransactionType(exitSide);
 
-            self.persistClosedOrderToDb(leg, exitReason, finalLegPnL, calculatedExitPrice);
-        }
-    }
+				while (exitAttempt < maxExitRetries && !orderPlaced) {
+					try {
+						Token responseToken = angelOneService
+								.placeOrder(connection, exitToken);
+						if (responseToken != null
+								&& responseToken.getOrderId() != null) {
+							logger.info(
+									"   -> ✅ [EXECUTION] RISK SERVICE Live Leg Executed | Symbol: {} | OrderID: {}",
+									leg.getSymbol(),
+									responseToken.getOrderId());
+							orderPlaced = true;
+						} else {
+							throw new SmartAPIException("Empty Order ID");
+						}
+					} catch (Exception | SmartAPIException e) {
+						exitAttempt++;
+						logger.error(
+								"   -> ⚠️ [WARN] RISK SERVICE Execution Failed for {} (Attempt {}/{}): {}",
+								leg.getSymbol(), exitAttempt, maxExitRetries,
+								e.getMessage());
+						if (exitAttempt >= maxExitRetries)
+							break;
+						try {
+							Thread.sleep(exitBackoff);
+							exitBackoff *= 2;
+						} catch (InterruptedException ie) {
+							Thread.currentThread().interrupt();
+							break;
+						}
+					}
+				}
+
+				// If order failed all retries, rollback the lock so cleanup
+				// routines can visibility trace it
+				if (!orderPlaced) {
+					leg.setTradePhase("ENTRY");
+					orderRepository.saveAndFlush(leg);
+					continue;
+				}
+
+			} else {
+				logger.info(
+						"   -> 📝 [EXECUTION] PAPER Leg Simulated | Symbol: {} | DB Status Updated",
+						leg.getSymbol());
+			}
+		}
+
+		highWaterMarks.remove(strategyKey);
+		activeTrailingFloors.remove(strategyKey);
+
+		for (Orders leg : qualifiedLegsToExit) {
+			BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(),
+					BigDecimal.ZERO);
+			liveUiCachePnL.remove(leg.getId());
+
+			BigDecimal calculatedExitPrice = BigDecimal.ZERO;
+			if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
+				BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
+				BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4,
+						RoundingMode.HALF_UP);
+
+				if (SIDE_BUY.equalsIgnoreCase(leg.getType())) {
+					calculatedExitPrice = leg.getAskPrice().add(pnlPerUnit);
+				} else {
+					calculatedExitPrice = leg.getAskPrice()
+							.subtract(pnlPerUnit);
+				}
+				calculatedExitPrice = calculatedExitPrice.setScale(2,
+						RoundingMode.HALF_UP);
+			} else if (leg.getAskPrice() != null) {
+				calculatedExitPrice = leg.getAskPrice();
+			}
+
+			self.persistClosedOrderToDb(leg, exitReason, finalLegPnL,
+					calculatedExitPrice);
+		}
+	}
 
     @Transactional
     public void persistClosedOrderToDb(Orders order, String exitReason, BigDecimal finalLegPnL, BigDecimal exitPrice) {

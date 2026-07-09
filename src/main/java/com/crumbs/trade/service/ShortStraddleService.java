@@ -82,7 +82,9 @@ public class ShortStraddleService {
             return;
         }
 
-        LocalDateTime startOfDay = LocalDateTime.now().with(LocalTime.MIN);
+        LocalDateTime startOfDay = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata"))
+                .toLocalDate()
+                .atStartOfDay();
         long totalLegs = ordersRepository.countLegsToday(tradeName, STRATEGY_SIGNAL, startOfDay);
         long straddlesUsed = totalLegs / 2; 
         int maxAllowed = strategyConfig.getMaxDailyTrades() > 0 ? strategyConfig.getMaxDailyTrades() : 3;
@@ -319,11 +321,17 @@ public class ShortStraddleService {
         boolean peSuccess = peOrder != null;
 
         if (ceSuccess != peSuccess) {
-            log.error("🚨 [{}][EXECUTION] Partial entry detected! CE: {}, PE: {}. Rolling back placed leg.", tradeName, ceSuccess, peSuccess);
+        	log.error("🚨 [{}][EXECUTION] Partial entry detected! CE: {}, PE: {}. Rolling back placed leg.", tradeName, ceSuccess, peSuccess);
             List<Orders> partialOrdersToClose = new ArrayList<>();
             if (ceSuccess) partialOrdersToClose.add(ceOrder);
             if (peSuccess) partialOrdersToClose.add(peOrder);
             closeAll(partialOrdersToClose, tick, "PARTIAL_FILL_ROLLBACK", strategyConfig, sourceConfig);
+            
+            // 🛑 ADD THIS BLOCK: Prevent broker glitches from wasting your max_daily_trades!
+            for (Orders abortedOrder : partialOrdersToClose) {
+                abortedOrder.setSignal("ABORTED_PARTIAL_FILL"); 
+                ordersRepository.save(abortedOrder);
+            }
             
         } else if (ceSuccess) {
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER";
@@ -343,34 +351,47 @@ public class ShortStraddleService {
             t.setToken(tokenStr);
             t.setSymbol(symbol);
             t.setStrike(strike);
-            t.setName(sourceConfig.getName());
+            
+            // RESTORED: Must use base name for OrderService
+            t.setName(sourceConfig.getName()); 
             t.setExch_seg(sourceConfig.getExchange());
             t.setQuantity(sourceConfig.getQuantity());
 
             log.info("📝 [{}][{}] Preparing -> Source: {}, Symbol: {}, Token: {}, Strike: {}, Qty: {}",
                     tradeName, type, sourceConfig.getName(), symbol, tokenStr, strike, sourceConfig.getQuantity());
 
+            Orders order;
+
             if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                 log.info("🌐 [{}][{}] LIVE MODE: Sending to broker...", tradeName, type);
                 try {
-                    // 1. Fire the broker order via OrderService
+                    // RESTORED: Pass sourceConfig.getName() to OrderService
                     orderService.orderPlaceWithToken(t, sourceConfig.getName(), "SELL", true);
                 } catch (Exception | SmartAPIException e) {
                     log.error("⚠️ [{}][LEG] Broker execution failed for {}. Reason: {}", tradeName, type, e.getMessage());
                     return null;
                 }
+
+                // RESTORED: Fetch the global row created by OrderService to get the orderid
+                order = ordersRepository.findByNameAndTokenAndActive(
+                        sourceConfig.getName(), tokenStr, STATUS_ACTIVE).orElse(null);
+
+                if (order == null) {
+                    log.error("❌ [{}][LEG] Critical Error: Broker row not found in DB after insertion for Token: {}", tradeName, tokenStr);
+                    return null;
+                }
             } else {
                 log.info("📄 [{}][{}] PAPER MODE: Skipping broker execution, tracking via DB...", tradeName, type);
+                order = new Orders();
+                order.setToken(tokenStr);
+                order.setSymbol(symbol);
+                order.setQuantity(sourceConfig.getQuantity()); 
+                order.setExchange(sourceConfig.getExchange()); 
+                order.setActive(STATUS_ACTIVE);
             }
 
-            // 2. ALWAYS create a dedicated strategy tracking row for this leg.
-            // This prevents race conditions with OrderService and keeps your cycle IDs isolated.
-            Orders order = new Orders();
-            order.setToken(tokenStr);
-            order.setSymbol(symbol);
-            order.setQuantity(sourceConfig.getQuantity()); 
-            order.setExchange(sourceConfig.getExchange()); 
-            order.setActive(STATUS_ACTIVE);
+            // Apply strategy fields to the fetched (or new) order
+            // This updates the name to SHORT_STRADDLE_CRUDEOIL so it belongs to this strategy
             order.setName(tradeName); 
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type);
@@ -382,8 +403,6 @@ public class ShortStraddleService {
             order.setStatus(STATUS_OPEN);
             order.setTradePhase(PHASE_ENTRY);
             
-            // Thanks to @CreationTimestamp and @PrePersist in your Orders entity, 
-            // createdOn is automatically stamped here during save!
             return ordersRepository.save(order);
 
         } catch (Exception e) {
@@ -403,7 +422,16 @@ public class ShortStraddleService {
         int closedCount = 0;
 
         for (Orders order : activeOrders) {
-            if (order.getActive() == STATUS_INACTIVE) continue;
+            // Check if it's already inactive or currently being processed by another thread
+            if (order.getActive() == STATUS_INACTIVE || "EXIT_IN_PROGRESS".equals(order.getTradePhase())) {
+                continue; 
+            }
+            
+            // 🛑 1. PRE-FLIGHT LOCK: Hide this order from RiskService instantly!
+            // We save it to the DB *before* hitting the Angel One API.
+            order.setActive(STATUS_INACTIVE); 
+            order.setTradePhase("EXIT_IN_PROGRESS");
+            ordersRepository.save(order); // Commit lock to Postgres
             
             boolean legClosedSuccessfully = true;
 
@@ -412,14 +440,13 @@ public class ShortStraddleService {
                     try {
                         legClosedSuccessfully = orderService.exitActiveTradeByToken(
                                 order.getToken(), 
-                                sourceConfig.getName(), 
+                                order.getName(), 
                                 order.getName()         
                         );
                         
                         if (!legClosedSuccessfully) {
-                            log.error("❌ [{}][EXIT] Broker rejected exit for {}. DB left ACTIVE.", order.getName(), order.getOptionType());
+                            log.error("❌ [{}][EXIT] Broker rejected exit for {}. Rolling back DB lock.", order.getName(), order.getOptionType());
                         } else {
-                            // ANTI-RATE-LIMIT DELAY: Pause 1 second before sending the next leg to Angel One
                             Thread.sleep(1000); 
                         }
                     } catch (Exception | SmartAPIException e) {
@@ -430,7 +457,7 @@ public class ShortStraddleService {
                     log.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit for {}.", order.getName(), order.getOptionType());
                 }
 
-                // CRITICAL GUARD: Only update local DB status if the broker exit actually succeeded!
+                // 2. CRITICAL GUARD: Finalize the DB if successful, OR rollback the lock if it failed
                 if (legClosedSuccessfully) {
                     BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
                     BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
@@ -449,15 +476,24 @@ public class ShortStraddleService {
                     order.setClosedOn(LocalDateTime.now());
                     order.setTradePhase(PHASE_EXIT);
                     order.setStatus(STATUS_CLOSED);
-                    order.setActive(STATUS_INACTIVE);
+                    // active is already 0 from our pre-flight lock
                     order.setExitReason(reason);
                     
                     ordersRepository.save(order);
                     closedCount++;
+                } else {
+                    // 🛑 3. ROLLBACK LOCK: Broker failed, make it visible to RiskService again
+                    order.setActive(STATUS_ACTIVE);
+                    order.setTradePhase(PHASE_ENTRY);
+                    ordersRepository.save(order);
                 }
                 
             } catch (Exception e) {
                 log.error("❌ [{}][EXIT] DB error closing leg: {}", order.getName(), e.getMessage());
+                // Emergency rollback on DB crash
+                order.setActive(STATUS_ACTIVE);
+                order.setTradePhase(PHASE_ENTRY);
+                ordersRepository.save(order);
             }
         }
         
@@ -526,7 +562,8 @@ public class ShortStraddleService {
             return Optional.empty();
         }
 
-        BigDecimal atmStrike = indexLtp.divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        BigDecimal strikeStep = new BigDecimal("100"); 
+        BigDecimal atmStrike = indexLtp.divide(strikeStep, 0, RoundingMode.HALF_UP).multiply(strikeStep);
         log.debug("📉 [{}] SENSEX INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
         
         return Optional.of(atmStrike);
