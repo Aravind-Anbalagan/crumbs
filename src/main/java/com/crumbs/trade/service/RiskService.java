@@ -227,12 +227,11 @@ public class RiskService {
 
 							BigDecimal pointsDiff;
 
-							if ("BUY".equalsIgnoreCase(leg.getType())) {
-								pointsDiff = currentLtp
-										.subtract(leg.getAskPrice());
+							boolean isShort = isShortPosition(leg, config);
+							if (isShort) {
+							    pointsDiff = leg.getAskPrice().subtract(currentLtp); // Sell math: Entry - LTP
 							} else {
-								pointsDiff = leg.getAskPrice()
-										.subtract(currentLtp);
+							    pointsDiff = currentLtp.subtract(leg.getAskPrice()); // Buy math: LTP - Entry
 							}
 
 							legPnL = pointsDiff.multiply(
@@ -263,16 +262,16 @@ public class RiskService {
 							}
 
 							if (currentLtp != null
-									&& currentLtp.compareTo(BigDecimal.ZERO) > 0
-									&& leg.getAskPrice() != null) {
-								BigDecimal pointsDiff = SIDE_BUY
-										.equalsIgnoreCase(leg.getType())
-												? currentLtp.subtract(
-														leg.getAskPrice())
-												: leg.getAskPrice()
-														.subtract(currentLtp);
-								legPnL = pointsDiff.multiply(
-										BigDecimal.valueOf(leg.getQuantity()));
+							        && currentLtp.compareTo(BigDecimal.ZERO) > 0
+							        && leg.getAskPrice() != null) {
+							    
+							    boolean isShort = isShortPosition(leg, config);
+							    BigDecimal pointsDiff = isShort
+							            ? leg.getAskPrice().subtract(currentLtp)
+							            : currentLtp.subtract(leg.getAskPrice());
+							            
+							    legPnL = pointsDiff.multiply(
+							            BigDecimal.valueOf(leg.getQuantity()));
 							}
 						} catch (Exception e) {
 							logger.error(
@@ -347,14 +346,14 @@ public class RiskService {
         if (maxLossThreshold != null) {
             BigDecimal absoluteMaxLoss = maxLossThreshold.abs().negate();
             if (currentCombinedPnL.compareTo(absoluteMaxLoss) <= 0) {
-                terminateEntireGroup(group, strategyKey, "HARD_MAX_LOSS_BREACHED", currentCombinedPnL, connection);
+                terminateEntireGroup(group, strategyKey, "HARD_MAX_LOSS_BREACHED", currentCombinedPnL, connection, config);
                 return;
             }
         }
 
         if (targetProfitThreshold != null && targetProfitThreshold.compareTo(BigDecimal.ZERO) > 0) {
             if (currentCombinedPnL.compareTo(targetProfitThreshold) >= 0) {
-                terminateEntireGroup(group, strategyKey, "FIXED_TARGET_PROFIT_HIT", currentCombinedPnL, connection);
+                terminateEntireGroup(group, strategyKey, "FIXED_TARGET_PROFIT_HIT", currentCombinedPnL, connection, config);
                 return;
             }
         }
@@ -376,7 +375,7 @@ public class RiskService {
             BigDecimal milestoneActivation = targetProfitThreshold.multiply(config.getMilestonePercent()); 
             if (peakPnL.compareTo(milestoneActivation) >= 0) {
                 if (currentCombinedPnL.compareTo(config.getBreakevenFloor()) <= 0) {
-                    terminateEntireGroup(group, strategyKey, "MILESTONE_PROFIT_PROTECTION_TRIGGERED", currentCombinedPnL, connection);
+                    terminateEntireGroup(group, strategyKey, "MILESTONE_PROFIT_PROTECTION_TRIGGERED", currentCombinedPnL, connection, config);
                     return;
                 }
             }
@@ -403,7 +402,7 @@ public class RiskService {
 
             BigDecimal currentFloor = activeTrailingFloors.get(strategyKey);
             if (currentFloor != null && currentCombinedPnL.compareTo(currentFloor) <= 0) {
-                terminateEntireGroup(group, strategyKey, "RUBBER_BAND_MAX_DRAWDOWN_BREACHED", currentCombinedPnL, connection);
+                terminateEntireGroup(group, strategyKey, "RUBBER_BAND_MAX_DRAWDOWN_BREACHED", currentCombinedPnL, connection, config);
                 return;
             }
         }
@@ -411,7 +410,7 @@ public class RiskService {
 
 	private void terminateEntireGroup(List<Orders> group, String strategyKey,
 			String exitReason, BigDecimal closurePnL,
-			SmartConnect backupConnection) {
+			SmartConnect backupConnection,RiskConfiguration config) {
 
 		logger.warn("====================================================");
 		logger.warn("🛑 [ACTION] STRATEGY LIQUIDATED VIA RISK SERVICE: {}",
@@ -472,9 +471,10 @@ public class RiskService {
 				exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD);
 				exitToken.setVariety(Constants.VARIETY_NORMAL);
 
-				String exitSide = SIDE_BUY.equalsIgnoreCase(leg.getType())
-						? Constants.TRANSACTION_TYPE_SELL
-						: Constants.TRANSACTION_TYPE_BUY;
+				boolean isShort = isShortPosition(leg, config);
+				String exitSide = isShort
+				        ? Constants.TRANSACTION_TYPE_BUY 
+				        : Constants.TRANSACTION_TYPE_SELL;
 				exitToken.setTransactionType(exitSide);
 
 				while (exitAttempt < maxExitRetries && !orderPlaced) {
@@ -538,11 +538,10 @@ public class RiskService {
 				BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4,
 						RoundingMode.HALF_UP);
 
-				if (SIDE_BUY.equalsIgnoreCase(leg.getType())) {
-					calculatedExitPrice = leg.getAskPrice().add(pnlPerUnit);
+				if (isShortPosition(leg, config)) {
+				    calculatedExitPrice = leg.getAskPrice().subtract(pnlPerUnit);
 				} else {
-					calculatedExitPrice = leg.getAskPrice()
-							.subtract(pnlPerUnit);
+				    calculatedExitPrice = leg.getAskPrice().add(pnlPerUnit);
 				}
 				calculatedExitPrice = calculatedExitPrice.setScale(2,
 						RoundingMode.HALF_UP);
@@ -611,5 +610,11 @@ public class RiskService {
         LocalTime endTime = LocalTime.of(23, 30);
 
         return !time.isBefore(startTime) && !time.isAfter(endTime);
+    }
+    private boolean isShortPosition(Orders leg, RiskConfiguration config) {
+        if (config != null && config.getStrategyType() != null) {
+            return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
+        }
+        return "SELL".equalsIgnoreCase(leg.getType());
     }
 }
