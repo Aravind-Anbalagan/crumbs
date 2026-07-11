@@ -11,6 +11,9 @@ import com.crumbs.trade.repo.ShortStraddleRepository;
 import com.crumbs.trade.repo.StrategyRepo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -24,12 +27,17 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ShortStraddleService {
 
+	@Autowired
+    @Lazy
+    private ShortStraddleService self; // CRITICAL: Used to enforce transaction boundary
+	
     private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE"; 
     private static final String NAME_PREFIX = "SHORT_STRADDLE_"; 
     
@@ -108,23 +116,39 @@ public class ShortStraddleService {
                 BigDecimal tradedStrike = cycleOrders.get(0).getStrike();
 
                 if (cycleOrders.size() != 2) {
-                    log.error("🚨 [{}][SAFETY] Imbalance in Cycle {}! Found {} legs. Cleaning up orphan.", tradeName, cycleId, cycleOrders.size());
-                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
-                        closeAll(cycleOrders, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
+                    log.error("🚨 [{}][SAFETY] Imbalance in Cycle {}! Found {} legs. Cleaning up.", tradeName, cycleId, cycleOrders.size());
+                    
+                    // Claim it first!
+                    List<Orders> toExit = self.claimStrategyForExit(tradeName);
+                    if (!toExit.isEmpty()) {
+                        straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
+                            closeAll(toExit, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
+                    }
                     continue; 
                 }
 
+             // Example for the EOD_SQUARE_OFF block:
                 if (isSquareOffTime(baseSymbol, now)) {
                     log.info("🕒 [{}][EXIT] Square-off time reached for Cycle {}.", tradeName, cycleId);
-                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
-                        closeAll(cycleOrders, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
+                    
+                    // 🛑 LOCKING CHANGE: Claim before closing
+                    List<Orders> toExit = self.claimStrategyForExit(tradeName);
+                    
+                    if (!toExit.isEmpty()) {
+                        straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike)
+                            .ifPresent(tick -> closeAll(toExit, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
+                    } else {
+                        log.info("🛡️ [STRADDLE] Race condition blocked. Liquidation handled by RiskService.");
+                    }
                     continue;
                 }
 
+                // Do the same for the "ORPHAN_LEG_CLEANUP" block and the SL trigger logic
+
                 straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresentOrElse(
-                    tick -> processExitSequence(tradeName, tick, cycleOrders, strategyConfig, sourceConfig, cycleId),
-                    () -> log.error("❌ [{}][MONITOR] Missing price data for strike: {}", tradeName, tradedStrike)
-                );
+                	    tick -> processExitSequence(tradeName, tick, cycleOrders, strategyConfig, sourceConfig, cycleId),
+                	    () -> log.error("❌ [{}][MONITOR] Missing price data for strike: {}", tradeName, tradedStrike)
+                	);
             }
             
         } else {
@@ -286,9 +310,20 @@ public class ShortStraddleService {
             }
         }
 
-        if (shouldExit) {
-            log.warn("🚨 [{}][EXIT] STOP LOSS TRIGGERED! Reason: {}", tradeName, reason);
-            closeAll(activeOrders, tick, reason, strategyConfig, sourceConfig);
+        if (shouldExit || currentGap.compareTo(targetGap) >= 0) {
+            reason = shouldExit ? reason : "TARGET_REACHED"; // determine reason
+            
+            log.warn("🚨 [{}][EXIT] Triggering exit via Lock: {}", tradeName, reason);
+            
+            // 🛑 CALL THE LOCK HERE
+            List<Orders> toExit = self.claimStrategyForExit(tradeName);
+            
+            if (!toExit.isEmpty()) {
+                closeAll(toExit, tick, reason, strategyConfig, sourceConfig);
+            } else {
+                log.info("🛡️ [STRADDLE] Race condition blocked. Liquidation handled by RiskService.");
+            }
+            
             hitCounters.remove(exitKey);
         }
     }
@@ -422,16 +457,7 @@ public class ShortStraddleService {
         int closedCount = 0;
 
         for (Orders order : activeOrders) {
-            // Check if it's already inactive or currently being processed by another thread
-            if (order.getActive() == STATUS_INACTIVE || "EXIT_IN_PROGRESS".equals(order.getTradePhase())) {
-                continue; 
-            }
             
-            // 🛑 1. PRE-FLIGHT LOCK: Hide this order from RiskService instantly!
-            // We save it to the DB *before* hitting the Angel One API.
-            order.setActive(STATUS_INACTIVE); 
-            order.setTradePhase("EXIT_IN_PROGRESS");
-            ordersRepository.save(order); // Commit lock to Postgres
             
             boolean legClosedSuccessfully = true;
 
@@ -567,5 +593,23 @@ public class ShortStraddleService {
         log.debug("📉 [{}] SENSEX INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
         
         return Optional.of(atmStrike);
+    }
+    
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<Orders> claimStrategyForExit(String strategyName) {
+        // Use the repository lock method we defined in the previous step
+        // Ensure this method exists in your OrderRepository with @Lock(LockModeType.PESSIMISTIC_WRITE)
+        List<Orders> lockedLegs = ordersRepository.findByNameAndStatusForUpdate(strategyName);
+
+        if (lockedLegs.isEmpty()) {
+            return lockedLegs; // RiskService already claimed or closed them!
+        }
+
+        // Mark them as processing so the Risk Engine sees the "EXIT_IN_PROGRESS" phase
+        for (Orders leg : lockedLegs) {
+            leg.setTradePhase("EXIT_IN_PROGRESS");
+        }
+        
+        return ordersRepository.saveAllAndFlush(lockedLegs);
     }
 }

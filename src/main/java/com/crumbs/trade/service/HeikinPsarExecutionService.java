@@ -483,7 +483,10 @@ public class HeikinPsarExecutionService {
 
     private BigDecimal calculateAtmStrike(String baseSymbol, BigDecimal spotPrice) {
         if ("NIFTY".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("50"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("50"));
-        if ("CRUDEOIL".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("10"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("10"));
+        
+        // 🛠️ FIX: Changed divisor and multiplier from 10 to 100 to match MCX strike intervals
+        if ("CRUDEOIL".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        
         if ("SENSEX".equalsIgnoreCase(baseSymbol)) return spotPrice.divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
         return spotPrice.setScale(0, RoundingMode.HALF_UP);
     }

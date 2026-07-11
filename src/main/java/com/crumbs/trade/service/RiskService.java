@@ -33,7 +33,7 @@ import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.RiskConfiguration;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.RiskConfigurationRepository;
-
+import org.springframework.transaction.annotation.Propagation;
 @Service
 public class RiskService {
 
@@ -179,14 +179,16 @@ public class RiskService {
 					String strategyKey = entry.getKey(); 
 					List<Orders> groupLegs = entry.getValue();
 
-					// 🛑 CONCURRENCY GUARD: Filter out any legs currently being exited by ShortStraddleService
-					List<Orders> safelyTrackedLegs = groupLegs.stream()
-							.filter(leg -> !"EXIT_IN_PROGRESS".equalsIgnoreCase(leg.getTradePhase()))
-							.collect(Collectors.toList());
+					// 🛑 CONCURRENCY GUARD: If ANY leg is being exited, skip the entire strategy group
+					boolean isBeingTornDown = groupLegs.stream()
+					        .anyMatch(leg -> "EXIT_IN_PROGRESS".equalsIgnoreCase(leg.getTradePhase()));
 
-					if (safelyTrackedLegs.isEmpty()) {
-						continue; // Skip this strategy group completely; it is currently being torn down
+					if (isBeingTornDown) {
+					    continue; // Skip! The combined PnL is invalid while a thread is tearing it down.
 					}
+
+					// If safe, we evaluate all legs in the group
+					List<Orders> safelyTrackedLegs = groupLegs;
 
 					RiskConfiguration config = configMap.get(strategyKey);
 					BigDecimal combinedGroupPnL = BigDecimal.ZERO;
@@ -305,13 +307,17 @@ public class RiskService {
 
     @Transactional
     public void syncActiveLegPnLsToDb(List<Orders> groupLegs, List<BigDecimal> legPnLs) {
+        List<Orders> legsToUpdate = new ArrayList<>();
         for (int i = 0; i < groupLegs.size(); i++) {
             Orders leg = groupLegs.get(i);
             BigDecimal currentPnL = legPnLs.get(i);
             if (leg.getPl() == null || leg.getPl().compareTo(currentPnL) != 0) {
                 leg.setPl(currentPnL);
-                orderRepository.save(leg);
+                legsToUpdate.add(leg);
             }
+        }
+        if (!legsToUpdate.isEmpty()) {
+            orderRepository.saveAll(legsToUpdate); // Single batch update!
         }
     }
 
@@ -408,51 +414,34 @@ public class RiskService {
         }
     }
 
-	private void terminateEntireGroup(List<Orders> group, String strategyKey,
-			String exitReason, BigDecimal closurePnL,
-			SmartConnect backupConnection,RiskConfiguration config) {
+    private void terminateEntireGroup(List<Orders> group, String strategyKey,
+            String exitReason, BigDecimal closurePnL,
+            SmartConnect backupConnection, RiskConfiguration config) {
 
-		logger.warn("====================================================");
-		logger.warn("🛑 [ACTION] STRATEGY LIQUIDATED VIA RISK SERVICE: {}",
-				strategyKey);
-		logger.warn("🛑 Reason     : {}", exitReason);
-		logger.warn("🛑 Final PnL  : {}",
-				closurePnL.setScale(2, RoundingMode.HALF_UP));
-		logger.warn("🛑 Leg Count  : {}", group.size());
-		logger.warn("====================================================");
+        logger.warn("====================================================");
+        logger.warn("🛑 [ACTION] STRATEGY LIQUIDATED VIA RISK SERVICE: {}", strategyKey);
+        logger.warn("🛑 Reason     : {}", exitReason);
+        logger.warn("🛑 Final PnL  : {}", closurePnL.setScale(2, RoundingMode.HALF_UP));
+        logger.warn("====================================================");
 
-		// 🛑 CONCURRENCY LOCK: Claims rows immediately to deny access to other
-		// thread workers
-		List<Orders> qualifiedLegsToExit = new ArrayList<>();
-		for (Orders leg : group) {
-			// Re-fetch or check instance state under memory context
-			if (leg.getActive() == 0 || "EXIT_IN_PROGRESS"
-					.equalsIgnoreCase(leg.getTradePhase())) {
-				continue; // Already processed elsewhere
-			}
+        // 🛑 TRUE CONCURRENCY LOCK: Ask the DB to lock and claim the active rows
+        // We use `self` to ensure the REQUIRES_NEW transaction boundary is respected.
+        List<Orders> qualifiedLegsToExit = self.claimStrategyForExit(strategyKey);
 
-			// Mark state immediately before network execution
-			leg.setTradePhase("EXIT_IN_PROGRESS");
-			orderRepository.saveAndFlush(leg); // Write structural barrier to
-												// Postgres
-			qualifiedLegsToExit.add(leg);
-		}
+        if (qualifiedLegsToExit.isEmpty()) {
+            logger.info("🛡️ [RISK] Intercepted race condition loop. Strategy {} already handling liquidation.", strategyKey);
+            return; // We safely dodged the double-execution!
+        }
 
-		if (qualifiedLegsToExit.isEmpty()) {
-			logger.info(
-					"🛡️ [RISK] Intercepted race condition loop. Strategy already handling liquidation.");
-			return;
-		}
+        SmartConnect connection = null;
+        try {
+            connection = angelOne.signIn();
+        } catch (Exception e) {
+            connection = backupConnection;
+        }
 
-		SmartConnect connection = null;
-		try {
-			connection = angelOne.signIn();
-		} catch (Exception e) {
-			connection = backupConnection;
-		}
-
-		// Execute orders only for legs safely claimed by this context thread
-		for (Orders leg : qualifiedLegsToExit) {
+        // Execute orders only for legs safely claimed by this context thread
+        for (Orders leg : qualifiedLegsToExit) {
 			boolean isLiveTrade = leg.getOrderid() != null
 					&& !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
 
@@ -616,5 +605,22 @@ public class RiskService {
             return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
         }
         return "SELL".equalsIgnoreCase(leg.getType());
+    }
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<Orders> claimStrategyForExit(String strategyName) {
+        // 1. Physically lock the active rows in the DB
+        List<Orders> lockedLegs = orderRepository.lockAndFetchActiveTrades(strategyName);
+
+        if (lockedLegs.isEmpty()) {
+            return lockedLegs; // Another thread already claimed or closed them!
+        }
+
+        // 2. Mark them as processing
+        for (Orders leg : lockedLegs) {
+            leg.setTradePhase("EXIT_IN_PROGRESS");
+        }
+        
+        // 3. Save and drop the lock instantly
+        return orderRepository.saveAllAndFlush(lockedLegs);
     }
 }

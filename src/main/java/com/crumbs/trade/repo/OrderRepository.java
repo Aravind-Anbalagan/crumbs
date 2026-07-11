@@ -4,7 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -79,4 +80,13 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     
     // Also, if you need the one for specific names, add this too:
     Orders findByNameAndStatusAndActive(String name, String status, int active);
+    
+ // 🔥 TRUE DATABASE LOCK: Forces other threads to wait!
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Orders o WHERE o.name = :name AND o.active = 1 AND o.tradePhase != 'EXIT_IN_PROGRESS'")
+    List<Orders> lockAndFetchActiveTrades(@Param("name") String name);
+    
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Orders o WHERE o.name = :name AND o.status = 'OPEN'")
+    List<Orders> findByNameAndStatusForUpdate(@Param("name") String name);
 }
