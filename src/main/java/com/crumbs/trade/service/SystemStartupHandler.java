@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.NSEWorkingDays;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +27,11 @@ public class SystemStartupHandler {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationEvent() {
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+     // ✅ 1. Add Weekend Check: Use your existing utility
+        if (!NSEWorkingDays.isNSEWorkingDay(now.toLocalDate())) {
+            logger.info("Today is not a trading day (Weekend/Holiday). Skipping VWAP warm-up.");
+            return;
+        }
         int hour = now.getHour();
         
         // Basic check: Don't warm up if it's before 9:00 AM
