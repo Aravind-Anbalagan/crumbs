@@ -477,6 +477,15 @@ export default function MainLayout() {
             </Link>
 
             <Link
+              to="/dashboard/future"
+              className={`nav-link ${
+                isActive('/dashboard/future') ? 'active' : ''
+              }`}
+            >
+              Future
+            </Link>
+
+            <Link
               to="/dashboard/orders"
               className={`nav-link ${
                 isActive('/dashboard/orders') ? 'active' : ''

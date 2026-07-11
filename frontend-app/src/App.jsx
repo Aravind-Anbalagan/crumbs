@@ -7,6 +7,7 @@ import MainLayout from './layouts/MainLayout';
 import StrategySetup from './pages/StrategySetup'; 
 import OrderHistory from './pages/OrderHistory';
 
+
 const ProtectedRoute = ({ children }) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
   return isLoggedIn ? children : <Navigate to="/signin" replace />;
@@ -42,6 +43,8 @@ export default function App() {
           <Route path="pre-market" element={<Navigate to="/dashboard/pre-market" replace />} />
           <Route path="short-straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
           <Route path="straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
+          <Route path="future" element={<Dashboard />} />  {/* 👈 ADD THIS LINE */}
+          <Route path="futures" element={<Dashboard />} /> {/* 👈 AND THIS (Optional) */}
         </Route>
 
         {/* Catch-all for bad URLs */}

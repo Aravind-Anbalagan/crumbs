@@ -21,7 +21,9 @@ export default function Dashboard() {
     'straddle': '/shortstraddle.html',
     'trend': '/trend.html',
     'orders': '/orders.html',
-    'log': '/log.html'
+    'log': '/log.html',
+    'future': '/future.html',   // 👈 ADD THIS LINE
+    'futures': '/future.html'   // 👈 ADD THIS TOO (Bulletproof!)
   };
 
   const src = pageMap[pageName] || '/stock.html';

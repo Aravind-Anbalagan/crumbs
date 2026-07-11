@@ -85,7 +85,7 @@ public class FuturesStrategyService {
     //  Entry point
     // ─────────────────────────────────────────────
 
-    @Transactional
+   
     public void executeAll() throws SmartAPIException {
         FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_500")
                 .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
@@ -103,7 +103,7 @@ public class FuturesStrategyService {
     //  Master execution — SINGLE sign-in for all OHLC fetches
     // ─────────────────────────────────────────────
 
-    @Transactional
+    
     private void executeMaster(FuturesConfig masterConfig) throws SmartAPIException {
         LocalDate expiryDate = resolveExecutionDate(masterConfig);
         List<Futures> futuresList = futuresRepo.findByIsNifty500True();
@@ -352,60 +352,101 @@ public class FuturesStrategyService {
     //  Save & dedup
     // ─────────────────────────────────────────────
 
-    @Transactional
+    @Transactional // ✅ Transactions stay here where actual database writing happens!
     public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
 
         logger.info("======== SAVE & DEDUP STARTED ({} events) ========", events.size());
 
-        // Step 1: in-memory dedup — one entry per stock+breakType
+        // Step 1: In-memory dedup — one entry per stock+breakType
         Map<String, FuturesBreakEvent> uniqueMap = new LinkedHashMap<>();
         for (FuturesBreakEvent event : events) {
-            String key = event.getName() + "_" + event.getBreakType(); // ← removed date
+            String key = event.getName() + "_" + event.getBreakType();
             uniqueMap.putIfAbsent(key, event);
         }
         logger.info("After in-memory dedup: {} unique events", uniqueMap.size());
 
-        List<FuturesBreakEvent> newSignals   = new ArrayList<>();
+        List<FuturesBreakEvent> newSignals = new ArrayList<>();
         int updatedCount = 0;
 
         for (FuturesBreakEvent newEvent : uniqueMap.values()) {
 
             // Step 2: Check DB — does ANY record exist for this stock+breakType?
-            Optional<FuturesBreakEvent> existing = futuresBreakEventRepo
+            Optional<FuturesBreakEvent> existingOpt = futuresBreakEventRepo
                     .findByNameAndBreakType(newEvent.getName(), newEvent.getBreakType());
 
-            if (existing.isPresent()) {
-                // ✅ Record exists → just update price/PnL, NO notification
-                FuturesBreakEvent record = existing.get();
+            if (existingOpt.isPresent()) {
+                FuturesBreakEvent record = existingOpt.get();
+                
+                // ✅ Check if existing record was created in the SAME calendar month & year
+                boolean isSameMonth = record.getBreakDate().getMonth() == newEvent.getBreakDate().getMonth()
+                                   && record.getBreakDate().getYear() == newEvent.getBreakDate().getYear();
+
+                // Update common metrics
                 record.setCurrentPrice(newEvent.getCurrentPrice());
                 record.setPercentMove(newEvent.getPercentMove());
                 record.setBreakDate(newEvent.getBreakDate());
                 record.setBreakTime(newEvent.getBreakTime());
-                record.setStatus("ACTIVE");
-                futuresBreakEventRepo.save(record);
-                updatedCount++;
-                logger.info("🔄 Updated existing signal: {} {} | Price={} | PnL={}% — no notification",
-                        record.getName(), record.getBreakType(),
-                        record.getCurrentPrice(), record.getPercentMove());
+                record.setReferenceLevel(newEvent.getReferenceLevel());
+                record.setStopLoss(newEvent.getStopLoss());
+                
+                if (isSameMonth) {
+                    // 🛑 ZOMBIE GUARD: If it already hit SL this month, leave it dead!
+                    if ("INACTIVE".equals(record.getStatus())) {
+                        logger.debug("🛑 {} already hit SL this month. Keeping INACTIVE.", record.getName());
+                    } 
+                    // 📉 Check if an ACTIVE trade just hit Stop Loss
+                    else if (checkStopLoss(record)) {
+                        record.setStatus("INACTIVE");
+                        record.setExitReason("SL_HIT");
+                        record.setExitPrice(record.getCurrentPrice());
+                        record.setExitDate(LocalDateTime.now());
+                        logger.warn("❌ SL Hit: {} {} | Entry={} | Exit={} | %Move={}%",
+                                record.getName(), record.getBreakType(),
+                                record.getBreakPrice(), record.getExitPrice(), record.getPercentMove());
+                    } 
+                    // 📈 Trade is still ACTIVE and healthy
+                    else {
+                        record.setStatus("ACTIVE");
+                        logger.info("🔄 Same-Month Update: {} {} | Price={} | PnL={}% — Silent (No Alert)",
+                                record.getName(), record.getBreakType(),
+                                record.getCurrentPrice(), record.getPercentMove());
+                    }
+                    
+                    futuresBreakEventRepo.save(record);
+                    updatedCount++;
+                    
+                } else {
+                    // 🔔 Found from PREVIOUS month -> Reactivate & SEND NOTIFICATION!
+                    record.setStatus("ACTIVE");
+                    record.setExitReason(null); // Clear any old exit reasons
+                    record.setExitPrice(null);
+                    record.setExitDate(null);
+                    record.setBreakPrice(newEvent.getBreakPrice()); // Reset entry to new monthly breakout
+                    
+                    FuturesBreakEvent saved = futuresBreakEventRepo.save(record);
+                    newSignals.add(saved); // 👈 Adding to newSignals triggers Telegram alert!
+                    logger.info("🔔 Previous-Month Rollover Alert (ID={}): {} {} at {} — Will Notify!",
+                            saved.getId(), saved.getName(),
+                            saved.getBreakType(), saved.getBreakPrice());
+                }
 
             } else {
-                // ✅ No record exists → insert + send notification
+                // 🆕 Brand new stock never seen before -> Insert + Send Notification
                 newEvent.setStatus("ACTIVE");
                 newEvent.setCurrentPrice(newEvent.getBreakPrice());
                 FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
                 newSignals.add(saved);
-                logger.info("🆕 NEW signal (ID={}): {} {} at {} — will notify",
+                logger.info("🆕 NEW signal (ID={}): {} {} at {} — Will Notify!",
                         saved.getId(), saved.getName(),
                         saved.getBreakType(), saved.getBreakPrice());
             }
         }
 
-        logger.info("======== SAVE & DEDUP DONE: New={}, Updated={} ========",
+        logger.info("======== SAVE & DEDUP DONE: Alerts To Send={}, Silently Updated={} ========",
                 newSignals.size(), updatedCount);
 
-        return newSignals; // ← only new ones trigger notification
+        return newSignals; 
     }
-
     // ─────────────────────────────────────────────
     //  Break event helpers
     // ─────────────────────────────────────────────
@@ -628,10 +669,6 @@ public class FuturesStrategyService {
         return null;
     }
 
-    
-
-
-
     // ─────────────────────────────────────────────
     //  LTP batch fetch
     // ─────────────────────────────────────────────
@@ -643,13 +680,19 @@ public class FuturesStrategyService {
         Map<String, BigDecimal> priceMap = new HashMap<>();
         logger.info("Fetching LTPs for {} tokens in batches of {}", tokens.size(), BATCH_SIZE);
 
+        // ✅ SIGN IN ONCE BEFORE THE LOOP — Eliminates Broker Rate-Limiting!
+        SmartConnect smartconnect = angelOne.signIn();
+        if (smartconnect == null) {
+            logger.error("Failed to sign in for LTP fetch. Aborting market data query.");
+            return priceMap;
+        }
+
         for (int i = 0; i < tokens.size(); i += BATCH_SIZE) {
             int endIndex = Math.min(i + BATCH_SIZE, tokens.size());
             List<String> batch = tokens.subList(i, endIndex);
 
             try {
-                // ✅ Each LTP batch still gets its own session (different quota bucket)
-                SmartConnect smartconnect = angelOne.signIn();
+                // ✅ Reuses the single session across all batches
                 JSONObject payload = predictionService.buildMarketDataPayload(batch, EXCHANGE);
                 JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
 
