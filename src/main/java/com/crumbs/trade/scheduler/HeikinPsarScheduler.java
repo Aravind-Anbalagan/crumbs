@@ -2,6 +2,7 @@ package com.crumbs.trade.scheduler;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,18 +20,19 @@ public class HeikinPsarScheduler {
 
     // ================= CONFIGURATION CONSTANTS =================
     private static final String ZONE = "Asia/Kolkata";
-    
+
     // Execution Tags (for logging)
     private static final String TAG_NIFTY_EXEC = "NIFTY-EXEC";
     private static final String TAG_CRUDE_EXEC = "CRUDEOIL-EXEC";
     private static final String TAG_SCALP_MONITOR = "SCALP-MONITOR";
+    private static final String TAG_RETRACEMENT_MONITOR = "RETRACEMENT-MONITOR";
+
     private volatile boolean stateRestored = false;
 
     @Autowired
     private HeikinPsarExecutionService executionService;
 
-    // ------------------- NIFTY (5-Min Candle Generation & Entry) -------------------
-
+    // ------------------- NIFTY (5-Min Candle Generation & Entry/Exit) -------------------
     @Schedules({
         @Scheduled(cron = "5 20-59/5 9 * * MON-FRI", zone = ZONE),
         @Scheduled(cron = "5 */5 10-14 * * MON-FRI", zone = ZONE),
@@ -40,8 +42,7 @@ public class HeikinPsarScheduler {
         runSafely(TAG_NIFTY_EXEC, () -> executionService.commonExecutionNifty());
     }
 
-    // ------------------- CRUDEOILM (5-Min Candle Generation & Entry) -------------------
-
+    // ------------------- CRUDEOILM (5-Min Candle Generation & Entry/Exit) -------------------
     @Schedules({
         @Scheduled(cron = "5 */5 16-22 * * MON-FRI", zone = ZONE),
         @Scheduled(cron = "5 0-30/5 23 * * MON-FRI", zone = ZONE)
@@ -51,14 +52,21 @@ public class HeikinPsarScheduler {
     }
 
     // ------------------- 🔥 FAST-LOOP SCALPING MONITOR -------------------
-    // Runs every 10 seconds to lock in profits or cut losses instantly
+    // Runs every 10 seconds to lock in profits or cut losses instantly (buyer/scalping mode)
     @Scheduled(fixedDelay = 10000, zone = ZONE)
     public void monitorScalpPositions() {
         runSafely(TAG_SCALP_MONITOR, () -> executionService.monitorActiveScalpTrades());
     }
 
-    // ------------------- HEARTBEAT -------------------
+    // ------------------- 🎯 FAST-LOOP RETRACEMENT MONITOR -------------------
+    // Runs every 1 second to fire pending big-candle pullback entries as soon as
+    // live spot price reaches the target retracement level.
+    @Scheduled(fixedDelay = 1000, zone = ZONE)
+    public void monitorRetracements() {
+        runSafely(TAG_RETRACEMENT_MONITOR, () -> executionService.monitorPendingRetracements());
+    }
 
+    // ------------------- HEARTBEAT -------------------
     @Schedules({
         @Scheduled(cron = "0 */5 9-22 * * MON-FRI", zone = ZONE),
         @Scheduled(cron = "0 0-30/5 23 * * MON-FRI", zone = ZONE)
@@ -68,7 +76,7 @@ public class HeikinPsarScheduler {
     }
 
     // ------------------- STATE RESTORATION -------------------
-
+    // Fires once, 30s after startup, to rehydrate in-memory caches from the DB.
     @Scheduled(initialDelay = 30000, fixedDelay = 60000)
     public void restoreState() {
         if (stateRestored) {
@@ -79,7 +87,6 @@ public class HeikinPsarScheduler {
     }
 
     // ------------------- HELPER -------------------
-
     private void runSafely(String name, Runnable r) {
         try {
             r.run();
@@ -87,5 +94,4 @@ public class HeikinPsarScheduler {
             logger.error("❌ {} failed", name, e);
         }
     }
-
 }
