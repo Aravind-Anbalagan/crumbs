@@ -1,7 +1,6 @@
 package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -19,21 +18,23 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.angelbroking.smartapi.SmartConnect;
-import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
-import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
-import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.RiskConfiguration;
 import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.RiskConfigurationRepository;
-import org.springframework.transaction.annotation.Propagation;
+
+/**
+ * PNL SERVICE: Continuously recalculates and persists live PnL for all
+ * active order legs and their strategy groups. Exit / risk-termination
+ * logic has intentionally been removed from this class - it is
+ * PnL-tracking only.
+ */
 @Service
 public class RiskService {
 
@@ -43,10 +44,6 @@ public class RiskService {
     private static final String EXCHANGE_BSE = "BSE";
     private static final String EXCHANGE_NSE = "NSE";
     private static final String EXCHANGE_MCX = "MCX";
-    private static final String STATUS_CLOSED = "CLOSED";
-    private static final String PHASE_EXIT = "EXIT";
-    private static final String SIDE_BUY = "BUY";
-    private static final String SMART_RISK_ACTIVE = "Y";
     private static final String PAPER_ORDER_ID_MARKER = "1";
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Kolkata");
 
@@ -65,245 +62,220 @@ public class RiskService {
     @Autowired
     private AngelWebSocketService webSocketService;
 
-    @Autowired
-    @Lazy
-    private RiskService self;
-
     // --- MEMORY CACHES ---
     private final Map<Long, BigDecimal> liveUiCachePnL = new ConcurrentHashMap<>();
-    
-    // Tracks HWM and Floors using Strategy Name as the key
-    private final Map<String, BigDecimal> highWaterMarks = new ConcurrentHashMap<>();
-    private final Map<String, BigDecimal> activeTrailingFloors = new ConcurrentHashMap<>();
-    
-
 
     public Map<Long, BigDecimal> getLivePnLForUI() {
         return liveUiCachePnL;
     }
 
-    
-
     /**
-     * RISK EVALUATOR: Runs every 1 second, reading from memory caches.
+     * PNL EVALUATOR: Runs every 1 second, reading from memory caches.
      */
     @Scheduled(fixedDelay = 1000)
-	public void processSystemRiskMatrix() {
-		// 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
-		if (!isMarketHours())
-			return;
+    public void processSystemRiskMatrix() {
+        // 🛑 Guard: Execute only on weekdays between 09:15 AM and 11:30 PM IST
+        if (!isMarketHours())
+            return;
 
-		LocalDateTime now = LocalDateTime.now(MARKET_ZONE);
-		int currentHour = now.getHour();
-		int currentMinute = now.getMinute();
+        LocalDateTime now = LocalDateTime.now(MARKET_ZONE);
+        int currentHour = now.getHour();
+        int currentMinute = now.getMinute();
 
-		// ONLY pulls legs where active = 1 (Ignores morning trades that are
-		// already closed)
-		List<Orders> rawOpenOrders = orderRepository.findByActive(1);
-		if (rawOpenOrders == null || rawOpenOrders.isEmpty()) {
-			clearAllMemoryCaches();
-			return;
-		}
+        // ONLY pulls legs where active = 1 (Ignores morning trades that are
+        // already closed)
+        List<Orders> rawOpenOrders = orderRepository.findByActive(1);
+        if (rawOpenOrders == null || rawOpenOrders.isEmpty()) {
+            clearAllMemoryCaches();
+            return;
+        }
 
-		// Heartbeat log
-		if (now.getSecond() == 0) {
-			logger.info(
-					"⚙️ [SYSTEM] Risk Engine Active | Monitoring {} live DB rows | UI Cache Size: {}",
-					rawOpenOrders.size(), liveUiCachePnL.size());
-		}
+        // Heartbeat log
+        if (now.getSecond() == 0) {
+            logger.info(
+                    "⚙️ [SYSTEM] PnL Engine Active | Monitoring {} live DB rows | UI Cache Size: {}",
+                    rawOpenOrders.size(), liveUiCachePnL.size());
+        }
 
-		List<Orders> openOrders = rawOpenOrders.stream().filter(order -> {
-			String exch = order.getExchange() != null
-					? order.getExchange().toUpperCase()
-					: "";
-			if ((EXCHANGE_NFO.equals(exch) || EXCHANGE_BSE.equals(exch)
-					|| EXCHANGE_NSE.equals(exch))
-					&& (currentHour >= 16
-							|| (currentHour == 15 && currentMinute > 30))) {
-				return false;
-			}
-			if (EXCHANGE_MCX.equals(exch) && currentHour < 9) {
-				return false;
-			}
-			return true;
-		}).collect(Collectors.toList());
+        List<Orders> openOrders = rawOpenOrders.stream().filter(order -> {
+            String exch = order.getExchange() != null
+                    ? order.getExchange().toUpperCase()
+                    : "";
+            if ((EXCHANGE_NFO.equals(exch) || EXCHANGE_BSE.equals(exch)
+                    || EXCHANGE_NSE.equals(exch))
+                    && (currentHour >= 16
+                            || (currentHour == 15 && currentMinute > 30))) {
+                return false;
+            }
+            if (EXCHANGE_MCX.equals(exch) && currentHour < 9) {
+                return false;
+            }
+            return true;
+        }).collect(Collectors.toList());
 
-		if (openOrders.isEmpty()) {
-			if (now.getSecond() == 0) {
-				logger.info(
-						"💤 [SYSTEM] Market Idle | {} rows found, but 0 are active in this trading session.",
-						rawOpenOrders.size());
-			}
-			return;
-		}
+        if (openOrders.isEmpty()) {
+            if (now.getSecond() == 0) {
+                logger.info(
+                        "💤 [SYSTEM] Market Idle | {} rows found, but 0 are active in this trading session.",
+                        rawOpenOrders.size());
+            }
+            return;
+        }
 
-		Set<String> strategyIdentifiers = openOrders.stream()
-				.map(Orders::getName).filter(Objects::nonNull)
-				.filter(name -> !name.isEmpty()).collect(Collectors.toSet());
+        Set<String> strategyIdentifiers = openOrders.stream()
+                .map(Orders::getName).filter(Objects::nonNull)
+                .filter(name -> !name.isEmpty()).collect(Collectors.toSet());
 
-		Map<String, RiskConfiguration> configMap = new ConcurrentHashMap<>();
-		if (!strategyIdentifiers.isEmpty()) {
-			List<RiskConfiguration> configs = riskConfigRepository
-					.findAllById(strategyIdentifiers);
-			configMap = configs.stream().collect(Collectors.toMap(
-					RiskConfiguration::getStrategyName, Function.identity()));
-		}
+        Map<String, RiskConfiguration> configMap = new ConcurrentHashMap<>();
+        if (!strategyIdentifiers.isEmpty()) {
+            List<RiskConfiguration> configs = riskConfigRepository
+                    .findAllById(strategyIdentifiers);
+            configMap = configs.stream().collect(Collectors.toMap(
+                    RiskConfiguration::getStrategyName, Function.identity()));
+        }
 
-		// GROUPING: Combine all active legs under their unique Strategy Name
-		Function<Orders, String> strategyNameClassifier = order -> (order
-				.getName() != null && !order.getName().trim().isEmpty())
-						? order.getName().trim()
-						: "ORPHAN_" + order.getId();
+        // GROUPING: Combine all active legs under their unique Strategy Name
+        Function<Orders, String> strategyNameClassifier = order -> (order
+                .getName() != null && !order.getName().trim().isEmpty())
+                        ? order.getName().trim()
+                        : "ORPHAN_" + order.getId();
 
-		Map<String, List<Orders>> strategyGroups = openOrders.stream()
-				.collect(Collectors.groupingBy(strategyNameClassifier));
+        Map<String, List<Orders>> strategyGroups = openOrders.stream()
+                .collect(Collectors.groupingBy(strategyNameClassifier));
 
-		// Purge dead memory
-		Set<Long> activeOrderIds = openOrders.stream().map(Orders::getId)
-				.collect(Collectors.toSet());
-		liveUiCachePnL.keySet().retainAll(activeOrderIds);
-		highWaterMarks.keySet().retainAll(strategyGroups.keySet());
-		activeTrailingFloors.keySet().retainAll(strategyGroups.keySet());
+        // Purge dead memory
+        Set<Long> activeOrderIds = openOrders.stream().map(Orders::getId)
+                .collect(Collectors.toSet());
+        liveUiCachePnL.keySet().retainAll(activeOrderIds);
 
-		SmartConnect connection = null;
-		try {
-			connection = angelOne.signIn();
-		} catch (Exception e) {
-			logger.error("❌ [SYSTEM] Broker Auth Failed: {}", e.getMessage());
-			return; // Needs connection for live execution safety
-		}
+        SmartConnect connection = null;
+        try {
+            connection = angelOne.signIn();
+        } catch (Exception e) {
+            logger.error("❌ [SYSTEM] Broker Auth Failed: {}", e.getMessage());
+            return; // Needs connection for live pricing
+        }
 
-	
-		// EVALUATE GROUPS (1 leg, 2 legs, 4 legs)
-				for (Map.Entry<String, List<Orders>> entry : strategyGroups.entrySet()) {
-					String strategyKey = entry.getKey(); 
-					List<Orders> groupLegs = entry.getValue();
+        // EVALUATE GROUPS (1 leg, 2 legs, 4 legs)
+        for (Map.Entry<String, List<Orders>> entry : strategyGroups.entrySet()) {
+            String strategyKey = entry.getKey();
+            List<Orders> groupLegs = entry.getValue();
 
-					// 🛑 CONCURRENCY GUARD: If ANY leg is being exited, skip the entire strategy group
-					boolean isBeingTornDown = groupLegs.stream()
-					        .anyMatch(leg -> "EXIT_IN_PROGRESS".equalsIgnoreCase(leg.getTradePhase()));
+            RiskConfiguration config = configMap.get(strategyKey);
+            BigDecimal combinedGroupPnL = BigDecimal.ZERO;
+            List<BigDecimal> calculatedLegPnLs = new ArrayList<>();
 
-					if (isBeingTornDown) {
-					    continue; // Skip! The combined PnL is invalid while a thread is tearing it down.
-					}
+            for (Orders leg : groupLegs) {
+                try {
+                    boolean isLiveTrade = leg.getOrderid() != null
+                            && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
+                    BigDecimal legPnL = BigDecimal.ZERO;
 
-					// If safe, we evaluate all legs in the group
-					List<Orders> safelyTrackedLegs = groupLegs;
+                    if (isLiveTrade) {
 
-					RiskConfiguration config = configMap.get(strategyKey);
-					BigDecimal combinedGroupPnL = BigDecimal.ZERO;
-					List<BigDecimal> calculatedLegPnLs = new ArrayList<>();
+                        BigDecimal currentLtp = BigDecimal.ZERO;
 
-					for (Orders leg : safelyTrackedLegs) { // Iterate over the safe collection
-				try {
-					boolean isLiveTrade = leg.getOrderid() != null
-							&& !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
-					BigDecimal legPnL = BigDecimal.ZERO;
+                        com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(
+                                leg.getExchange());
 
-					if (isLiveTrade) {
+                        if (exchangeType != null) {
+                            webSocketService.subscribe(exchangeType,
+                                    leg.getToken());
 
-						BigDecimal currentLtp = BigDecimal.ZERO;
+                            currentLtp = webSocketService
+                                    .getLatestLTP(exchangeType, leg.getToken());
+                        }
 
-						com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(
-								leg.getExchange());
+                        if (currentLtp == null
+                                || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
 
-						if (exchangeType != null) {
-							webSocketService.subscribe(exchangeType,
-									leg.getToken());
+                            currentLtp = angelOneService.getcurrentPrice(
+                                    connection, leg.getExchange(),
+                                    leg.getSymbol(), leg.getToken());
+                        }
 
-							currentLtp = webSocketService
-									.getLatestLTP(exchangeType, leg.getToken());
-						}
+                        if (currentLtp != null
+                                && currentLtp.compareTo(BigDecimal.ZERO) > 0
+                                && leg.getAskPrice() != null) {
 
-						if (currentLtp == null
-								|| currentLtp.compareTo(BigDecimal.ZERO) == 0) {
+                            BigDecimal pointsDiff;
 
-							currentLtp = angelOneService.getcurrentPrice(
-									connection, leg.getExchange(),
-									leg.getSymbol(), leg.getToken());
-						}
+                            boolean isShort = isShortPosition(leg, config);
+                            if (isShort) {
+                                pointsDiff = leg.getAskPrice().subtract(currentLtp); // Sell math: Entry - LTP
+                            } else {
+                                pointsDiff = currentLtp.subtract(leg.getAskPrice()); // Buy math: LTP - Entry
+                            }
 
-						if (currentLtp != null
-								&& currentLtp.compareTo(BigDecimal.ZERO) > 0
-								&& leg.getAskPrice() != null) {
+                            legPnL = pointsDiff.multiply(
+                                    BigDecimal.valueOf(leg.getQuantity()));
+                        }
+                    } else {
+                        try {
+                            BigDecimal currentLtp = BigDecimal.ZERO;
+                            com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(
+                                    leg.getExchange());
 
-							BigDecimal pointsDiff;
+                            if (exchangeType != null) {
+                                webSocketService.subscribe(exchangeType,
+                                        leg.getToken());
+                                currentLtp = webSocketService.getLatestLTP(
+                                        exchangeType, leg.getToken());
+                            }
 
-							boolean isShort = isShortPosition(leg, config);
-							if (isShort) {
-							    pointsDiff = leg.getAskPrice().subtract(currentLtp); // Sell math: Entry - LTP
-							} else {
-							    pointsDiff = currentLtp.subtract(leg.getAskPrice()); // Buy math: LTP - Entry
-							}
+                            if (currentLtp == null || currentLtp
+                                    .compareTo(BigDecimal.ZERO) == 0) {
+                                if (connection != null) {
+                                    currentLtp = angelOneService
+                                            .getcurrentPrice(connection,
+                                                    leg.getExchange(),
+                                                    leg.getSymbol(),
+                                                    leg.getToken());
+                                }
+                            }
 
-							legPnL = pointsDiff.multiply(
-									BigDecimal.valueOf(leg.getQuantity()));
-						}
-					} else {
-						try {
-							BigDecimal currentLtp = BigDecimal.ZERO;
-							com.angelbroking.smartapi.smartstream.models.ExchangeType exchangeType = mapExchangeToType(
-									leg.getExchange());
+                            if (currentLtp != null
+                                    && currentLtp.compareTo(BigDecimal.ZERO) > 0
+                                    && leg.getAskPrice() != null) {
 
-							if (exchangeType != null) {
-								webSocketService.subscribe(exchangeType,
-										leg.getToken());
-								currentLtp = webSocketService.getLatestLTP(
-										exchangeType, leg.getToken());
-							}
+                                boolean isShort = isShortPosition(leg, config);
+                                BigDecimal pointsDiff = isShort
+                                        ? leg.getAskPrice().subtract(currentLtp)
+                                        : currentLtp.subtract(leg.getAskPrice());
 
-							if (currentLtp == null || currentLtp
-									.compareTo(BigDecimal.ZERO) == 0) {
-								if (connection != null) {
-									currentLtp = angelOneService
-											.getcurrentPrice(connection,
-													leg.getExchange(),
-													leg.getSymbol(),
-													leg.getToken());
-								}
-							}
+                                legPnL = pointsDiff.multiply(
+                                        BigDecimal.valueOf(leg.getQuantity()));
+                            }
+                        } catch (Exception e) {
+                            logger.error(
+                                    "❌ [SYSTEM] Math Error on Paper Leg {}: {}",
+                                    leg.getId(), e.getMessage());
+                        }
+                    }
 
-							if (currentLtp != null
-							        && currentLtp.compareTo(BigDecimal.ZERO) > 0
-							        && leg.getAskPrice() != null) {
-							    
-							    boolean isShort = isShortPosition(leg, config);
-							    BigDecimal pointsDiff = isShort
-							            ? leg.getAskPrice().subtract(currentLtp)
-							            : currentLtp.subtract(leg.getAskPrice());
-							            
-							    legPnL = pointsDiff.multiply(
-							            BigDecimal.valueOf(leg.getQuantity()));
-							}
-						} catch (Exception e) {
-							logger.error(
-									"❌ [SYSTEM] Math Error on Paper Leg {}: {}",
-									leg.getId(), e.getMessage());
-						}
-					}
+                    combinedGroupPnL = combinedGroupPnL.add(legPnL);
+                    calculatedLegPnLs.add(legPnL);
+                    liveUiCachePnL.put(leg.getId(), legPnL);
+                }
 
-					combinedGroupPnL = combinedGroupPnL.add(legPnL);
-					calculatedLegPnLs.add(legPnL);
-					liveUiCachePnL.put(leg.getId(), legPnL);
-				}
+                catch (Exception e) {
+                    logger.error("Failed PnL calculation for {}",
+                            leg.getSymbol(), e);
 
-				catch (Exception e) {
-					logger.error("Failed PnL calculation for {}",
-							leg.getSymbol(), e);
+                    calculatedLegPnLs.add(BigDecimal.ZERO);
+                    liveUiCachePnL.put(leg.getId(), BigDecimal.ZERO);
+                    continue;
+                }
+            }
 
-					calculatedLegPnLs.add(BigDecimal.ZERO);
-					liveUiCachePnL.put(leg.getId(), BigDecimal.ZERO);
-					continue;
+            syncActiveLegPnLsToDb(groupLegs, calculatedLegPnLs);
 
-				}
-
-			}
-
-			self.syncActiveLegPnLsToDb(groupLegs, calculatedLegPnLs);
-			evaluateGroupRisk(groupLegs, strategyKey, combinedGroupPnL,
-					connection, config);
-		}
-	}
+            if (now.getSecond() == 0) {
+                logger.info("📊 [PNL] Strategy '{}' | Combined PnL: {}",
+                        strategyKey, combinedGroupPnL.setScale(2, java.math.RoundingMode.HALF_UP));
+            }
+        }
+    }
 
     @Transactional
     public void syncActiveLegPnLsToDb(List<Orders> groupLegs, List<BigDecimal> legPnLs) {
@@ -321,249 +293,9 @@ public class RiskService {
         }
     }
 
-    private void evaluateGroupRisk(List<Orders> group, String strategyKey, BigDecimal currentCombinedPnL, 
-                                   SmartConnect connection, RiskConfiguration config) {
-        
-        Orders primaryLeg = group.get(0);
-        BigDecimal totalQuantity = group.stream()
-                .map(Orders::getQuantity)
-                .filter(Objects::nonNull)
-                .map(BigDecimal::valueOf)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal maxLossThreshold = null;
-        BigDecimal targetProfitThreshold = null;
-
-        if (config != null) {
-            maxLossThreshold = config.getMaxLossLimit(); 
-            targetProfitThreshold = config.getTargetProfit(); 
-        } else {
-            if (LocalDateTime.now(MARKET_ZONE).getSecond() == 0) {
-                logger.warn("⚠️ [WARN] Strategy '{}' missing from risk_configuration! Using leg fallback rules.", strategyKey);
-            }
-            if (primaryLeg.getSl() != null && primaryLeg.getSl().compareTo(BigDecimal.ZERO) > 0) {
-                maxLossThreshold = primaryLeg.getSl().multiply(totalQuantity).negate();
-            }
-            if (primaryLeg.getTarget() != null && primaryLeg.getTarget().compareTo(BigDecimal.ZERO) > 0) {
-                targetProfitThreshold = primaryLeg.getTarget().multiply(totalQuantity);
-            }
-        }
-
-        if (maxLossThreshold != null) {
-            BigDecimal absoluteMaxLoss = maxLossThreshold.abs().negate();
-            if (currentCombinedPnL.compareTo(absoluteMaxLoss) <= 0) {
-                terminateEntireGroup(group, strategyKey, "HARD_MAX_LOSS_BREACHED", currentCombinedPnL, connection, config);
-                return;
-            }
-        }
-
-        if (targetProfitThreshold != null && targetProfitThreshold.compareTo(BigDecimal.ZERO) > 0) {
-            if (currentCombinedPnL.compareTo(targetProfitThreshold) >= 0) {
-                terminateEntireGroup(group, strategyKey, "FIXED_TARGET_PROFIT_HIT", currentCombinedPnL, connection, config);
-                return;
-            }
-        }
-
-        if (config == null || !SMART_RISK_ACTIVE.equalsIgnoreCase(config.getSmartRiskFlag())) {
-            return; 
-        }
-
-        BigDecimal peakPnL = highWaterMarks.computeIfAbsent(
-                strategyKey,
-                k -> currentCombinedPnL);
-
-        if (currentCombinedPnL.compareTo(peakPnL) > 0) {
-            peakPnL = currentCombinedPnL;
-            highWaterMarks.put(strategyKey, peakPnL);
-        }
-
-        if (targetProfitThreshold != null && config.getMilestonePercent() != null && config.getBreakevenFloor() != null) {
-            BigDecimal milestoneActivation = targetProfitThreshold.multiply(config.getMilestonePercent()); 
-            if (peakPnL.compareTo(milestoneActivation) >= 0) {
-                if (currentCombinedPnL.compareTo(config.getBreakevenFloor()) <= 0) {
-                    terminateEntireGroup(group, strategyKey, "MILESTONE_PROFIT_PROTECTION_TRIGGERED", currentCombinedPnL, connection, config);
-                    return;
-                }
-            }
-        }
-
-        BigDecimal activation = config.getTrailingActivation();
-        BigDecimal drawdownPct = config.getTrailingDrawdownPct(); 
-
-        if (activation != null && drawdownPct != null && peakPnL.compareTo(activation) >= 0) {
-            BigDecimal allowedDrop = peakPnL.multiply(drawdownPct);
-            BigDecimal dynamicFloor = peakPnL.subtract(allowedDrop);
-            BigDecimal existingFloor = activeTrailingFloors.get(strategyKey);
-
-            if (existingFloor == null || dynamicFloor.compareTo(existingFloor) > 0) {
-                // Log only if floor moved up by at least 1.00 to prevent decimal micro-spam
-                if (existingFloor == null || dynamicFloor.subtract(existingFloor).compareTo(BigDecimal.ONE) >= 0) {
-                    logger.info("📈 [MONITOR] {} | Peak: {} | Trailing Stop Floor raised to: {}", 
-                        strategyKey, 
-                        peakPnL.setScale(2, RoundingMode.HALF_UP), 
-                        dynamicFloor.setScale(2, RoundingMode.HALF_UP));
-                }
-                activeTrailingFloors.put(strategyKey, dynamicFloor);
-            }
-
-            BigDecimal currentFloor = activeTrailingFloors.get(strategyKey);
-            if (currentFloor != null && currentCombinedPnL.compareTo(currentFloor) <= 0) {
-                terminateEntireGroup(group, strategyKey, "RUBBER_BAND_MAX_DRAWDOWN_BREACHED", currentCombinedPnL, connection, config);
-                return;
-            }
-        }
-    }
-
-    private void terminateEntireGroup(List<Orders> group, String strategyKey,
-            String exitReason, BigDecimal closurePnL,
-            SmartConnect backupConnection, RiskConfiguration config) {
-
-        logger.warn("====================================================");
-        logger.warn("🛑 [ACTION] STRATEGY LIQUIDATED VIA RISK SERVICE: {}", strategyKey);
-        logger.warn("🛑 Reason     : {}", exitReason);
-        logger.warn("🛑 Final PnL  : {}", closurePnL.setScale(2, RoundingMode.HALF_UP));
-        logger.warn("====================================================");
-
-        // 🛑 TRUE CONCURRENCY LOCK: Ask the DB to lock and claim the active rows
-        // We use `self` to ensure the REQUIRES_NEW transaction boundary is respected.
-        List<Orders> qualifiedLegsToExit = self.claimStrategyForExit(strategyKey);
-
-        if (qualifiedLegsToExit.isEmpty()) {
-            logger.info("🛡️ [RISK] Intercepted race condition loop. Strategy {} already handling liquidation.", strategyKey);
-            return; // We safely dodged the double-execution!
-        }
-
-        SmartConnect connection = null;
-        try {
-            connection = angelOne.signIn();
-        } catch (Exception e) {
-            connection = backupConnection;
-        }
-
-        // Execute orders only for legs safely claimed by this context thread
-        for (Orders leg : qualifiedLegsToExit) {
-			boolean isLiveTrade = leg.getOrderid() != null
-					&& !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
-
-			if (isLiveTrade && connection != null) {
-				int maxExitRetries = 3;
-				int exitAttempt = 0;
-				long exitBackoff = 500;
-				boolean orderPlaced = false;
-
-				Token exitToken = new Token();
-				exitToken.setSymbol(leg.getSymbol());
-				exitToken.setToken(leg.getToken());
-				exitToken.setExch_seg(leg.getExchange());
-				exitToken.setQuantity(leg.getQuantity());
-				exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
-				exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD);
-				exitToken.setVariety(Constants.VARIETY_NORMAL);
-
-				boolean isShort = isShortPosition(leg, config);
-				String exitSide = isShort
-				        ? Constants.TRANSACTION_TYPE_BUY 
-				        : Constants.TRANSACTION_TYPE_SELL;
-				exitToken.setTransactionType(exitSide);
-
-				while (exitAttempt < maxExitRetries && !orderPlaced) {
-					try {
-						Token responseToken = angelOneService
-								.placeOrder(connection, exitToken);
-						if (responseToken != null
-								&& responseToken.getOrderId() != null) {
-							logger.info(
-									"   -> ✅ [EXECUTION] RISK SERVICE Live Leg Executed | Symbol: {} | OrderID: {}",
-									leg.getSymbol(),
-									responseToken.getOrderId());
-							orderPlaced = true;
-						} else {
-							throw new SmartAPIException("Empty Order ID");
-						}
-					} catch (Exception | SmartAPIException e) {
-						exitAttempt++;
-						logger.error(
-								"   -> ⚠️ [WARN] RISK SERVICE Execution Failed for {} (Attempt {}/{}): {}",
-								leg.getSymbol(), exitAttempt, maxExitRetries,
-								e.getMessage());
-						if (exitAttempt >= maxExitRetries)
-							break;
-						try {
-							Thread.sleep(exitBackoff);
-							exitBackoff *= 2;
-						} catch (InterruptedException ie) {
-							Thread.currentThread().interrupt();
-							break;
-						}
-					}
-				}
-
-				// If order failed all retries, rollback the lock so cleanup
-				// routines can visibility trace it
-				if (!orderPlaced) {
-					leg.setTradePhase("ENTRY");
-					orderRepository.saveAndFlush(leg);
-					continue;
-				}
-
-			} else {
-				logger.info(
-						"   -> 📝 [EXECUTION] PAPER Leg Simulated | Symbol: {} | DB Status Updated",
-						leg.getSymbol());
-			}
-		}
-
-		highWaterMarks.remove(strategyKey);
-		activeTrailingFloors.remove(strategyKey);
-
-		for (Orders leg : qualifiedLegsToExit) {
-			BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(),
-					BigDecimal.ZERO);
-			liveUiCachePnL.remove(leg.getId());
-
-			BigDecimal calculatedExitPrice = BigDecimal.ZERO;
-			if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
-				BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
-				BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4,
-						RoundingMode.HALF_UP);
-
-				if (isShortPosition(leg, config)) {
-				    calculatedExitPrice = leg.getAskPrice().subtract(pnlPerUnit);
-				} else {
-				    calculatedExitPrice = leg.getAskPrice().add(pnlPerUnit);
-				}
-				calculatedExitPrice = calculatedExitPrice.setScale(2,
-						RoundingMode.HALF_UP);
-			} else if (leg.getAskPrice() != null) {
-				calculatedExitPrice = leg.getAskPrice();
-			}
-
-			self.persistClosedOrderToDb(leg, exitReason, finalLegPnL,
-					calculatedExitPrice);
-		}
-	}
-
-    @Transactional
-    public void persistClosedOrderToDb(Orders order, String exitReason, BigDecimal finalLegPnL, BigDecimal exitPrice) {
-        order.setActive(0);
-        order.setStatus(STATUS_CLOSED);
-        order.setTradePhase(PHASE_EXIT);
-        order.setClosedOn(LocalDateTime.now(MARKET_ZONE));
-        order.setExitReason(exitReason);
-        order.setPl(finalLegPnL); 
-
-        if (exitPrice != null && exitPrice.compareTo(BigDecimal.ZERO) > 0) {
-            order.setExitPrice(exitPrice);
-        }
-        orderRepository.save(order);
-    }
-
     private void clearAllMemoryCaches() {
         if (!liveUiCachePnL.isEmpty()) {
             liveUiCachePnL.clear();
-            highWaterMarks.clear();
-            activeTrailingFloors.clear();
-
             logger.info("🧹 [SYSTEM] Engine Flushed | Zero active trades remaining.");
         }
     }
@@ -600,27 +332,11 @@ public class RiskService {
 
         return !time.isBefore(startTime) && !time.isAfter(endTime);
     }
+
     private boolean isShortPosition(Orders leg, RiskConfiguration config) {
         if (config != null && config.getStrategyType() != null) {
             return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
         }
         return "SELL".equalsIgnoreCase(leg.getType());
-    }
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public List<Orders> claimStrategyForExit(String strategyName) {
-        // 1. Physically lock the active rows in the DB
-        List<Orders> lockedLegs = orderRepository.lockAndFetchActiveTrades(strategyName);
-
-        if (lockedLegs.isEmpty()) {
-            return lockedLegs; // Another thread already claimed or closed them!
-        }
-
-        // 2. Mark them as processing
-        for (Orders leg : lockedLegs) {
-            leg.setTradePhase("EXIT_IN_PROGRESS");
-        }
-        
-        // 3. Save and drop the lock instantly
-        return orderRepository.saveAllAndFlush(lockedLegs);
     }
 }
