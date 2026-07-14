@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.crumbs.trade.entity.OIResult;
@@ -22,8 +23,15 @@ public class OIController {
 
     // 🔥 1. Latest full option chain (bar chart)
     @GetMapping("/latest/{name}")
-    public List<OIResult> getLatest(@PathVariable String name) {
-        return repo.findLatestByName(name);
+    public ResponseEntity<List<OIResult>> getLatest(@PathVariable String name) {
+        List<OIResult> data = repo.findLatestByName(name);
+        
+        // Create headers to disable caching
+        return ResponseEntity.ok()
+                .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .body(data);
     }
 
     // 🔥 2. Full time-series for a strike (core API)

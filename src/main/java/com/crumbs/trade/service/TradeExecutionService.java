@@ -17,12 +17,12 @@ public class TradeExecutionService {
     private final ResultVixRepo haRepo;
     
     // Inject RiskService to access the live RAM Cache
-    private final RiskService riskService;
-
+ 
+    private final MonitorOrderService riskService;
     public TradeExecutionService(TradeExecutionRepo srRepo, 
                                  OrderRepository orderRepository, 
                                  ResultVixRepo haRepo,
-                                 RiskService riskService) {
+                                 MonitorOrderService riskService) {
         this.srRepo = srRepo;
         this.orderRepository = orderRepository;
         this.haRepo = haRepo;

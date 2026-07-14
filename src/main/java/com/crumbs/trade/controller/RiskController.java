@@ -7,8 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.crumbs.trade.service.RiskService;
-
+import com.crumbs.trade.service.MonitorOrderService;
 import java.math.BigDecimal;
 import java.util.Map;
 
@@ -18,7 +17,7 @@ import java.util.Map;
 public class RiskController {
 
     @Autowired
-    private RiskService riskService;
+    private MonitorOrderService riskService;
 
     @GetMapping("/live-pnl")
     public ResponseEntity<Map<Long, BigDecimal>> getLiveDashboardPnL() {

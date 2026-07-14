@@ -12,8 +12,6 @@ import com.crumbs.trade.repo.StrategyRepo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -27,17 +25,12 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ShortStraddleService {
 
-	@Autowired
-    @Lazy
-    private ShortStraddleService self; // CRITICAL: Used to enforce transaction boundary
-	
     private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE"; 
     private static final String NAME_PREFIX = "SHORT_STRADDLE_"; 
     
@@ -65,15 +58,21 @@ public class ShortStraddleService {
     private static final String PHASE_ENTRY = "ENTRY";
     private static final String PHASE_EXIT = "EXIT";
 
+    // Preserves the original ~1-minute confirmation cadence for entry/exit hit-counters,
+    // even though the scheduler tick itself now runs every ~1s to feed the risk layer.
+    private static final long HIT_DEBOUNCE_MS = 60_000;
+
     private final ShortStraddleRepository straddleRepository;
     private final OrderRepository ordersRepository;
     private final StrategyRepo strategyRepo;
     private final OrderService orderService;
     private final TelegramService telegramService;
     private final AngelWebSocketService angelWebSocketService;
+    private final MonitorOrderService monitorOrderService;
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BigDecimal> lastSeenStrikes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> lastHitTimestamps = new ConcurrentHashMap<>();
 
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
@@ -117,33 +116,26 @@ public class ShortStraddleService {
 
                 if (cycleOrders.size() != 2) {
                     log.error("🚨 [{}][SAFETY] Imbalance in Cycle {}! Found {} legs. Cleaning up.", tradeName, cycleId, cycleOrders.size());
-                    
-                    // Claim it first!
-                    List<Orders> toExit = self.claimStrategyForExit(tradeName);
-                    if (!toExit.isEmpty()) {
-                        straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
-                            closeAll(toExit, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
-                    }
+                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
+                        closeAll(cycleOrders, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
                     continue; 
                 }
 
-             // Example for the EOD_SQUARE_OFF block:
-                if (isSquareOffTime(baseSymbol, now)) {
-                    log.info("🕒 [{}][EXIT] Square-off time reached for Cycle {}.", tradeName, cycleId);
-                    
-                    // 🛑 LOCKING CHANGE: Claim before closing
-                    List<Orders> toExit = self.claimStrategyForExit(tradeName);
-                    
-                    if (!toExit.isEmpty()) {
-                        straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike)
-                            .ifPresent(tick -> closeAll(toExit, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
-                    } else {
-                        log.info("🛡️ [STRADDLE] Race condition blocked. Liquidation handled by RiskService.");
-                    }
+                // 🛡️ RISK LAYER FIRST: hard max-loss/target, velocity panic drop, HWM/milestone/trailing.
+                // Runs inline on this same thread/transaction - no cross-service locking needed.
+                if (monitorOrderService.evaluateAndClose(cycleOrders, tradeName, null)) {
+                    log.info("🛡️ [{}][RISK] Cycle {} closed by MonitorOrderService.", tradeName, cycleId);
+                    hitCounters.remove(tradeName + "_" + cycleId + "_EXIT");
+                    lastHitTimestamps.remove(tradeName + "_" + cycleId + "_EXIT");
                     continue;
                 }
 
-                // Do the same for the "ORPHAN_LEG_CLEANUP" block and the SL trigger logic
+                if (isSquareOffTime(baseSymbol, now)) {
+                    log.info("🕒 [{}][EXIT] Square-off time reached for Cycle {}.", tradeName, cycleId);
+                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike)
+                        .ifPresent(tick -> closeAll(cycleOrders, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
+                    continue;
+                }
 
                 straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresentOrElse(
                 	    tick -> processExitSequence(tradeName, tick, cycleOrders, strategyConfig, sourceConfig, cycleId),
@@ -182,6 +174,16 @@ public class ShortStraddleService {
         }
     }
 
+    private boolean canRegisterHit(String key) {
+        long now = System.currentTimeMillis();
+        Long last = lastHitTimestamps.get(key);
+        if (last == null || now - last >= HIT_DEBOUNCE_MS) {
+            lastHitTimestamps.put(key, now);
+            return true;
+        }
+        return false;
+    }
+
     private void processEntrySequence(String tradeName, StraddleIntraday tick, Strategy strategyConfig, Strategy sourceConfig) {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
@@ -199,17 +201,19 @@ public class ShortStraddleService {
 
         if (isCpBelowCv && isGapAcceptable) {
             String strikeKey = tradeName + "_STRIKE";
+            String entryKey = tradeName + "_ENTRY";
             BigDecimal lastStrike = lastSeenStrikes.get(strikeKey);
             
             if (lastStrike != null && lastStrike.compareTo(currentStrike) != 0) {
                 log.warn("🔄 [{}] STRIKE MOVED: {} -> {}. Resetting hits to 1.", tradeName, lastStrike, currentStrike);
-                hitCounters.put(tradeName + "_ENTRY", 1); 
-            } else {
-                hitCounters.merge(tradeName + "_ENTRY", 1, Integer::sum);
+                hitCounters.put(entryKey, 1); 
+                lastHitTimestamps.put(entryKey, System.currentTimeMillis());
+            } else if (canRegisterHit(entryKey)) {
+                hitCounters.merge(entryKey, 1, Integer::sum);
             }
             
             lastSeenStrikes.put(strikeKey, currentStrike);
-            int count = hitCounters.getOrDefault(tradeName + "_ENTRY", 0);
+            int count = hitCounters.getOrDefault(entryKey, 0);
             
             log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) on Strike: {}", tradeName, count, reqHits, currentStrike);
             
@@ -217,15 +221,18 @@ public class ShortStraddleService {
                 log.info("⚡ [{}] ALL HITS MET! Triggering execution at {}", tradeName, currentStrike);
                 executeShortStraddle(tradeName, tick, currentGap, strategyConfig, sourceConfig);
                 
-                hitCounters.put(tradeName + "_ENTRY", 0); 
+                hitCounters.put(entryKey, 0); 
                 lastSeenStrikes.remove(strikeKey);
+                lastHitTimestamps.remove(entryKey);
             }
         } else {
-            if (hitCounters.getOrDefault(tradeName + "_ENTRY", 0) > 0) {
+            String entryKey = tradeName + "_ENTRY";
+            if (hitCounters.getOrDefault(entryKey, 0) > 0) {
                 log.info("🔄 [{}] CONDITIONS LOST. Resetting hit counter.", tradeName);
             }
-            hitCounters.put(tradeName + "_ENTRY", 0); 
+            hitCounters.put(entryKey, 0); 
             lastSeenStrikes.remove(tradeName + "_STRIKE");
+            lastHitTimestamps.remove(entryKey);
         }
     }
 
@@ -253,9 +260,12 @@ public class ShortStraddleService {
         int reqSlHits = sourceConfig.getExitHitsRequired() > 0 ? sourceConfig.getExitHitsRequired() : 3;
         
         if (isVwapCrossover) {
-            hitCounters.merge(exitKey, 1, Integer::sum);
+            if (canRegisterHit(exitKey)) {
+                hitCounters.merge(exitKey, 1, Integer::sum);
+            }
         } else {
             hitCounters.put(exitKey, 0); 
+            lastHitTimestamps.remove(exitKey);
         }
         
         int currentSlHits = hitCounters.getOrDefault(exitKey, 0);
@@ -292,6 +302,7 @@ public class ShortStraddleService {
             log.info("💰 [{}][EXIT] TARGET REACHED!", tradeName);
             closeAll(activeOrders, tick, "TARGET_REACHED", strategyConfig, sourceConfig);
             hitCounters.remove(exitKey);
+            lastHitTimestamps.remove(exitKey);
             return;
         }
 
@@ -310,21 +321,11 @@ public class ShortStraddleService {
             }
         }
 
-        if (shouldExit || currentGap.compareTo(targetGap) >= 0) {
-            reason = shouldExit ? reason : "TARGET_REACHED"; // determine reason
-            
-            log.warn("🚨 [{}][EXIT] Triggering exit via Lock: {}", tradeName, reason);
-            
-            // 🛑 CALL THE LOCK HERE
-            List<Orders> toExit = self.claimStrategyForExit(tradeName);
-            
-            if (!toExit.isEmpty()) {
-                closeAll(toExit, tick, reason, strategyConfig, sourceConfig);
-            } else {
-                log.info("🛡️ [STRADDLE] Race condition blocked. Liquidation handled by RiskService.");
-            }
-            
+        if (shouldExit) {
+            log.warn("🚨 [{}][EXIT] Triggering exit: {}", tradeName, reason);
+            closeAll(activeOrders, tick, reason, strategyConfig, sourceConfig);
             hitCounters.remove(exitKey);
+            lastHitTimestamps.remove(exitKey);
         }
     }
 
@@ -593,23 +594,5 @@ public class ShortStraddleService {
         log.debug("📉 [{}] SENSEX INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
         
         return Optional.of(atmStrike);
-    }
-    
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public List<Orders> claimStrategyForExit(String strategyName) {
-        // Use the repository lock method we defined in the previous step
-        // Ensure this method exists in your OrderRepository with @Lock(LockModeType.PESSIMISTIC_WRITE)
-        List<Orders> lockedLegs = ordersRepository.findByNameAndStatusForUpdate(strategyName);
-
-        if (lockedLegs.isEmpty()) {
-            return lockedLegs; // RiskService already claimed or closed them!
-        }
-
-        // Mark them as processing so the Risk Engine sees the "EXIT_IN_PROGRESS" phase
-        for (Orders leg : lockedLegs) {
-            leg.setTradePhase("EXIT_IN_PROGRESS");
-        }
-        
-        return ordersRepository.saveAllAndFlush(lockedLegs);
     }
 }
