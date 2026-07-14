@@ -65,7 +65,15 @@ public class AngelWebSocketService {
 
     private final String clientCode = "R705672";
 
-    @PostConstruct
+    @Autowired
+    private org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler taskScheduler;
+    /**
+     * ⬅️ CHANGED: Replaced @PostConstruct with @Async + @EventListener
+     * This tells Spring to let the application fully start up and open port 8080,
+     * then executes the broker connection safely in a background thread.
+     */
+    @org.springframework.scheduling.annotation.Async
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void startWebSocket() {
         
         if (!isTradingDay()) {
@@ -73,7 +81,7 @@ public class AngelWebSocketService {
             return;
         }
         try {
-            log.info("Starting Angel WebSocket...");
+            log.info("🚀 Container booted successfully! Starting Angel WebSocket in background...");
 
             SmartConnect smartConnect = angelOne.getSmartConnect();
             String feedToken = angelOne.getFeedToken();
@@ -84,7 +92,6 @@ public class AngelWebSocketService {
                 @Override
                 public void onConnected() {
                     log.info("SmartStream CONNECTED successfully");
-                    // Keep as fallback — subscribeDefaultInstruments also called via thread below
                     subscribeDefaultInstruments();
                 }
 
@@ -96,8 +103,6 @@ public class AngelWebSocketService {
                         String key      = exchange + "_" + token;
                         long rawPrice   = ltp.getLastTradedPrice();
 
-                        //log.debug("RAW TICK | Key: {} | RawPrice: {}", key, rawPrice);
-
                         if (rawPrice == 0) {
                             log.warn("Ignoring zero LTP tick | {}", key);
                             return;
@@ -105,8 +110,6 @@ public class AngelWebSocketService {
 
                         BigDecimal price = BigDecimal.valueOf(rawPrice, 2);
                         latestLtpMap.put(key, price);
-
-                        // Update last tick timestamp for staleness detection
                         lastTickTime.put(key, System.currentTimeMillis());
 
                         Map<String, Object> payload = new HashMap<>();
@@ -141,19 +144,12 @@ public class AngelWebSocketService {
             smartStreamTicker.connect();
             log.info("WebSocket connect() invoked");
 
-            // onConnected callback is unreliable in Angel SDK
-            // Subscribe on background thread after giving socket 2s to establish
-            Thread startupSubscribeThread = new Thread(() -> {
-                try {
-                    Thread.sleep(2000);
-                    //log.info("Subscribing default instruments after connect delay...");
-                    subscribeDefaultInstruments();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            });
-            startupSubscribeThread.setDaemon(true);
-            startupSubscribeThread.start();
+            // ⬅️ CHANGED: Swapped unmanaged raw thread for Spring's taskScheduler 
+            // This avoids creating stray platform threads that leak memory inside the container.
+            taskScheduler.schedule(() -> {
+                log.info("Running initial safety subscription check...");
+                subscribeDefaultInstruments();
+            }, java.time.Instant.now().plusSeconds(2));
 
         } catch (Exception e) {
             log.error("Error starting WebSocket", e);
