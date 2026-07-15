@@ -120,19 +120,28 @@ public class MonitorOrderService {
         for (Orders leg : groupLegs) {
             BigDecimal legPnL = BigDecimal.ZERO;
             try {
-                BigDecimal currentLtp = BigDecimal.ZERO;
-                ExchangeType exchangeType = mapExchangeToType(leg.getExchange());
+            	BigDecimal currentLtp = BigDecimal.ZERO;
+            	ExchangeType exchangeType = mapExchangeToType(leg.getExchange());
 
-                if (exchangeType != null) {
-                    webSocketService.subscribe(exchangeType, leg.getToken());
-                    currentLtp = webSocketService.getLatestLTP(exchangeType, leg.getToken());
-                }
+            	if (leg.getToken() == null || leg.getToken().isBlank()) {
+            	    log.error("❌ [MONITOR] Leg {} ({}) has NO TOKEN — cannot price.", leg.getId(), leg.getSymbol());
+            	} else if (exchangeType != null) {
+            	    webSocketService.subscribe(exchangeType, leg.getToken());
+            	    currentLtp = webSocketService.getLatestLTP(exchangeType, leg.getToken());
+            	}
 
-                if (currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
-                    if (activeConnection != null) {
-                        currentLtp = angelOneService.getcurrentPrice(activeConnection, leg.getExchange(), leg.getSymbol(), leg.getToken());
-                    }
-                }
+            	if (currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
+            	    if (activeConnection == null) {
+            	        try {
+            	            activeConnection = angelOne.signIn(); // lazy, only when websocket has nothing yet
+            	        } catch (Exception e) {
+            	            log.error("❌ [MONITOR] Broker auth failed for {}: {}", strategyKey, e.getMessage());
+            	        }
+            	    }
+            	    if (activeConnection != null) {
+            	        currentLtp = angelOneService.getcurrentPrice(activeConnection, leg.getExchange(), leg.getSymbol(), leg.getToken());
+            	    }
+            	}
 
                 // Entry price: LIVE legs reconciled against the broker's actual fill (once per leg,
                 // then cached), PAPER legs always use DB askPrice as-is (no broker fill exists).
