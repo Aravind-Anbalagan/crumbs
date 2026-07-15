@@ -466,7 +466,14 @@ export default function MainLayout() {
             >
               Short Straddle
             </Link>
-
+            <Link
+  to="/dashboard/oi-tracker"
+  className={`nav-link ${
+    isActive('/dashboard/oi-tracker') ? 'active' : ''
+  }`}
+>
+  ⚡ OI Tracker
+</Link>
             <Link
               to="/dashboard/trend"
               className={`nav-link ${

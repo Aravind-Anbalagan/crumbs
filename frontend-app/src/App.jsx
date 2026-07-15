@@ -6,7 +6,7 @@ import MainLayout from './layouts/MainLayout';
 // 1. Import your new native React page
 import StrategySetup from './pages/StrategySetup'; 
 import OrderHistory from './pages/OrderHistory';
-
+import OITracker from './pages/OITracker';
 
 const ProtectedRoute = ({ children }) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
@@ -36,7 +36,7 @@ export default function App() {
           {/* Dynamic dashboard route for legacy iframes */}
           <Route path="dashboard/:pageName" element={<Dashboard />} />
           <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
-          
+          <Route path="dashboard/oi-tracker" element={<OITracker />} />
           {/* Direct access redirects */}
           <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
           <Route path="result" element={<Navigate to="/dashboard/result" replace />} />

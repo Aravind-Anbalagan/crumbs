@@ -503,6 +503,7 @@ public class ShortStraddleService {
                     order.setClosedOn(LocalDateTime.now());
                     order.setTradePhase(PHASE_EXIT);
                     order.setStatus(STATUS_CLOSED);
+                    order.setActive(STATUS_INACTIVE); 
                     // active is already 0 from our pre-flight lock
                     order.setExitReason(reason);
                     

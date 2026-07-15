@@ -1,0 +1,275 @@
+/* ---------- Theme Tokens (Mapped to MainLayout.jsx Variables) ---------- */
+:root {
+  --bg-primary: var(--bg-main, #0b0f19);
+  --bg-surface: var(--glass-bg, rgba(11, 15, 25, 0.82));
+  --bg-surface-2: rgba(255, 255, 255, 0.04);
+  --border-color: var(--glass-border, rgba(255, 255, 255, 0.08));
+  --text-primary: var(--text-main, #f1f5f9);
+  --text-secondary: var(--text-muted, rgba(255, 255, 255, 0.6));
+
+  --ce: #ef4444;
+  --pe: #22c55e;
+  --combined: #eab308;
+  --abs-pcr: #f59e0b;
+  --delta-pcr: #8b7cf6;
+  --bullish: #22c55e;
+  --bearish: #ef4444;
+
+  --mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+}
+
+.theme-dark, [data-theme="dark"] {
+  --bg-primary: var(--bg-main, #0b0f19);
+  --bg-surface: var(--glass-bg, rgba(11, 15, 25, 0.82));
+  --bg-surface-2: rgba(255, 255, 255, 0.04);
+  --border-color: var(--glass-border, rgba(255, 255, 255, 0.08));
+  --text-primary: var(--text-main, #f1f5f9);
+  --text-secondary: var(--text-muted, rgba(255, 255, 255, 0.6));
+
+  --ce: #ef4444;
+  --pe: #22c55e;
+  --combined: #eab308;
+  --abs-pcr: #f59e0b;
+  --delta-pcr: #8b7cf6;
+  --bullish: #22c55e;
+  --bearish: #ef4444;
+}
+
+.theme-light, [data-theme="light"] {
+  --bg-primary: var(--bg-main, #ffffff);
+  --bg-surface: var(--glass-bg, rgba(255, 255, 255, 0.85));
+  --bg-surface-2: rgba(0, 0, 0, 0.04);
+  --border-color: var(--glass-border, rgba(0, 0, 0, 0.08));
+  --text-primary: var(--text-main, #0f172a);
+  --text-secondary: var(--text-muted, rgba(0, 0, 0, 0.6));
+
+  --ce: #dc2626;
+  --pe: #16a34a;
+  --combined: #ca8a04;
+  --abs-pcr: #d97706;
+  --delta-pcr: #7c5cff;
+  --bullish: #16a34a;
+  --bearish: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+/* ---------------------------------------------------------
+   1. VIEWPORT-LOCKED SHELL
+   --------------------------------------------------------- */
+.oi-tracker-container {
+  display: flex;
+  flex-direction: column;
+  /* Lock height to 100% of screen MINUS header height (~70px) */
+  /* If you still see a tiny scrollbar, change this to 75px or 80px */
+  height: calc(100vh - 70px);
+  width: 100%;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden; /* Absolutely no scrollbars allowed */
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* ---------------------------------------------------------
+   2. LOCK TOOLBARS (No Shrink)
+   --------------------------------------------------------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  flex-shrink: 0; /* Prevents squishing */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 14px;
+  flex-shrink: 0; /* Prevents squishing */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* -- Toolbar & Status Inner Elements -- */
+.instrument-toggle { display: flex; background: var(--bg-surface-2); border-radius: 6px; padding: 3px; border: 1px solid var(--border-color); }
+.toggle-btn { background: transparent; border: none; color: var(--text-secondary); padding: 6px 14px; font-weight: 600; font-size: 0.8rem; border-radius: 4px; cursor: pointer; transition: all 0.2s ease; }
+.toggle-btn.active { background: var(--nav-active, #4facfe); color: #ffffff; box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3); }
+.control-select { background: var(--bg-surface-2); color: var(--text-primary); border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; font-family: var(--mono); outline: none; cursor: pointer; }
+.refresh-toggle { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; margin-left: auto; font-weight: 600; }
+.refresh-toggle input { display: none; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-color); transition: background 0.2s; }
+.refresh-toggle input:checked + .live-dot { background: var(--pe); box-shadow: 0 0 8px var(--pe); }
+.live-dot.syncing { animation: pulse 1s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.kpi-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { display: flex; align-items: baseline; gap: 6px; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; }
+.chip-label { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.68rem; font-weight: 600; }
+.chip-value { font-family: var(--mono); font-weight: 700; font-size: 0.9rem; color: var(--text-primary); }
+.chip-value.bullish { color: var(--bullish); }
+.chip-value.bearish { color: var(--bearish); }
+.chip-value.neutral { color: var(--text-secondary); }
+.chip-value.skew { color: var(--delta-pcr); font-size: 0.8rem; }
+.chip-tag { font-size: 0.62rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+.chip-tag.active { background: rgba(245, 158, 11, 0.15); color: var(--abs-pcr); }
+.chip-tag.quiet { background: rgba(123, 129, 144, 0.15); color: var(--text-secondary); }
+.tab-switch { display: flex; gap: 4px; }
+.tab-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-weight: 600; transition: all 0.2s ease; }
+.tab-btn.active { background: var(--bg-surface-2); border-color: var(--text-primary); color: var(--text-primary); }
+
+/* ---------------------------------------------------------
+   3. DYNAMIC CHART AREA
+   --------------------------------------------------------- */
+.chart-container {
+  flex: 1; /* Takes all remaining vertical space */
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Critical: stops flexbox from pushing past screen bottom */
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.chart-surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0; /* Passes boundaries down to child */
+}
+
+/* ---------------------------------------------------------
+   4. THE MEASUREMENT BOX
+   --------------------------------------------------------- */
+.plot-area {
+  position: relative; /* Acts as anchor for the absolute SVG */
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------
+   5. THE SVG DEADLOCK FIX
+   --------------------------------------------------------- */
+.svg-canvas {
+  position: absolute; /* Detaches SVG from layout so it doesn't prop div open */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+/* -- Chart Rendering Details -- */
+.axis-zero { stroke: var(--border-color); stroke-dasharray: 4 4; }
+.axis-line { stroke: var(--border-color); }
+.axis-label { fill: var(--text-secondary); font-size: 11px; font-family: var(--mono); }
+.line-ce { fill: none; stroke: var(--ce); stroke-width: 2; }
+.line-pe { fill: none; stroke: var(--pe); stroke-width: 2; }
+.line-combined { fill: none; stroke: var(--combined); stroke-width: 1.5; opacity: 0.85; }
+.line-abs-pcr { fill: none; stroke: var(--abs-pcr); stroke-width: 2; }
+.line-delta-pcr { fill: none; stroke: var(--delta-pcr); stroke-width: 2; }
+.crosshair { stroke: var(--text-secondary); stroke-width: 1; opacity: 0.5; }
+.dot-ce { fill: var(--ce); }
+.dot-pe { fill: var(--pe); }
+.dot-combined { fill: var(--combined); }
+.dot-abs-pcr { fill: var(--abs-pcr); }
+.dot-delta-pcr { fill: var(--delta-pcr); }
+
+/* ---------- Hover Tooltip ---------- */
+.chart-tooltip {
+  position: absolute;
+  transform: translateX(-8px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.75rem;
+  font-family: var(--mono);
+  pointer-events: none;
+  min-width: 170px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.chart-tooltip.flip { transform: translateX(calc(-100% - 8px)); }
+.tooltip-time { color: var(--text-secondary); font-size: 0.7rem; margin-bottom: 6px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; font-weight: bold; }
+.tooltip-row { display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 2px 0; color: var(--text-primary); }
+.tooltip-row b { margin-left: auto; }
+.sw { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+.sw.ce { background: var(--ce); }
+.sw.pe { background: var(--pe); }
+.sw.combined { background: var(--combined); }
+.sw.abs { background: var(--abs-pcr); }
+.sw.delta { background: var(--delta-pcr); }
+
+/* ---------- Legend ---------- */
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding-top: 10px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  flex-shrink: 0; /* Ensures legend never squishes */
+}
+.legend-item { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.swatch { display: inline-block; width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; border-radius: 2px; }
+.swatch.dashed { border-top-style: dashed; }
+.dashed { border-top-style: dashed; }
+.swatch.line-ce { border-top-color: var(--ce); }
+.swatch.line-pe { border-top-color: var(--pe); }
+.swatch.line-combined { border-top-color: var(--combined); }
+.swatch.line-abs-pcr { border-top-color: var(--abs-pcr); }
+.swatch.line-delta-pcr { border-top-color: var(--delta-pcr); }
+
+.no-data {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  height: 100%;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 720px) {
+  /* On mobile, adjust the header height offset if necessary */
+  .oi-tracker-container { padding: 8px; gap: 8px; height: calc(100vh - 60px); }
+  .toolbar { padding: 8px 10px; }
+  .refresh-toggle { margin-left: 0; }
+  .status-row { flex-direction: column; align-items: stretch; }
+  .tab-switch { justify-content: stretch; }
+  .tab-btn { flex: 1; text-align: center; }
+  .chip-label { display: none; }
+  .kpi-chips { justify-content: space-between; width: 100%; }
+  .chip { flex: 1; justify-content: center; }
+  .chart-legend { gap: 0.8rem; font-size: 0.7rem; }
+}
