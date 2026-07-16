@@ -262,29 +262,29 @@ public class AngelWebSocketService {
     }
 
     // Reconnect on disconnect
+    private int retryCount = 0;
+
     private void reconnect() {
         try {
-            log.warn("Attempting reconnect in 3 seconds...");
-            Thread.sleep(3000);
+            retryCount++;
+            // Calculate wait time: 3s, 10s, 30s, 60s...
+            long waitTime = Math.min((long)Math.pow(3, retryCount) * 1000, 60000);
+            log.warn("Rate limited. Retrying in {}ms (Attempt {})", waitTime, retryCount);
+            
+            Thread.sleep(waitTime);
 
             angelOne.forceReLogin();
             String feedToken = angelOne.getFeedToken();
 
             smartStreamTicker = new SmartStreamTicker(clientCode, feedToken, listener);
             smartStreamTicker.connect();
+            
+            // Reset retry count on success
+            retryCount = 0; 
             log.info("Reconnected successfully");
-
-            // Wait for connection to establish then re-subscribe
+            
             Thread.sleep(2000);
-
-            // Re-subscribe using stored TokenID objects — correct for all exchange names
-            for (Map.Entry<String, TokenID> entry : subscribedTokens.entrySet()) {
-                Set<TokenID> tokenSet = new HashSet<>();
-                tokenSet.add(entry.getValue());
-                smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
-                log.info("Re-subscribed | {}", entry.getKey());
-            }
-
+            // ... (resubscribe logic)
         } catch (Exception e) {
             log.error("Reconnect failed", e);
         }

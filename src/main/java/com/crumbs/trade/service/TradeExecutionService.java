@@ -1,8 +1,13 @@
 package com.crumbs.trade.service;
 
+import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.dto.UnifiedOrderDto;
 import com.crumbs.trade.entity.*;
 import com.crumbs.trade.repo.*;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -11,14 +16,16 @@ import java.util.stream.Collectors;
 
 @Service
 public class TradeExecutionService {
+    private static final Logger log = LoggerFactory.getLogger(TradeExecutionService.class);
 
     private final TradeExecutionRepo srRepo;
     private final OrderRepository orderRepository;
     private final ResultVixRepo haRepo;
-    
-    // Inject RiskService to access the live RAM Cache
- 
     private final MonitorOrderService riskService;
+    
+    @Autowired 
+    private AngelWebSocketService angelWebSocketService;
+
     public TradeExecutionService(TradeExecutionRepo srRepo, 
                                  OrderRepository orderRepository, 
                                  ResultVixRepo haRepo,
@@ -41,13 +48,11 @@ public class TradeExecutionService {
 
         // 1. Process main ORDERS Table
         if (fetchAll) {
-            // Fetch everything available if no specific filter is provided
             List<Orders> allDbOrders = orderRepository.findAll();
             for (Orders o : allDbOrders) {
                 allUnifiedOrders.add(mapGenericOrder(o));
             }
         } else {
-            // Maintain exact custom query routing if a specific string is requested
             if (upperStrategy.contains("CPR")) {
                 allUnifiedOrders.addAll(orderRepository.findByNameContainingIgnoreCase("CPR").stream()
                         .map(this::mapGenericOrder).collect(Collectors.toList()));
@@ -73,10 +78,6 @@ public class TradeExecutionService {
         return allUnifiedOrders;
     }
 
-    /**
-     * Dynamic mapper that looks at the existing row's 'name' property 
-     * to safely apply parameters without causing NullPointerExceptions.
-     */
     private UnifiedOrderDto mapGenericOrder(Orders o) {
         UnifiedOrderDto d = createBaseDto(o);
 
@@ -114,8 +115,6 @@ public class TradeExecutionService {
         d.setDirection(o.getType()); 
         d.setExitReason(o.getExitReason());
 
-        // 👉 IDENTIFY LIVE VS PAPER TRADING MODE
-        // If the orderid exists, is not null, and is not explicitly "1", it's a LIVE market order.
         boolean isLive = o.getOrderid() != null && !o.getOrderid().trim().isEmpty() && !o.getOrderid().equals("1");
         d.setTradeMode(isLive ? "LIVE" : "PAPER");
 
@@ -140,7 +139,8 @@ public class TradeExecutionService {
         BigDecimal exit = o.getExitPrice();
         BigDecimal pts = BigDecimal.ZERO;
 
-        boolean isSeller = "SELL".equalsIgnoreCase(d.getDirection()) || "Option Seller".equalsIgnoreCase(d.getStrategyType());
+        boolean isSeller = "SELL".equalsIgnoreCase(d.getDirection()) || 
+                           "Option Seller".equalsIgnoreCase(d.getStrategyType());
 
         if (entry != null && exit != null && exit.compareTo(BigDecimal.ZERO) > 0) {
             pts = isSeller ? entry.subtract(exit) : exit.subtract(entry);
@@ -149,16 +149,48 @@ public class TradeExecutionService {
         d.setPoints(pts);
         
         if ("OPEN".equalsIgnoreCase(d.getStatus())) {
-            // Live blinking figures from RAM Cache (Zero DB hits!)
             BigDecimal livePnl = riskService.getLivePnLForUI().get(o.getId());
-            d.setPnl(livePnl != null ? livePnl : BigDecimal.ZERO);
+            
+            if (livePnl == null) {
+                ExchangeType et = mapExchangeToType(o.getExchange());
+                
+                if (et != null && o.getToken() != null && !o.getToken().isEmpty()) {
+                    // 1. Ask for the data
+                    angelWebSocketService.subscribe(et, o.getToken());
+
+                    // 2. WAIT FOR DELIVERY (Up to 1 second / 5 retries)
+                    BigDecimal currentLtp = BigDecimal.ZERO;
+                    int retries = 0;
+
+                    while ((currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) && retries < 5) {
+                        try {
+                            Thread.sleep(200); // Wait 200 milliseconds
+                            currentLtp = angelWebSocketService.getLatestLTP(et, o.getToken());
+                            retries++;
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+
+                    // 3. Calculate manual PnL using the fetched price
+                    if (currentLtp != null && currentLtp.compareTo(BigDecimal.ZERO) > 0 && entry != null) {
+                        BigDecimal manualPts = isSeller ? entry.subtract(currentLtp) : currentLtp.subtract(entry);
+                        d.setPnl(manualPts.multiply(BigDecimal.valueOf(d.getQuantity())));
+                        log.info("Missing PnL Fixed! Fetched LTP: {} for {}", currentLtp, o.getSymbol());
+                    } else {
+                        d.setPnl(BigDecimal.ZERO);
+                        log.warn("Failed to get LTP for token {} after waiting.", o.getToken());
+                    }
+                } else {
+                    d.setPnl(BigDecimal.ZERO);
+                }
+            } else {
+                d.setPnl(livePnl); // Data was already available in RiskService cache
+            }
         } else {
             // Static historical closing figure
-            if (o.getPl() != null) {
-                d.setPnl(o.getPl());
-            } else {
-                d.setPnl(pts.multiply(BigDecimal.valueOf(d.getQuantity())));
-            }
+            d.setPnl(o.getPl() != null ? o.getPl() : pts.multiply(BigDecimal.valueOf(d.getQuantity())));
         }
     }
 
@@ -190,7 +222,7 @@ public class TradeExecutionService {
         d.setExitPrice(e.getExitPrice());
         d.setPnl(e.getPnl());
         d.setStatus(e.getStatus());
-        d.setTradeMode("PAPER"); // Default fallback for legacy tables
+        d.setTradeMode("PAPER"); 
         return d;
     }
 
@@ -201,7 +233,19 @@ public class TradeExecutionService {
         d.setSymbol(r.getSymbol());
         d.setDirection("BUY"); 
         d.setStatus(r.isActive() ? "OPEN" : "CLOSED");
-        d.setTradeMode("PAPER"); // Default fallback for legacy tables
+        d.setTradeMode("PAPER"); 
         return d;
+    }
+
+    private ExchangeType mapExchangeToType(String exchange) {
+        if (exchange == null) return null;
+        switch (exchange.toUpperCase().trim()) {
+            case "NFO": return ExchangeType.NSE_FO;
+            case "MCX": return ExchangeType.MCX_FO;
+            case "NSE": return ExchangeType.NSE_CM;
+            case "BSE": return ExchangeType.BSE_CM;
+            case "BFO": return ExchangeType.BSE_FO;
+            default: return null;
+        }
     }
 }
