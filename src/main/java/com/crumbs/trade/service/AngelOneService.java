@@ -405,7 +405,12 @@ public class AngelOneService {
 		orders.setSymbol(safe(token.getSymbol()));
 		orders.setToken(safe(token.getToken()));
 		orders.setName(safe(token.getName()));
-		orders.setType(safe(token.getType()));
+
+		if ("CPR_STRATEGY".equalsIgnoreCase(token.getType())) {
+			orders.setType("SELL");
+		} else {
+			orders.setType(safe(token.getType()));
+		}
 		orders.setExchange(safe(token.getExch_seg()));
 
 		// ACTIVE TRADE

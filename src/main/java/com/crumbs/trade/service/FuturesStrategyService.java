@@ -85,9 +85,9 @@ public class FuturesStrategyService {
     //  Entry point
     // ─────────────────────────────────────────────
 
-   
+    @Transactional
     public void executeAll() throws SmartAPIException {
-        FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_500")
+        FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_50")
                 .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
 
         if (masterConfig == null) {
@@ -223,8 +223,9 @@ public class FuturesStrategyService {
         if (Boolean.TRUE.equals(f.getIsNifty500()))    list.add("NIFTY_500");
         return list;
     }
-
-    private void updateFilters(FuturesConfig config, List<FuturesFilter> result) {
+    
+    @Transactional
+    public void updateFilters(FuturesConfig config, List<FuturesFilter> result) {
         String indexType = config.getIndexType();
         filterRepo.deleteByIndexType(indexType);
         List<FuturesFilter> saved = filterRepo.saveAll(result);
