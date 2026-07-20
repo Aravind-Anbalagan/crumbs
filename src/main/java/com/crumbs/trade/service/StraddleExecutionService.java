@@ -21,7 +21,7 @@ public class StraddleExecutionService {
      */
     public void execute(String name) {
         try {
-            if (!isActive("STRADDLE_PREMIUM")) {
+            if (!isActive("STRADDLE_PREMIUM") ||!isActive(name) ) {
                 return;
             }
             straddleIntradayService.getCombineStraddlePremium(name);

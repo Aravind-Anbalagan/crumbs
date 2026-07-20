@@ -305,7 +305,7 @@ public class FuturesStrategyService {
                 .collect(Collectors.toMap(Futures::getName, f -> f));
 
         List<FuturesBreakEvent> detectedEvents = new ArrayList<>();
-        int scannedCount = 0, nearStructureCount = 0, breakoutCount = 0, breakdownCount = 0;
+        int scannedCount = 0, breakoutCount = 0, breakdownCount = 0;
 
         for (FuturesFilter f : filters) {
             scannedCount++;
@@ -368,34 +368,22 @@ public class FuturesStrategyService {
                 logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
             }
 
+         // ──────────────────────────────────────────────────────────
+            // 🚀 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN (Direct Evaluation)
             // ──────────────────────────────────────────────────────────
-            // 🔒 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN (Requires Proximity)
-            // ──────────────────────────────────────────────────────────
-            if (!isNearExpiryStructure(f, ltp)) {
-                logger.debug("Skipping {} - not near structure (LTP={}, Dir={}, High={}, Low={})",
-                        f.getName(), ltp, f.getDirection(), f.getLastExpiryHigh(), f.getLastExpiryLow());
+            if (f.getLastExpiryHigh() == null || f.getLastExpiryLow() == null) {
+                logger.debug("Skipping {} - missing expiry structure levels", f.getName());
                 continue;
             }
 
-            nearStructureCount++;
-            logger.info("🎯 {} NEAR structure: LTP={}, Dir={}, High={}, Low={}",
-                    f.getName(), ltp, f.getDirection(), f.getLastExpiryHigh(), f.getLastExpiryLow());
+            // Use the filter's actual index type so Telegram notification configs route correctly
+            String indexType = f.getIndexType(); 
+            LocalDateTime timestamp = LocalDateTime.now().withNano(0);
 
-            if (hourlyCandles.isEmpty()) {
-                logger.warn("No hourly candles available to evaluate monthly breakout for {}", f.getName());
-                continue;
-            }
-
-            HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
-            BigDecimal hourClose = lastCandle.close;
-            LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
-
-            logger.info("Candle check {}: hourClose={}, high={}, low={}, dir={}",
-                    f.getName(), hourClose, f.getLastExpiryHigh(), f.getLastExpiryLow(), f.getDirection());
-
-            if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
-                logger.info("🚀 BREAKOUT: {} → hourClose={} > high={}", f.getName(), hourClose, f.getLastExpiryHigh());
-                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd, primaryIndexType);
+            // Evaluate BREAKOUT (Current LTP > Last Expiry High)
+            if ("UP".equals(f.getDirection()) && ltp.compareTo(f.getLastExpiryHigh()) > 0) {
+                logger.info("🚀 BREAKOUT: {} → LTP={} > ExpiryHigh={}", f.getName(), ltp, f.getLastExpiryHigh());
+                FuturesBreakEvent event = createBreakEventNoSave(f, ltp, "BREAKOUT", timestamp, indexType);
                 if (event != null) {
                     event.setCurrentPrice(ltp);
                     detectedEvents.add(event);
@@ -403,9 +391,10 @@ public class FuturesStrategyService {
                 }
             }
 
-            if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
-                logger.info("📉 BREAKDOWN: {} → hourClose={} < low={}", f.getName(), hourClose, f.getLastExpiryLow());
-                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd, primaryIndexType);
+            // Evaluate BREAKDOWN (Current LTP < Last Expiry Low)
+            if ("DOWN".equals(f.getDirection()) && ltp.compareTo(f.getLastExpiryLow()) < 0) {
+                logger.info("📉 BREAKDOWN: {} → LTP={} < ExpiryLow={}", f.getName(), ltp, f.getLastExpiryLow());
+                FuturesBreakEvent event = createBreakEventNoSave(f, ltp, "BREAKDOWN", timestamp, indexType);
                 if (event != null) {
                     event.setCurrentPrice(ltp);
                     detectedEvents.add(event);
@@ -415,7 +404,7 @@ public class FuturesStrategyService {
         }
 
         logger.info("📊 Scan Summary: Scanned={}, Near Structure={}, Breakouts={}, Breakdowns={}",
-                scannedCount, nearStructureCount, breakoutCount, breakdownCount);
+                scannedCount, breakoutCount, breakdownCount);
 
         if (!detectedEvents.isEmpty()) {
             logger.info("Processing {} detected events for save/dedup", detectedEvents.size());
@@ -588,32 +577,6 @@ public class FuturesStrategyService {
                 breakType, f.getName(), primaryIndexType,
                 hourClose, event.getStopLoss(), event.getPercentMove());
         return event;
-    }
-
-    // ─────────────────────────────────────────────
-    //  Structure proximity check
-    // ─────────────────────────────────────────────
-
-    private boolean isNearExpiryStructure(FuturesFilter f, BigDecimal ltp) {
-        if (ltp == null) return false;
-
-        BigDecimal proximity = new BigDecimal("0.005"); // 0.5%
-
-        if ("UP".equals(f.getDirection())) {
-            if (f.getLastExpiryHigh() == null) return false;
-            return percentDiff(ltp, f.getLastExpiryHigh()).compareTo(proximity) <= 0;
-        }
-        if ("DOWN".equals(f.getDirection())) {
-            if (f.getLastExpiryLow() == null) return false;
-            return percentDiff(ltp, f.getLastExpiryLow()).compareTo(proximity) <= 0;
-        }
-        return false;
-    }
-
-    private BigDecimal percentDiff(BigDecimal price, BigDecimal level) {
-        if (price == null || level == null || level.compareTo(BigDecimal.ZERO) == 0)
-            return BigDecimal.ZERO;
-        return price.subtract(level).abs().divide(level, 6, RoundingMode.HALF_UP);
     }
 
     // ─────────────────────────────────────────────
