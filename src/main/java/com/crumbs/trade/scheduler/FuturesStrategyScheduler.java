@@ -16,8 +16,7 @@ import com.crumbs.trade.service.FuturesStrategyService;
 @Component
 public class FuturesStrategyScheduler {
 
-    private static final Logger logger =
-            LogManager.getLogger(FuturesStrategyScheduler.class);
+    private static final Logger logger = LogManager.getLogger(FuturesStrategyScheduler.class);
 
     private static final LocalTime MARKET_START = LocalTime.of(9, 15);
     private static final LocalTime MARKET_END   = LocalTime.of(15, 30);
@@ -26,28 +25,47 @@ public class FuturesStrategyScheduler {
     private FuturesStrategyService futuresStrategyService;
     @Autowired
     private StrategyRepo strategyRepo;
+
+    /**
+     * 🌅 Pre-Cache Initialization Step
+     * Executes once at 8:45 AM every morning (Monday through Friday)
+     * Automatically handles the heavy broker REST API calls outside market hours.
+     */
+    @Scheduled(cron = "0 45 8 * * MON-FRI", zone = "Asia/Kolkata")
+    public void runMorningStructureInitialization() {
+        if (!isActive("FUTURE")) {
+            return;
+        }
+        
+        try {
+            logger.info("🌅 Beginning morning pre-cache initialization scheduler...");
+            futuresStrategyService.initializeDailyExpiryStructure();
+            logger.info("🌅 Morning initialization setup complete.");
+        } catch (Exception | SmartAPIException e) {
+            logger.error("🛑 Critical Exception caught during morning structure initialization", e);
+        }
+    }
+
     /**
      * ⏰ Every hour from 9:15 to 3:15
-     * @throws SmartAPIException 
      */
     @Scheduled(cron = "0 15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
     public void scheduler915to315() throws SmartAPIException {
-    	 if (!isActive("FUTURE")) {
+         if (!isActive("FUTURE")) {
              return;
          }
-        executeIfMarketOpen();
+         executeIfMarketOpen();
     }
 
     /**
      * ⏰ Final execution at 3:30 PM
-     * @throws SmartAPIException 
      */
     @Scheduled(cron = "0 30 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void scheduler330() throws SmartAPIException {
-    	 if (!isActive("FUTURE")) {
+         if (!isActive("FUTURE")) {
              return;
          }
-        executeIfMarketOpen();
+         executeIfMarketOpen();
     }
 
     private void executeIfMarketOpen() throws SmartAPIException {

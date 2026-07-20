@@ -1,5 +1,8 @@
 package com.crumbs.trade.entity;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -44,6 +47,18 @@ public class Futures {
     @Column(name = "is_nifty_500", nullable = false)
     private Boolean isNifty500 = false;
     
+ // ✅ NEW: Persisted Caching Columns for Monthly Expiry OHLC Structure
+    @Column(name = "expiry_high")
+    private BigDecimal expiryHigh;
+
+    @Column(name = "expiry_low")
+    private BigDecimal expiryLow;
+
+    @Column(name = "expiry_close")
+    private BigDecimal expiryClose;
+
+    @Column(name = "last_expiry_date")
+    private LocalDate lastExpiryDate;
     @Column(name = "last_updated")
     private java.time.LocalDateTime lastUpdated;
      

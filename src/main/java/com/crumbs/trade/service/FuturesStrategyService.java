@@ -42,14 +42,13 @@ import com.crumbs.trade.utility.NiftyIndexType;
 public class FuturesStrategyService {
 
     private static final Logger logger = LogManager.getLogger(FuturesStrategyService.class);
-
     private static final String EXCHANGE = "NSE";
 
     // ✅ Tunable delay constants (ms)
-    private static final int OHLC_FETCH_DELAY_MS   = 350;  // between each stock's OHLC call
-    private static final int BATCH_FETCH_DELAY_MS  = 200;  // between LTP batches
-    private static final int RETRY_BASE_DELAY_MS   = 3000; // base retry delay
-    private static final int RATE_LIMIT_SLEEP_MS   = 6000; // extra sleep on 503
+    private static final int OHLC_FETCH_DELAY_MS  = 350;  // between each stock's OHLC call
+    private static final int BATCH_FETCH_DELAY_MS = 200;  // between LTP batches
+    private static final int RETRY_BASE_DELAY_MS  = 3000; // base retry delay
+    private static final int RATE_LIMIT_SLEEP_MS  = 6000; // extra sleep on 503
 
     @Autowired private FuturesRepo futuresRepo;
     @Autowired private Nifty500Repo nifty500Repo;
@@ -60,10 +59,59 @@ public class FuturesStrategyService {
     @Autowired private AngelOne angelOne;
     @Autowired private TelegramService telegramService;
     @Autowired private FuturesBreakEventRepo futuresBreakEventRepo;
+    @Autowired private SmcLiteService smcLiteService;
 
     // ─────────────────────────────────────────────
-    //  Inner classes
+    //  NEW: Candlestick & SMC Domain Objects
     // ─────────────────────────────────────────────
+
+    public static class HourlyCandle {
+        String timestamp;
+        BigDecimal open, high, low, close;
+        long volume;
+
+        public HourlyCandle(String timestamp, BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close, long volume) {
+            this.timestamp = timestamp;
+            this.open = open;
+            this.high = high;
+            this.low = low;
+            this.close = close;
+            this.volume = volume;
+        }
+
+        public BigDecimal getRange() {
+            return high.subtract(low).abs();
+        }
+
+        public BigDecimal getBody() {
+            return close.subtract(open).abs();
+        }
+
+        public BigDecimal getBodyStrengthPercent() {
+            BigDecimal range = getRange();
+            if (range.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
+            return getBody().divide(range, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+        }
+    }
+
+    public static class CandleMetrics {
+        BigDecimal atr;
+        BigDecimal recentSwingHigh;
+        BigDecimal recentSwingLow;
+        BigDecimal bodyStrengthPct;
+        boolean isVolumeSurge;
+        boolean isBullish;
+
+        public CandleMetrics(BigDecimal atr, BigDecimal recentSwingHigh, BigDecimal recentSwingLow, 
+                             BigDecimal bodyStrengthPct, boolean isVolumeSurge, boolean isBullish) {
+            this.atr = atr;
+            this.recentSwingHigh = recentSwingHigh;
+            this.recentSwingLow = recentSwingLow;
+            this.bodyStrengthPct = bodyStrengthPct;
+            this.isVolumeSurge = isVolumeSurge;
+            this.isBullish = isBullish;
+        }
+    }
 
     public static class ExpiryOHLC {
         BigDecimal open, high, low, close;
@@ -103,7 +151,6 @@ public class FuturesStrategyService {
     //  Master execution — SINGLE sign-in for all OHLC fetches
     // ─────────────────────────────────────────────
 
-    
     private void executeMaster(FuturesConfig masterConfig) throws SmartAPIException {
         LocalDate expiryDate = resolveExecutionDate(masterConfig);
         List<Futures> futuresList = futuresRepo.findByIsNifty500True();
@@ -113,7 +160,6 @@ public class FuturesStrategyService {
             return;
         }
 
-        // ✅ Sign in ONCE and reuse for ALL OHLC + breakout calls
         SmartConnect sharedSession = angelOne.signIn();
         if (sharedSession == null) {
             logger.error("Failed to sign in. Aborting execution.");
@@ -137,10 +183,7 @@ public class FuturesStrategyService {
         List<String> tokens = indexesList.stream()
                 .map(Indexes::getToken).filter(Objects::nonNull).toList();
 
-        // ✅ LTP fetch still uses its own batched sign-ins (different API endpoint)
         Map<String, BigDecimal> todayPriceMap = fetchTodayPriceUsingPredictionService(tokens);
-
-        // ─── Build filters ───
         Map<String, List<FuturesFilter>> bucket = new HashMap<>();
 
         for (Futures f : futuresList) {
@@ -150,12 +193,13 @@ public class FuturesStrategyService {
             BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
             if (todayPrice == null) continue;
 
-            // ✅ Pass shared session — no re-login per stock
-            ExpiryOHLC ohlc = fetchExpiryOHLC(sharedSession, idx, expiryDate);
-            if (ohlc == null || ohlc.close == null || ohlc.close.signum() == 0) {
-                logger.debug("Skipping {} - no valid OHLC data", f.getName());
+            // ✅ Read instantly from the database (No API calls!)
+            if (f.getExpiryClose() == null || f.getExpiryHigh() == null || f.getExpiryLow() == null) {
+                logger.debug("Skipping {} - Morning setup hasn't cached OHLC data yet", f.getName());
                 continue;
             }
+            
+            ExpiryOHLC ohlc = new ExpiryOHLC(BigDecimal.ZERO, f.getExpiryHigh(), f.getExpiryLow(), f.getExpiryClose());
 
             BigDecimal percentMove = todayPrice.subtract(ohlc.close)
                     .divide(ohlc.close, 4, RoundingMode.HALF_UP)
@@ -172,13 +216,11 @@ public class FuturesStrategyService {
             }
         }
 
-        // ─── Save filters ───
         bucket.forEach((indexType, rows) -> {
             FuturesConfig cfg = configMap.get(indexType);
             updateFilters(cfg, rows);
         });
 
-        // ─── Breakout scan in same transaction, same session ───
         logger.info("Running breakout scan after filter update");
         runBreakoutScan(sharedSession, todayPriceMap, indexByName);
     }
@@ -233,7 +275,7 @@ public class FuturesStrategyService {
     }
 
     // ─────────────────────────────────────────────
-    //  Breakout scan — reuses the shared session
+    //  Breakout scan — Re-structured for dual-engine evaluation
     // ─────────────────────────────────────────────
 
     public void runBreakoutScan(SmartConnect smartConnect,
@@ -249,6 +291,9 @@ public class FuturesStrategyService {
             logger.warn("No filters found for breakout scan");
             return;
         }
+
+        Map<String, FuturesConfig> configMap = configRepo.findByActive("Y").stream()
+                .collect(Collectors.toMap(FuturesConfig::getIndexType, c -> c));
 
         if (smartConnect == null) {
             logger.error("SmartConnect session is null — cannot run breakout scan");
@@ -277,6 +322,55 @@ public class FuturesStrategyService {
                 continue;
             }
 
+            Futures futures = futuresMap.get(f.getName());
+            String primaryIndexType = determinePrimaryIndexType(futures);
+
+            // ──────────────────────────────────────────────────────────
+            // 🔌 STEP 1: SMC LITE EVALUATION (Runs ABOVE Proximity Guard!)
+            // ──────────────────────────────────────────────────────────
+            List<HourlyCandle> hourlyCandles = new ArrayList<>();
+            try {
+                JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
+                if (rawCandles != null && !rawCandles.isEmpty()) {
+                    hourlyCandles = parseToHourlyCandles(rawCandles);
+                    
+                    if (!hourlyCandles.isEmpty()) {
+                        // Analyze Candlestick Metrics
+                        CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
+                        if (metrics != null) {
+                            logger.info("🕯️ [{}] 1H Structure | Body: {}% | Vol Surge: {} | ATR: ₹{} | SwingH: ₹{} | SwingL: ₹{}", 
+                                    f.getName(), metrics.bodyStrengthPct, metrics.isVolumeSurge ? "YES 💥" : "NO", 
+                                    metrics.atr, metrics.recentSwingHigh, metrics.recentSwingLow);
+                            
+                            if (metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
+                                logger.warn("⚠️ [{}] Breakout candle has weak body ({}%) — potential wick rejection trap!", 
+                                        f.getName(), metrics.bodyStrengthPct);
+                            }
+                        }
+
+                        // Case-insensitive check to see if user enabled Telegram alerts for this category
+                        boolean canNotify = configMap.values().stream()
+                                .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
+                                .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
+                                .findFirst()
+                                .orElse(false);
+
+                        // Run SMC evaluation engine
+                        smcLiteService.evaluateAndNotify(
+                                f.getName(), primaryIndexType, hourlyCandles, ltp, canNotify)
+                                .ifPresent(smcSignal -> {
+                                    logger.info("🧠 [SMC BOS CONFIRMED] {} {} Triggered at ₹{} (Broken Zone: ₹{})", 
+                                            f.getName(), smcSignal.getBosType(), smcSignal.getCurrentPrice(), smcSignal.getBrokenLevel());
+                                });
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
+            }
+
+            // ──────────────────────────────────────────────────────────
+            // 🔒 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN (Requires Proximity)
+            // ──────────────────────────────────────────────────────────
             if (!isNearExpiryStructure(f, ltp)) {
                 logger.debug("Skipping {} - not near structure (LTP={}, Dir={}, High={}, Low={})",
                         f.getName(), ltp, f.getDirection(), f.getLastExpiryHigh(), f.getLastExpiryLow());
@@ -287,46 +381,36 @@ public class FuturesStrategyService {
             logger.info("🎯 {} NEAR structure: LTP={}, Dir={}, High={}, Low={}",
                     f.getName(), ltp, f.getDirection(), f.getLastExpiryHigh(), f.getLastExpiryLow());
 
-            try {
-                // ✅ Use shared session — no new login per stock
-                JSONArray candles = fetchOneHourCandle(smartConnect, idx);
-                if (candles == null || candles.isEmpty()) {
-                    logger.warn("No candles returned for {}", f.getName());
-                    continue;
+            if (hourlyCandles.isEmpty()) {
+                logger.warn("No hourly candles available to evaluate monthly breakout for {}", f.getName());
+                continue;
+            }
+
+            HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
+            BigDecimal hourClose = lastCandle.close;
+            LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+
+            logger.info("Candle check {}: hourClose={}, high={}, low={}, dir={}",
+                    f.getName(), hourClose, f.getLastExpiryHigh(), f.getLastExpiryLow(), f.getDirection());
+
+            if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
+                logger.info("🚀 BREAKOUT: {} → hourClose={} > high={}", f.getName(), hourClose, f.getLastExpiryHigh());
+                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd, primaryIndexType);
+                if (event != null) {
+                    event.setCurrentPrice(ltp);
+                    detectedEvents.add(event);
+                    breakoutCount++;
                 }
+            }
 
-                JSONArray last = candles.getJSONArray(candles.length() - 1);
-                BigDecimal hourClose = last.getBigDecimal(4);
-                LocalDateTime hourEnd = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
-
-                logger.info("Candle check {}: hourClose={}, high={}, low={}, dir={}",
-                        f.getName(), hourClose, f.getLastExpiryHigh(), f.getLastExpiryLow(), f.getDirection());
-
-                Futures futures = futuresMap.get(f.getName());
-                String primaryIndexType = determinePrimaryIndexType(futures);
-
-                if ("UP".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryHigh()) > 0) {
-                    logger.info("🚀 BREAKOUT: {} → hourClose={} > high={}", f.getName(), hourClose, f.getLastExpiryHigh());
-                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", hourEnd, primaryIndexType);
-                    if (event != null) {
-                        event.setCurrentPrice(ltp);
-                        detectedEvents.add(event);
-                        breakoutCount++;
-                    }
+            if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
+                logger.info("📉 BREAKDOWN: {} → hourClose={} < low={}", f.getName(), hourClose, f.getLastExpiryLow());
+                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd, primaryIndexType);
+                if (event != null) {
+                    event.setCurrentPrice(ltp);
+                    detectedEvents.add(event);
+                    breakdownCount++;
                 }
-
-                if ("DOWN".equals(f.getDirection()) && hourClose.compareTo(f.getLastExpiryLow()) < 0) {
-                    logger.info("📉 BREAKDOWN: {} → hourClose={} < low={}", f.getName(), hourClose, f.getLastExpiryLow());
-                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", hourEnd, primaryIndexType);
-                    if (event != null) {
-                        event.setCurrentPrice(ltp);
-                        detectedEvents.add(event);
-                        breakdownCount++;
-                    }
-                }
-
-            } catch (Exception e) {
-                logger.error("Breakout scan failed for {}: {}", f.getName(), e.getMessage(), e);
             }
         }
 
@@ -353,12 +437,10 @@ public class FuturesStrategyService {
     //  Save & dedup
     // ─────────────────────────────────────────────
 
-    @Transactional // ✅ Transactions stay here where actual database writing happens!
+    @Transactional
     public List<FuturesBreakEvent> saveAllBreakEventsWithDedup(List<FuturesBreakEvent> events) {
-
         logger.info("======== SAVE & DEDUP STARTED ({} events) ========", events.size());
 
-        // Step 1: In-memory dedup — one entry per stock+breakType
         Map<String, FuturesBreakEvent> uniqueMap = new LinkedHashMap<>();
         for (FuturesBreakEvent event : events) {
             String key = event.getName() + "_" + event.getBreakType();
@@ -370,19 +452,15 @@ public class FuturesStrategyService {
         int updatedCount = 0;
 
         for (FuturesBreakEvent newEvent : uniqueMap.values()) {
-
-            // Step 2: Check DB — does ANY record exist for this stock+breakType?
             Optional<FuturesBreakEvent> existingOpt = futuresBreakEventRepo
                     .findByNameAndBreakType(newEvent.getName(), newEvent.getBreakType());
 
             if (existingOpt.isPresent()) {
                 FuturesBreakEvent record = existingOpt.get();
                 
-                // ✅ Check if existing record was created in the SAME calendar month & year
                 boolean isSameMonth = record.getBreakDate().getMonth() == newEvent.getBreakDate().getMonth()
                                    && record.getBreakDate().getYear() == newEvent.getBreakDate().getYear();
 
-                // Update common metrics
                 record.setCurrentPrice(newEvent.getCurrentPrice());
                 record.setPercentMove(newEvent.getPercentMove());
                 record.setBreakDate(newEvent.getBreakDate());
@@ -391,11 +469,9 @@ public class FuturesStrategyService {
                 record.setStopLoss(newEvent.getStopLoss());
                 
                 if (isSameMonth) {
-                    // 🛑 ZOMBIE GUARD: If it already hit SL this month, leave it dead!
                     if ("INACTIVE".equals(record.getStatus())) {
                         logger.debug("🛑 {} already hit SL this month. Keeping INACTIVE.", record.getName());
                     } 
-                    // 📉 Check if an ACTIVE trade just hit Stop Loss
                     else if (checkStopLoss(record)) {
                         record.setStatus("INACTIVE");
                         record.setExitReason("SL_HIT");
@@ -405,7 +481,6 @@ public class FuturesStrategyService {
                                 record.getName(), record.getBreakType(),
                                 record.getBreakPrice(), record.getExitPrice(), record.getPercentMove());
                     } 
-                    // 📈 Trade is still ACTIVE and healthy
                     else {
                         record.setStatus("ACTIVE");
                         logger.info("🔄 Same-Month Update: {} {} | Price={} | PnL={}% — Silent (No Alert)",
@@ -417,22 +492,20 @@ public class FuturesStrategyService {
                     updatedCount++;
                     
                 } else {
-                    // 🔔 Found from PREVIOUS month -> Reactivate & SEND NOTIFICATION!
                     record.setStatus("ACTIVE");
-                    record.setExitReason(null); // Clear any old exit reasons
+                    record.setExitReason(null);
                     record.setExitPrice(null);
                     record.setExitDate(null);
-                    record.setBreakPrice(newEvent.getBreakPrice()); // Reset entry to new monthly breakout
+                    record.setBreakPrice(newEvent.getBreakPrice());
                     
                     FuturesBreakEvent saved = futuresBreakEventRepo.save(record);
-                    newSignals.add(saved); // 👈 Adding to newSignals triggers Telegram alert!
+                    newSignals.add(saved);
                     logger.info("🔔 Previous-Month Rollover Alert (ID={}): {} {} at {} — Will Notify!",
                             saved.getId(), saved.getName(),
                             saved.getBreakType(), saved.getBreakPrice());
                 }
 
             } else {
-                // 🆕 Brand new stock never seen before -> Insert + Send Notification
                 newEvent.setStatus("ACTIVE");
                 newEvent.setCurrentPrice(newEvent.getBreakPrice());
                 FuturesBreakEvent saved = futuresBreakEventRepo.save(newEvent);
@@ -448,6 +521,7 @@ public class FuturesStrategyService {
 
         return newSignals; 
     }
+
     // ─────────────────────────────────────────────
     //  Break event helpers
     // ─────────────────────────────────────────────
@@ -548,16 +622,15 @@ public class FuturesStrategyService {
 
     private JSONArray fetchOneHourCandle(SmartConnect smartConnect, Indexes idx) {
         int maxRetries = 5;
-        long delay = 3000;  // Start with 3s
+        long delay = 3000; 
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                // ✅ Delay BEFORE retry (not before first attempt)
                 if (attempt > 1) {
                     logger.info("Retrying 1H candle for {} after {}ms (attempt {}/{})...",
                             idx.getName(), delay, attempt, maxRetries);
                     sleepQuietly(delay);
-                    delay *= 2;  // Exponential: 3s → 6s → 12s → 24s → 48s
+                    delay *= 2; 
                 }
 
                 LocalDateTime[] window = resolveNseOneHourWindow();
@@ -571,13 +644,11 @@ public class FuturesStrategyService {
                 logger.debug("Fetching 1H candle for {} from {} to {}", idx.getName(), window[0], window[1]);
                 JSONArray candles = smartConnect.candleData(req);
 
-                // ✅ Valid data — return immediately
                 if (candles != null && !candles.isEmpty()) {
                     logger.debug("✅ 1H candle fetched for {} on attempt {}", idx.getName(), attempt);
                     return candles;
                 }
 
-                // ✅ null or empty — both are retryable
                 String reason = (candles == null) ? "NULL" : "empty";
                 logger.warn("{} 1H candle response for {} (attempt {}/{}) — will retry",
                         reason, idx.getName(), attempt, maxRetries);
@@ -601,25 +672,17 @@ public class FuturesStrategyService {
         return null;
     }
 
-
-    /**
-     * Fetches expiry-day OHLC for a single stock.
-     * ✅ Uses the shared SmartConnect session — no re-login.
-     * ✅ Adds inter-call delay to avoid rate limiting (503).
-     * ✅ Handles 503 specifically with an extended back-off.
-     */
     public ExpiryOHLC fetchExpiryOHLC(SmartConnect smartConnect, Indexes idx, LocalDate expiryDate) {
         int maxRetries = 5;
-        long delay = 3000;  // Start with 3s like your working method
+        long delay = 3000; 
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                // ✅ Delay BEFORE retry (not before first attempt)
                 if (attempt > 1) {
                     logger.info("Retrying {} after {}ms (attempt {}/{})...",
                             idx.getName(), delay, attempt, maxRetries);
                     sleepQuietly(delay);
-                    delay *= 2;  // Exponential backoff: 3s → 6s → 12s → 24s → 48s
+                    delay *= 2; 
                 }
 
                 LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(expiryDate) ?
@@ -635,7 +698,6 @@ public class FuturesStrategyService {
 
                 JSONArray candles = smartConnect.candleData(req);
 
-                // ✅ Valid data — return immediately
                 if (candles != null && !candles.isEmpty()) {
                     JSONArray c = candles.getJSONArray(candles.length() - 1);
                     BigDecimal open  = c.getBigDecimal(1);
@@ -646,7 +708,6 @@ public class FuturesStrategyService {
                     return new ExpiryOHLC(open, high, low, close);
                 }
 
-                // ✅ null or empty — both are retryable
                 String reason = (candles == null) ? "NULL" : "empty";
                 logger.warn("{} candle response for {} (attempt {}/{}) — will retry",
                         reason, idx.getName(), attempt, maxRetries);
@@ -681,7 +742,6 @@ public class FuturesStrategyService {
         Map<String, BigDecimal> priceMap = new HashMap<>();
         logger.info("Fetching LTPs for {} tokens in batches of {}", tokens.size(), BATCH_SIZE);
 
-        // ✅ SIGN IN ONCE BEFORE THE LOOP — Eliminates Broker Rate-Limiting!
         SmartConnect smartconnect = angelOne.signIn();
         if (smartconnect == null) {
             logger.error("Failed to sign in for LTP fetch. Aborting market data query.");
@@ -693,7 +753,6 @@ public class FuturesStrategyService {
             List<String> batch = tokens.subList(i, endIndex);
 
             try {
-                // ✅ Reuses the single session across all batches
                 JSONObject payload = predictionService.buildMarketDataPayload(batch, EXCHANGE);
                 JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
 
@@ -723,7 +782,6 @@ public class FuturesStrategyService {
         return priceMap;
     }
 
-    /** Handles both response shapes: { data: { fetched: [...] } } and { fetched: [...] } */
     private JSONArray extractFetchedArray(JSONObject response) {
         try {
             if (response.has("data") && !response.isNull("data")) {
@@ -788,7 +846,7 @@ public class FuturesStrategyService {
 
             if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
                 batch.append(footer);
-                try { telegramService.sendBroadcast(batch.toString()); }
+                try { telegramService.sendMessage(batch.toString()); }
                 catch (Exception ex) { logger.error("Telegram send failed: {}", ex.getMessage()); }
                 batch = new StringBuilder(header);
             }
@@ -825,9 +883,10 @@ public class FuturesStrategyService {
         ZoneId IST = ZoneId.of("Asia/Kolkata");
         LocalDate today = LocalDate.now(IST);
 
+        // ✅ Fetch 15 days back to feed 100+ candles to the SMC Engine
         LocalDate currentTradingDay = NSEWorkingDays.isNSEWorkingDay(today) ?
                 today : NSEWorkingDays.getLastWorkingDay(today);
-        LocalDate prevDay = currentTradingDay.minusDays(1);
+        LocalDate prevDay = currentTradingDay.minusDays(15); 
         LocalDate previousTradingDay = NSEWorkingDays.isNSEWorkingDay(prevDay) ?
                 prevDay : NSEWorkingDays.getLastWorkingDay(prevDay);
 
@@ -879,5 +938,134 @@ public class FuturesStrategyService {
     private void sleepQuietly(long ms) {
         try { Thread.sleep(ms); }
         catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+    }
+    
+    // ─────────────────────────────────────────────
+    //  NEW: Candlestick & SMC Pattern Engine
+    // ─────────────────────────────────────────────
+
+    private List<HourlyCandle> parseToHourlyCandles(JSONArray rawCandles) {
+        List<HourlyCandle> candles = new ArrayList<>();
+        if (rawCandles == null) return candles;
+        
+        try {
+            for (int i = 0; i < rawCandles.length(); i++) {
+                JSONArray c = rawCandles.getJSONArray(i);
+                candles.add(new HourlyCandle(
+                    c.getString(0),
+                    c.getBigDecimal(1),
+                    c.getBigDecimal(2),
+                    c.getBigDecimal(3),
+                    c.getBigDecimal(4),
+                    c.getBigDecimal(5).longValue() // Bulletproof against decimal volumes
+                ));
+            }
+        } catch (Exception e) {
+            logger.warn("Failed parsing JSON candle array: {}", e.getMessage());
+        }
+        return candles;
+    }
+
+    private CandleMetrics analyzeCandleStructure(List<HourlyCandle> candles) {
+        if (candles == null || candles.isEmpty()) return null;
+
+        HourlyCandle latest = candles.get(candles.size() - 1);
+        boolean isBullish = latest.close.compareTo(latest.open) >= 0;
+        BigDecimal bodyStrength = latest.getBodyStrengthPercent();
+
+        // 1. Calculate 5-Bar Volume Surge
+        long volSum = 0;
+        int volCount = 0;
+        for (int i = Math.max(0, candles.size() - 6); i < candles.size() - 1; i++) {
+            volSum += candles.get(i).volume;
+            volCount++;
+        }
+        long avgVol = (volCount > 0) ? (volSum / volCount) : 0;
+        boolean isVolumeSurge = avgVol > 0 && latest.volume > (avgVol * 1.25); // 25% above average
+
+        // 2. Calculate Rolling SMC Swing High / Low (Excludes latest bar to reflect prior structure)
+        BigDecimal swingHigh = latest.high;
+        BigDecimal swingLow = latest.low;
+        int lookback = Math.min(10, candles.size());
+        for (int i = Math.max(0, candles.size() - lookback); i < candles.size() - 1; i++) {
+            if (candles.get(i).high.compareTo(swingHigh) > 0) swingHigh = candles.get(i).high;
+            if (candles.get(i).low.compareTo(swingLow) < 0) swingLow = candles.get(i).low;
+        }
+
+        // 3. Approximate ATR
+        BigDecimal trSum = BigDecimal.ZERO;
+        for (int i = 1; i < candles.size(); i++) {
+            HourlyCandle curr = candles.get(i);
+            HourlyCandle prev = candles.get(i - 1);
+            BigDecimal hl = curr.getRange();
+            BigDecimal hc = curr.high.subtract(prev.close).abs();
+            BigDecimal lc = curr.low.subtract(prev.close).abs();
+            trSum = trSum.add(hl.max(hc).max(lc));
+        }
+        BigDecimal atr = (candles.size() > 1) ? trSum.divide(BigDecimal.valueOf(candles.size() - 1), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+        return new CandleMetrics(atr, swingHigh, swingLow, bodyStrength, isVolumeSurge, isBullish);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 🌅 MORNING INITIALIZATION: Pre-cache Expiry Structure in Master Database Table
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional
+    public void initializeDailyExpiryStructure() throws SmartAPIException {
+        FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_50")
+                .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
+
+        if (masterConfig == null) {
+            logger.warn("⚠️ NIFTY_50 config not active. Skipping morning setup initialization.");
+            return;
+        }
+
+        LocalDate targetExpiryDate = resolveExecutionDate(masterConfig);
+        List<Futures> futuresList = futuresRepo.findAll(); 
+
+        logger.info("🌅 Starting Daily Expiry Pre-cache. Target Date: {}. Processing {} records...", targetExpiryDate, futuresList.size());
+
+        SmartConnect sharedSession = angelOne.signIn();
+        if (sharedSession == null) {
+            logger.error("🛑 Failed to establish session for morning setup initialization.");
+            return;
+        }
+
+        List<Indexes> indexesList = indexesRepo.findByNameInAndExchange(
+                futuresList.stream().map(Futures::getName).toList(), EXCHANGE);
+
+        Map<String, Indexes> indexByName = indexesList.stream()
+                .collect(Collectors.toMap(Indexes::getName, i -> i, (exist, dup) -> exist));
+
+        int updatedCount = 0;
+
+        for (Futures f : futuresList) {
+            Indexes idx = indexByName.get(f.getName());
+            if (idx == null) continue;
+
+            if (f.getLastExpiryDate() != null && f.getLastExpiryDate().equals(targetExpiryDate) && f.getExpiryClose() != null) {
+                logger.debug("⏩ Structure for {} is already up to date for target expiry {}", f.getName(), targetExpiryDate);
+                continue;
+            }
+
+            ExpiryOHLC ohlc = fetchExpiryOHLC(sharedSession, idx, targetExpiryDate);
+            if (ohlc == null || ohlc.close == null || ohlc.close.signum() == 0) {
+                sleepQuietly(OHLC_FETCH_DELAY_MS);
+                continue;
+            }
+
+            f.setExpiryHigh(ohlc.high);
+            f.setExpiryLow(ohlc.low);
+            f.setExpiryClose(ohlc.close);
+            f.setLastExpiryDate(targetExpiryDate);
+            f.setLastUpdated(LocalDateTime.now());
+            
+            futuresRepo.save(f);
+            updatedCount++;
+
+            sleepQuietly(OHLC_FETCH_DELAY_MS);
+        }
+
+        logger.info("✅ Morning Expiry Pre-cache Finished. Successfully updated {} instruments.", updatedCount);
     }
 }

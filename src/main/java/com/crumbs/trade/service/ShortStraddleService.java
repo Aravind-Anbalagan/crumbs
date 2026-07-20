@@ -243,7 +243,12 @@ public class ShortStraddleService {
         BigDecimal cv = tick.getCombinedVwap();
         BigDecimal currentGap = cv.subtract(cp);
         BigDecimal entryGap = activeOrders.get(0).getBreakeven();
-        
+
+        if (entryGap == null) {
+            log.error("❌ [{}][EXIT] Missing entryGap (breakeven) for Cycle {}! Forcing safety exit.", tradeName, cycleId);
+            closeAll(activeOrders, tick, "MISSING_ENTRY_GAP_SAFETY_EXIT", strategyConfig, sourceConfig);
+            return;
+        }
         BigDecimal targetPoints = sourceConfig.getTargetPoints() != null 
                 ? sourceConfig.getTargetPoints() 
                 : BigDecimal.ZERO;
@@ -252,9 +257,10 @@ public class ShortStraddleService {
 
         BigDecimal slPoints = sourceConfig.getSlPoints();
         boolean isPointSlConfigured = slPoints != null && slPoints.compareTo(BigDecimal.ZERO) > 0;
-        
-        BigDecimal cpSurplusOverCv = cp.subtract(cv); 
-        boolean isPointSlBreached = isPointSlConfigured && (cpSurplusOverCv.compareTo(slPoints) >= 0);
+
+        // P&L-based SL: loss measured from entryGap, not live CP-CV
+        BigDecimal pnlLoss = entryGap.subtract(currentGap); // positive = losing
+        boolean isPointSlBreached = isPointSlConfigured && (pnlLoss.compareTo(slPoints) >= 0);
 
         boolean isVwapCrossover = cp.compareTo(cv) > 0;
         int reqSlHits = sourceConfig.getExitHitsRequired() > 0 ? sourceConfig.getExitHitsRequired() : 3;
@@ -287,8 +293,8 @@ public class ShortStraddleService {
             pStatus = "⚪ DISABLED";
         } else {
             pStatus = isPointSlBreached 
-                    ? String.format("🚨 BREACHED (CP %.2f >= CV %.2f + SL %.2f)", cp, cv, slPoints) 
-                    : String.format("✅ SECURE (CP %.2f < CV %.2f + SL %.2f | Configured SL: %.2f pts)", cp, cv, slPoints, slPoints);
+                    ? String.format("🚨 BREACHED (Loss %.2f >= SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap) 
+                    : String.format("✅ SECURE (Loss %.2f < SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap);
         }
 
         log.info("================================================================================");

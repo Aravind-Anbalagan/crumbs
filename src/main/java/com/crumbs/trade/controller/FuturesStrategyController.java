@@ -1,6 +1,7 @@
 package com.crumbs.trade.controller;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -22,8 +23,7 @@ import com.crumbs.trade.service.FuturesStrategyService;
 @RequestMapping("/api/futures")
 public class FuturesStrategyController {
 
-    private static final Logger logger =
-            LogManager.getLogger(FuturesStrategyController.class);
+    private static final Logger logger = LogManager.getLogger(FuturesStrategyController.class);
 
     @Autowired
     private FuturesStrategyService futuresStrategyService;
@@ -31,97 +31,101 @@ public class FuturesStrategyController {
     @Autowired
     private FuturesFilterRepo futuresFilterRepo;
 
+    // ──────────────────────────────────────────────────────────
+    //  EXECUTION ENDPOINTS
+    // ──────────────────────────────────────────────────────────
+
     /**
-     * 🔧 Manual execution (bypasses market hours)
-     * @throws SmartAPIException 
+     * 🌅 Manual Morning Setup (Pre-caches the Expiry High/Low)
      */
-    @GetMapping("/execute")
-    public ResponseEntity<String> manualExecute() throws SmartAPIException {
+    @GetMapping("/execute-setup")
+    public ResponseEntity<String> manualExecuteSetup() {
         try {
-            logger.info("Manual execution triggered");
-            futuresStrategyService.executeAll();
-            return ResponseEntity.ok("Execution completed for all active configs");
-        } catch (Exception e) {
-            logger.error("Error in manual execution", e);
-            return ResponseEntity.internalServerError()
-                    .body("Execution failed: " + e.getMessage());
+            logger.info("Manual morning setup execution triggered");
+            futuresStrategyService.initializeDailyExpiryStructure();
+            return ResponseEntity.ok("Morning expiry structure pre-cache completed successfully.");
+        } catch (Exception | SmartAPIException e) {
+            logger.error("Error in manual morning setup", e);
+            return ResponseEntity.internalServerError().body("Setup failed: " + e.getMessage());
         }
     }
 
     /**
-     * 📊 Get ALL filtered data
+     * 🔧 Manual intraday scanner execution (bypasses market hours)
      */
+    @GetMapping("/execute")
+    public ResponseEntity<String> manualExecute() {
+        try {
+            logger.info("Manual intraday execution triggered");
+            futuresStrategyService.executeAll();
+            return ResponseEntity.ok("Execution completed for all active configs");
+        } catch (Exception | SmartAPIException e) {
+            logger.error("Error in manual execution", e);
+            return ResponseEntity.internalServerError().body("Execution failed: " + e.getMessage());
+        }
+    }
+
+    // ✅ Backward compatibility
+    @GetMapping("/getDetails")
+    public ResponseEntity<String> executeOldEndpoint() {
+        return manualExecute();
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  FILTER DATA ENDPOINTS
+    // ──────────────────────────────────────────────────────────
+
     @GetMapping("/filtered")
     public List<FuturesFilter> getAllFilteredData() {
         return futuresFilterRepo.findAll();
     }
 
-    /**
-     * 📊 Get filtered data by index type
-     */
     @GetMapping("/filtered/{indexType}")
-    public List<FuturesFilter> getFilteredDataByIndexType(
-            @PathVariable String indexType) {
+    public List<FuturesFilter> getFilteredDataByIndexType(@PathVariable String indexType) {
         return futuresFilterRepo.findByIndexType(indexType);
     }
 
-    /**
-     * ⚙️ Get all configs
-     */
+    // ──────────────────────────────────────────────────────────
+    //  CONFIG ENDPOINTS
+    // ──────────────────────────────────────────────────────────
+
     @GetMapping("/config")
     public List<FuturesConfig> fetchAllConfigs() {
         return futuresStrategyService.fetchAll();
     }
 
-    /**
-     * ⚙️ Get all active configs
-     */
     @GetMapping("/config/active")
     public List<FuturesConfig> fetchAllActiveConfigs() {
         return futuresStrategyService.fetchAllActive();
     }
 
-    /**
-     * ⚙️ Get config by index type
-     */
     @GetMapping("/config/{indexType}")
-    public FuturesConfig fetchConfigByIndexType(
-            @PathVariable String indexType) {
+    public FuturesConfig fetchConfigByIndexType(@PathVariable String indexType) {
         return futuresStrategyService.fetch(indexType);
     }
 
-    /**
-     * ✏️ Update config
-     */
     @PatchMapping("/config/{indexType}")
-    public FuturesConfig updateConfig(
-            @PathVariable String indexType,
-            @RequestBody FuturesConfigDto dto) {
+    public FuturesConfig updateConfig(@PathVariable String indexType, @RequestBody FuturesConfigDto dto) {
         return futuresStrategyService.partialUpdate(indexType, dto);
     }
 
-    // ✅ Backward compatibility
-    @GetMapping("/getDetails")
-    public ResponseEntity<String> executeOldEndpoint() throws SmartAPIException {
-        return manualExecute();
-    }
-    
- // GET /api/break-events
-    @GetMapping
+    // ──────────────────────────────────────────────────────────
+    //  BREAK EVENT ENDPOINTS
+    // ──────────────────────────────────────────────────────────
+
+    @GetMapping("/break-events")
     public List<FuturesBreakEvent> getAllBreakEvents() {
         return futuresStrategyService.getAllBreakEvents();
     }
 
-    // GET /api/break-events/date/2026-01-22
-    @GetMapping("/date/{date}")
+    @GetMapping("/break-events/date/{date}")
     public List<FuturesBreakEvent> getBreakEventsByDate(
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return futuresStrategyService.getBreakEventsByDate(date);
     }
 
-    // GET /api/break-events/today
-    @GetMapping("/today")
+    @GetMapping("/break-events/today")
     public List<FuturesBreakEvent> getTodayBreakEvents() {
-        return futuresStrategyService.getBreakEventsByDate(LocalDate.now());
+        return futuresStrategyService.getBreakEventsByDate(LocalDate.now(ZoneId.of("Asia/Kolkata")));
     }
 }
