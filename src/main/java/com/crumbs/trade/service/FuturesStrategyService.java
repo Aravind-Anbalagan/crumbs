@@ -368,23 +368,34 @@ public class FuturesStrategyService {
                 logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
             }
 
-         // ──────────────────────────────────────────────────────────
-            // 🚀 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN (Direct Evaluation)
+           // ──────────────────────────────────────────────────────────
+            // 🚀 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN
             // ──────────────────────────────────────────────────────────
             if (f.getLastExpiryHigh() == null || f.getLastExpiryLow() == null) {
                 logger.debug("Skipping {} - missing expiry structure levels", f.getName());
                 continue;
             }
 
-            // Use the filter's actual index type so Telegram notification configs route correctly
+            if (hourlyCandles.isEmpty()) {
+                logger.debug("Skipping {} Expiry Scan - no 1H candle data available", f.getName());
+                continue;
+            }
+
+            // Get the last 1-hour candle close
+            HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
+            BigDecimal hourClose = lastCandle.close;
+
             String indexType = f.getIndexType(); 
             LocalDateTime timestamp = LocalDateTime.now().withNano(0);
             boolean criteriaMet = false;
 
-            // Evaluate BREAKOUT (Current LTP > Last Expiry High)
-            if ("UP".equals(f.getDirection()) && ltp.compareTo(f.getLastExpiryHigh()) > 0) {
-                logger.info("🚀 BREAKOUT: {} → LTP={} > ExpiryHigh={}", f.getName(), ltp, f.getLastExpiryHigh());
-                FuturesBreakEvent event = createBreakEventNoSave(f, ltp, "BREAKOUT", timestamp, indexType);
+            // 🚀 BREAKOUT: 1H Candle Close AND Current Price are > Expiry High
+            if ("UP".equals(f.getDirection()) && 
+                hourClose.compareTo(f.getLastExpiryHigh()) > 0 && 
+                ltp.compareTo(f.getLastExpiryHigh()) > 0) {
+                
+                logger.info("🚀 BREAKOUT: {} → 1H Close={} & LTP={} > ExpiryHigh={}", f.getName(), hourClose, ltp, f.getLastExpiryHigh());
+                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", timestamp, indexType);
                 if (event != null) {
                     event.setCurrentPrice(ltp);
                     detectedEvents.add(event);
@@ -393,10 +404,13 @@ public class FuturesStrategyService {
                 }
             }
 
-            // Evaluate BREAKDOWN (Current LTP < Last Expiry Low)
-            if ("DOWN".equals(f.getDirection()) && ltp.compareTo(f.getLastExpiryLow()) < 0) {
-                logger.info("📉 BREAKDOWN: {} → LTP={} < ExpiryLow={}", f.getName(), ltp, f.getLastExpiryLow());
-                FuturesBreakEvent event = createBreakEventNoSave(f, ltp, "BREAKDOWN", timestamp, indexType);
+            // 📉 BREAKDOWN: 1H Candle Close AND Current Price are < Expiry Low
+            if ("DOWN".equals(f.getDirection()) && 
+                hourClose.compareTo(f.getLastExpiryLow()) < 0 && 
+                ltp.compareTo(f.getLastExpiryLow()) < 0) {
+                
+                logger.info("📉 BREAKDOWN: {} → 1H Close={} & LTP={} < ExpiryLow={}", f.getName(), hourClose, ltp, f.getLastExpiryLow());
+                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", timestamp, indexType);
                 if (event != null) {
                     event.setCurrentPrice(ltp);
                     detectedEvents.add(event);
@@ -405,10 +419,10 @@ public class FuturesStrategyService {
                 }
             }
 
-            // ✅ EXPLICIT AUDIT LOG: Let the user know we checked the level and nothing triggered
+            // Audit Log if nothing triggered
             if (!criteriaMet) {
-                logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | LTP={} | No level breached (High={}, Low={}, Dir={})", 
-                        f.getName(), indexType, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow(), f.getDirection());
+                logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | 1H Close={} | LTP={} | No level breached (High={}, Low={})", 
+                        f.getName(), indexType, hourClose, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow());
             }
         }
 
