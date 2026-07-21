@@ -818,7 +818,7 @@ public class FuturesStrategyService {
 
             if (batch.length() + row.length() + footer.length() > TELEGRAM_LIMIT) {
                 batch.append(footer);
-                try { telegramService.sendMessage(batch.toString()); }
+                try { telegramService.sendBroadcast(batch.toString()); }
                 catch (Exception ex) { logger.error("Telegram send failed: {}", ex.getMessage()); }
                 batch = new StringBuilder(header);
             }
