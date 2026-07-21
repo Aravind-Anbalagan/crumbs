@@ -120,7 +120,7 @@ public class SmcLiteService {
         return signalOpt;
     }
 
-    // =========================================================
+ // =========================================================
     // 💥 BREAK OF STRUCTURE (BOS) EVALUATION
     // =========================================================
     private Optional<SmcSignal> checkBos(String symbol, String indexType, BigDecimal price, 
@@ -131,8 +131,17 @@ public class SmcLiteService {
         while (supplyIter.hasNext()) {
             SmcZone zone = supplyIter.next();
             if (price.compareTo(zone.getTop()) >= 0) {
-                supplyIter.remove(); // Remove broken zone so it doesn't trigger again
-                return Optional.of(new SmcSignal(symbol, indexType, "BULLISH_BOS", "BUY", price, zone.getTop()));
+                supplyIter.remove(); // Always remove broken zone so it doesn't get stuck
+                
+                BigDecimal diff = price.subtract(zone.getTop()).abs();
+                BigDecimal maxAllowed = getMaxAllowedDifference(zone.getTop());
+                
+                if (diff.compareTo(maxAllowed) <= 0) {
+                    return Optional.of(new SmcSignal(symbol, indexType, "BULLISH_BOS", "BUY", price, zone.getTop()));
+                } else {
+                    logger.info("🔕 [SMC-BOS SKIP] {} BULLISH breakout chased too far! LTP: ₹{}, BOS: ₹{}, Diff: ₹{} (Max allowed: ₹{})", 
+                                symbol, price, zone.getTop(), diff, maxAllowed);
+                }
             }
         }
 
@@ -141,12 +150,39 @@ public class SmcLiteService {
         while (demandIter.hasNext()) {
             SmcZone zone = demandIter.next();
             if (price.compareTo(zone.getBottom()) <= 0) {
-                demandIter.remove(); // Remove broken zone
-                return Optional.of(new SmcSignal(symbol, indexType, "BEARISH_BOS", "SELL", price, zone.getBottom()));
+                demandIter.remove(); // Always remove broken zone
+                
+                BigDecimal diff = zone.getBottom().subtract(price).abs();
+                BigDecimal maxAllowed = getMaxAllowedDifference(zone.getBottom());
+                
+                if (diff.compareTo(maxAllowed) <= 0) {
+                    return Optional.of(new SmcSignal(symbol, indexType, "BEARISH_BOS", "SELL", price, zone.getBottom()));
+                } else {
+                    logger.info("🔕 [SMC-BOS SKIP] {} BEARISH breakdown chased too far! LTP: ₹{}, BOS: ₹{}, Diff: ₹{} (Max allowed: ₹{})", 
+                                symbol, price, zone.getBottom(), diff, maxAllowed);
+                }
             }
         }
 
         return Optional.empty();
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 🎚️ PRICE TIER MAP FOR MAX SLIPPAGE / CHASE PROTECTION
+    // ──────────────────────────────────────────────────────────
+    private BigDecimal getMaxAllowedDifference(BigDecimal bosLevel) {
+        double level = bosLevel.doubleValue();
+        
+        // If stock is between 100 and 500, max diff is 10 points
+        if (level <= 100)   return new BigDecimal("2.00");
+        if (level <= 500)   return new BigDecimal("10.00");
+        if (level <= 1000)  return new BigDecimal("15.00");
+        if (level <= 2500)  return new BigDecimal("25.00");
+        if (level <= 5000)  return new BigDecimal("40.00");
+        if (level <= 10000) return new BigDecimal("75.00"); // Matches MCX CrudeOil nicely
+        
+        // For NIFTY/BANKNIFTY or stocks > 10,000
+        return new BigDecimal("120.00"); 
     }
 
     private void sendTelegramAlert(SmcSignal sig) {
