@@ -379,6 +379,7 @@ public class FuturesStrategyService {
             // Use the filter's actual index type so Telegram notification configs route correctly
             String indexType = f.getIndexType(); 
             LocalDateTime timestamp = LocalDateTime.now().withNano(0);
+            boolean criteriaMet = false;
 
             // Evaluate BREAKOUT (Current LTP > Last Expiry High)
             if ("UP".equals(f.getDirection()) && ltp.compareTo(f.getLastExpiryHigh()) > 0) {
@@ -388,6 +389,7 @@ public class FuturesStrategyService {
                     event.setCurrentPrice(ltp);
                     detectedEvents.add(event);
                     breakoutCount++;
+                    criteriaMet = true;
                 }
             }
 
@@ -399,11 +401,18 @@ public class FuturesStrategyService {
                     event.setCurrentPrice(ltp);
                     detectedEvents.add(event);
                     breakdownCount++;
+                    criteriaMet = true;
                 }
+            }
+
+            // ✅ EXPLICIT AUDIT LOG: Let the user know we checked the level and nothing triggered
+            if (!criteriaMet) {
+                logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | LTP={} | No level breached (High={}, Low={}, Dir={})", 
+                        f.getName(), indexType, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow(), f.getDirection());
             }
         }
 
-        logger.info("📊 Scan Summary: Scanned={}, Near Structure={}, Breakouts={}, Breakdowns={}",
+        logger.info("📊 Scan Summary: Scanned={}, Breakouts={}, Breakdowns={}",
                 scannedCount, breakoutCount, breakdownCount);
 
         if (!detectedEvents.isEmpty()) {
@@ -413,10 +422,10 @@ public class FuturesStrategyService {
                 logger.info("✅ Sending notifications for {} NEW signals", newSignals.size());
                 sendBreakoutNotificationsWithConfig(newSignals);
             } else {
-                logger.info("ℹ️ No new signals to notify (all were updates)");
+                logger.info("ℹ️ Expiry breakout scanning completed. No new signals to notify (all {} events were same-month updates).", detectedEvents.size());
             }
         } else {
-            logger.info("ℹ️ No breakout/breakdown events detected");
+            logger.info("✅ Expiry breakout scanning completed across {} instruments. No criteria met (0 Breakouts, 0 Breakdowns).", scannedCount);
         }
 
         logger.info("========== BREAKOUT SCAN COMPLETED ==========");
