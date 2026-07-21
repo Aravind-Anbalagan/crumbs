@@ -274,160 +274,149 @@ public class FuturesStrategyService {
         logger.info("Saved {} filters for {} (with HIGH/LOW/RANGE data)", saved.size(), indexType);
     }
 
+ // ─────────────────────────────────────────────
+    //  Breakout scan — Re-structured for Multi-Threading
     // ─────────────────────────────────────────────
-    //  Breakout scan — Re-structured for dual-engine evaluation
-    // ─────────────────────────────────────────────
-
     public void runBreakoutScan(SmartConnect smartConnect,
                                 Map<String, BigDecimal> ltpMap,
                                 Map<String, Indexes> indexByName) {
 
-        logger.info("========== BREAKOUT SCAN STARTED ==========");
+        logger.info("========== BREAKOUT SCAN STARTED (MULTI-THREADED) ==========");
 
         List<FuturesFilter> filters = filterRepo.findAll();
         logger.info("Found {} filters to scan", filters.size());
 
-        if (filters.isEmpty()) {
-            logger.warn("No filters found for breakout scan");
+        if (filters.isEmpty() || smartConnect == null) {
+            logger.warn("Filters empty or SmartConnect is null — aborting scan.");
             return;
         }
 
         Map<String, FuturesConfig> configMap = configRepo.findByActive("Y").stream()
                 .collect(Collectors.toMap(FuturesConfig::getIndexType, c -> c));
 
-        if (smartConnect == null) {
-            logger.error("SmartConnect session is null — cannot run breakout scan");
-            return;
-        }
-
         List<Futures> futuresList = futuresRepo.findAll();
         Map<String, Futures> futuresMap = futuresList.stream()
                 .collect(Collectors.toMap(Futures::getName, f -> f));
 
-        List<FuturesBreakEvent> detectedEvents = new ArrayList<>();
-        int scannedCount = 0, breakoutCount = 0, breakdownCount = 0;
+        // ✅ THREAD-SAFE DATA STRUCTURES
+        List<FuturesBreakEvent> detectedEvents = Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger scannedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger breakoutCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger breakdownCount = new java.util.concurrent.atomic.AtomicInteger(0);
 
-        for (FuturesFilter f : filters) {
-            scannedCount++;
+        // ✅ FIXED THREAD POOL: 5 concurrent threads avoids AngelOne Rate Limits (503s)
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(5);
+        LocalTime MARKET_CUTOFF = LocalTime.of(15, 30);
 
-            Indexes idx = indexByName.get(f.getName());
-            if (idx == null) {
-                logger.debug("Skipping {} - no index mapping", f.getName());
-                continue;
-            }
+        List<java.util.concurrent.CompletableFuture<Void>> futures = filters.stream().map(f -> 
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                
+                // 🛑 Hard stop if execution drifts past market close
+                if (LocalTime.now(ZoneId.of("Asia/Kolkata")).isAfter(MARKET_CUTOFF)) {
+                    return; // Gracefully exit this thread
+                }
 
-            BigDecimal ltp = ltpMap.get(idx.getToken());
-            if (ltp == null) {
-                logger.debug("Skipping {} - no LTP", f.getName());
-                continue;
-            }
+                scannedCount.incrementAndGet();
 
-            Futures futures = futuresMap.get(f.getName());
-            String primaryIndexType = determinePrimaryIndexType(futures);
+                Indexes idx = indexByName.get(f.getName());
+                BigDecimal ltp = ltpMap.get(idx != null ? idx.getToken() : null);
 
-            // ──────────────────────────────────────────────────────────
-            // 🔌 STEP 1: SMC LITE EVALUATION (Runs ABOVE Proximity Guard!)
-            // ──────────────────────────────────────────────────────────
-            List<HourlyCandle> hourlyCandles = new ArrayList<>();
-            try {
-                JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
-                if (rawCandles != null && !rawCandles.isEmpty()) {
-                    hourlyCandles = parseToHourlyCandles(rawCandles);
-                    
-                    if (!hourlyCandles.isEmpty()) {
-                        // Analyze Candlestick Metrics
-                        CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
-                        if (metrics != null) {
-                            logger.info("🕯️ [{}] 1H Structure | Body: {}% | Vol Surge: {} | ATR: ₹{} | SwingH: ₹{} | SwingL: ₹{}", 
-                                    f.getName(), metrics.bodyStrengthPct, metrics.isVolumeSurge ? "YES 💥" : "NO", 
-                                    metrics.atr, metrics.recentSwingHigh, metrics.recentSwingLow);
-                            
-                            if (metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
-                                logger.warn("⚠️ [{}] Breakout candle has weak body ({}%) — potential wick rejection trap!", 
-                                        f.getName(), metrics.bodyStrengthPct);
+                if (idx == null || ltp == null) {
+                    logger.debug("Skipping {} - no index mapping or LTP", f.getName());
+                    return;
+                }
+
+                Futures futuresEntity = futuresMap.get(f.getName());
+                String primaryIndexType = determinePrimaryIndexType(futuresEntity);
+
+                // ──────────────────────────────────────────────────────────
+                // 🔌 STEP 1: SMC LITE EVALUATION
+                // ──────────────────────────────────────────────────────────
+                List<HourlyCandle> hourlyCandles = new ArrayList<>();
+                try {
+                    // This is the slow network call -> Now running in parallel!
+                    JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
+                    if (rawCandles != null && !rawCandles.isEmpty()) {
+                        hourlyCandles = parseToHourlyCandles(rawCandles);
+                        
+                        if (!hourlyCandles.isEmpty()) {
+                            CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
+                            if (metrics != null && metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
+                                logger.warn("⚠️ [{}] Breakout candle has weak body ({}%)", f.getName(), metrics.bodyStrengthPct);
                             }
+
+                            boolean canNotify = configMap.values().stream()
+                                    .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
+                                    .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
+                                    .findFirst()
+                                    .orElse(false);
+
+                            smcLiteService.evaluateAndNotify(f.getName(), primaryIndexType, hourlyCandles, ltp, canNotify)
+                                    .ifPresent(smcSignal -> logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", f.getName(), smcSignal.getCurrentPrice()));
                         }
+                    }
+                } catch (Exception e) {
+                    logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
+                }
 
-                        // Case-insensitive check to see if user enabled Telegram alerts for this category
-                        boolean canNotify = configMap.values().stream()
-                                .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
-                                .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
-                                .findFirst()
-                                .orElse(false);
+                // ──────────────────────────────────────────────────────────
+                // 🚀 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN
+                // ──────────────────────────────────────────────────────────
+                if (f.getLastExpiryHigh() == null || f.getLastExpiryLow() == null || hourlyCandles.isEmpty()) {
+                    return;
+                }
 
-                        // Run SMC evaluation engine
-                        smcLiteService.evaluateAndNotify(
-                                f.getName(), primaryIndexType, hourlyCandles, ltp, canNotify)
-                                .ifPresent(smcSignal -> {
-                                    logger.info("🧠 [SMC BOS CONFIRMED] {} {} Triggered at ₹{} (Broken Zone: ₹{})", 
-                                            f.getName(), smcSignal.getBosType(), smcSignal.getCurrentPrice(), smcSignal.getBrokenLevel());
-                                });
+                HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
+                BigDecimal hourClose = lastCandle.close;
+                String indexType = f.getIndexType(); 
+                LocalDateTime timestamp = LocalDateTime.now().withNano(0);
+                boolean criteriaMet = false;
+
+                if ("UP".equals(f.getDirection()) && 
+                    hourClose.compareTo(f.getLastExpiryHigh()) > 0 && 
+                    ltp.compareTo(f.getLastExpiryHigh()) > 0) {
+                    
+                    logger.info("🚀 BREAKOUT: {} → 1H Close={} & LTP={} > ExpiryHigh={}", f.getName(), hourClose, ltp, f.getLastExpiryHigh());
+                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", timestamp, indexType);
+                    if (event != null) {
+                        event.setCurrentPrice(ltp);
+                        detectedEvents.add(event); // Safely adds to SynchronizedList
+                        breakoutCount.incrementAndGet();
+                        criteriaMet = true;
                     }
                 }
-            } catch (Exception e) {
-                logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
-            }
 
-           // ──────────────────────────────────────────────────────────
-            // 🚀 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN
-            // ──────────────────────────────────────────────────────────
-            if (f.getLastExpiryHigh() == null || f.getLastExpiryLow() == null) {
-                logger.debug("Skipping {} - missing expiry structure levels", f.getName());
-                continue;
-            }
-
-            if (hourlyCandles.isEmpty()) {
-                logger.debug("Skipping {} Expiry Scan - no 1H candle data available", f.getName());
-                continue;
-            }
-
-            // Get the last 1-hour candle close
-            HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
-            BigDecimal hourClose = lastCandle.close;
-
-            String indexType = f.getIndexType(); 
-            LocalDateTime timestamp = LocalDateTime.now().withNano(0);
-            boolean criteriaMet = false;
-
-            // 🚀 BREAKOUT: 1H Candle Close AND Current Price are > Expiry High
-            if ("UP".equals(f.getDirection()) && 
-                hourClose.compareTo(f.getLastExpiryHigh()) > 0 && 
-                ltp.compareTo(f.getLastExpiryHigh()) > 0) {
-                
-                logger.info("🚀 BREAKOUT: {} → 1H Close={} & LTP={} > ExpiryHigh={}", f.getName(), hourClose, ltp, f.getLastExpiryHigh());
-                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", timestamp, indexType);
-                if (event != null) {
-                    event.setCurrentPrice(ltp);
-                    detectedEvents.add(event);
-                    breakoutCount++;
-                    criteriaMet = true;
+                if ("DOWN".equals(f.getDirection()) && 
+                    hourClose.compareTo(f.getLastExpiryLow()) < 0 && 
+                    ltp.compareTo(f.getLastExpiryLow()) < 0) {
+                    
+                    logger.info("📉 BREAKDOWN: {} → 1H Close={} & LTP={} < ExpiryLow={}", f.getName(), hourClose, ltp, f.getLastExpiryLow());
+                    FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", timestamp, indexType);
+                    if (event != null) {
+                        event.setCurrentPrice(ltp);
+                        detectedEvents.add(event); // Safely adds to SynchronizedList
+                        breakdownCount.incrementAndGet();
+                        criteriaMet = true;
+                    }
                 }
-            }
 
-            // 📉 BREAKDOWN: 1H Candle Close AND Current Price are < Expiry Low
-            if ("DOWN".equals(f.getDirection()) && 
-                hourClose.compareTo(f.getLastExpiryLow()) < 0 && 
-                ltp.compareTo(f.getLastExpiryLow()) < 0) {
-                
-                logger.info("📉 BREAKDOWN: {} → 1H Close={} & LTP={} < ExpiryLow={}", f.getName(), hourClose, ltp, f.getLastExpiryLow());
-                FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", timestamp, indexType);
-                if (event != null) {
-                    event.setCurrentPrice(ltp);
-                    detectedEvents.add(event);
-                    breakdownCount++;
-                    criteriaMet = true;
+                if (!criteriaMet) {
+                    logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | 1H Close={} | LTP={} | No level breached (High={}, Low={})", 
+                            f.getName(), indexType, hourClose, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow());
                 }
-            }
 
-            // Audit Log if nothing triggered
-            if (!criteriaMet) {
-                logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | 1H Close={} | LTP={} | No level breached (High={}, Low={})", 
-                        f.getName(), indexType, hourClose, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow());
-            }
-        }
+            }, executor)
+        ).toList();
 
+        // ✅ WAIT FOR ALL THREADS TO FINISH
+        java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
+        executor.shutdown(); // Clean up thread pool
+
+        // ──────────────────────────────────────────────────────────
+        // 📊 POST-PROCESSING (Runs sequentially after threads finish)
+        // ──────────────────────────────────────────────────────────
         logger.info("📊 Scan Summary: Scanned={}, Breakouts={}, Breakdowns={}",
-                scannedCount, breakoutCount, breakdownCount);
+                scannedCount.get(), breakoutCount.get(), breakdownCount.get());
 
         if (!detectedEvents.isEmpty()) {
             logger.info("Processing {} detected events for save/dedup", detectedEvents.size());
@@ -436,10 +425,10 @@ public class FuturesStrategyService {
                 logger.info("✅ Sending notifications for {} NEW signals", newSignals.size());
                 sendBreakoutNotificationsWithConfig(newSignals);
             } else {
-                logger.info("ℹ️ Expiry breakout scanning completed. No new signals to notify (all {} events were same-month updates).", detectedEvents.size());
+                logger.info("ℹ️ Expiry breakout scanning completed. No new signals to notify.");
             }
         } else {
-            logger.info("✅ Expiry breakout scanning completed across {} instruments. No criteria met (0 Breakouts, 0 Breakdowns).", scannedCount);
+            logger.info("✅ Expiry breakout scanning completed across {} instruments. No criteria met.", scannedCount.get());
         }
 
         logger.info("========== BREAKOUT SCAN COMPLETED ==========");
@@ -602,7 +591,7 @@ public class FuturesStrategyService {
         return event;
     }
 
-    // ─────────────────────────────────────────────
+ // ─────────────────────────────────────────────
     //  API calls — shared session, with delays & 503 handling
     // ─────────────────────────────────────────────
 
@@ -641,11 +630,13 @@ public class FuturesStrategyService {
 
             } catch (Exception e) {
                 boolean is503 = e.getMessage() != null &&
-                        (e.getMessage().contains("503") || e.getMessage().contains("timedout"));
+                        (e.getMessage().contains("503") || e.getMessage().contains("timedout") || e.getMessage().contains("Too Many Requests"));
 
                 if (is503) {
-                    logger.warn("⚠️ 503/timeout for {} 1H candle (attempt {}/{}) — will retry",
-                            idx.getName(), attempt, maxRetries);
+                    logger.warn("⚠️ 503/Rate Limit hit for {} (attempt {}/{}). Forcing hard backoff of {}ms.",
+                            idx.getName(), attempt, maxRetries, RATE_LIMIT_SLEEP_MS);
+                    // ✅ Apply the hard 6-second rate limit penalty immediately
+                    sleepQuietly(RATE_LIMIT_SLEEP_MS); 
                 } else {
                     logger.warn("Error fetching 1H candle for {} (attempt {}/{}): {} — will retry",
                             idx.getName(), attempt, maxRetries, e.getMessage());
