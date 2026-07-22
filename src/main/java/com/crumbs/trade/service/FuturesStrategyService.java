@@ -17,6 +17,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +42,8 @@ import com.crumbs.trade.utility.NiftyIndexType;
 @Service
 public class FuturesStrategyService {
 
+	// 1. Inject self lazily to avoid circular dependency
+    @Autowired @Lazy private FuturesStrategyService self;
     private static final Logger logger = LogManager.getLogger(FuturesStrategyService.class);
     private static final String EXCHANGE = "NSE";
 
@@ -133,7 +136,7 @@ public class FuturesStrategyService {
     //  Entry point
     // ─────────────────────────────────────────────
 
-    @Transactional
+    
     public void executeAll() throws SmartAPIException {
         FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_50")
                 .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
@@ -218,7 +221,7 @@ public class FuturesStrategyService {
 
         bucket.forEach((indexType, rows) -> {
             FuturesConfig cfg = configMap.get(indexType);
-            updateFilters(cfg, rows);
+            self.updateFilters(cfg, rows);
         });
 
         logger.info("Running breakout scan after filter update");
@@ -304,10 +307,11 @@ public class FuturesStrategyService {
         java.util.concurrent.atomic.AtomicInteger breakoutCount = new java.util.concurrent.atomic.AtomicInteger(0);
         java.util.concurrent.atomic.AtomicInteger breakdownCount = new java.util.concurrent.atomic.AtomicInteger(0);
 
+        
         // ✅ FIXED THREAD POOL: 5 concurrent threads avoids AngelOne Rate Limits (503s)
         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(5);
         LocalTime MARKET_CUTOFF = LocalTime.of(15, 30);
-
+        try {
         List<java.util.concurrent.CompletableFuture<Void>> futures = filters.stream().map(f -> 
             java.util.concurrent.CompletableFuture.runAsync(() -> {
                 
@@ -329,35 +333,38 @@ public class FuturesStrategyService {
                 Futures futuresEntity = futuresMap.get(f.getName());
                 String primaryIndexType = determinePrimaryIndexType(futuresEntity);
 
-                // ──────────────────────────────────────────────────────────
-                // 🔌 STEP 1: SMC LITE EVALUATION
-                // ──────────────────────────────────────────────────────────
-                List<HourlyCandle> hourlyCandles = new ArrayList<>();
-                try {
-                    // This is the slow network call -> Now running in parallel!
-                    JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
-                    if (rawCandles != null && !rawCandles.isEmpty()) {
-                        hourlyCandles = parseToHourlyCandles(rawCandles);
-                        
-                        if (!hourlyCandles.isEmpty()) {
-                            CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
-                            if (metrics != null && metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
-                                logger.warn("⚠️ [{}] Breakout candle has weak body ({}%)", f.getName(), metrics.bodyStrengthPct);
-                            }
+             // ──────────────────────────────────────────────────────────
+             // 🔌 STEP 1: SMC LITE EVALUATION (THREAD-SAFE & WIRED)
+             // ──────────────────────────────────────────────────────────
+             List<HourlyCandle> hourlyCandles = new ArrayList<>();
+             try {
+                 JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
+                 if (rawCandles != null && !rawCandles.isEmpty()) {
+                     hourlyCandles = parseToHourlyCandles(rawCandles);
+                     
+                     if (!hourlyCandles.isEmpty()) {
+                         CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
+                         if (metrics != null && metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
+                             logger.warn("⚠️ [{}] Latest candle has weak body ({}%) - potential false breakout", 
+                                         f.getName(), metrics.bodyStrengthPct);
+                         }
 
-                            boolean canNotify = configMap.values().stream()
-                                    .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
-                                    .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
-                                    .findFirst()
-                                    .orElse(false);
+                         boolean canNotify = configMap.values().stream()
+                                 .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
+                                 .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
+                                 .findFirst()
+                                 .orElse(false);
 
-                            smcLiteService.evaluateAndNotify(f.getName(), primaryIndexType, hourlyCandles, ltp, canNotify)
-                                    .ifPresent(smcSignal -> logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", f.getName(), smcSignal.getCurrentPrice()));
-                        }
-                    }
-                } catch (Exception e) {
-                    logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
-                }
+                         // ✅ SmcLiteService now safely handles zones, BOS detection, recency, and Telegram alerts!
+                         smcLiteService.evaluateAndNotify(f.getName(), primaryIndexType, hourlyCandles, ltp, canNotify)
+                                 .ifPresent(smcSignal -> {
+                                     logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", f.getName(), smcSignal.getCurrentPrice());
+                                 });
+                     }
+                 }
+             } catch (Exception e) {
+                 logger.error("🛑 SMC evaluation processing failed for {}: {}", f.getName(), e.getMessage());
+             }
 
                 // ──────────────────────────────────────────────────────────
                 // 🚀 STEP 2: MONTHLY EXPIRY BREAKOUT SCAN
@@ -410,7 +417,11 @@ public class FuturesStrategyService {
 
         // ✅ WAIT FOR ALL THREADS TO FINISH
         java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
-        executor.shutdown(); // Clean up thread pool
+        } finally {
+            // ✅ Guarantees thread pool cleanup even if an exception occurs
+        	executor.shutdown(); // Clean up thread pool
+        }
+        
 
         // ──────────────────────────────────────────────────────────
         // 📊 POST-PROCESSING (Runs sequentially after threads finish)
@@ -420,7 +431,7 @@ public class FuturesStrategyService {
 
         if (!detectedEvents.isEmpty()) {
             logger.info("Processing {} detected events for save/dedup", detectedEvents.size());
-            List<FuturesBreakEvent> newSignals = saveAllBreakEventsWithDedup(detectedEvents);
+            List<FuturesBreakEvent> newSignals = self.saveAllBreakEventsWithDedup(detectedEvents);
             if (!newSignals.isEmpty()) {
                 logger.info("✅ Sending notifications for {} NEW signals", newSignals.size());
                 sendBreakoutNotificationsWithConfig(newSignals);
@@ -987,7 +998,7 @@ public class FuturesStrategyService {
     // ──────────────────────────────────────────────────────────────────────────
     // 🌅 MORNING INITIALIZATION: Pre-cache Expiry Structure in Master Database Table
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+  
     public void initializeDailyExpiryStructure() throws SmartAPIException {
         FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_50")
                 .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
