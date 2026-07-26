@@ -474,7 +474,7 @@ public class ShortStraddleService {
                         legClosedSuccessfully = orderService.exitActiveTradeByToken(
                                 order.getToken(), 
                                 order.getName(), 
-                                order.getName()         
+                                order.getSymbol()         
                         );
                         
                         if (!legClosedSuccessfully) {

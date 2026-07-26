@@ -58,4 +58,10 @@ public interface OptionsGreeksRepo extends JpaRepository<OptionsGreeks, Long> {
              @Param("ceStrike") BigDecimal ceStrike, 
              @Param("peStrike") BigDecimal peStrike
      );
+     
+ 
+
+     // 2. Used by OptionStrategyAnalyzer (The new Advisory engine)
+     // Fetches the option chain history to find the highest OI Walls
+     List<OptionsGreeks> findBySymbolOrderByTimestampDesc(String symbol);
 }

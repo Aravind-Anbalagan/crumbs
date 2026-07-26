@@ -14,6 +14,7 @@ public record OptionChainDetail(
     String optionType,
     String spotPrice,
     String lastTradedPrice, // Changed to String to match your Service's parseDoubleSafely logic
+    String openInterest,
     String impliedVolatility,
     String delta,
     String gamma,

@@ -156,7 +156,7 @@ public class FuturesStrategyService {
 
     private void executeMaster(FuturesConfig masterConfig) throws SmartAPIException {
         LocalDate expiryDate = resolveExecutionDate(masterConfig);
-        List<Futures> futuresList = futuresRepo.findByIsNifty500True();
+        List<Futures> futuresList = futuresRepo.findByIsNifty50True();
 
         if (futuresList.isEmpty()) {
             logger.warn("No NIFTY_500 stocks found");
@@ -174,7 +174,9 @@ public class FuturesStrategyService {
 
         List<Indexes> indexesList = indexesRepo.findByNameInAndExchange(
                 futuresList.stream().map(Futures::getName).toList(), EXCHANGE);
-
+        //Add Indexes
+        Indexes indexes =indexesRepo.findByToken("99926000");
+        indexesList.add(indexes);
         Map<String, Indexes> indexByName = indexesList.stream()
                 .collect(Collectors.toMap(Indexes::getName, i -> i,
                         (existing, duplicate) -> {
@@ -182,7 +184,8 @@ public class FuturesStrategyService {
                                     existing.getName(), existing.getToken(), duplicate.getToken());
                             return existing;
                         }));
-
+        //Add Indexes
+        indexByName.put("NIFTY 50", indexes);
         List<String> tokens = indexesList.stream()
                 .map(Indexes::getToken).filter(Objects::nonNull).toList();
 
@@ -191,7 +194,13 @@ public class FuturesStrategyService {
 
         for (Futures f : futuresList) {
             Indexes idx = indexByName.get(f.getName());
-            if (idx == null) continue;
+			if (idx == null) {
+				if("NIFTY 50".equalsIgnoreCase(f.getName()))
+            	{
+            		idx = indexByName.get(f.getName());
+            	}
+				continue;
+			}
 
             BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
             if (todayPrice == null) continue;
@@ -1021,15 +1030,28 @@ public class FuturesStrategyService {
 
         List<Indexes> indexesList = indexesRepo.findByNameInAndExchange(
                 futuresList.stream().map(Futures::getName).toList(), EXCHANGE);
-
+        //Add Indexes
+        Indexes indexes =indexesRepo.findByToken("99926000");
+        indexesList.add(indexes);
         Map<String, Indexes> indexByName = indexesList.stream()
                 .collect(Collectors.toMap(Indexes::getName, i -> i, (exist, dup) -> exist));
 
+        //Add Indexes
+        indexByName.put("NIFTY 50", indexes);
         int updatedCount = 0;
 
         for (Futures f : futuresList) {
+        	
             Indexes idx = indexByName.get(f.getName());
-            if (idx == null) continue;
+            if (idx == null)
+            {    
+            	//Add Index
+            	if("NIFTY 50".equalsIgnoreCase(f.getName()))
+            	{
+            		idx = indexByName.get(f.getName());
+            	}
+            	continue;
+            }
 
             if (f.getLastExpiryDate() != null && f.getLastExpiryDate().equals(targetExpiryDate) && f.getExpiryClose() != null) {
                 logger.debug("⏩ Structure for {} is already up to date for target expiry {}", f.getName(), targetExpiryDate);
