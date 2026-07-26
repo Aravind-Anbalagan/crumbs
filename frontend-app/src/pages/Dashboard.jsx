@@ -18,6 +18,7 @@ export default function Dashboard() {
   const pageMap = {
     'stock': '/stock.html',
     'premarket': '/premarket.html',
+    'intraday': '/intraday.html',
     'straddle': '/shortstraddle.html',
     'trend': '/trend.html',
     'orders': '/orders.html',

@@ -258,13 +258,14 @@ public class OrderService {
 
      // 4. Update details and commit to DB
      activeTrade.setExitPrice(exitPrice);
-     activeTrade.setPl(pnl);
+     BigDecimal quantity = BigDecimal.valueOf(activeTrade.getQuantity());
+     activeTrade.setPl(pnl.multiply(quantity));
      activeTrade.setActive(0);
      activeTrade.setStatus("CLOSED");
 
      ordersRepo.save(activeTrade);
      logger.info("✅ Trade closed by token -> {} | Entry: {} | Exit: {} | PnL: {}", 
-             activeTrade.getSymbol(), entryPrice, exitPrice, pnl);
+             activeTrade.getSymbol(), entryPrice, exitPrice, pnl.multiply(quantity));
      return true;
  }
 
@@ -442,13 +443,14 @@ public class OrderService {
 
      // 4. Update and commit details
      activeTrade.setExitPrice(exitPrice);
-     activeTrade.setPl(pnl);
+     BigDecimal quantity = BigDecimal.valueOf(activeTrade.getQuantity());
+     activeTrade.setPl(pnl.multiply(quantity));
      activeTrade.setActive(0);
      activeTrade.setStatus("CLOSED");
 
      ordersRepo.save(activeTrade);
-     logger.info("✅ Trade closed → {} | Entry: {} | Exit: {} | PnL: {}", 
-             activeTrade.getSymbol(), entryPrice, exitPrice, pnl);
+     logger.info("✅ Trade closed -> {} | Entry: {} | Exit: {} | PnL: {}", 
+    	        activeTrade.getSymbol(), entryPrice, exitPrice, pnl.multiply(quantity));
  }
 
     // =========================================================================

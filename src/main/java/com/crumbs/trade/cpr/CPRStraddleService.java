@@ -383,7 +383,6 @@ public class CPRStraddleService {
         t.setExch_seg(source.getExch_seg());
         t.setQuantity(source.getQuantity());
         t.setStrike(strike);
-        t.setStrike(strike);
         t.setAskPrice(entryPremium); 
         t.setEntryPrice(entryPremium);
         return t;

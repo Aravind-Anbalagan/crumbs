@@ -457,6 +457,14 @@ export default function MainLayout() {
             >
               Pre-Market
             </Link>
+            <Link
+              to="/dashboard/intraday"
+              className={`nav-link ${
+                isActive('/dashboard/intraday') ? 'active' : ''
+              }`}
+            >
+              Intraday
+            </Link>
 
             <Link
               to="/dashboard/straddle"

@@ -44,12 +44,15 @@ public class HeikinPsarExecutionService {
     private static final String TRADE_MODE = "SCALPING";
     private static final boolean IS_OPTION_BUYER = true;
 
-    private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("20.00");
+    private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("50.00");
     private static final BigDecimal SCALP_SL_POINTS = new BigDecimal("10.00");
 
     private static final BigDecimal NIFTY_BIG_CANDLE_THRESHOLD = new BigDecimal("25.00");
     private static final BigDecimal CRUDE_BIG_CANDLE_THRESHOLD = new BigDecimal("35.00");
 
+    // NEW: Retracement Percentages (0.50 = 50%, 1.00 = 100%)
+    private static final BigDecimal NIFTY_RETRACEMENT_PERCENT = new BigDecimal("0.50");
+    private static final BigDecimal CRUDE_RETRACEMENT_PERCENT = new BigDecimal("1.00");
     // =========================================================
     // 🏦 2. INSTRUMENT & STATUS CONSTANTS
     // =========================================================
@@ -256,22 +259,30 @@ public class HeikinPsarExecutionService {
         // 🛡️ OVERTRADING GUARD
         if (!canEnterNewTrade(tradeName, currentSignal)) return;
 
-        // 🚀 ADAPTIVE ENTRY LOGIC: BIG vs SMALL CANDLE
+     // 🚀 ADAPTIVE ENTRY LOGIC: BIG vs SMALL CANDLE
         BigDecimal open = latestCandle.getOpen();
         BigDecimal close = latestCandle.getClose();
         BigDecimal bodySize = close.subtract(open).abs();
 
-        BigDecimal threshold = "NIFTY".equalsIgnoreCase(baseSymbol) ? NIFTY_BIG_CANDLE_THRESHOLD : CRUDE_BIG_CANDLE_THRESHOLD;
+        // 🛡️ SAFELY CHECKING USING .contains() INSTEAD OF .equalsIgnoreCase()
+        BigDecimal threshold = baseSymbol.contains("NIFTY") ? NIFTY_BIG_CANDLE_THRESHOLD : CRUDE_BIG_CANDLE_THRESHOLD;
         boolean isBigCandle = bodySize.compareTo(threshold) >= 0;
 
         if (isBigCandle) {
-            BigDecimal retracementDiscount = bodySize.multiply(new BigDecimal("0.50"));
+            // Determine retracement percentage using .contains()
+            BigDecimal retracementPercent = baseSymbol.contains("NIFTY") 
+                    ? NIFTY_RETRACEMENT_PERCENT 
+                    : CRUDE_RETRACEMENT_PERCENT;
+            
+            // Calculate the discount using the specific percentage
+            BigDecimal retracementDiscount = bodySize.multiply(retracementPercent);
+            
             BigDecimal targetSpotPrice = "BUY".equalsIgnoreCase(currentSignal)
                     ? close.subtract(retracementDiscount)
                     : close.add(retracementDiscount);
 
-            logger.info("⚡ [{}][BIG CANDLE] Body: {} pts >= Threshold ({} pts). Entering Retracement Mode. Target Spot: ₹{}",
-                        tradeName, bodySize, threshold, targetSpotPrice);
+            logger.info("⚡ [{}][BIG CANDLE] Body: {} pts >= Threshold ({} pts). Entering Retracement Mode ({}%). Target Spot: ₹{}",
+                        tradeName, bodySize, threshold, retracementPercent.multiply(new BigDecimal("100")), targetSpotPrice);
 
             savePendingRetracementOrder(strategy, latestCandle, currentSignal, targetSpotPrice, tradeName);
         } else {

@@ -40,6 +40,7 @@ export default function App() {
           <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
           <Route path="result" element={<Navigate to="/dashboard/result" replace />} />
           <Route path="pre-market" element={<Navigate to="/dashboard/pre-market" replace />} />
+          <Route path="intraday" element={<Navigate to="/dashboard/intraday" replace />} />
           <Route path="short-straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
           <Route path="straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
           <Route path="future" element={<Dashboard />} />  {/* 👈 ADD THIS LINE */}
