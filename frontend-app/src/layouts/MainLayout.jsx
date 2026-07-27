@@ -448,7 +448,15 @@ export default function MainLayout() {
             >
               Stock Analysis
             </Link>
-
+           {/* 🚀 NEW: Advisory Menu Link */}
+            <Link
+              to="/dashboard/advisory"
+              className={`nav-link ${
+                isActive('/dashboard/advisory') ? 'active' : ''
+              }`}
+            >
+              Advisory
+            </Link>
             <Link
               to="/dashboard/premarket"
               className={`nav-link ${

@@ -63,11 +63,11 @@ public class AdvisoryEngineService {
         MultiTimeframeTrend mtfTrend = analyzeMultiTimeframeTrend(dailyCandles, spotPrice);
         BigDecimal atr14 = calculateATR(dailyCandles, 14);
 
-     // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------
         // 2. Query SMC Lite Oracle via 1-Hour Candles (Leading Structural Radar)
         // ---------------------------------------------------------------------
         Optional<FuturesBreakEvent> smcSignalOpt = evaluateSmcOracle(name, exchange, indexes.getSymbol(), spotPrice);
-        
+
         // 🚀 SECONDARY SAFETY NET: Just in case
         if (smcSignalOpt == null) {
             smcSignalOpt = Optional.empty();
@@ -111,7 +111,7 @@ public class AdvisoryEngineService {
         smcSignalOpt.ifPresent(bos -> newRecord.setSmcSignal(bos.getBreakType()));
 
         // ---------------------------------------------------------------------
-        // 5. Evaluate Stateful 5-Guard Comparison Matrix
+        // 5. Evaluate Stateful Comparison Matrix
         // ---------------------------------------------------------------------
         if (activeRecordOpt.isEmpty()) {
             handleNewPosition(newRecord, mtfTrend, oiData);
@@ -135,7 +135,7 @@ public class AdvisoryEngineService {
                 .atr14(atr14)
                 .reasoning(newRecord.getReasoning())
                 .smcSignal(newRecord.getSmcSignal())
-             // 🚀 PASS TO RESPONSE
+                // 🚀 PASS TO RESPONSE
                 .entryPremium(newRecord.getEntryPremium())
                 .entryDelta(newRecord.getEntryDelta())
                 .entryIv(newRecord.getEntryIv())
@@ -143,7 +143,7 @@ public class AdvisoryEngineService {
     }
 
     // =========================================================================
-    // 🧠 THE 5-GUARD COMPARISON MATRIX
+    // 🧠 THE COMPARISON MATRIX
     // =========================================================================
 
     private void evaluateStatefulMatrix(AdvisoryLedger prev, AdvisoryLedger current, BigDecimal spotPrice,
@@ -152,23 +152,31 @@ public class AdvisoryEngineService {
                                         Optional<FuturesBreakEvent> smcSignalOpt,
                                         String exchange, String symbol) {
 
+        // 🚀 GUARD 0: The Phantom Position Guard
+        // If the previous state was NO_TRADE, we do not have an active position to maintain.
+        // Intercept it immediately and evaluate for a brand new entry.
+        if ("NO_TRADE".equalsIgnoreCase(prev.getActionTaken()) || prev.getRecommendedStrike() == null) {
+            closePreviousState(prev);
+            handleNewPosition(current, mtfTrend, oiData);
+            return;
+        }
+
         BigDecimal safeBuffer = atr14.multiply(new BigDecimal("1.25"));
 
         // GUARD 1: Proximity Guard (Emergency Capital Protection)
-        if (prev.getRecommendedStrike() != null) {
-            boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) &&
-                    spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
-            boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) &&
-                    spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
+        boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) &&
+                spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
+        boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) &&
+                spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
 
-            if (ceBreached || peBreached) {
-                closePreviousState(prev);
-                current.setActionTaken("EXIT_PROXIMITY_BREACH");
-                current.setReasoning(String.format("EMERGENCY EXIT: Spot price (%s) breached safety buffer for active %s strike (%s).",
-                        spotPrice, prev.getOptionType(), prev.getRecommendedStrike()));
-                return;
-            }
+        if (ceBreached || peBreached) {
+            closePreviousState(prev);
+            current.setActionTaken("EXIT_PROXIMITY_BREACH");
+            current.setReasoning(String.format("EMERGENCY EXIT: Spot price (%s) breached safety buffer for active %s strike (%s).",
+                    spotPrice, prev.getOptionType(), prev.getRecommendedStrike()));
+            return;
         }
+
 
         // GUARD 2: SMC Structural BOS Guard (Leading Override)
         if (smcSignalOpt.isPresent()) {
@@ -221,12 +229,12 @@ public class AdvisoryEngineService {
         current.setActionTaken("MAINTAIN");
         current.setOptionType(prev.getOptionType());
         current.setRecommendedStrike(prev.getRecommendedStrike());
-        
-        // 🚀 ENSURE WE COPY THE PREMIUM AND GREEKS OVER TO TODAY'S RECORD
+
+        // 🚀 COPY THE PREMIUM AND GREEKS OVER TO TODAY'S RECORD
         current.setEntryPremium(prev.getEntryPremium());
         current.setEntryDelta(prev.getEntryDelta());
         current.setEntryIv(prev.getEntryIv());
-       
+
         current.setReasoning(String.format("Position intact. Holding %s %s wall. Premium decay progressing safely.",
                 prev.getRecommendedStrike(), prev.getOptionType()));
     }
@@ -242,27 +250,48 @@ public class AdvisoryEngineService {
             return;
         }
 
-        if ("BULLISH".equals(mtfTrend.dailyTrend()) && oiData.putWall() != null && oiData.putWall().ltp().compareTo(minPremium) >= 0) {
-            newRecord.setActionTaken("NEW_ENTRY");
-            newRecord.setOptionType("PE");
-            newRecord.setRecommendedStrike(oiData.putWall().strike());
-            newRecord.setEntryPremium(oiData.putWall().ltp());
-            newRecord.setEntryDelta(oiData.putWall().delta());
-            newRecord.setEntryIv(oiData.putWall().iv());
-            newRecord.setReasoning(String.format("Confirmed MTF Bullish setup. Selling PE at Put Wall %s (Premium: ₹%s)",
-                    oiData.putWall().strike(), oiData.putWall().ltp()));
-        } else if ("BEARISH".equals(mtfTrend.dailyTrend()) && oiData.callWall() != null && oiData.callWall().ltp().compareTo(minPremium) >= 0) {
-            newRecord.setActionTaken("NEW_ENTRY");
-            newRecord.setOptionType("CE");
-            newRecord.setRecommendedStrike(oiData.callWall().strike());
-            newRecord.setEntryPremium(oiData.callWall().ltp());
-            newRecord.setEntryDelta(oiData.callWall().delta());
-            newRecord.setEntryIv(oiData.callWall().iv());
-            newRecord.setReasoning(String.format("Confirmed MTF Bearish setup. Selling CE at Call Wall %s (Premium: ₹%s)",
-                    oiData.callWall().strike(), oiData.callWall().ltp()));
-        } else {
+        // 🚀 ENHANCED WALL STRENGTH REPORTING
+        if ("BULLISH".equals(mtfTrend.dailyTrend())) {
+            if (oiData.putWall() == null) {
+                newRecord.setActionTaken("NO_TRADE");
+                newRecord.setReasoning("Bullish trend detected, but NO Put Wall found to act as support. Market lacks structure.");
+            } else if (oiData.putWall().ltp().compareTo(minPremium) < 0) {
+                newRecord.setActionTaken("NO_TRADE");
+                newRecord.setReasoning(String.format("Bullish trend. Put Wall exists at %s, but premium (₹%s) is too weak/illiquid (< ₹10). Unsafe to deploy capital.",
+                        oiData.putWall().strike(), oiData.putWall().ltp()));
+            } else {
+                newRecord.setActionTaken("NEW_ENTRY");
+                newRecord.setOptionType("PE");
+                newRecord.setRecommendedStrike(oiData.putWall().strike());
+                newRecord.setEntryPremium(oiData.putWall().ltp());
+                newRecord.setEntryDelta(oiData.putWall().delta());
+                newRecord.setEntryIv(oiData.putWall().iv());
+                newRecord.setReasoning(String.format("Confirmed MTF Bullish setup. Selling PE at Strong Put Wall %s (Premium: ₹%s)",
+                        oiData.putWall().strike(), oiData.putWall().ltp()));
+            }
+        }
+        else if ("BEARISH".equals(mtfTrend.dailyTrend())) {
+            if (oiData.callWall() == null) {
+                newRecord.setActionTaken("NO_TRADE");
+                newRecord.setReasoning("Bearish trend detected, but NO Call Wall found to act as resistance. Market lacks structure.");
+            } else if (oiData.callWall().ltp().compareTo(minPremium) < 0) {
+                newRecord.setActionTaken("NO_TRADE");
+                newRecord.setReasoning(String.format("Bearish trend. Call Wall exists at %s, but premium (₹%s) is too weak/illiquid (< ₹10). Unsafe to deploy capital.",
+                        oiData.callWall().strike(), oiData.callWall().ltp()));
+            } else {
+                newRecord.setActionTaken("NEW_ENTRY");
+                newRecord.setOptionType("CE");
+                newRecord.setRecommendedStrike(oiData.callWall().strike());
+                newRecord.setEntryPremium(oiData.callWall().ltp());
+                newRecord.setEntryDelta(oiData.callWall().delta());
+                newRecord.setEntryIv(oiData.callWall().iv());
+                newRecord.setReasoning(String.format("Confirmed MTF Bearish setup. Selling CE at Strong Call Wall %s (Premium: ₹%s)",
+                        oiData.callWall().strike(), oiData.callWall().ltp()));
+            }
+        }
+        else {
             newRecord.setActionTaken("NO_TRADE");
-            newRecord.setReasoning("Insufficient wall premium or unclear market structure.");
+            newRecord.setReasoning("Trend is choppy or undefined. Awaiting clear directional structure.");
         }
     }
 
@@ -292,7 +321,7 @@ public class AdvisoryEngineService {
 
             // Call the SMC Service
             Optional<FuturesBreakEvent> result = smcLiteService.evaluateAndNotify(name, "NIFTY_50", smcCandles, spotPrice, false);
-            
+
             // 🚀 DEFENSIVE FIX: If the legacy service returns literal null, catch it and return an empty wrapper.
             return result == null ? Optional.empty() : result;
 

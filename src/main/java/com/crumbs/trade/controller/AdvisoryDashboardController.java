@@ -15,6 +15,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -73,19 +78,60 @@ public class AdvisoryDashboardController {
 
     @PostMapping("/scan-active")
     public ResponseEntity<List<OptionRecommendation>> triggerFullScan() {
-        // 🚀 This is your manual override if you don't want to wait for the 9:00 AM Cron
+        log.info("🚀 Initiating Full Advisory Scan for Active Nifty 50 Stocks...");
         List<Nifty> activeStocks = niftyRepo.findByIsActiveTrueAndTokenIsNotNull();
-        List<OptionRecommendation> recommendations = new ArrayList<>();
-        
-        for (Nifty stock : activeStocks) {
-            try {
-                OptionRecommendation rec = engineService.processAdvisory(stock.getName(), stock.getToken());
-                if (rec != null) recommendations.add(rec);
-            } catch (Exception e) {
-                log.error("Error evaluating {}: {}", stock.getName(), e.getMessage());
+
+        // 🛡️ 1. Reduce to 3 threads. Option Chains are massive (~2.5MB each).
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        List<CompletableFuture<OptionRecommendation>> futures = new ArrayList<>();
+
+        try {
+            for (Nifty stock : activeStocks) {
+                CompletableFuture<OptionRecommendation> future = CompletableFuture.supplyAsync(() -> {
+                    int maxRetries = 3;
+
+                    // 🛡️ 2. Self-Healing Retry Loop
+                    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                            Thread.sleep(300); // Base stagger
+                            return engineService.processAdvisory(stock.getName(), stock.getToken());
+
+                        } catch (Exception e) {
+                            // Extract full error string including the nested Samco Exception
+                            String errorLog = e.getMessage() + (e.getCause() != null ? e.getCause().getMessage() : "");
+
+                            // 🛡️ 3. Catch the NGINX 429 Block and Cool Down
+                            if (errorLog.contains("429") && attempt < maxRetries) {
+                                log.warn("⏳ 429 Rate Limit hit for {} (Attempt {}/{}). Cooling down for 3s...",
+                                        stock.getName(), attempt, maxRetries);
+                                try {
+                                    Thread.sleep(3000);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                }
+                                continue; // Loop again and retry!
+                            }
+
+                            log.error("❌ Error evaluating {}: {}", stock.getName(), e.getMessage());
+                            return null; // Fail gracefully if it's not a 429
+                        }
+                    }
+                    return null;
+                }, executor);
+
+                futures.add(future);
             }
+
+            List<OptionRecommendation> recommendations = futures.stream()
+                    .map(CompletableFuture::join)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+            log.info("✅ Full Advisory Scan Complete. Generated {} recommendations.", recommendations.size());
+            return ResponseEntity.ok(recommendations);
+
+        } finally {
+            executor.shutdown();
         }
-        
-        return ResponseEntity.ok(recommendations);
     }
 }

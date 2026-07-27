@@ -22,32 +22,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Self-contained risk monitor + closer + PnL/reconciliation engine. Called
- * INLINE by whichever strategy service owns a given group of legs (same
- * thread, same transaction context as that strategy's own tick) - no
- * separate scheduler, no cross-service pessimistic locking.
- *
- * This absorbs everything RiskService used to do independently:
- *  - live PnL calculation (LIVE and PAPER legs)
- *  - one-time-per-leg broker fill-price reconciliation for LIVE legs
- *  - hard max-loss / target-profit
- *  - velocity panic drop (fast single-tick collapse, always active)
- *  - HWM / milestone-protection / trailing (rubber-band) drawdown
- *  - actual broker exit + DB close + Telegram notification
- *
- * DB WRITE POLICY: `pl` (running PnL) is kept in-memory only
- * (liveUiCachePnL) and is NEVER written to the DB on a per-tick basis -
- * only at actual close time. Peak/trailing-floor are persisted onto
- * RiskConfiguration ONLY when they actually change (not every tick).
- * askPrice is corrected in the DB only once per leg, only on a genuine
- * broker-fill discrepancy. This keeps DB writes rare, not per-second.
+ * Self-contained risk monitor + closer + PnL/reconciliation engine.
  */
 @Slf4j
 @Service
@@ -76,8 +57,7 @@ public class MonitorOrderService {
     private final Map<String, BigDecimal> lastPnlSnapshot = new ConcurrentHashMap<>();
     private final Map<String, Integer> panicStreak = new ConcurrentHashMap<>();
 
-    // One-time-per-leg reconciliation: leg id -> confirmed entry price used for PnL math.
-    // Populated once from broker position data (LIVE legs only); never re-queried after that.
+    // One-time-per-leg reconciliation: leg id -> confirmed entry price
     private final Map<Long, BigDecimal> reconciledEntryPriceCache = new ConcurrentHashMap<>();
 
     public Map<Long, BigDecimal> getLivePnLForUI() {
@@ -86,14 +66,6 @@ public class MonitorOrderService {
 
     /**
      * Evaluates risk for one strategy group and closes it if a rule fires.
-     * Order of checks: hard max-loss -> target-profit -> velocity panic drop
-     * -> HWM/milestone -> trailing/rubber-band.
-     *
-     * @param groupLegs   currently active legs for this strategy/cycle
-     * @param strategyKey RiskConfiguration key, e.g. "SHORT_STRADDLE_NIFTY"
-     * @param connection  existing broker session if the caller already has one, else null
-     *                    (a session will be created lazily here if any live leg needs one)
-     * @return true if this call closed the group
      */
     public boolean evaluateAndClose(List<Orders> groupLegs, String strategyKey, SmartConnect connection) {
         if (groupLegs == null || groupLegs.isEmpty()) {
@@ -109,42 +81,39 @@ public class MonitorOrderService {
                 activeConnection = angelOne.signIn();
             } catch (Exception e) {
                 log.error("❌ [MONITOR] Broker auth failed for {}: {}", strategyKey, e.getMessage());
-                // Continue - LTP may still resolve via websocket, reconciliation just gets skipped for this tick
             }
         }
 
-        // ---- 1. Price each leg, compute combined PnL ----
+        // ---- 1. Price each leg, compute combined PnL (Always runs so UI can see live PnL) ----
         BigDecimal combinedGroupPnL = BigDecimal.ZERO;
         boolean allLegsPriced = true;
 
         for (Orders leg : groupLegs) {
             BigDecimal legPnL = BigDecimal.ZERO;
             try {
-            	BigDecimal currentLtp = BigDecimal.ZERO;
-            	ExchangeType exchangeType = mapExchangeToType(leg.getExchange());
+                BigDecimal currentLtp = BigDecimal.ZERO;
+                ExchangeType exchangeType = mapExchangeToType(leg.getExchange());
 
-            	if (leg.getToken() == null || leg.getToken().isBlank()) {
-            	    log.error("❌ [MONITOR] Leg {} ({}) has NO TOKEN — cannot price.", leg.getId(), leg.getSymbol());
-            	} else if (exchangeType != null) {
-            	    webSocketService.subscribe(exchangeType, leg.getToken());
-            	    currentLtp = webSocketService.getLatestLTP(exchangeType, leg.getToken());
-            	}
+                if (leg.getToken() == null || leg.getToken().isBlank()) {
+                    log.error("❌ [MONITOR] Leg {} ({}) has NO TOKEN — cannot price.", leg.getId(), leg.getSymbol());
+                } else if (exchangeType != null) {
+                    webSocketService.subscribe(exchangeType, leg.getToken());
+                    currentLtp = webSocketService.getLatestLTP(exchangeType, leg.getToken());
+                }
 
-            	if (currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
-            	    if (activeConnection == null) {
-            	        try {
-            	            activeConnection = angelOne.signIn(); // lazy, only when websocket has nothing yet
-            	        } catch (Exception e) {
-            	            log.error("❌ [MONITOR] Broker auth failed for {}: {}", strategyKey, e.getMessage());
-            	        }
-            	    }
-            	    if (activeConnection != null) {
-            	        currentLtp = angelOneService.getcurrentPrice(activeConnection, leg.getExchange(), leg.getSymbol(), leg.getToken());
-            	    }
-            	}
+                if (currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
+                    if (activeConnection == null) {
+                        try {
+                            activeConnection = angelOne.signIn();
+                        } catch (Exception e) {
+                            log.error("❌ [MONITOR] Broker auth failed for {}: {}", strategyKey, e.getMessage());
+                        }
+                    }
+                    if (activeConnection != null) {
+                        currentLtp = angelOneService.getcurrentPrice(activeConnection, leg.getExchange(), leg.getSymbol(), leg.getToken());
+                    }
+                }
 
-                // Entry price: LIVE legs reconciled against the broker's actual fill (once per leg,
-                // then cached), PAPER legs always use DB askPrice as-is (no broker fill exists).
                 BigDecimal entryPrice = isLiveTrade(leg)
                         ? resolveLiveEntryPrice(leg, activeConnection)
                         : leg.getAskPrice();
@@ -153,8 +122,8 @@ public class MonitorOrderService {
                         && entryPrice != null && entryPrice.compareTo(BigDecimal.ZERO) > 0) {
                     boolean isShort = isShortPosition(leg, config);
                     BigDecimal pointsDiff = isShort
-                            ? entryPrice.subtract(currentLtp)   // Sell math: Entry - LTP
-                            : currentLtp.subtract(entryPrice);  // Buy math: LTP - Entry
+                            ? entryPrice.subtract(currentLtp)   // Sell math
+                            : currentLtp.subtract(entryPrice);  // Buy math
                     legPnL = pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
                 } else {
                     allLegsPriced = false;
@@ -166,8 +135,12 @@ public class MonitorOrderService {
 
             combinedGroupPnL = combinedGroupPnL.add(legPnL);
             liveUiCachePnL.put(leg.getId(), legPnL);
-            // NOTE: `pl` is intentionally NOT written to the DB here. In-memory
-            // liveUiCachePnL is the source of truth for UI/API until actual close.
+        }
+
+        // 🛑 MASTER TOGGLE: IF FLAG IS 'N', TURN OFF ALL RISK FUNCTIONS 🛑
+        // PnL was calculated above for the UI, but we exit immediately before enforcing ANY rules.
+        if (config == null || !SMART_RISK_ACTIVE.equalsIgnoreCase(config.getSmartRiskFlag())) {
+            return false;
         }
 
         // ---- 2. Hard ceilings: max loss / target profit ----
@@ -178,19 +151,15 @@ public class MonitorOrderService {
                 .map(BigDecimal::valueOf)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal maxLossThreshold = null;
-        BigDecimal targetProfitThreshold = null;
+        BigDecimal maxLossThreshold = config.getMaxLossLimit();
+        BigDecimal targetProfitThreshold = config.getTargetProfit();
 
-        if (config != null) {
-            maxLossThreshold = config.getMaxLossLimit();
-            targetProfitThreshold = config.getTargetProfit();
-        } else {
-            if (primaryLeg.getSl() != null && primaryLeg.getSl().compareTo(BigDecimal.ZERO) > 0) {
-                maxLossThreshold = primaryLeg.getSl().multiply(totalQuantity).negate();
-            }
-            if (primaryLeg.getTarget() != null && primaryLeg.getTarget().compareTo(BigDecimal.ZERO) > 0) {
-                targetProfitThreshold = primaryLeg.getTarget().multiply(totalQuantity);
-            }
+        // Fallback to Orders table if config doesn't have them
+        if (maxLossThreshold == null && primaryLeg.getSl() != null && primaryLeg.getSl().compareTo(BigDecimal.ZERO) > 0) {
+            maxLossThreshold = primaryLeg.getSl().multiply(totalQuantity).negate();
+        }
+        if (targetProfitThreshold == null && primaryLeg.getTarget() != null && primaryLeg.getTarget().compareTo(BigDecimal.ZERO) > 0) {
+            targetProfitThreshold = primaryLeg.getTarget().multiply(totalQuantity);
         }
 
         if (maxLossThreshold != null) {
@@ -206,11 +175,7 @@ public class MonitorOrderService {
             }
         }
 
-        if (config == null || !SMART_RISK_ACTIVE.equalsIgnoreCase(config.getSmartRiskFlag())) {
-            return false; // smart-risk rules not enabled for this strategy
-        }
-
-        // ---- 3. Velocity panic drop: fast single-tick collapse, independent of HWM/trailing state ----
+        // ---- 3. Velocity panic drop ----
         BigDecimal velocityDrop = config.getVelocityPanicDrop();
         if (velocityDrop != null && velocityDrop.compareTo(BigDecimal.ZERO) > 0) {
             if (!allLegsPriced) {
@@ -236,7 +201,7 @@ public class MonitorOrderService {
             }
         }
 
-        // ---- 4. HWM tracking (DB write ONLY when peak actually changes) ----
+        // ---- 4. HWM tracking ----
         BigDecimal peakPnL = highWaterMarks.get(strategyKey);
         if (peakPnL == null) {
             peakPnL = config.getCurrentPeakPnl() != null ? config.getCurrentPeakPnl() : combinedGroupPnL;
@@ -260,7 +225,7 @@ public class MonitorOrderService {
             }
         }
 
-        // ---- 6. Trailing / rubber-band drawdown (DB write ONLY when floor actually rises) ----
+        // ---- 6. Trailing / rubber-band drawdown ----
         BigDecimal activation = config.getTrailingActivation();
         BigDecimal drawdownPct = config.getTrailingDrawdownPct();
 
@@ -294,33 +259,18 @@ public class MonitorOrderService {
     }
 
     /**
-     * ONE-TIME reconciliation per live leg (runs once, then cached in-memory
-     * for that leg id for the remainder of the session).
-     *
-     * Invariant: for a LIVE order, Orders.askPrice MUST equal the broker's
-     * executed (avg) fill price - askPrice is expected to be written from the
-     * broker fill, not a pre-trade quote. This check exists to CATCH and
-     * CORRECT discrepancies (bad write-back, race condition, partial-fill
-     * average not saved correctly, etc.), not to arbitrate between two
-     * equally-valid prices.
-     *
-     * On mismatch: the broker price is treated as the source of truth,
-     * Orders.askPrice is updated to match it, and the correction is logged.
-     * Either way, the resolved price is cached so this leg is never
-     * re-checked against the broker again this session.
+     * ONE-TIME reconciliation per live leg (runs once, then cached in-memory).
      */
     private BigDecimal resolveLiveEntryPrice(Orders leg, SmartConnect connection) {
         BigDecimal cached = reconciledEntryPriceCache.get(leg.getId());
         if (cached != null) {
-            return cached; // already reconciled - skip broker lookup entirely
+            return cached;
         }
 
         BigDecimal dbAskPrice = leg.getAskPrice();
         BigDecimal resolvedPrice = dbAskPrice != null ? dbAskPrice : BigDecimal.ZERO;
 
         if (connection == null) {
-            // No session available this tick - fall back to DB price for now,
-            // but do NOT cache, so reconciliation is retried once a session exists.
             return resolvedPrice;
         }
 
@@ -341,9 +291,9 @@ public class MonitorOrderService {
                             if (brokerPrice.compareTo(BigDecimal.ZERO) > 0) {
                                 if (dbAskPrice == null || brokerPrice.compareTo(dbAskPrice) != 0) {
                                     log.warn(
-                                        "🚨 [PNL-DISCREPANCY] Leg {} ({}) | DB askPrice={} != Broker fill={} | "
-                                      + "Live orders must match - correcting Orders.askPrice to broker value.",
-                                        leg.getId(), leg.getSymbol(), dbAskPrice, brokerPrice);
+                                            "🚨 [PNL-DISCREPANCY] Leg {} ({}) | DB askPrice={} != Broker fill={} | "
+                                                    + "Live orders must match - correcting Orders.askPrice to broker value.",
+                                            leg.getId(), leg.getSymbol(), dbAskPrice, brokerPrice);
 
                                     correctAskPriceInDb(leg, brokerPrice);
                                 }
@@ -354,31 +304,26 @@ public class MonitorOrderService {
                     }
                 }
             }
-            reconciledEntryPriceCache.put(leg.getId(), resolvedPrice); // cache only once we actually consulted the broker
+            reconciledEntryPriceCache.put(leg.getId(), resolvedPrice);
         } catch (Exception e) {
             log.error("❌ [MONITOR] Could not fetch broker position for leg {} - falling back to DB askPrice: {}",
                     leg.getId(), e.getMessage());
-            // Not cached - retried next tick since we never got a confirmed broker read
         }
 
         return resolvedPrice;
     }
 
-    /**
-     * Corrects Orders.askPrice in the DB to match the broker's executed price.
-     * Runs only when a discrepancy is found (at most once per leg).
-     */
     @Transactional
     public void correctAskPriceInDb(Orders leg, BigDecimal brokerPrice) {
         leg.setAskPrice(brokerPrice);
         ordersRepository.save(leg);
         log.info(
-            "✅ [PNL-SYNC] Leg {} ({}) | Orders.askPrice updated to broker executed price {} | PnL will now be in sync with broker.",
-            leg.getId(), leg.getSymbol(), brokerPrice);
+                "✅ [PNL-SYNC] Leg {} ({}) | Orders.askPrice updated to broker executed price {} | PnL will now be in sync with broker.",
+                leg.getId(), leg.getSymbol(), brokerPrice);
     }
 
     private boolean closeGroup(List<Orders> group, String strategyKey, String exitReason,
-                                BigDecimal closurePnL, SmartConnect backupConnection, RiskConfiguration config) {
+                               BigDecimal closurePnL, SmartConnect backupConnection, RiskConfiguration config) {
 
         log.warn("====================================================");
         log.warn("🛑 [MONITOR] STRATEGY LIQUIDATED: {}", strategyKey);
@@ -404,7 +349,7 @@ public class MonitorOrderService {
             ordersRepository.saveAndFlush(leg);
 
             boolean isLiveTrade = isLiveTrade(leg);
-            boolean orderPlaced = !isLiveTrade; // paper legs need no broker call
+            boolean orderPlaced = !isLiveTrade;
 
             if (isLiveTrade && connection != null) {
                 Token exitToken = new Token();
@@ -413,6 +358,8 @@ public class MonitorOrderService {
                 exitToken.setExch_seg(leg.getExchange());
                 exitToken.setQuantity(leg.getQuantity());
                 exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
+
+                // Exact DB alignment
                 exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD);
                 exitToken.setVariety(Constants.VARIETY_NORMAL);
 
@@ -472,7 +419,7 @@ public class MonitorOrderService {
             leg.setTradePhase(PHASE_EXIT);
             leg.setClosedOn(LocalDateTime.now(MARKET_ZONE));
             leg.setExitReason(exitReason);
-            leg.setPl(finalLegPnL); // final PnL persisted HERE ONLY, at actual close
+            leg.setPl(finalLegPnL);
             if (calculatedExitPrice.compareTo(BigDecimal.ZERO) > 0) {
                 leg.setExitPrice(calculatedExitPrice);
             }
@@ -501,19 +448,17 @@ public class MonitorOrderService {
         return leg.getOrderid() != null && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
     }
 
-    /**
-     * Determines buy vs. sell math. Config's strategyType is authoritative
-     * ("OPTION_SELL" = short) since that's set explicitly per strategy in
-     * risk_configurations; leg.getType() is only a fallback for legs whose
-     * strategy has no RiskConfiguration row yet. Getting this wrong flips
-     * the sign of every PnL/risk calculation for that leg, so this is the
-     * single method both PnL calc and broker exit-side selection route through.
-     */
     private boolean isShortPosition(Orders leg, RiskConfiguration config) {
         if (config != null && config.getStrategyType() != null) {
             return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
         }
-        return "SELL".equalsIgnoreCase(leg.getType());
+        if (leg.getType() != null && !leg.getType().isBlank()) {
+            return "SELL".equalsIgnoreCase(leg.getType());
+        }
+        if (leg.getSignal() != null && leg.getSignal().toUpperCase().contains("SHORT")) {
+            return true;
+        }
+        return false;
     }
 
     private ExchangeType mapExchangeToType(String exchange) {

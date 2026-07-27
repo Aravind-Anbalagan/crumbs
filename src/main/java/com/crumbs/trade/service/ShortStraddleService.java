@@ -452,7 +452,7 @@ public class ShortStraddleService {
             return null;
         }
     }
-    
+
     protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategyConfig, Strategy sourceConfig) {
         if (activeOrders == null || activeOrders.isEmpty()) {
             return;
@@ -460,86 +460,85 @@ public class ShortStraddleService {
 
         BigDecimal totalEntryPoints = BigDecimal.ZERO;
         BigDecimal totalExitPoints = BigDecimal.ZERO;
-        BigDecimal totalRupeePnL = BigDecimal.ZERO; 
+        BigDecimal totalRupeePnL = BigDecimal.ZERO;
         int closedCount = 0;
 
         for (Orders order : activeOrders) {
-            
-            
             boolean legClosedSuccessfully = true;
 
             try {
                 if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
                     try {
-                        legClosedSuccessfully = orderService.exitActiveTradeByToken(
-                                order.getToken(), 
-                                order.getName(), 
-                                order.getSymbol()         
-                        );
-                        
-                        if (!legClosedSuccessfully) {
-                            log.error("❌ [{}][EXIT] Broker rejected exit for {}. Rolling back DB lock.", order.getName(), order.getOptionType());
-                        } else {
-                            Thread.sleep(1000); 
-                        }
+                        // 1. Build exit token payload using exact leg quantity & exchange (NFO / MCX)
+                        Token exitToken = new Token();
+                        exitToken.setToken(order.getToken());
+                        exitToken.setSymbol(order.getSymbol());
+                        exitToken.setExch_seg(order.getExchange()); // "NFO" for NIFTY, "MCX" for CRUDEOIL
+                        exitToken.setQuantity(order.getQuantity()); // 65 for NIFTY, 100 for CRUDEOIL
+
+                        log.info("🌐 [{}][EXIT] Sending reverse BUY order to broker for {} (Token: {}, Qty: {}, Exchange: {})...",
+                                order.getName(), order.getOptionType(), order.getToken(), order.getQuantity(), order.getExchange());
+
+                        // 2. Execute reverse BUY order using sourceConfig.getName() ("NIFTY" or "CRUDEOIL") for API credentials
+                        orderService.orderPlaceWithToken(exitToken, sourceConfig.getName(), "BUY", true);
+
+                        Thread.sleep(1000);
                     } catch (Exception | SmartAPIException e) {
                         legClosedSuccessfully = false;
-                        log.error("❌ [{}][EXIT] Broker failed to close {}: {}", order.getName(), order.getOptionType(), e.getMessage());
+                        log.error("❌ [{}][EXIT] Broker exit failed for {}: {}", order.getName(), order.getOptionType(), e.getMessage());
                     }
                 } else {
                     log.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit for {}.", order.getName(), order.getOptionType());
                 }
 
-                // 2. CRITICAL GUARD: Finalize the DB if successful, OR rollback the lock if it failed
+                // 3. Finalize DB on success or Rollback on broker failure
                 if (legClosedSuccessfully) {
                     BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
                     BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
-                    
+
                     totalEntryPoints = totalEntryPoints.add(entryPrice);
                     totalExitPoints = totalExitPoints.add(exitPrice);
 
-                    BigDecimal pointsCollected = entryPrice.subtract(exitPrice); 
+                    BigDecimal pointsCollected = entryPrice.subtract(exitPrice);
                     BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
                     BigDecimal legRupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
-                    
+
                     totalRupeePnL = totalRupeePnL.add(legRupeePnL);
 
                     order.setExitPrice(exitPrice);
-                    order.setPl(legRupeePnL); 
+                    order.setPl(legRupeePnL);
                     order.setClosedOn(LocalDateTime.now());
                     order.setTradePhase(PHASE_EXIT);
                     order.setStatus(STATUS_CLOSED);
-                    order.setActive(STATUS_INACTIVE); 
-                    // active is already 0 from our pre-flight lock
+                    order.setActive(STATUS_INACTIVE); // active = 0
                     order.setExitReason(reason);
-                    
+
                     ordersRepository.save(order);
                     closedCount++;
                 } else {
-                    // 🛑 3. ROLLBACK LOCK: Broker failed, make it visible to RiskService again
+                    // Rollback lock if broker fails so risk monitors can retry
                     order.setActive(STATUS_ACTIVE);
                     order.setTradePhase(PHASE_ENTRY);
                     ordersRepository.save(order);
                 }
-                
+
             } catch (Exception e) {
                 log.error("❌ [{}][EXIT] DB error closing leg: {}", order.getName(), e.getMessage());
-                // Emergency rollback on DB crash
                 order.setActive(STATUS_ACTIVE);
                 order.setTradePhase(PHASE_ENTRY);
                 ordersRepository.save(order);
             }
         }
-        
-        // Safe Telegram notification
+
+        // Telegram Notification
         if (closedCount > 0) {
             String emoji = totalRupeePnL.signum() >= 0 ? "✅" : "❌";
-            String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER"; 
-            String tradeName = activeOrders.get(0).getName(); 
+            String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER";
+            String tradeName = activeOrders.get(0).getName();
 
             telegramService.sendMessage(String.format(
-                "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**\nLegs Closed: %d/%d", 
-                emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL, closedCount, activeOrders.size()
+                    "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**\nLegs Closed: %d/%d",
+                    emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL, closedCount, activeOrders.size()
             ));
         }
     }

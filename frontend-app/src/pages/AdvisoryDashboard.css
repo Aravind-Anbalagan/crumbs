@@ -1,0 +1,275 @@
+/* =========================================================
+   ADVISORY DASHBOARD CSS
+   ========================================================= */
+
+.advisory-container {
+    padding: 20px;
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* --- COMMAND BAR --- */
+.advisory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 15px;
+}
+
+.advisory-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    background: var(--brand-gradient, linear-gradient(135deg, #00a8ff, #9c88ff));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.btn-primary {
+    background: var(--brand-gradient, linear-gradient(135deg, #00a8ff, #9c88ff));
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+}
+
+.btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* --- MAIN LAYOUT (FLEXBOX) --- */
+.advisory-content {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+    overflow: hidden; /* Keeps it within the viewport height */
+}
+
+/* Resilient Glass Panel Base */
+.glass-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    backdrop-filter: blur(12px);
+    padding: 20px;
+    overflow-y: auto;
+}
+
+/* --- THE TABLE --- */
+.advisory-table-wrapper {
+    flex: 1;
+    transition: flex 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* If history panel is present, shrink table to ~60% */
+.advisory-content:has(.advisory-history-panel) .advisory-table-wrapper {
+    flex: 0 0 60%;
+}
+
+.advisory-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.advisory-table th, .advisory-table td {
+    padding: 14px 15px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.advisory-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+}
+
+.symbol-cell {
+    font-weight: 700;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.symbol-cell:hover {
+    color: #00a8ff; /* Brand Accent */
+}
+
+.loading-text {
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 2rem;
+}
+
+/* --- BADGES --- */
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.active {
+    background: rgba(46, 213, 115, 0.15);
+    color: #2ed573;
+    border: 1px solid rgba(46, 213, 115, 0.4);
+}
+
+.status-badge.closed, .status-badge.history {
+    background: rgba(255, 71, 87, 0.15);
+    color: #ff4757;
+    border: 1px solid rgba(255, 71, 87, 0.4);
+}
+
+/* --- ACTION BUTTONS --- */
+.btn-action {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-action:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.btn-action:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+/* --- AUDIT TRAIL PANEL (SLIDE-IN) --- */
+.advisory-history-panel {
+    flex: 0 0 calc(40% - 20px);
+    animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--glass-border);
+}
+
+.history-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: var(--text-main);
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.btn-close:hover {
+    color: #ff4757;
+}
+
+/* --- VERTICAL TIMELINE --- */
+.history-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    position: relative;
+    padding-left: 10px;
+}
+
+/* The vertical connecting line */
+.history-timeline::before {
+    content: '';
+    position: absolute;
+    left: 14px;
+    top: 5px;
+    bottom: 5px;
+    width: 2px;
+    background: var(--glass-border);
+}
+
+.timeline-item {
+    position: relative;
+    padding-left: 25px;
+}
+
+/* The timeline dot */
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #00a8ff;
+    box-shadow: 0 0 10px rgba(0, 168, 255, 0.5);
+}
+
+.timeline-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-family: monospace;
+}
+
+.timeline-content strong {
+    display: block;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+}
+
+.timeline-content p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+}
+
+/* Slide in animation for the panel */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
