@@ -73,14 +73,30 @@ public class MonitorOrderService {
         }
         RiskConfiguration config = riskConfigRepository.findById(strategyKey).orElse(null);
 
-        // Grab current cached PnL if available, else 0
-        BigDecimal pnl = BigDecimal.ZERO;
+        BigDecimal groupPnL = BigDecimal.ZERO;
+
         for (Orders leg : groupLegs) {
-            pnl = pnl.add(liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO));
+            // ✅ FIX: If the cache is empty (fast-loop triggered exit), force fetch the live price!
+            if (!liveUiCachePnL.containsKey(leg.getId()) && leg.getAskPrice() != null) {
+                try {
+                    ExchangeType exType = mapExchangeToType(leg.getExchange());
+                    BigDecimal ltp = webSocketService.getLatestLTP(exType, leg.getToken());
+                    if (ltp != null && ltp.compareTo(BigDecimal.ZERO) > 0) {
+                        boolean isShort = isShortPosition(leg, config);
+                        BigDecimal pointsDiff = isShort
+                                ? leg.getAskPrice().subtract(ltp)
+                                : ltp.subtract(leg.getAskPrice());
+                        liveUiCachePnL.put(leg.getId(), pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity())));
+                    }
+                } catch (Exception e) {
+                    log.error("⚠️ Failed to instantly fetch LTP for fast-exit paper trade: {}", e.getMessage());
+                }
+            }
+            groupPnL = groupPnL.add(liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO));
         }
 
         // closeGroup automatically handles broker sign-in if connection is null
-        return closeGroup(groupLegs, strategyKey, exitReason, pnl, null, config);
+        return closeGroup(groupLegs, strategyKey, exitReason, groupPnL, null, config);
     }
 
     /**
