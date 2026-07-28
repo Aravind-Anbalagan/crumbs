@@ -150,12 +150,12 @@ public class SmcLiteService {
     private BigDecimal getMaxAllowedDifference(BigDecimal bosLevel) {
         double level = bosLevel.doubleValue();
         if (level <= 100)   return new BigDecimal("2.00");
-        if (level <= 500)   return new BigDecimal("10.00");
-        if (level <= 1000)  return new BigDecimal("15.00");
-        if (level <= 2500)  return new BigDecimal("25.00");
-        if (level <= 5000)  return new BigDecimal("40.00");
-        if (level <= 10000) return new BigDecimal("75.00"); // Matches MCX CrudeOil nicely
-        return new BigDecimal("120.00"); // For NIFTY/BANKNIFTY or stocks > 10,000
+        if (level <= 500)   return new BigDecimal("5.00");
+        if (level <= 1000)  return new BigDecimal("10.00");
+        if (level <= 2500)  return new BigDecimal("20.00");
+        if (level <= 5000)  return new BigDecimal("20.00");
+        if (level <= 10000) return new BigDecimal("50.00"); // Matches MCX CrudeOil nicely
+        return new BigDecimal("75.00"); // For NIFTY/BANKNIFTY or stocks > 10,000
     }
 
     private FuturesBreakEvent mapToBreakEvent(String name, String indexType, SmcSignal sig, BigDecimal ltp) {
