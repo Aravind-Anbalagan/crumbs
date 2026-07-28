@@ -112,13 +112,10 @@ public class DirectionalOptionSellingService {
             // 🕒 1. EOD Square-Off (Time-Based)
             if (isSquareOffTime(instrumentName, now)) {
                 log.info("🕒 [{}][EXIT] Square-off time reached.", tradeName);
-                String exchange = activeTrade.getExchange() != null ? activeTrade.getExchange() : sourceConfig.getExchange();
-                BigDecimal ltp = getLivePrice(activeTrade.getToken(), exchange);
 
-                if (ltp != null) {
-                    closeTrade(activeTrade, ltp, "EOD_SQUARE_OFF", strategyConfig, sourceConfig);
-                    resetHitCounters(activeTrade.getName());
-                }
+                // ✅ ROUTED EOD EXIT TO MASTER RISK ENGINE
+                monitorOrderService.forceExit(activeOrders, tradeName, "EOD_SQUARE_OFF");
+                resetHitCounters(activeTrade.getName());
                 return;
             }
 
@@ -244,6 +241,7 @@ public class DirectionalOptionSellingService {
             } else if (isPaper) {
                 log.info("📄 [{}][{}] PAPER MODE: Simulating broker...", tradeName, type);
                 order = new Orders();
+                order.setOrderid("1"); // ✅ PAPER MARKER (Signals MonitorOrderService to skip API calls)
                 order.setToken(tokenStr);
                 order.setSymbol(symbol);
                 order.setQuantity(sourceConfig.getQuantity());
@@ -294,53 +292,6 @@ public class DirectionalOptionSellingService {
             }
         }
         return null;
-    }
-
-    // 🕒 USED STRICTLY FOR EOD SQUARE-OFF
-    protected void closeTrade(Orders order, BigDecimal exitPrice, String reason, Strategy strategyConfig, Strategy sourceConfig) {
-        boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
-
-        try {
-            if (isLive) {
-                log.info("🌐 [{}][EXIT] LIVE MODE: Sending explicit BUY to close SHORT...", order.getName());
-
-                // ✅ BUG FIX: Explicit Reverse BUY Payload (Solves Multi-Strategy Collisions)
-                Token exitToken = new Token();
-                exitToken.setSymbol(order.getSymbol());
-                exitToken.setToken(order.getToken());
-                exitToken.setExch_seg(order.getExchange());
-                exitToken.setQuantity(order.getQuantity());
-
-                orderService.orderPlaceWithToken(exitToken, sourceConfig.getName(), "BUY", true);
-            } else {
-                log.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit...", order.getName());
-            }
-
-            BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
-            BigDecimal pointsCollected = entryPrice.subtract(exitPrice);
-            BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
-            BigDecimal rupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
-
-            order.setExitPrice(exitPrice);
-            order.setPl(rupeePnL);
-            order.setClosedOn(LocalDateTime.now());
-            order.setTradePhase(PHASE_EXIT);
-            order.setStatus(STATUS_CLOSED);
-            order.setActive(STATUS_INACTIVE);
-            order.setExitReason(reason);
-            ordersRepository.save(order);
-
-            String emoji = rupeePnL.signum() >= 0 ? "✅" : "❌";
-            String mode = isLive ? "LIVE" : "PAPER";
-
-            telegramService.sendMessage(String.format(
-                    "%s **EXIT [%s]: %s**\nReason: %s\nEntry: %.2f | Exit: %.2f\nPnL: **₹%.2f**",
-                    emoji, mode, order.getName(), reason, entryPrice, exitPrice, rupeePnL
-            ));
-
-        } catch (Exception | SmartAPIException e) {
-            log.error("❌ [{}][EXIT] Error closing trade: {}", order.getName(), e.getMessage());
-        }
     }
 
     // ============================================================

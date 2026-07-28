@@ -31,24 +31,24 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ShortStraddleService {
 
-    private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE"; 
-    private static final String NAME_PREFIX = "SHORT_STRADDLE_"; 
-    
+    private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE";
+    private static final String NAME_PREFIX = "SHORT_STRADDLE_";
+
     // --- Rule 1: Strict Timeframes ---
     private static final LocalTime NIFTY_START = LocalTime.of(9, 20);
     private static final LocalTime NIFTY_ENTRY_CUTOFF = LocalTime.of(15, 0);
     private static final LocalTime NIFTY_SQUARE_OFF = LocalTime.of(15, 20);
-    
+
     private static final LocalTime SENSEX_START = LocalTime.of(9, 20);
     private static final LocalTime SENSEX_ENTRY_CUTOFF = LocalTime.of(15, 0);
     private static final LocalTime SENSEX_SQUARE_OFF = LocalTime.of(15, 20);
-    
+
     private static final LocalTime CRUDE_START = LocalTime.of(16, 0);
-    private static final LocalTime CRUDE_ENTRY_CUTOFF = LocalTime.of(23, 0); 
+    private static final LocalTime CRUDE_ENTRY_CUTOFF = LocalTime.of(23, 0);
     private static final LocalTime CRUDE_SQUARE_OFF = LocalTime.of(23, 20);
 
     private static final LocalTime NATURALGAS_START = LocalTime.of(16, 0);
-    private static final LocalTime NATURALGAS_ENTRY_CUTOFF = LocalTime.of(23, 0); 
+    private static final LocalTime NATURALGAS_ENTRY_CUTOFF = LocalTime.of(23, 0);
     private static final LocalTime NATURALGAS_SQUARE_OFF = LocalTime.of(23, 20);
 
     private static final int STATUS_ACTIVE = 1;
@@ -68,7 +68,7 @@ public class ShortStraddleService {
     private final OrderService orderService;
     private final TelegramService telegramService;
     private final AngelWebSocketService angelWebSocketService;
-    private final MonitorOrderService monitorOrderService;
+    private final MonitorOrderService monitorOrderService; // ✅ EXITS FUNNELED HERE
 
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BigDecimal> lastSeenStrikes = new ConcurrentHashMap<>();
@@ -76,16 +76,16 @@ public class ShortStraddleService {
 
     public void evaluate(String symbol) {
         LocalTime now = LocalTime.now();
-        
+
         String baseSymbol = symbol.toUpperCase().replace(NAME_PREFIX, "");
         String tradeName = NAME_PREFIX + baseSymbol;
 
         Strategy strategyConfig = strategyRepo.findByName(STRATEGY_SIGNAL);
-        Strategy sourceConfig = strategyRepo.findByName(baseSymbol);        
-        
+        Strategy sourceConfig = strategyRepo.findByName(baseSymbol);
+
         if (strategyConfig == null || sourceConfig == null) {
-            log.error("❌ DB Config Missing! Strategy Present: {}, Source Present: {}", 
-                      strategyConfig != null, sourceConfig != null);
+            log.error("❌ DB Config Missing! Strategy Present: {}, Source Present: {}",
+                    strategyConfig != null, sourceConfig != null);
             return;
         }
 
@@ -93,18 +93,18 @@ public class ShortStraddleService {
                 .toLocalDate()
                 .atStartOfDay();
         long totalLegs = ordersRepository.countLegsToday(tradeName, STRATEGY_SIGNAL, startOfDay);
-        long straddlesUsed = totalLegs / 2; 
+        long straddlesUsed = totalLegs / 2;
         int maxAllowed = strategyConfig.getMaxDailyTrades() > 0 ? strategyConfig.getMaxDailyTrades() : 3;
 
         if ("NIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(NIFTY_START)) return;
-        if ("SENSEX".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return; 
+        if ("SENSEX".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return;
         if (tradeName.contains("CRUDE") && now.isBefore(CRUDE_START)) return;
-        if (tradeName.contains("NATURALGAS") && now.isBefore(NATURALGAS_START)) return; 
+        if (tradeName.contains("NATURALGAS") && now.isBefore(NATURALGAS_START)) return;
 
         List<Orders> allActiveOrders = ordersRepository.findByNameAndSignalAndActive(tradeName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
         if (!allActiveOrders.isEmpty()) {
-            
+
             // Group by Cycle ID to isolate concurrent straddles internally
             Map<String, List<Orders>> ordersByCycle = allActiveOrders.stream()
                     .collect(Collectors.groupingBy(o -> o.getTradeCycleId() != null ? o.getTradeCycleId() : "LEGACY_" + o.getId()));
@@ -116,13 +116,11 @@ public class ShortStraddleService {
 
                 if (cycleOrders.size() != 2) {
                     log.error("🚨 [{}][SAFETY] Imbalance in Cycle {}! Found {} legs. Cleaning up.", tradeName, cycleId, cycleOrders.size());
-                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresent(tick -> 
-                        closeAll(cycleOrders, tick, "ORPHAN_LEG_CLEANUP", strategyConfig, sourceConfig));
-                    continue; 
+                    monitorOrderService.forceExit(cycleOrders, tradeName, "ORPHAN_LEG_CLEANUP");
+                    continue;
                 }
 
                 // 🛡️ RISK LAYER FIRST: hard max-loss/target, velocity panic drop, HWM/milestone/trailing.
-                // Runs inline on this same thread/transaction - no cross-service locking needed.
                 if (monitorOrderService.evaluateAndClose(cycleOrders, tradeName, null)) {
                     log.info("🛡️ [{}][RISK] Cycle {} closed by MonitorOrderService.", tradeName, cycleId);
                     hitCounters.remove(tradeName + "_" + cycleId + "_EXIT");
@@ -130,45 +128,45 @@ public class ShortStraddleService {
                     continue;
                 }
 
+                // 🕒 TIME SQUARE OFF -> Safely forces exit via Master Engine!
                 if (isSquareOffTime(baseSymbol, now)) {
                     log.info("🕒 [{}][EXIT] Square-off time reached for Cycle {}.", tradeName, cycleId);
-                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike)
-                        .ifPresent(tick -> closeAll(cycleOrders, tick, "EOD_SQUARE_OFF", strategyConfig, sourceConfig));
+                    monitorOrderService.forceExit(cycleOrders, tradeName, "EOD_SQUARE_OFF");
                     continue;
                 }
 
                 straddleRepository.findLatestBySymbolAndStrike(baseSymbol, tradedStrike).ifPresentOrElse(
-                	    tick -> processExitSequence(tradeName, tick, cycleOrders, strategyConfig, sourceConfig, cycleId),
-                	    () -> log.error("❌ [{}][MONITOR] Missing price data for strike: {}", tradeName, tradedStrike)
-                	);
+                        tick -> processExitSequence(tradeName, tick, cycleOrders, strategyConfig, sourceConfig, cycleId),
+                        () -> log.error("❌ [{}][MONITOR] Missing price data for strike: {}", tradeName, tradedStrike)
+                );
             }
-            
+
         } else {
             if (straddlesUsed >= maxAllowed) {
                 log.info("🛑 [{}] Max daily trades reached ({}/{}). Stopping scans.", tradeName, straddlesUsed, maxAllowed);
                 return;
             }
-            
+
             if (!isWithinEntryWindow(baseSymbol, now)) {
                 log.debug("⏳ [{}] Entry window closed for today. Waiting for EOD.", tradeName);
                 return;
             }
 
             if ("NIFTY".equalsIgnoreCase(baseSymbol)) {
-                getNiftyIndexAtm(tradeName).ifPresent(atmStrike -> 
-                    straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick -> 
-                        processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
-                    )
+                getNiftyIndexAtm(tradeName).ifPresent(atmStrike ->
+                        straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick ->
+                                processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
+                        )
                 );
-            } else if ("SENSEX".equalsIgnoreCase(baseSymbol)) { 
-                getSensexIndexAtm(tradeName).ifPresent(atmStrike -> 
-                straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick -> 
-                    processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
-                )
-            );
+            } else if ("SENSEX".equalsIgnoreCase(baseSymbol)) {
+                getSensexIndexAtm(tradeName).ifPresent(atmStrike ->
+                        straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick ->
+                                processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
+                        )
+                );
             } else {
-                straddleRepository.findATMBySymbol(baseSymbol).ifPresent(tick -> 
-                    processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
+                straddleRepository.findATMBySymbol(baseSymbol).ifPresent(tick ->
+                        processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
                 );
             }
         }
@@ -187,41 +185,41 @@ public class ShortStraddleService {
     private void processEntrySequence(String tradeName, StraddleIntraday tick, Strategy strategyConfig, Strategy sourceConfig) {
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
-        BigDecimal currentGap = cv.subtract(cp); 
-        BigDecimal currentStrike = tick.getStrike(); 
+        BigDecimal currentGap = cv.subtract(cp);
+        BigDecimal currentStrike = tick.getStrike();
 
-        BigDecimal safeDistance = sourceConfig.getMaxEntryRisk() != null ? sourceConfig.getMaxEntryRisk() : BigDecimal.ZERO; 
+        BigDecimal safeDistance = sourceConfig.getMaxEntryRisk() != null ? sourceConfig.getMaxEntryRisk() : BigDecimal.ZERO;
         int reqHits = sourceConfig.getEntryHitsRequired() > 0 ? sourceConfig.getEntryHitsRequired() : 3;
 
         boolean isCpBelowCv = cp.compareTo(cv) < 0;
         boolean isGapAcceptable = currentGap.compareTo(safeDistance) <= 0;
 
-        log.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}", 
-                 tradeName, currentStrike, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
+        log.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}",
+                tradeName, currentStrike, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
 
         if (isCpBelowCv && isGapAcceptable) {
             String strikeKey = tradeName + "_STRIKE";
             String entryKey = tradeName + "_ENTRY";
             BigDecimal lastStrike = lastSeenStrikes.get(strikeKey);
-            
+
             if (lastStrike != null && lastStrike.compareTo(currentStrike) != 0) {
                 log.warn("🔄 [{}] STRIKE MOVED: {} -> {}. Resetting hits to 1.", tradeName, lastStrike, currentStrike);
-                hitCounters.put(entryKey, 1); 
+                hitCounters.put(entryKey, 1);
                 lastHitTimestamps.put(entryKey, System.currentTimeMillis());
             } else if (canRegisterHit(entryKey)) {
                 hitCounters.merge(entryKey, 1, Integer::sum);
             }
-            
+
             lastSeenStrikes.put(strikeKey, currentStrike);
             int count = hitCounters.getOrDefault(entryKey, 0);
-            
+
             log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) on Strike: {}", tradeName, count, reqHits, currentStrike);
-            
+
             if (count >= reqHits) {
                 log.info("⚡ [{}] ALL HITS MET! Triggering execution at {}", tradeName, currentStrike);
                 executeShortStraddle(tradeName, tick, currentGap, strategyConfig, sourceConfig);
-                
-                hitCounters.put(entryKey, 0); 
+
+                hitCounters.put(entryKey, 0);
                 lastSeenStrikes.remove(strikeKey);
                 lastHitTimestamps.remove(entryKey);
             }
@@ -230,14 +228,14 @@ public class ShortStraddleService {
             if (hitCounters.getOrDefault(entryKey, 0) > 0) {
                 log.info("🔄 [{}] CONDITIONS LOST. Resetting hit counter.", tradeName);
             }
-            hitCounters.put(entryKey, 0); 
+            hitCounters.put(entryKey, 0);
             lastSeenStrikes.remove(tradeName + "_STRIKE");
             lastHitTimestamps.remove(entryKey);
         }
     }
 
     private void processExitSequence(String tradeName, StraddleIntraday tick, List<Orders> activeOrders, Strategy strategyConfig, Strategy sourceConfig, String cycleId) {
-        String exitKey = tradeName + "_" + cycleId + "_EXIT"; 
+        String exitKey = tradeName + "_" + cycleId + "_EXIT";
 
         BigDecimal cp = tick.getCombinedPremium();
         BigDecimal cv = tick.getCombinedVwap();
@@ -246,11 +244,11 @@ public class ShortStraddleService {
 
         if (entryGap == null) {
             log.error("❌ [{}][EXIT] Missing entryGap (breakeven) for Cycle {}! Forcing safety exit.", tradeName, cycleId);
-            closeAll(activeOrders, tick, "MISSING_ENTRY_GAP_SAFETY_EXIT", strategyConfig, sourceConfig);
+            monitorOrderService.forceExit(activeOrders, tradeName, "MISSING_ENTRY_GAP_SAFETY_EXIT");
             return;
         }
-        BigDecimal targetPoints = sourceConfig.getTargetPoints() != null 
-                ? sourceConfig.getTargetPoints() 
+        BigDecimal targetPoints = sourceConfig.getTargetPoints() != null
+                ? sourceConfig.getTargetPoints()
                 : BigDecimal.ZERO;
         BigDecimal targetGap = entryGap.add(targetPoints);
         BigDecimal distToTarget = targetGap.subtract(currentGap);
@@ -264,16 +262,16 @@ public class ShortStraddleService {
 
         boolean isVwapCrossover = cp.compareTo(cv) > 0;
         int reqSlHits = sourceConfig.getExitHitsRequired() > 0 ? sourceConfig.getExitHitsRequired() : 3;
-        
+
         if (isVwapCrossover) {
             if (canRegisterHit(exitKey)) {
                 hitCounters.merge(exitKey, 1, Integer::sum);
             }
         } else {
-            hitCounters.put(exitKey, 0); 
+            hitCounters.put(exitKey, 0);
             lastHitTimestamps.remove(exitKey);
         }
-        
+
         int currentSlHits = hitCounters.getOrDefault(exitKey, 0);
         boolean isHitsMet = currentSlHits >= reqSlHits;
 
@@ -281,19 +279,19 @@ public class ShortStraddleService {
         String tradeStatus = currentGap.compareTo(entryGap) >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
         String cushionSign = currentGap.compareTo(entryGap) >= 0 ? "+" : "";
         BigDecimal currentPnL = currentGap.subtract(entryGap);
-        
+
         String vStatus = isVwapCrossover ? "⚠️ CROSSOVER (" + currentSlHits + "/" + reqSlHits + ")" : "✅ STABLE";
-        
-        String defenseMode = isPointSlConfigured 
-                ? "🛡️ [MODE: MASTER PRICE SL (Trend hits tracked but not required)]" 
+
+        String defenseMode = isPointSlConfigured
+                ? "🛡️ [MODE: MASTER PRICE SL (Trend hits tracked but not required)]"
                 : "🛡️ [MODE: SINGLE SHIELD (Trend-Only Fallback)]";
-        
+
         String pStatus;
         if (!isPointSlConfigured) {
             pStatus = "⚪ DISABLED";
         } else {
-            pStatus = isPointSlBreached 
-                    ? String.format("🚨 BREACHED (Loss %.2f >= SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap) 
+            pStatus = isPointSlBreached
+                    ? String.format("🚨 BREACHED (Loss %.2f >= SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap)
                     : String.format("✅ SECURE (Loss %.2f < SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap);
         }
 
@@ -306,7 +304,7 @@ public class ShortStraddleService {
 
         if (currentGap.compareTo(targetGap) >= 0) {
             log.info("💰 [{}][EXIT] TARGET REACHED!", tradeName);
-            closeAll(activeOrders, tick, "TARGET_REACHED", strategyConfig, sourceConfig);
+            monitorOrderService.forceExit(activeOrders, tradeName, "TARGET_REACHED");
             hitCounters.remove(exitKey);
             lastHitTimestamps.remove(exitKey);
             return;
@@ -329,55 +327,57 @@ public class ShortStraddleService {
 
         if (shouldExit) {
             log.warn("🚨 [{}][EXIT] Triggering exit: {}", tradeName, reason);
-            closeAll(activeOrders, tick, reason, strategyConfig, sourceConfig);
+            monitorOrderService.forceExit(activeOrders, tradeName, reason);
             hitCounters.remove(exitKey);
             lastHitTimestamps.remove(exitKey);
         }
     }
 
     protected void executeShortStraddle(String tradeName, StraddleIntraday tick, BigDecimal entryGap, Strategy strategyConfig, Strategy sourceConfig) {
-    	// 🛑 BULLETPROOF GUARD: Never allow order placement if we are past the entry cutoff time!
+        // 🛑 BULLETPROOF GUARD: Never allow order placement if we are past the entry cutoff time!
         String baseSymbol = tradeName.replace(NAME_PREFIX, "");
         if (!isWithinEntryWindow(baseSymbol, LocalTime.now())) {
             log.warn("🛑 [{}][BLOCKED] Attempted to execute entry past the cutoff time! Aborting order.", tradeName);
             return;
         }
-    	log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
+        log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
         BigDecimal userTarget = sourceConfig.getTargetPoints();
-        BigDecimal finalTarget = (userTarget == null || userTarget.compareTo(BigDecimal.ZERO) <= 0) 
-                                 ? new BigDecimal("50.00") 
-                                 : userTarget;
+        BigDecimal finalTarget = (userTarget == null || userTarget.compareTo(BigDecimal.ZERO) <= 0)
+                ? new BigDecimal("50.00")
+                : userTarget;
 
         log.info("🎯 [{}][TARGET] Setting target to {} pts (User input: {})", tradeName, finalTarget, userTarget);
-        
+
         BigDecimal targetValue = entryGap.add(finalTarget);
 
-        Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), strategyConfig, sourceConfig, tick.getCePrice(), 
+        Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), strategyConfig, sourceConfig, tick.getCePrice(),
                 tick.getStrike(), tradeName, "CE", cycleId, entryGap, targetValue);
 
-        Orders peOrder = processLeg(tick.getPeToken(), tick.getPeSymbol(), strategyConfig, sourceConfig, tick.getPePrice(), 
+        Orders peOrder = processLeg(tick.getPeToken(), tick.getPeSymbol(), strategyConfig, sourceConfig, tick.getPePrice(),
                 tick.getStrike(), tradeName, "PE", cycleId, entryGap, targetValue);
 
         boolean ceSuccess = ceOrder != null;
         boolean peSuccess = peOrder != null;
 
         if (ceSuccess != peSuccess) {
-        	log.error("🚨 [{}][EXECUTION] Partial entry detected! CE: {}, PE: {}. Rolling back placed leg.", tradeName, ceSuccess, peSuccess);
+            log.error("🚨 [{}][EXECUTION] Partial entry detected! CE: {}, PE: {}. Rolling back placed leg.", tradeName, ceSuccess, peSuccess);
             List<Orders> partialOrdersToClose = new ArrayList<>();
             if (ceSuccess) partialOrdersToClose.add(ceOrder);
             if (peSuccess) partialOrdersToClose.add(peOrder);
-            closeAll(partialOrdersToClose, tick, "PARTIAL_FILL_ROLLBACK", strategyConfig, sourceConfig);
-            
-            // 🛑 ADD THIS BLOCK: Prevent broker glitches from wasting your max_daily_trades!
+
+            // ✅ Safely hands rollback to Master Engine
+            monitorOrderService.forceExit(partialOrdersToClose, tradeName, "PARTIAL_FILL_ROLLBACK");
+
+            // 🛑 Prevent broker glitches from wasting your max_daily_trades!
             for (Orders abortedOrder : partialOrdersToClose) {
-                abortedOrder.setSignal("ABORTED_PARTIAL_FILL"); 
+                abortedOrder.setSignal("ABORTED_PARTIAL_FILL");
                 ordersRepository.save(abortedOrder);
             }
-            
+
         } else if (ceSuccess) {
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER";
-            telegramService.sendMessage(String.format("🚀 **ENTRY [%s]: %s**\nStrike: %s\nGap: %.2f\nTarget: +%.2f", 
+            telegramService.sendMessage(String.format("🚀 **ENTRY [%s]: %s**\nStrike: %s\nGap: %.2f\nTarget: +%.2f",
                     mode, tradeName, tick.getStrike(), entryGap, sourceConfig.getTargetPoints()));
         } else {
             log.error("❌ [{}][EXECUTION] Both legs failed to execute. No positions opened.", tradeName);
@@ -385,17 +385,17 @@ public class ShortStraddleService {
     }
 
     private Orders processLeg(String tokenStr, String symbol,
-            Strategy strategyConfig, Strategy sourceConfig, BigDecimal price,
-            BigDecimal strike, String tradeName, String type, String cycleId,
-            BigDecimal gap, BigDecimal targetValue) {
+                              Strategy strategyConfig, Strategy sourceConfig, BigDecimal price,
+                              BigDecimal strike, String tradeName, String type, String cycleId,
+                              BigDecimal gap, BigDecimal targetValue) {
         try {
             Token t = new Token();
             t.setToken(tokenStr);
             t.setSymbol(symbol);
             t.setStrike(strike);
-            
+
             // RESTORED: Must use base name for OrderService
-            t.setName(sourceConfig.getName()); 
+            t.setName(sourceConfig.getName());
             t.setExch_seg(sourceConfig.getExchange());
             t.setQuantity(sourceConfig.getQuantity());
 
@@ -425,16 +425,18 @@ public class ShortStraddleService {
             } else {
                 log.info("📄 [{}][{}] PAPER MODE: Skipping broker execution, tracking via DB...", tradeName, type);
                 order = new Orders();
+                order.setOrderid("1"); // ✅ PAPER MARKER FOR MONITOR_ORDER_SERVICE
                 order.setToken(tokenStr);
                 order.setSymbol(symbol);
-                order.setQuantity(sourceConfig.getQuantity()); 
-                order.setExchange(sourceConfig.getExchange()); 
+                order.setQuantity(sourceConfig.getQuantity());
+                order.setExchange(sourceConfig.getExchange());
                 order.setActive(STATUS_ACTIVE);
             }
 
             // Apply strategy fields to the fetched (or new) order
             // This updates the name to SHORT_STRADDLE_CRUDEOIL so it belongs to this strategy
-            order.setName(tradeName); 
+            order.setName(tradeName);
+            order.setType("SELL"); // ✅ STRICT TYPE ENFORCEMENT
             order.setSignal(STRATEGY_SIGNAL);
             order.setOptionType(type);
             order.setTradeCycleId(cycleId);
@@ -444,7 +446,7 @@ public class ShortStraddleService {
             order.setStrike(strike);
             order.setStatus(STATUS_OPEN);
             order.setTradePhase(PHASE_ENTRY);
-            
+
             return ordersRepository.save(order);
 
         } catch (Exception e) {
@@ -453,122 +455,32 @@ public class ShortStraddleService {
         }
     }
 
-    protected void closeAll(List<Orders> activeOrders, StraddleIntraday tick, String reason, Strategy strategyConfig, Strategy sourceConfig) {
-        if (activeOrders == null || activeOrders.isEmpty()) {
-            return;
-        }
-
-        BigDecimal totalEntryPoints = BigDecimal.ZERO;
-        BigDecimal totalExitPoints = BigDecimal.ZERO;
-        BigDecimal totalRupeePnL = BigDecimal.ZERO;
-        int closedCount = 0;
-
-        for (Orders order : activeOrders) {
-            boolean legClosedSuccessfully = true;
-
-            try {
-                if ("Y".equalsIgnoreCase(strategyConfig.getLive())) {
-                    try {
-                        // 1. Build exit token payload using exact leg quantity & exchange (NFO / MCX)
-                        Token exitToken = new Token();
-                        exitToken.setToken(order.getToken());
-                        exitToken.setSymbol(order.getSymbol());
-                        exitToken.setExch_seg(order.getExchange()); // "NFO" for NIFTY, "MCX" for CRUDEOIL
-                        exitToken.setQuantity(order.getQuantity()); // 65 for NIFTY, 100 for CRUDEOIL
-
-                        log.info("🌐 [{}][EXIT] Sending reverse BUY order to broker for {} (Token: {}, Qty: {}, Exchange: {})...",
-                                order.getName(), order.getOptionType(), order.getToken(), order.getQuantity(), order.getExchange());
-
-                        // 2. Execute reverse BUY order using sourceConfig.getName() ("NIFTY" or "CRUDEOIL") for API credentials
-                        orderService.orderPlaceWithToken(exitToken, sourceConfig.getName(), "BUY", true);
-
-                        Thread.sleep(1000);
-                    } catch (Exception | SmartAPIException e) {
-                        legClosedSuccessfully = false;
-                        log.error("❌ [{}][EXIT] Broker exit failed for {}: {}", order.getName(), order.getOptionType(), e.getMessage());
-                    }
-                } else {
-                    log.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit for {}.", order.getName(), order.getOptionType());
-                }
-
-                // 3. Finalize DB on success or Rollback on broker failure
-                if (legClosedSuccessfully) {
-                    BigDecimal exitPrice = "CE".equals(order.getOptionType()) ? tick.getCePrice() : tick.getPePrice();
-                    BigDecimal entryPrice = order.getAskPrice() != null ? order.getAskPrice() : BigDecimal.ZERO;
-
-                    totalEntryPoints = totalEntryPoints.add(entryPrice);
-                    totalExitPoints = totalExitPoints.add(exitPrice);
-
-                    BigDecimal pointsCollected = entryPrice.subtract(exitPrice);
-                    BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
-                    BigDecimal legRupeePnL = pointsCollected.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
-
-                    totalRupeePnL = totalRupeePnL.add(legRupeePnL);
-
-                    order.setExitPrice(exitPrice);
-                    order.setPl(legRupeePnL);
-                    order.setClosedOn(LocalDateTime.now());
-                    order.setTradePhase(PHASE_EXIT);
-                    order.setStatus(STATUS_CLOSED);
-                    order.setActive(STATUS_INACTIVE); // active = 0
-                    order.setExitReason(reason);
-
-                    ordersRepository.save(order);
-                    closedCount++;
-                } else {
-                    // Rollback lock if broker fails so risk monitors can retry
-                    order.setActive(STATUS_ACTIVE);
-                    order.setTradePhase(PHASE_ENTRY);
-                    ordersRepository.save(order);
-                }
-
-            } catch (Exception e) {
-                log.error("❌ [{}][EXIT] DB error closing leg: {}", order.getName(), e.getMessage());
-                order.setActive(STATUS_ACTIVE);
-                order.setTradePhase(PHASE_ENTRY);
-                ordersRepository.save(order);
-            }
-        }
-
-        // Telegram Notification
-        if (closedCount > 0) {
-            String emoji = totalRupeePnL.signum() >= 0 ? "✅" : "❌";
-            String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER";
-            String tradeName = activeOrders.get(0).getName();
-
-            telegramService.sendMessage(String.format(
-                    "%s **EXIT [%s]: %s**\nReason: %s\nEntry Total: %.2f\nExit Total: %.2f\nPnL: **₹%.2f**\nLegs Closed: %d/%d",
-                    emoji, mode, tradeName, reason, totalEntryPoints, totalExitPoints, totalRupeePnL, closedCount, activeOrders.size()
-            ));
-        }
-    }
-
     private boolean isSquareOffTime(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(NIFTY_SQUARE_OFF);
-        if ("SENSEX".equalsIgnoreCase(symbol)) return !now.isBefore(SENSEX_SQUARE_OFF); 
+        if ("SENSEX".equalsIgnoreCase(symbol)) return !now.isBefore(SENSEX_SQUARE_OFF);
         if (symbol.contains("CRUDE")) return !now.isBefore(CRUDE_SQUARE_OFF);
-        if (symbol.contains("NATURALGAS")) return !now.isBefore(NATURALGAS_SQUARE_OFF); 
+        if (symbol.contains("NATURALGAS")) return !now.isBefore(NATURALGAS_SQUARE_OFF);
         return false;
     }
-    
+
     private boolean isWithinEntryWindow(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return now.isBefore(NIFTY_ENTRY_CUTOFF);
-        if ("SENSEX".equalsIgnoreCase(symbol)) return now.isBefore(SENSEX_ENTRY_CUTOFF); 
+        if ("SENSEX".equalsIgnoreCase(symbol)) return now.isBefore(SENSEX_ENTRY_CUTOFF);
         if (symbol.contains("CRUDE")) return now.isBefore(CRUDE_ENTRY_CUTOFF);
         if (symbol.contains("NATURALGAS")) return now.isBefore(NATURALGAS_ENTRY_CUTOFF);
-        return true; 
+        return true;
     }
 
     private Optional<BigDecimal> getNiftyIndexAtm(String tradeName) {
         Strategy indexConfig = strategyRepo.findByName("NIFTY_INDEX");
-        
+
         if (indexConfig == null || indexConfig.getToken() == null) {
             log.error("❌ [{}] NIFTY_INDEX config missing in DB. Cannot determine Index ATM.", tradeName);
             return Optional.empty();
         }
 
         BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.NSE_CM, indexConfig.getToken());
-        
+
         if (indexLtp == null || indexLtp.compareTo(BigDecimal.ZERO) <= 0) {
             log.warn("⚠️ [{}] NIFTY Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);
             return Optional.empty();
@@ -576,29 +488,29 @@ public class ShortStraddleService {
 
         BigDecimal atmStrike = indexLtp.divide(new BigDecimal("50"), 0, RoundingMode.HALF_UP).multiply(new BigDecimal("50"));
         log.debug("📉 [{}] NIFTY INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
-        
+
         return Optional.of(atmStrike);
     }
-    
+
     private Optional<BigDecimal> getSensexIndexAtm(String tradeName) {
         Strategy indexConfig = strategyRepo.findByName("SENSEX_INDEX");
-        
+
         if (indexConfig == null || indexConfig.getToken() == null) {
             log.error("❌ [{}] SENSEX_INDEX config missing in DB. Cannot determine Index ATM.", tradeName);
             return Optional.empty();
         }
 
         BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.BSE_CM, indexConfig.getToken());
-        
+
         if (indexLtp == null || indexLtp.compareTo(BigDecimal.ZERO) <= 0) {
             log.warn("⚠️ [{}] SENSEX Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);
             return Optional.empty();
         }
 
-        BigDecimal strikeStep = new BigDecimal("100"); 
+        BigDecimal strikeStep = new BigDecimal("100");
         BigDecimal atmStrike = indexLtp.divide(strikeStep, 0, RoundingMode.HALF_UP).multiply(strikeStep);
         log.debug("📉 [{}] SENSEX INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
-        
+
         return Optional.of(atmStrike);
     }
 }

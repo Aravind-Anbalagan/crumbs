@@ -64,6 +64,26 @@ public class MonitorOrderService {
     }
 
     /**
+     * Public method to force an immediate exit (e.g., EOD Square-Off or Trend Exit)
+     * Bypasses risk limit checks and directly liquidates via the core API engine.
+     */
+    public boolean forceExit(List<Orders> groupLegs, String strategyKey, String exitReason) {
+        if (groupLegs == null || groupLegs.isEmpty()) {
+            return false;
+        }
+        RiskConfiguration config = riskConfigRepository.findById(strategyKey).orElse(null);
+
+        // Grab current cached PnL if available, else 0
+        BigDecimal pnl = BigDecimal.ZERO;
+        for (Orders leg : groupLegs) {
+            pnl = pnl.add(liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO));
+        }
+
+        // closeGroup automatically handles broker sign-in if connection is null
+        return closeGroup(groupLegs, strategyKey, exitReason, pnl, null, config);
+    }
+
+    /**
      * Safely fetches the Trade Book with a 2-second debounce to protect API limits.
      * Parses raw JSON to eliminate SDK casting discrepancies across versions.
      */
@@ -138,9 +158,11 @@ public class MonitorOrderService {
                 if (currentLtp != null && currentLtp.compareTo(BigDecimal.ZERO) > 0
                         && entryPrice != null && entryPrice.compareTo(BigDecimal.ZERO) > 0) {
                     boolean isShort = isShortPosition(leg, config);
+
+                    // ✅ DYNAMIC PNL MATHEMATICS FOR BUYERS AND SELLERS
                     BigDecimal pointsDiff = isShort
-                            ? entryPrice.subtract(currentLtp)
-                            : currentLtp.subtract(entryPrice);
+                            ? entryPrice.subtract(currentLtp)   // SHORT PNL: Entry - Current
+                            : currentLtp.subtract(entryPrice);  // LONG PNL: Current - Entry
                     legPnL = pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
                 } else {
                     allLegsPriced = false;
@@ -283,6 +305,7 @@ public class MonitorOrderService {
 
                 for (int i = 0; i < trades.length(); i++) {
                     JSONObject trade = trades.getJSONObject(i);
+                    // ✅ ISOLATES BY UNIQUE ORDER ID - NO MULTI-STRATEGY COLLISIONS
                     String tOrderId = trade.optString("orderid", trade.optString("order_id"));
 
                     if (leg.getOrderid().equals(tOrderId)) {
@@ -357,6 +380,7 @@ public class MonitorOrderService {
                 exitToken.setVariety(Constants.VARIETY_NORMAL);
 
                 boolean isShort = isShortPosition(leg, config);
+                // ✅ DYNAMIC REVERSE EXECUTION: Short -> BUY, Long -> SELL
                 exitToken.setTransactionType(isShort ? Constants.TRANSACTION_TYPE_BUY : Constants.TRANSACTION_TYPE_SELL);
 
                 int attempt = 0;
@@ -385,15 +409,18 @@ public class MonitorOrderService {
                 continue;
             }
 
-            // Fallback Mathematical Exit (Used only if real broker sync fails)
+            // Fallback Mathematical Exit (Used only if real broker sync fails or Paper Trade)
             BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO);
             BigDecimal calculatedExitPrice = leg.getAskPrice() != null ? leg.getAskPrice() : BigDecimal.ZERO;
             if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
                 BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
                 BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4, RoundingMode.HALF_UP);
+
+                // ✅ MATHEMATICAL FALLBACK PERFECTED FOR BUYERS/SELLERS
                 calculatedExitPrice = isShortPosition(leg, config)
-                        ? leg.getAskPrice().subtract(pnlPerUnit)
-                        : leg.getAskPrice().add(pnlPerUnit);
+                        ? leg.getAskPrice().subtract(pnlPerUnit) // Short: Entry - Profit = Lower Exit Price
+                        : leg.getAskPrice().add(pnlPerUnit);     // Long: Entry + Profit = Higher Exit Price
+
                 calculatedExitPrice = calculatedExitPrice.setScale(2, RoundingMode.HALF_UP);
             }
 
@@ -446,9 +473,12 @@ public class MonitorOrderService {
                                 leg.setExitPrice(brokerExit);
 
                                 boolean isShort = isShortPosition(leg, config);
+
+                                // ✅ TRUE TRADEBOOK PNL MATHEMATICS FOR BUYERS/SELLERS
                                 BigDecimal realPointsDiff = isShort
                                         ? leg.getAskPrice().subtract(brokerExit)
                                         : brokerExit.subtract(leg.getAskPrice());
+
                                 BigDecimal realPnL = realPointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
 
                                 leg.setPl(realPnL);
@@ -490,15 +520,34 @@ public class MonitorOrderService {
         return closedCount > 0;
     }
 
+    /**
+     * Identifies paper trades so the engine safely skips live API executions.
+     */
     private boolean isLiveTrade(Orders leg) {
         return leg.getOrderid() != null && !PAPER_ORDER_ID_MARKER.equals(leg.getOrderid());
     }
 
+    /**
+     * Safely identifies if an order is a Long (Buyer) or Short (Seller) position.
+     * Prioritizes the exact execution logic saved to the DB by the strategy.
+     */
     private boolean isShortPosition(Orders leg, RiskConfiguration config) {
-        if (config != null && config.getStrategyType() != null) return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
-        if (leg.getType() != null && !leg.getType().isBlank()) return "SELL".equalsIgnoreCase(leg.getType());
-        if (leg.getSignal() != null && leg.getSignal().toUpperCase().contains("SHORT")) return true;
-        return false;
+        // Priority 1: Check the strict database "type" written by the strategy engine
+        if (leg.getType() != null && !leg.getType().isBlank()) {
+            return "SELL".equalsIgnoreCase(leg.getType());
+        }
+
+        // Priority 2: Fallback to the Risk table config
+        if (config != null && config.getStrategyType() != null) {
+            return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
+        }
+
+        // Priority 3: Legacy catch-all
+        if (leg.getSignal() != null && leg.getSignal().toUpperCase().contains("SHORT")) {
+            return true;
+        }
+
+        return false; // Default to Long / Buyer
     }
 
     private ExchangeType mapExchangeToType(String exchange) {

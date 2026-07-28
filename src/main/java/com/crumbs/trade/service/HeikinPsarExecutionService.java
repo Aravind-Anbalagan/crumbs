@@ -87,6 +87,9 @@ public class HeikinPsarExecutionService {
     @Autowired private ShortStraddleRepository straddleRepository;
     @Autowired private AngelWebSocketService angelWebSocketService;
 
+    // ✅ INJECT MASTER RISK ENGINE TO HANDLE SAFE EXITS
+    @Autowired private MonitorOrderService monitorOrderService;
+
     // =========================================================
     // 🔥 IN-MEMORY CACHES
     // =========================================================
@@ -525,7 +528,6 @@ public class HeikinPsarExecutionService {
 
     private void processExit(Orders openTrade, Vix exitCandle, String reason, Strategy strategyConfig) {
         String tradeName = openTrade.getName();
-        boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
 
         try {
             Orders removedFromCache = activeScalpCache.remove(tradeName);
@@ -533,51 +535,13 @@ public class HeikinPsarExecutionService {
 
             pendingRetracementsCache.remove(tradeName);
 
-            // ✅ MULTI-STRATEGY TRAP FIX: Explicit Reverse Execution Payload
-            if (isLive) {
-                String reverseType = "BUY".equalsIgnoreCase(openTrade.getType()) ? "SELL" : "BUY";
-                logger.info("🌐 [{}][EXIT] LIVE MODE: Sending explicit {} to close position...", tradeName, reverseType);
+            logger.info("🛡️ [{}][EXIT] Routing exit through Master Risk Engine...", tradeName);
 
-                Token exitToken = new Token();
-                exitToken.setSymbol(openTrade.getSymbol());
-                exitToken.setToken(openTrade.getToken());
-                exitToken.setExch_seg(openTrade.getExchange());
-                exitToken.setQuantity(openTrade.getQuantity());
+            // ✅ ROUTE ALL EXITS THROUGH MASTER RISK ENGINE
+            // This safely bypasses OrderService, fetches true TradeBook price, updates PnL mathematically correctly, and saves to DB.
+            monitorOrderService.forceExit(List.of(openTrade), tradeName, reason);
 
-                orderService.orderPlaceWithToken(exitToken, strategyConfig.getName(), reverseType, true);
-            } else {
-                logger.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit...", tradeName);
-            }
-
-            BigDecimal exitPremium = getCurrentOptionPremium(getBaseSymbol(tradeName), openTrade.getStrike(), openTrade.getOptionType());
-            if (exitPremium == null) exitPremium = BigDecimal.ZERO;
-
-            BigDecimal entryPrice = openTrade.getAskPrice() != null ? openTrade.getAskPrice() : BigDecimal.ZERO;
-
-            // ✅ Dynamic PnL math (Mathematically sound for both Buyers & Sellers)
-            BigDecimal pointsCollected = "BUY".equalsIgnoreCase(openTrade.getType())
-                    ? exitPremium.subtract(entryPrice) : entryPrice.subtract(exitPremium);
-
-            int quantity = openTrade.getQuantity() > 0 ? openTrade.getQuantity() : getLotSize(getBaseSymbol(tradeName), strategyConfig);
-            BigDecimal rupeePnL = pointsCollected.multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP);
-
-            openTrade.setExitPrice(exitPremium);
-            openTrade.setPl(rupeePnL);
-            openTrade.setClosedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-            openTrade.setTradePhase(PHASE_EXIT);
-            openTrade.setStatus(STATUS_CLOSED);
-            openTrade.setActive(STATUS_INACTIVE);
-            openTrade.setExitReason(reason);
-
-            ordersRepository.save(openTrade);
-
-            String emoji = rupeePnL.signum() >= 0 ? "✅" : "❌";
-            if (telegramService != null) {
-                telegramService.sendMessage(String.format("%s **EXIT [%s]: %s**\nReason: %s\nEntry: %.2f | Exit: %.2f\nEst. PnL: **₹%.2f**",
-                        emoji, (isLive ? "LIVE" : "PAPER"), tradeName, reason, entryPrice, exitPremium, rupeePnL));
-            }
-
-        } catch (Exception | SmartAPIException e) {
+        } catch (Exception e) {
             logger.error("❌ [{}][EXIT] Error closing trade: {}", tradeName, e.getMessage());
         }
     }
