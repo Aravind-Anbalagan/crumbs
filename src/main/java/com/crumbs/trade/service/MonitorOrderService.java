@@ -22,14 +22,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Self-contained risk monitor + closer + PnL/reconciliation engine.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -50,23 +48,46 @@ public class MonitorOrderService {
     private final AngelOne angelOne;
     private final TelegramService telegramService;
 
-    // --- Shared memory state across every strategy routed through here ---
     private final Map<Long, BigDecimal> liveUiCachePnL = new ConcurrentHashMap<>();
     private final Map<String, BigDecimal> highWaterMarks = new ConcurrentHashMap<>();
     private final Map<String, BigDecimal> activeTrailingFloors = new ConcurrentHashMap<>();
     private final Map<String, BigDecimal> lastPnlSnapshot = new ConcurrentHashMap<>();
     private final Map<String, Integer> panicStreak = new ConcurrentHashMap<>();
-
-    // One-time-per-leg reconciliation: leg id -> confirmed entry price
     private final Map<Long, BigDecimal> reconciledEntryPriceCache = new ConcurrentHashMap<>();
+
+    // Debounce state to prevent spamming Angel One API rate limits
+    private volatile JSONArray cachedTradeBook = null;
+    private volatile long lastTradeBookFetchTime = 0;
 
     public Map<Long, BigDecimal> getLivePnLForUI() {
         return liveUiCachePnL;
     }
 
     /**
-     * Evaluates risk for one strategy group and closes it if a rule fires.
+     * Safely fetches the Trade Book with a 2-second debounce to protect API limits.
+     * Parses raw JSON to eliminate SDK casting discrepancies across versions.
      */
+    private JSONArray getTradeBookDebounced(SmartConnect connection) {
+        long now = System.currentTimeMillis();
+        if (now - lastTradeBookFetchTime > 2000) {
+            synchronized (this) {
+                if (System.currentTimeMillis() - lastTradeBookFetchTime > 2000) {
+                    try {
+                        JSONObject response = connection.getTrades();
+                        if (response != null && response.optBoolean("status", false)) {
+                            JSONArray data = response.optJSONArray("data");
+                            cachedTradeBook = data != null ? data : new JSONArray();
+                            lastTradeBookFetchTime = System.currentTimeMillis();
+                        }
+                    } catch (Exception e) {
+                        log.error("❌ Failed to fetch Trade Book: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+        return cachedTradeBook;
+    }
+
     public boolean evaluateAndClose(List<Orders> groupLegs, String strategyKey, SmartConnect connection) {
         if (groupLegs == null || groupLegs.isEmpty()) {
             return false;
@@ -84,7 +105,6 @@ public class MonitorOrderService {
             }
         }
 
-        // ---- 1. Price each leg, compute combined PnL (Always runs so UI can see live PnL) ----
         BigDecimal combinedGroupPnL = BigDecimal.ZERO;
         boolean allLegsPriced = true;
 
@@ -95,7 +115,7 @@ public class MonitorOrderService {
                 ExchangeType exchangeType = mapExchangeToType(leg.getExchange());
 
                 if (leg.getToken() == null || leg.getToken().isBlank()) {
-                    log.error("❌ [MONITOR] Leg {} ({}) has NO TOKEN — cannot price.", leg.getId(), leg.getSymbol());
+                    log.error("❌ [MONITOR] Leg {} has NO TOKEN — cannot price.", leg.getId());
                 } else if (exchangeType != null) {
                     webSocketService.subscribe(exchangeType, leg.getToken());
                     currentLtp = webSocketService.getLatestLTP(exchangeType, leg.getToken());
@@ -103,17 +123,14 @@ public class MonitorOrderService {
 
                 if (currentLtp == null || currentLtp.compareTo(BigDecimal.ZERO) == 0) {
                     if (activeConnection == null) {
-                        try {
-                            activeConnection = angelOne.signIn();
-                        } catch (Exception e) {
-                            log.error("❌ [MONITOR] Broker auth failed for {}: {}", strategyKey, e.getMessage());
-                        }
+                        try { activeConnection = angelOne.signIn(); } catch (Exception ignored) {}
                     }
                     if (activeConnection != null) {
                         currentLtp = angelOneService.getcurrentPrice(activeConnection, leg.getExchange(), leg.getSymbol(), leg.getToken());
                     }
                 }
 
+                // Resolves the true unblended broker execution price from TradeBook
                 BigDecimal entryPrice = isLiveTrade(leg)
                         ? resolveLiveEntryPrice(leg, activeConnection)
                         : leg.getAskPrice();
@@ -122,8 +139,8 @@ public class MonitorOrderService {
                         && entryPrice != null && entryPrice.compareTo(BigDecimal.ZERO) > 0) {
                     boolean isShort = isShortPosition(leg, config);
                     BigDecimal pointsDiff = isShort
-                            ? entryPrice.subtract(currentLtp)   // Sell math
-                            : currentLtp.subtract(entryPrice);  // Buy math
+                            ? entryPrice.subtract(currentLtp)
+                            : currentLtp.subtract(entryPrice);
                     legPnL = pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
                 } else {
                     allLegsPriced = false;
@@ -137,24 +154,19 @@ public class MonitorOrderService {
             liveUiCachePnL.put(leg.getId(), legPnL);
         }
 
-        // 🛑 MASTER TOGGLE: IF FLAG IS 'N', TURN OFF ALL RISK FUNCTIONS 🛑
-        // PnL was calculated above for the UI, but we exit immediately before enforcing ANY rules.
+        // 🛑 MASTER TOGGLE: IF FLAG IS 'N', TURN OFF ALL RISK FUNCTIONS
         if (config == null || !SMART_RISK_ACTIVE.equalsIgnoreCase(config.getSmartRiskFlag())) {
             return false;
         }
 
-        // ---- 2. Hard ceilings: max loss / target profit ----
         Orders primaryLeg = groupLegs.get(0);
         BigDecimal totalQuantity = groupLegs.stream()
-                .map(Orders::getQuantity)
-                .filter(Objects::nonNull)
-                .map(BigDecimal::valueOf)
+                .map(Orders::getQuantity).filter(Objects::nonNull).map(BigDecimal::valueOf)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal maxLossThreshold = config.getMaxLossLimit();
         BigDecimal targetProfitThreshold = config.getTargetProfit();
 
-        // Fallback to Orders table if config doesn't have them
         if (maxLossThreshold == null && primaryLeg.getSl() != null && primaryLeg.getSl().compareTo(BigDecimal.ZERO) > 0) {
             maxLossThreshold = primaryLeg.getSl().multiply(totalQuantity).negate();
         }
@@ -175,19 +187,16 @@ public class MonitorOrderService {
             }
         }
 
-        // ---- 3. Velocity panic drop ----
         BigDecimal velocityDrop = config.getVelocityPanicDrop();
         if (velocityDrop != null && velocityDrop.compareTo(BigDecimal.ZERO) > 0) {
             if (!allLegsPriced) {
-                log.debug("⚠️ [MONITOR] {} | Skipping velocity check this tick - incomplete pricing.", strategyKey);
+                log.debug("⚠️ [MONITOR] {} | Skipping velocity check this tick.", strategyKey);
             } else {
                 BigDecimal lastPnl = lastPnlSnapshot.get(strategyKey);
                 if (lastPnl != null) {
                     BigDecimal drop = lastPnl.subtract(combinedGroupPnL);
                     if (drop.compareTo(velocityDrop) >= 0) {
                         int streak = panicStreak.merge(strategyKey, 1, Integer::sum);
-                        log.warn("⚡ [MONITOR] {} | Velocity drop detected: {} pts (streak {}/2)",
-                                strategyKey, drop.setScale(2, RoundingMode.HALF_UP), streak);
                         if (streak >= 2) {
                             panicStreak.remove(strategyKey);
                             lastPnlSnapshot.remove(strategyKey);
@@ -201,7 +210,6 @@ public class MonitorOrderService {
             }
         }
 
-        // ---- 4. HWM tracking ----
         BigDecimal peakPnL = highWaterMarks.get(strategyKey);
         if (peakPnL == null) {
             peakPnL = config.getCurrentPeakPnl() != null ? config.getCurrentPeakPnl() : combinedGroupPnL;
@@ -215,7 +223,6 @@ public class MonitorOrderService {
             riskConfigRepository.save(config);
         }
 
-        // ---- 5. Milestone / breakeven-floor protection ----
         if (targetProfitThreshold != null && config.getMilestonePercent() != null && config.getBreakevenFloor() != null) {
             BigDecimal milestoneActivation = targetProfitThreshold.multiply(config.getMilestonePercent());
             if (peakPnL.compareTo(milestoneActivation) >= 0) {
@@ -225,7 +232,6 @@ public class MonitorOrderService {
             }
         }
 
-        // ---- 6. Trailing / rubber-band drawdown ----
         BigDecimal activation = config.getTrailingActivation();
         BigDecimal drawdownPct = config.getTrailingDrawdownPct();
 
@@ -245,8 +251,6 @@ public class MonitorOrderService {
                 activeTrailingFloors.put(strategyKey, dynamicFloor);
                 config.setCurrentTrailingFloor(dynamicFloor);
                 riskConfigRepository.save(config);
-                log.info("📈 [MONITOR] {} | Peak: {} | Trailing floor raised to: {}",
-                        strategyKey, peakPnL.setScale(2, RoundingMode.HALF_UP), dynamicFloor.setScale(2, RoundingMode.HALF_UP));
             }
 
             BigDecimal currentFloor = activeTrailingFloors.get(strategyKey);
@@ -259,55 +263,54 @@ public class MonitorOrderService {
     }
 
     /**
-     * ONE-TIME reconciliation per live leg (runs once, then cached in-memory).
+     * Fetch TRUE execution price matching the exact orderID from the TRADE BOOK.
+     * Automatically handles partial fills by calculating weighted average fill price.
      */
     private BigDecimal resolveLiveEntryPrice(Orders leg, SmartConnect connection) {
         BigDecimal cached = reconciledEntryPriceCache.get(leg.getId());
-        if (cached != null) {
-            return cached;
-        }
+        if (cached != null) return cached;
 
         BigDecimal dbAskPrice = leg.getAskPrice();
         BigDecimal resolvedPrice = dbAskPrice != null ? dbAskPrice : BigDecimal.ZERO;
 
-        if (connection == null) {
-            return resolvedPrice;
-        }
+        if (connection == null || leg.getOrderid() == null) return resolvedPrice;
 
         try {
-            JSONObject positionResponse = connection.getPosition();
-            if (positionResponse != null && positionResponse.optBoolean("status", false)) {
-                JSONArray positions = positionResponse.optJSONArray("data");
-                if (positions != null) {
-                    for (int i = 0; i < positions.length(); i++) {
-                        JSONObject pos = positions.getJSONObject(i);
-                        if (leg.getToken() != null
-                                && leg.getToken().equals(pos.optString("symboltoken"))) {
+            JSONArray trades = getTradeBookDebounced(connection);
+            if (trades != null && trades.length() > 0) {
+                BigDecimal totalValue = BigDecimal.ZERO;
+                int totalQty = 0;
 
-                            String avgPriceStr = pos.optString("avgnetprice",
-                                    pos.optString("averageprice", "0"));
-                            BigDecimal brokerPrice = new BigDecimal(avgPriceStr);
+                for (int i = 0; i < trades.length(); i++) {
+                    JSONObject trade = trades.getJSONObject(i);
+                    String tOrderId = trade.optString("orderid", trade.optString("order_id"));
 
-                            if (brokerPrice.compareTo(BigDecimal.ZERO) > 0) {
-                                if (dbAskPrice == null || brokerPrice.compareTo(dbAskPrice) != 0) {
-                                    log.warn(
-                                            "🚨 [PNL-DISCREPANCY] Leg {} ({}) | DB askPrice={} != Broker fill={} | "
-                                                    + "Live orders must match - correcting Orders.askPrice to broker value.",
-                                            leg.getId(), leg.getSymbol(), dbAskPrice, brokerPrice);
+                    if (leg.getOrderid().equals(tOrderId)) {
+                        String priceStr = trade.optString("fillprice", trade.optString("average_price", trade.optString("averageprice", "0")));
+                        String qtyStr = trade.optString("fillsize", trade.optString("quantity", "0"));
 
-                                    correctAskPriceInDb(leg, brokerPrice);
-                                }
-                                resolvedPrice = brokerPrice;
-                            }
-                            break;
-                        }
+                        BigDecimal fillPrice = new BigDecimal(priceStr);
+                        int fillQty = Integer.parseInt(qtyStr);
+
+                        totalValue = totalValue.add(fillPrice.multiply(BigDecimal.valueOf(fillQty)));
+                        totalQty += fillQty;
                     }
                 }
+
+                if (totalQty > 0) {
+                    BigDecimal brokerPrice = totalValue.divide(BigDecimal.valueOf(totalQty), 2, RoundingMode.HALF_UP);
+
+                    if (dbAskPrice == null || brokerPrice.compareTo(dbAskPrice) != 0) {
+                        log.info("✅ [PNL-SYNC] Leg {} | DB AskPrice: {} -> Real Broker Fill (TradeBook): {}",
+                                leg.getSymbol(), dbAskPrice, brokerPrice);
+                        correctAskPriceInDb(leg, brokerPrice);
+                    }
+                    resolvedPrice = brokerPrice;
+                    reconciledEntryPriceCache.put(leg.getId(), resolvedPrice);
+                }
             }
-            reconciledEntryPriceCache.put(leg.getId(), resolvedPrice);
         } catch (Exception e) {
-            log.error("❌ [MONITOR] Could not fetch broker position for leg {} - falling back to DB askPrice: {}",
-                    leg.getId(), e.getMessage());
+            log.error("❌ [MONITOR] Could not reconcile entry price for leg {}: {}", leg.getId(), e.getMessage());
         }
 
         return resolvedPrice;
@@ -317,9 +320,6 @@ public class MonitorOrderService {
     public void correctAskPriceInDb(Orders leg, BigDecimal brokerPrice) {
         leg.setAskPrice(brokerPrice);
         ordersRepository.save(leg);
-        log.info(
-                "✅ [PNL-SYNC] Leg {} ({}) | Orders.askPrice updated to broker executed price {} | PnL will now be in sync with broker.",
-                leg.getId(), leg.getSymbol(), brokerPrice);
     }
 
     private boolean closeGroup(List<Orders> group, String strategyKey, String exitReason,
@@ -328,21 +328,16 @@ public class MonitorOrderService {
         log.warn("====================================================");
         log.warn("🛑 [MONITOR] STRATEGY LIQUIDATED: {}", strategyKey);
         log.warn("🛑 Reason     : {}", exitReason);
-        log.warn("🛑 Final PnL  : {}", closurePnL.setScale(2, RoundingMode.HALF_UP));
-        log.warn("🛑 Leg Count  : {}", group.size());
         log.warn("====================================================");
 
         SmartConnect connection = backupConnection;
         try {
-            if (connection == null) {
-                connection = angelOne.signIn();
-            }
+            if (connection == null) connection = angelOne.signIn();
         } catch (Exception e) {
-            log.error("❌ [MONITOR] Broker auth failed during close for {}: {}", strategyKey, e.getMessage());
+            log.error("❌ [MONITOR] Broker auth failed during close: {}", e.getMessage());
         }
 
-        int closedCount = 0;
-        BigDecimal totalRupeePnL = BigDecimal.ZERO;
+        Map<Long, String> exitOrderIds = new HashMap<>();
 
         for (Orders leg : group) {
             leg.setTradePhase(PHASE_EXIT_IN_PROGRESS);
@@ -358,8 +353,6 @@ public class MonitorOrderService {
                 exitToken.setExch_seg(leg.getExchange());
                 exitToken.setQuantity(leg.getQuantity());
                 exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
-
-                // Exact DB alignment
                 exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD);
                 exitToken.setVariety(Constants.VARIETY_NORMAL);
 
@@ -374,24 +367,16 @@ public class MonitorOrderService {
                         if (response != null && response.getOrderId() != null) {
                             log.info("   -> ✅ [MONITOR] Live leg exited | {} | OrderID: {}", leg.getSymbol(), response.getOrderId());
                             orderPlaced = true;
+                            exitOrderIds.put(leg.getId(), response.getOrderId());
                         } else {
                             throw new SmartAPIException("Empty Order ID");
                         }
                     } catch (Exception | SmartAPIException e) {
                         attempt++;
-                        log.error("   -> ⚠️ [MONITOR] Exit failed for {} (attempt {}/3): {}", leg.getSymbol(), attempt, e.getMessage());
                         if (attempt >= 3) break;
-                        try {
-                            Thread.sleep(backoff);
-                            backoff *= 2;
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
+                        try { Thread.sleep(backoff); backoff *= 2; } catch (InterruptedException ie) { break; }
                     }
                 }
-            } else if (!isLiveTrade) {
-                log.info("   -> 📝 [MONITOR] Paper leg simulated | {}", leg.getSymbol());
             }
 
             if (!orderPlaced) {
@@ -400,10 +385,8 @@ public class MonitorOrderService {
                 continue;
             }
 
+            // Fallback Mathematical Exit (Used only if real broker sync fails)
             BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO);
-            liveUiCachePnL.remove(leg.getId());
-            reconciledEntryPriceCache.remove(leg.getId());
-
             BigDecimal calculatedExitPrice = leg.getAskPrice() != null ? leg.getAskPrice() : BigDecimal.ZERO;
             if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
                 BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
@@ -414,19 +397,82 @@ public class MonitorOrderService {
                 calculatedExitPrice = calculatedExitPrice.setScale(2, RoundingMode.HALF_UP);
             }
 
+            liveUiCachePnL.remove(leg.getId());
+            reconciledEntryPriceCache.remove(leg.getId());
+
             leg.setActive(0);
             leg.setStatus(STATUS_CLOSED);
             leg.setTradePhase(PHASE_EXIT);
             leg.setClosedOn(LocalDateTime.now(MARKET_ZONE));
             leg.setExitReason(exitReason);
             leg.setPl(finalLegPnL);
-            if (calculatedExitPrice.compareTo(BigDecimal.ZERO) > 0) {
-                leg.setExitPrice(calculatedExitPrice);
-            }
-            ordersRepository.save(leg);
+            leg.setExitPrice(calculatedExitPrice);
+        }
 
-            totalRupeePnL = totalRupeePnL.add(finalLegPnL);
-            closedCount++;
+        // ---- POST-EXIT REAL BROKER RECONCILIATION VIA TRADE BOOK ----
+        if (!exitOrderIds.isEmpty() && connection != null) {
+            try {
+                log.info("⏳ Waiting 1.5s for broker to fill exit market orders...");
+                Thread.sleep(1500);
+
+                lastTradeBookFetchTime = 0; // Force refresh
+                JSONArray trades = getTradeBookDebounced(connection);
+
+                if (trades != null && trades.length() > 0) {
+                    for (Orders leg : group) {
+                        String eOrderId = exitOrderIds.get(leg.getId());
+                        if (eOrderId != null) {
+                            BigDecimal totalExitValue = BigDecimal.ZERO;
+                            int totalExitQty = 0;
+
+                            for (int i = 0; i < trades.length(); i++) {
+                                JSONObject trade = trades.getJSONObject(i);
+                                String tOrderId = trade.optString("orderid", trade.optString("order_id"));
+
+                                if (eOrderId.equals(tOrderId)) {
+                                    String priceStr = trade.optString("fillprice", trade.optString("average_price", trade.optString("averageprice", "0")));
+                                    String qtyStr = trade.optString("fillsize", trade.optString("quantity", "0"));
+
+                                    BigDecimal fillPrice = new BigDecimal(priceStr);
+                                    int fillQty = Integer.parseInt(qtyStr);
+
+                                    totalExitValue = totalExitValue.add(fillPrice.multiply(BigDecimal.valueOf(fillQty)));
+                                    totalExitQty += fillQty;
+                                }
+                            }
+
+                            if (totalExitQty > 0) {
+                                BigDecimal brokerExit = totalExitValue.divide(BigDecimal.valueOf(totalExitQty), 2, RoundingMode.HALF_UP);
+                                leg.setExitPrice(brokerExit);
+
+                                boolean isShort = isShortPosition(leg, config);
+                                BigDecimal realPointsDiff = isShort
+                                        ? leg.getAskPrice().subtract(brokerExit)
+                                        : brokerExit.subtract(leg.getAskPrice());
+                                BigDecimal realPnL = realPointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
+
+                                leg.setPl(realPnL);
+                                log.info("🎯 [REAL-EXIT] Leg {} synced to broker exit: {} | True PnL: {}",
+                                        leg.getSymbol(), brokerExit, realPnL);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("❌ Failed real exit reconciliation: {}", e.getMessage());
+            }
+        }
+
+        // FINAL DB SAVE AND TELEGRAM
+        int closedCount = 0;
+        BigDecimal totalRupeePnL = BigDecimal.ZERO;
+
+        for (Orders leg : group) {
+            if (leg.getStatus().equals(STATUS_CLOSED)) {
+                ordersRepository.save(leg);
+                totalRupeePnL = totalRupeePnL.add(leg.getPl() != null ? leg.getPl() : BigDecimal.ZERO);
+                closedCount++;
+            }
         }
 
         highWaterMarks.remove(strategyKey);
@@ -449,15 +495,9 @@ public class MonitorOrderService {
     }
 
     private boolean isShortPosition(Orders leg, RiskConfiguration config) {
-        if (config != null && config.getStrategyType() != null) {
-            return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
-        }
-        if (leg.getType() != null && !leg.getType().isBlank()) {
-            return "SELL".equalsIgnoreCase(leg.getType());
-        }
-        if (leg.getSignal() != null && leg.getSignal().toUpperCase().contains("SHORT")) {
-            return true;
-        }
+        if (config != null && config.getStrategyType() != null) return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
+        if (leg.getType() != null && !leg.getType().isBlank()) return "SELL".equalsIgnoreCase(leg.getType());
+        if (leg.getSignal() != null && leg.getSignal().toUpperCase().contains("SHORT")) return true;
         return false;
     }
 

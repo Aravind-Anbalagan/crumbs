@@ -41,8 +41,8 @@ public class HeikinPsarExecutionService {
     // =========================================================
     // 🛠️ 1. SYSTEM CONFIGURATION & GLOBAL TOGGLES
     // =========================================================
-    private static final String TRADE_MODE = "SCALPING";
-    private static final boolean IS_OPTION_BUYER = true;
+    private static final String TRADE_MODE = "SCALPING"; // "SCALPING" or "TREND_FOLLOWING"
+    private static final boolean IS_OPTION_BUYER = true; // true = Option Buying, false = Option Selling
 
     private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("50.00");
     private static final BigDecimal SCALP_SL_POINTS = new BigDecimal("10.00");
@@ -50,9 +50,9 @@ public class HeikinPsarExecutionService {
     private static final BigDecimal NIFTY_BIG_CANDLE_THRESHOLD = new BigDecimal("25.00");
     private static final BigDecimal CRUDE_BIG_CANDLE_THRESHOLD = new BigDecimal("35.00");
 
-    // NEW: Retracement Percentages (0.50 = 50%, 1.00 = 100%)
     private static final BigDecimal NIFTY_RETRACEMENT_PERCENT = new BigDecimal("0.50");
     private static final BigDecimal CRUDE_RETRACEMENT_PERCENT = new BigDecimal("1.00");
+
     // =========================================================
     // 🏦 2. INSTRUMENT & STATUS CONSTANTS
     // =========================================================
@@ -88,7 +88,7 @@ public class HeikinPsarExecutionService {
     @Autowired private AngelWebSocketService angelWebSocketService;
 
     // =========================================================
-    // 🔥 IN-MEMORY CACHES (Eliminates DB Polling in Fast-Loops)
+    // 🔥 IN-MEMORY CACHES
     // =========================================================
     private final Map<String, Orders> pendingRetracementsCache = new ConcurrentHashMap<>();
     private final Map<String, Orders> activeScalpCache = new ConcurrentHashMap<>();
@@ -98,18 +98,13 @@ public class HeikinPsarExecutionService {
     private final Map<String, Long> subscriptionCooldownCache = new ConcurrentHashMap<>();
     private final Map<String, Long> retracementLastLogCache = new ConcurrentHashMap<>();
 
-    // @PostConstruct
     public void restoreStateOnStartup() {
         try {
             List<Orders> pending = ordersRepository.findByStatusAndActive("PENDING_RETRACEMENT", STATUS_ACTIVE);
-            for (Orders order : pending) {
-                pendingRetracementsCache.put(order.getName(), order);
-            }
+            for (Orders order : pending) pendingRetracementsCache.put(order.getName(), order);
 
             List<Orders> openTrades = ordersRepository.findByStatusAndActive(STATUS_OPEN, STATUS_ACTIVE);
-            for (Orders order : openTrades) {
-                activeScalpCache.put(order.getName(), order);
-            }
+            for (Orders order : openTrades) activeScalpCache.put(order.getName(), order);
 
             logger.info("✅ Restored Pending={} Active={}", pending.size(), openTrades.size());
         } catch (Exception e) {
@@ -175,7 +170,6 @@ public class HeikinPsarExecutionService {
     // =========================================================
     // 🧠 THE BRAIN: 5-MIN CANDLE EVALUATION (ENTRIES & EXITS)
     // =========================================================
-
     private void evaluateAndExecuteTrade(Vix latestCandle, Strategy strategy) {
         if (latestCandle == null || strategy == null) return;
 
@@ -191,7 +185,7 @@ public class HeikinPsarExecutionService {
         boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 20));
 
         // ---------------------------------------------------------
-        // PHASE 1: EVALUATE OPEN TRADES (EOD / TREND REVERSAL EXITS)
+        // PHASE 1: EVALUATE OPEN TRADES
         // ---------------------------------------------------------
         Orders openTrade = ordersRepository.findByNameAndActive(tradeName, STATUS_ACTIVE);
 
@@ -209,9 +203,9 @@ public class HeikinPsarExecutionService {
                 if (currentSignal != null && !"NONE".equalsIgnoreCase(currentSignal)) {
                     boolean isReversal = IS_OPTION_BUYER
                             ? ("CE".equalsIgnoreCase(openTrade.getOptionType()) && "SELL".equalsIgnoreCase(currentSignal))
-                              || ("PE".equalsIgnoreCase(openTrade.getOptionType()) && "BUY".equalsIgnoreCase(currentSignal))
+                            || ("PE".equalsIgnoreCase(openTrade.getOptionType()) && "BUY".equalsIgnoreCase(currentSignal))
                             : ("CE".equalsIgnoreCase(openTrade.getOptionType()) && "BUY".equalsIgnoreCase(currentSignal))
-                              || ("PE".equalsIgnoreCase(openTrade.getOptionType()) && "SELL".equalsIgnoreCase(currentSignal));
+                            || ("PE".equalsIgnoreCase(openTrade.getOptionType()) && "SELL".equalsIgnoreCase(currentSignal));
 
                     if (isReversal) {
                         logger.info("🔄 [{}][EXIT] Trend Reversal detected. Closing position.", tradeName);
@@ -232,14 +226,13 @@ public class HeikinPsarExecutionService {
         String currentSignal = latestCandle.getSignal();
         if (currentSignal == null || "NONE".equalsIgnoreCase(currentSignal)) return;
 
-        // 🧹 SIGNAL-BASED EXPIRY: CLEAN UP STALE RETRACEMENTS
         Orders stalePendingOrder = ordersRepository.findByNameAndStatusAndActive(tradeName, "PENDING_RETRACEMENT", STATUS_ACTIVE);
 
         if (stalePendingOrder != null) {
             String pendingDirection = stalePendingOrder.getType();
             if (!currentSignal.equalsIgnoreCase(pendingDirection)) {
-                logger.warn("🚫 [{}][OVERRIDE] Trend Reversed to {}! Abandoning old retracement waiting at ₹{}. Marking as FAILED.",
-                            tradeName, currentSignal, stalePendingOrder.getTargetSpotPrice());
+                logger.warn("🚫 [{}][OVERRIDE] Trend Reversed to {}! Abandoning old retracement. Marking as FAILED.",
+                        tradeName, currentSignal);
 
                 stalePendingOrder.setStatus("FAILED_NEW_SIGNAL");
                 stalePendingOrder.setActive(STATUS_INACTIVE);
@@ -247,56 +240,42 @@ public class HeikinPsarExecutionService {
 
                 pendingRetracementsCache.remove(tradeName);
                 retracementLastLogCache.remove(tradeName);
-
                 if (telegramService != null) telegramService.sendMessage(String.format("🚫 **[%s] RETRACEMENT ABORTED**\nNew %s signal formed.", tradeName, currentSignal));
             } else {
-                logger.info("⏳ [{}][WAITING] Still waiting for {} retracement to ₹{}. Trend unchanged.",
-                            tradeName, currentSignal, stalePendingOrder.getTargetSpotPrice());
-                return;
+                return; // Still waiting for valid retracement
             }
         }
 
-        // 🛡️ OVERTRADING GUARD
         if (!canEnterNewTrade(tradeName, currentSignal)) return;
 
-     // 🚀 ADAPTIVE ENTRY LOGIC: BIG vs SMALL CANDLE
         BigDecimal open = latestCandle.getOpen();
         BigDecimal close = latestCandle.getClose();
         BigDecimal bodySize = close.subtract(open).abs();
 
-        // 🛡️ SAFELY CHECKING USING .contains() INSTEAD OF .equalsIgnoreCase()
         BigDecimal threshold = baseSymbol.contains("NIFTY") ? NIFTY_BIG_CANDLE_THRESHOLD : CRUDE_BIG_CANDLE_THRESHOLD;
         boolean isBigCandle = bodySize.compareTo(threshold) >= 0;
 
         if (isBigCandle) {
-            // Determine retracement percentage using .contains()
-            BigDecimal retracementPercent = baseSymbol.contains("NIFTY") 
-                    ? NIFTY_RETRACEMENT_PERCENT 
-                    : CRUDE_RETRACEMENT_PERCENT;
-            
-            // Calculate the discount using the specific percentage
+            BigDecimal retracementPercent = baseSymbol.contains("NIFTY") ? NIFTY_RETRACEMENT_PERCENT : CRUDE_RETRACEMENT_PERCENT;
             BigDecimal retracementDiscount = bodySize.multiply(retracementPercent);
-            
+
             BigDecimal targetSpotPrice = "BUY".equalsIgnoreCase(currentSignal)
                     ? close.subtract(retracementDiscount)
                     : close.add(retracementDiscount);
 
-            logger.info("⚡ [{}][BIG CANDLE] Body: {} pts >= Threshold ({} pts). Entering Retracement Mode ({}%). Target Spot: ₹{}",
-                        tradeName, bodySize, threshold, retracementPercent.multiply(new BigDecimal("100")), targetSpotPrice);
+            logger.info("⚡ [{}][BIG CANDLE] Body: {} pts >= Threshold. Entering Retracement Mode ({}%). Target Spot: ₹{}",
+                    tradeName, bodySize, retracementPercent.multiply(new BigDecimal("100")), targetSpotPrice);
 
             savePendingRetracementOrder(strategy, latestCandle, currentSignal, targetSpotPrice, tradeName);
         } else {
-            logger.info("🚀 [{}][SMALL CANDLE] Body: {} pts < Threshold. Quiet breakout detected. Executing INSTANT Market Order!",
-                        tradeName, bodySize);
-
+            logger.info("🚀 [{}][SMALL CANDLE] Executing INSTANT Market Order!", tradeName);
             executeInstantAtmOrder(strategy, currentSignal, tradeName);
         }
     }
 
     // =========================================================
-    // ⚡ FAST-LOOPS (Triggered by Scheduler - CACHE BASED)
+    // ⚡ FAST-LOOPS (Triggered by Scheduler)
     // =========================================================
-
     @Transactional
     public void monitorPendingRetracements() {
         if (pendingRetracementsCache.isEmpty()) return;
@@ -309,22 +288,15 @@ public class HeikinPsarExecutionService {
             if (order.getCreatedOn() != null) {
                 long waitedMinutes = java.time.Duration.between(order.getCreatedOn(), nowIst).toMinutes();
                 if (waitedMinutes >= RETRACEMENT_TIMEOUT_MINUTES) {
-                    logger.warn("⌛ [{}][TIMEOUT] Retracement target ₹{} not reached after {} min. Abandoning.",
-                                tradeName, order.getTargetSpotPrice(), waitedMinutes);
                     expirePendingRetracement(order, "FAILED_TIMEOUT",
                             String.format("⌛ **[%s] RETRACEMENT TIMED OUT**\nWaited %d min, target ₹%.2f was never reached.",
-                                          tradeName, waitedMinutes, order.getTargetSpotPrice()));
+                                    tradeName, waitedMinutes, order.getTargetSpotPrice()));
                     continue;
                 }
             }
 
             BigDecimal liveSpotPrice = chartService.getCurrentPrice(tradeName);
-
-            if (liveSpotPrice == null || liveSpotPrice.compareTo(BigDecimal.ZERO) == 0) {
-                logger.debug("⏳ [{}][WAITING] Live spot price unavailable this cycle. Still scanning for target ₹{}.",
-                             tradeName, order.getTargetSpotPrice());
-                continue;
-            }
+            if (liveSpotPrice == null || liveSpotPrice.compareTo(BigDecimal.ZERO) == 0) continue;
 
             boolean isBuyTriggered = "BUY".equalsIgnoreCase(order.getType()) && liveSpotPrice.compareTo(order.getTargetSpotPrice()) <= 0;
             boolean isSellTriggered = "SELL".equalsIgnoreCase(order.getType()) && liveSpotPrice.compareTo(order.getTargetSpotPrice()) >= 0;
@@ -333,35 +305,19 @@ public class HeikinPsarExecutionService {
                 pendingRetracementsCache.remove(tradeName);
                 retracementLastLogCache.remove(tradeName);
 
-                logger.info("🎯 [{}][FILLED] Retracement target (₹{}) reached at live price ₹{}! Firing ATM Market Order.",
-                            tradeName, order.getTargetSpotPrice(), liveSpotPrice);
-
                 String baseSymbol = getBaseSymbol(tradeName);
                 Strategy strategyConfig = "NIFTY".equalsIgnoreCase(baseSymbol) ? getStrategyCached(NIFTY) : getStrategyCached(SAMCO_CRUDEOIL);
 
-                if (strategyConfig == null) {
-                    logger.error("❌ [{}][FILLED] Strategy not found — cannot execute order despite target hit.", tradeName);
-                    continue;
-                }
+                if (strategyConfig == null) continue;
 
                 BigDecimal finalLivePremium = getCurrentOptionPremium(baseSymbol, order.getStrike(), order.getOptionType());
-                if (finalLivePremium != null && finalLivePremium.compareTo(BigDecimal.ZERO) > 0) {
-                    order.setAskPrice(finalLivePremium); 
-                }
+                if (finalLivePremium != null && finalLivePremium.compareTo(BigDecimal.ZERO) > 0) order.setAskPrice(finalLivePremium);
 
                 order.setStatus("PROCESSED_TO_OPEN");
                 order.setActive(STATUS_INACTIVE);
                 ordersRepository.save(order);
 
                 executeInstantAtmOrder(strategyConfig, order.getType(), tradeName);
-            } else {
-                long lastLogged = retracementLastLogCache.getOrDefault(tradeName, 0L);
-                long nowMs = System.currentTimeMillis();
-                if ((nowMs - lastLogged) >= RETRACEMENT_LOG_THROTTLE_MS) {
-                    retracementLastLogCache.put(tradeName, nowMs);
-                    logger.info("⏳ [{}][WAITING] Still scanning for retracement. Live: ₹{} | Target: ₹{} | Direction: {}",
-                                tradeName, liveSpotPrice, order.getTargetSpotPrice(), order.getType());
-                }
             }
         }
     }
@@ -403,13 +359,11 @@ public class HeikinPsarExecutionService {
             BigDecimal pointsGained = currentPremium.subtract(entryPremium);
 
             if (pointsGained.compareTo(SCALP_TARGET_POINTS) >= 0) {
-                logger.info("🎯 [{}][FAST-LOOP] Target Hit! Secured: +{} pts (Current: ₹{})",
-                            openTrade.getName(), pointsGained.setScale(2, RoundingMode.HALF_UP), currentPremium);
+                logger.info("🎯 [{}][FAST-LOOP] Target Hit! Secured: +{} pts", openTrade.getName(), pointsGained);
                 processExit(openTrade, null, "SCALP_TARGET_HIT", strategy);
             }
             else if (pointsGained.compareTo(SCALP_SL_POINTS.negate()) <= 0) {
-                logger.info("🛑 [{}][FAST-LOOP] Stop Loss Hit! Loss: {} pts (Current: ₹{})",
-                            openTrade.getName(), pointsGained.setScale(2, RoundingMode.HALF_UP), currentPremium);
+                logger.info("🛑 [{}][FAST-LOOP] Stop Loss Hit! Loss: {} pts", openTrade.getName(), pointsGained);
                 processExit(openTrade, null, "SCALP_SL_HIT", strategy);
             }
         }
@@ -427,7 +381,6 @@ public class HeikinPsarExecutionService {
         if ("BUY".equalsIgnoreCase(signal)) optionType = IS_OPTION_BUYER ? "CE" : "PE";
         else if ("SELL".equalsIgnoreCase(signal)) optionType = IS_OPTION_BUYER ? "PE" : "CE";
 
-        // 🔥 CRITICAL FIX: Fetch symbol, token, and premium from DB so PENDING_RETRACEMENT is 100% complete
         StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).orElse(null);
         String optionToken = null;
         String optionSymbol = null;
@@ -462,7 +415,6 @@ public class HeikinPsarExecutionService {
         pendingOrder.setStrike(atmStrike);
         pendingOrder.setAskPrice(entryPremium);
 
-        // Calculate Option Buyer SL and Target
         if (entryPremium.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal slPrice = IS_OPTION_BUYER ? entryPremium.subtract(SCALP_SL_POINTS) : entryPremium.add(SCALP_SL_POINTS);
             BigDecimal targetPrice = IS_OPTION_BUYER ? entryPremium.add(SCALP_TARGET_POINTS) : entryPremium.subtract(SCALP_TARGET_POINTS);
@@ -480,25 +432,19 @@ public class HeikinPsarExecutionService {
         pendingRetracementsCache.put(tradeName, savedOrder);
 
         if (telegramService != null) {
-            telegramService.sendMessage(String.format("⚡ **[%s] SCANNING**\nSignal: %s\nTarget Spot: ₹%.2f\nStrike: %.0f\nEst Premium: ₹%.2f\nQty: %d\nWaiting for pullback...", 
-                tradeName, signal, targetSpotPrice, atmStrike, entryPremium, quantity));
+            telegramService.sendMessage(String.format("⚡ **[%s] SCANNING**\nSignal: %s\nTarget Spot: ₹%.2f\nWaiting for pullback...", tradeName, signal, targetSpotPrice));
         }
     }
 
     private void executeInstantAtmOrder(Strategy strategyConfig, String signal, String tradeName) {
         BigDecimal liveSpotPrice = chartService.getCurrentPrice(strategyConfig.getName());
-        if (liveSpotPrice == null) {
-            logger.warn("Live spot price unavailable for {}", strategyConfig.getName());
-            return;
-        }
+        if (liveSpotPrice == null) return;
+
         String baseSymbol = getBaseSymbol(strategyConfig.getName());
         BigDecimal atmStrike = calculateAtmStrike(baseSymbol, liveSpotPrice);
 
         StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).orElse(null);
-        if (optionData == null) {
-            logger.error("❌ [{}] No Option Data found for Symbol: {} | Strike: {}", tradeName, baseSymbol, atmStrike);
-            return;
-        }
+        if (optionData == null) return;
 
         String orderType = IS_OPTION_BUYER ? "BUY" : "SELL";
         String optionType = "BUY".equalsIgnoreCase(signal) ? (IS_OPTION_BUYER ? "CE" : "PE") : (IS_OPTION_BUYER ? "PE" : "CE");
@@ -510,18 +456,10 @@ public class HeikinPsarExecutionService {
         if (entryPremium == null || entryPremium.compareTo(BigDecimal.ZERO) == 0) {
             entryPremium = "CE".equalsIgnoreCase(optionType) ? optionData.getCePrice() : optionData.getPePrice();
         }
+        if (entryPremium == null) return;
 
-        if (entryPremium == null) {
-            logger.error("❌ [{}] No entry premium available (live or DB fallback both null). Aborting entry.", tradeName);
-            return;
-        }
-
-        // 🔥 CRITICAL FIX: Safe lot size extraction guaranteeing 65 for Nifty and 100 for Crude Oil
         int quantity = getLotSize(baseSymbol, strategyConfig);
         String exchange = strategyConfig.getExchange() != null ? strategyConfig.getExchange() : ("NIFTY".equalsIgnoreCase(baseSymbol) ? "NFO" : "MCX");
-
-        logger.info("🚀 [{}][EXECUTE] Opening {} {} | Spot: {} | Strike: {} | Qty: {} | Premium: ₹{}",
-                    tradeName, orderType, optionType, liveSpotPrice, atmStrike, quantity, entryPremium);
 
         boolean isLive = "Y".equalsIgnoreCase(strategyConfig.getLive());
         Orders order = null;
@@ -531,23 +469,21 @@ public class HeikinPsarExecutionService {
             t.setToken(optionToken);
             t.setSymbol(optionSymbol);
             t.setStrike(atmStrike);
-            t.setName(strategyConfig.getName()); // RESTORED: Pass master strategy name to OrderService
+            t.setName(strategyConfig.getName());
             t.setExch_seg(exchange);
             t.setQuantity(quantity);
 
             if (isLive) {
                 orderService.orderPlaceWithToken(t, strategyConfig.getName(), orderType, true);
                 order = ordersRepository.findByNameAndTokenAndActive(strategyConfig.getName(), optionToken, STATUS_ACTIVE).orElse(null);
-                if (order == null) {
-                    order = ordersRepository.findByNameAndTokenAndActive(tradeName, optionToken, STATUS_ACTIVE).orElse(null);
-                }
+                if (order == null) order = ordersRepository.findByNameAndTokenAndActive(tradeName, optionToken, STATUS_ACTIVE).orElse(null);
             }
 
-            if (order == null) {
-                order = new Orders();
-            }
+            if (order == null) order = new Orders();
 
-            // 🔥 CRITICAL FIX: Unconditionally set EVERY single column regardless of whether order was found or new
+            // ✅ PAPER TRADE FIX: Apply "1" marker if paper trade
+            if (!isLive) order.setOrderid("1");
+
             order.setToken(optionToken);
             order.setSymbol(optionSymbol);
             order.setExchange(exchange);
@@ -561,7 +497,6 @@ public class HeikinPsarExecutionService {
             order.setAskPrice(entryPremium);
             order.setStrike(atmStrike);
 
-            // Option Buyer specific Target and Stop Loss calculations
             if (entryPremium.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal slPrice = IS_OPTION_BUYER ? entryPremium.subtract(SCALP_SL_POINTS) : entryPremium.add(SCALP_SL_POINTS);
                 BigDecimal targetPrice = IS_OPTION_BUYER ? entryPremium.add(SCALP_TARGET_POINTS) : entryPremium.subtract(SCALP_TARGET_POINTS);
@@ -573,20 +508,18 @@ public class HeikinPsarExecutionService {
             order.setStatus(STATUS_OPEN);
             order.setTradePhase(PHASE_ENTRY);
             order.setActive(STATUS_ACTIVE);
-            if (order.getCreatedOn() == null) {
-                order.setCreatedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-            }
+            if (order.getCreatedOn() == null) order.setCreatedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
 
             Orders savedOrder = ordersRepository.save(order);
             activeScalpCache.put(tradeName, savedOrder);
 
             if (telegramService != null) {
-                telegramService.sendMessage(String.format("✅ **[%s] FILLED [%s]**\nSide: %s %s\nStrike: %.0f\nQty: %d\nPremium: ₹%.2f\nSL: ₹%.2f | Target: ₹%.2f", 
-                    TRADE_MODE, (isLive ? "LIVE" : "PAPER"), orderType, optionType, atmStrike, quantity, entryPremium, order.getSl(), order.getTarget()));
+                telegramService.sendMessage(String.format("✅ **[%s] FILLED [%s]**\nSide: %s %s\nStrike: %.0f\nPremium: ₹%.2f",
+                        TRADE_MODE, (isLive ? "LIVE" : "PAPER"), orderType, optionType, atmStrike, entryPremium));
             }
 
         } catch (Exception | SmartAPIException e) {
-            logger.error("❌ Execution Failed {}: {}", tradeName, e.getMessage());
+            logger.error("❌ Execution Failed: {}", e.getMessage());
         }
     }
 
@@ -596,18 +529,32 @@ public class HeikinPsarExecutionService {
 
         try {
             Orders removedFromCache = activeScalpCache.remove(tradeName);
-            if (removedFromCache == null && !STATUS_OPEN.equalsIgnoreCase(openTrade.getStatus())) {
-                return;
-            }
+            if (removedFromCache == null && !STATUS_OPEN.equalsIgnoreCase(openTrade.getStatus())) return;
 
             pendingRetracementsCache.remove(tradeName);
 
-            if (isLive) orderService.exitActiveTradeByToken(openTrade.getToken(), strategyConfig.getName(), tradeName);
+            // ✅ MULTI-STRATEGY TRAP FIX: Explicit Reverse Execution Payload
+            if (isLive) {
+                String reverseType = "BUY".equalsIgnoreCase(openTrade.getType()) ? "SELL" : "BUY";
+                logger.info("🌐 [{}][EXIT] LIVE MODE: Sending explicit {} to close position...", tradeName, reverseType);
+
+                Token exitToken = new Token();
+                exitToken.setSymbol(openTrade.getSymbol());
+                exitToken.setToken(openTrade.getToken());
+                exitToken.setExch_seg(openTrade.getExchange());
+                exitToken.setQuantity(openTrade.getQuantity());
+
+                orderService.orderPlaceWithToken(exitToken, strategyConfig.getName(), reverseType, true);
+            } else {
+                logger.info("📄 [{}][EXIT] PAPER MODE: Simulating broker exit...", tradeName);
+            }
 
             BigDecimal exitPremium = getCurrentOptionPremium(getBaseSymbol(tradeName), openTrade.getStrike(), openTrade.getOptionType());
             if (exitPremium == null) exitPremium = BigDecimal.ZERO;
 
             BigDecimal entryPrice = openTrade.getAskPrice() != null ? openTrade.getAskPrice() : BigDecimal.ZERO;
+
+            // ✅ Dynamic PnL math (Mathematically sound for both Buyers & Sellers)
             BigDecimal pointsCollected = "BUY".equalsIgnoreCase(openTrade.getType())
                     ? exitPremium.subtract(entryPrice) : entryPrice.subtract(exitPremium);
 
@@ -619,15 +566,15 @@ public class HeikinPsarExecutionService {
             openTrade.setClosedOn(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
             openTrade.setTradePhase(PHASE_EXIT);
             openTrade.setStatus(STATUS_CLOSED);
-            openTrade.setActive(STATUS_INACTIVE); 
+            openTrade.setActive(STATUS_INACTIVE);
             openTrade.setExitReason(reason);
 
             ordersRepository.save(openTrade);
 
             String emoji = rupeePnL.signum() >= 0 ? "✅" : "❌";
             if (telegramService != null) {
-                telegramService.sendMessage(String.format("%s **EXIT [%s]: %s**\nReason: %s\nStrike: %.0f\nQty: %d\nEntry: %.2f | Exit: %.2f\nEst. PnL: **₹%.2f**", 
-                    emoji, (isLive ? "LIVE" : "PAPER"), tradeName, reason, openTrade.getStrike(), quantity, entryPrice, exitPremium, rupeePnL));
+                telegramService.sendMessage(String.format("%s **EXIT [%s]: %s**\nReason: %s\nEntry: %.2f | Exit: %.2f\nEst. PnL: **₹%.2f**",
+                        emoji, (isLive ? "LIVE" : "PAPER"), tradeName, reason, entryPrice, exitPremium, rupeePnL));
             }
 
         } catch (Exception | SmartAPIException e) {
@@ -640,9 +587,7 @@ public class HeikinPsarExecutionService {
     // =========================================================
 
     private int getLotSize(String baseSymbol, Strategy strategyConfig) {
-        if (strategyConfig != null && strategyConfig.getQuantity() > 0) {
-            return strategyConfig.getQuantity();
-        }
+        if (strategyConfig != null && strategyConfig.getQuantity() > 0) return strategyConfig.getQuantity();
         if (baseSymbol != null && baseSymbol.contains("NIFTY")) return 65;
         if (baseSymbol != null && baseSymbol.contains("CRUDEOIL")) return 100;
         if (baseSymbol != null && baseSymbol.contains("SENSEX")) return 20;
@@ -657,75 +602,38 @@ public class HeikinPsarExecutionService {
         String lastExitReason = lastOrder.getExitReason();
         String lastTradeDirection = IS_OPTION_BUYER ? ("CE".equalsIgnoreCase(lastOrder.getOptionType()) ? "BUY" : "SELL") : ("CE".equalsIgnoreCase(lastOrder.getOptionType()) ? "SELL" : "BUY");
 
-        if ("SCALP_SL_HIT".equalsIgnoreCase(lastExitReason) && currentSignal.equalsIgnoreCase(lastTradeDirection)) {
+        if (("SCALP_SL_HIT".equalsIgnoreCase(lastExitReason) || "SCALP_TARGET_HIT".equalsIgnoreCase(lastExitReason) || "TREND_REVERSAL".equalsIgnoreCase(lastExitReason))
+                && currentSignal.equalsIgnoreCase(lastTradeDirection)) {
             LocalDateTime closedOn = lastOrder.getClosedOn();
             LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
             if (closedOn != null && closedOn.isAfter(now.minusMinutes(3))) {
-                logger.info("⏳ [{}][BLOCKED] Ignoring {} signal to prevent whipsaw (SL hit on last trade).", tradeName, currentSignal);
+                logger.info("⏳ [{}][BLOCKED] Ignoring {} signal to prevent whipsaw. Waiting 3 mins...", tradeName, currentSignal);
                 return false;
             }
         }
-
-        if ("SCALP_TARGET_HIT".equalsIgnoreCase(lastExitReason) && currentSignal.equalsIgnoreCase(lastTradeDirection)) {
-            LocalDateTime closedOn = lastOrder.getClosedOn();
-            LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-            if (closedOn != null && closedOn.isAfter(now.minusMinutes(3))) {
-                logger.info("⏳ [{}][BLOCKED] Target already secured. Waiting for next signal.", tradeName);
-                return false;
-            }
-        }
-
-        if ("TREND_REVERSAL".equalsIgnoreCase(lastExitReason)) {
-            LocalDateTime closedOn = lastOrder.getClosedOn();
-            LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-            if (closedOn != null && closedOn.isAfter(now.minusMinutes(3))) {
-                logger.info("⏳ [{}][BLOCKED] Trend Reversal exit just processed. Waiting for next candle before entering new direction.", tradeName);
-                return false;
-            }
-        }
-
         return true;
     }
 
     private BigDecimal getCurrentOptionPremium(String baseSymbol, BigDecimal strike, String optionType) {
         StraddleIntraday optionData = straddleRepository.findLatestBySymbolAndStrike(baseSymbol, strike).orElse(null);
-        if (optionData == null) {
-            logger.error("❌ No option tokens found in DB for {} Strike {}", baseSymbol, strike);
-            return null;
-        }
+        if (optionData == null) return null;
 
-        String optionToken;
-        BigDecimal dbFallbackPrice;
-
-        if ("CE".equalsIgnoreCase(optionType)) {
-            optionToken = optionData.getCeToken();
-            dbFallbackPrice = optionData.getCePrice();
-        } else {
-            optionToken = optionData.getPeToken();
-            dbFallbackPrice = optionData.getPePrice();
-        }
-
+        String optionToken = "CE".equalsIgnoreCase(optionType) ? optionData.getCeToken() : optionData.getPeToken();
+        BigDecimal dbFallbackPrice = "CE".equalsIgnoreCase(optionType) ? optionData.getCePrice() : optionData.getPePrice();
         if (optionToken == null || optionToken.isEmpty()) return null;
 
-        ExchangeType exchangeType = "CRUDEOIL".equalsIgnoreCase(baseSymbol) || "NATURALGAS".equalsIgnoreCase(baseSymbol)
-                ? ExchangeType.MCX_FO
-                : ExchangeType.NSE_FO;
-
+        ExchangeType exchangeType = "CRUDEOIL".equalsIgnoreCase(baseSymbol) ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
         BigDecimal livePrice = angelWebSocketService.getLatestLTP(exchangeType, optionToken);
 
         if (livePrice == null || livePrice.compareTo(BigDecimal.ZERO) == 0) {
             String subscriptionKey = exchangeType.name() + "_" + optionToken;
             long now = System.currentTimeMillis();
-            long lastSubscription = subscriptionCooldownCache.getOrDefault(subscriptionKey, 0L);
-
-            if ((now - lastSubscription) > SUBSCRIPTION_RETRY_MS) {
+            if ((now - subscriptionCooldownCache.getOrDefault(subscriptionKey, 0L)) > SUBSCRIPTION_RETRY_MS) {
                 subscriptionCooldownCache.put(subscriptionKey, now);
-                logger.info("📡 [WS-AUTO] Missing LTP. Subscribing {}", subscriptionKey);
                 angelWebSocketService.subscribe(exchangeType, optionToken);
             }
             return dbFallbackPrice;
         }
-
         return livePrice;
     }
 
