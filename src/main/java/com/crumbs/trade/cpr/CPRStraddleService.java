@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import com.crumbs.trade.entity.Orders;
+import com.crumbs.trade.repo.OrderRepository;
+import com.crumbs.trade.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,11 +25,6 @@ import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.CPRRepo;
 import com.crumbs.trade.repo.StrategyRepo;
-import com.crumbs.trade.service.AngelOneService;
-import com.crumbs.trade.service.OrderService;
-import com.crumbs.trade.service.StraddleIntradayService;
-import com.crumbs.trade.service.StraddleMarketDataService;
-import com.crumbs.trade.service.StraddleTokenService;
 import com.crumbs.trade.utility.AppConstant;
 
 @Service
@@ -75,7 +73,10 @@ public class CPRStraddleService {
     @Autowired StraddleTokenService tokenService; 
     @Autowired StraddleMarketDataService marketDataService;
     @Autowired CPRRepo                 cprRepo;
-
+    @Autowired
+    MonitorOrderService monitorOrderService;
+    @Autowired
+    OrderRepository orderRepository;
     // =========================================================================
     // STEP 1 — PLACE STRADDLE  (called once at 09:20 on big-candle days)
     // =========================================================================
@@ -271,55 +272,60 @@ public class CPRStraddleService {
     // =========================================================================
     // STEP 3 — EOD EXIT  (called at 15:20)
     // =========================================================================
+    @org.springframework.transaction.annotation.Transactional
     public void exitAllStraddlePositions() {
         try {
             logger.info("EOD Straddle exit triggered.");
 
-            if (ceLegPlaced.get() && !ceSLHit.get()) {
-                orderService.exitActiveTradeByToken(
-                        atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
-                logger.info("CE leg EOD exit done.");
-            } else if (!ceLegPlaced.get()) {
-                logger.info("CE leg was never placed — skipping.");
-            } else {
-                logger.info("CE leg already closed by SL — skipping.");
+            // 1. Exit the Straddle Variant
+            List<Orders> straddleLegs = orderRepository.findByNameAndStatusForUpdate(AppConstant.CPR_STRADDLE_STRATEGY);
+            if (!straddleLegs.isEmpty()) {
+                monitorOrderService.forceExit(straddleLegs, AppConstant.CPR_STRADDLE_STRATEGY, "EOD_SQUARE_OFF");
+                logger.info("EOD: CPR-STRADDLE successfully closed.");
             }
 
-            if (peLegPlaced.get() && !peSLHit.get()) {
-                orderService.exitActiveTradeByToken(
-                        atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
-                logger.info("PE leg EOD exit done.");
-            } else if (!peLegPlaced.get()) {
-                logger.info("PE leg was never placed — skipping.");
-            } else {
-                logger.info("PE leg already closed by SL — skipping.");
+            // 2. Exit the Base CPR Variant
+            List<Orders> baseCprLegs = orderRepository.findByNameAndStatusForUpdate(AppConstant.CPR_STRATEGY);
+            if (!baseCprLegs.isEmpty()) {
+                monitorOrderService.forceExit(baseCprLegs, AppConstant.CPR_STRATEGY, "EOD_SQUARE_OFF");
+                logger.info("EOD: CPR_STRATEGY successfully closed.");
             }
 
-        } catch (Exception | SmartAPIException e) {
+            ceSLHit.set(true);
+            peSLHit.set(true);
+
+        } catch (Exception e) {
             logger.error("Error during EOD straddle exit", e);
         }
     }
 
     // =========================================================================
-    // EXIT BOTH LEGS
+    // EXIT BOTH LEGS (SL HIT)
     // =========================================================================
-    private void exitBothLegs(String reason) {
-        logger.info("{} — closing both legs.", reason);
+    @org.springframework.transaction.annotation.Transactional
+    public void exitBothLegs(String reason) {
+        logger.info("{} — closing both CPR variants via Master Risk Engine.", reason);
         try {
-            if (ceLegPlaced.get() && !ceSLHit.get()) {
-                orderService.exitActiveTradeByToken(
-                        atmDto.getCeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
-                ceSLHit.set(true);
-                logger.info("CE leg closed.");
+            // 1. Exit the Straddle Variant ("CPR-STRADDLE")
+            List<Orders> straddleLegs = orderRepository.findByNameAndStatusForUpdate(AppConstant.CPR_STRADDLE_STRATEGY);
+            if (!straddleLegs.isEmpty()) {
+                monitorOrderService.forceExit(straddleLegs, AppConstant.CPR_STRADDLE_STRATEGY, reason);
+                logger.info("SL HIT: CPR-STRADDLE successfully closed.");
             }
-            if (peLegPlaced.get() && !peSLHit.get()) {
-                orderService.exitActiveTradeByToken(
-                        atmDto.getPeToken().getToken(), "NIFTY", AppConstant.CPR_STRADDLE_STRATEGY);
-                peSLHit.set(true);
-                logger.info("PE leg closed.");
+
+            // 2. Exit the Base CPR Variant ("CPR_STRATEGY")
+            List<Orders> baseCprLegs = orderRepository.findByNameAndStatusForUpdate(AppConstant.CPR_STRATEGY);
+            if (!baseCprLegs.isEmpty()) {
+                monitorOrderService.forceExit(baseCprLegs, AppConstant.CPR_STRATEGY, reason);
+                logger.info("SL HIT: CPR_STRATEGY successfully closed.");
             }
-        } catch (Exception | SmartAPIException e) {
-            logger.error("Error closing legs on SL trigger", e);
+
+            // Reset flags so the fast-loop knows they are dead
+            ceSLHit.set(true);
+            peSLHit.set(true);
+
+        } catch (Exception e) {
+            logger.error("Error closing CPR legs on SL trigger", e);
         }
     }
 
