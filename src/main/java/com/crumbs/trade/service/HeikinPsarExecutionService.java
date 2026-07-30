@@ -182,12 +182,13 @@ public class HeikinPsarExecutionService {
         String baseSymbol = getBaseSymbol(strategy.getName());
         String tradeName = "HEIKIN_" + baseSymbol;
 
-        boolean isNiftyValid = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 20));
-        boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 20));
-        boolean isNiftySquareOff = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(15, 20));
-        boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 20));
+        // ✅ FIXED TIMES: Stop entering new trades at 15:15 and 23:00
+        boolean isNiftyValid = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 15));
+        boolean isCrudeValid = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(16, 0)) && now.isBefore(LocalTime.of(23, 0));
 
-        // ---------------------------------------------------------
+        // EOD triggers for the 5-min loop backup
+        boolean isNiftySquareOff = instrument.contains("NIFTY") && !now.isBefore(LocalTime.of(15, 15));
+        boolean isCrudeSquareOff = instrument.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 0));// ---------------------------------------------------------
         // PHASE 1: EVALUATE OPEN TRADES
         // ---------------------------------------------------------
         Orders openTrade = ordersRepository.findByNameAndActive(tradeName, STATUS_ACTIVE);
@@ -354,6 +355,22 @@ public class HeikinPsarExecutionService {
     }
 
     private void evaluateScalpExit(Orders openTrade, Strategy strategy) {
+        // ✅ 1. GUARANTEED FAST-LOOP EOD SQUARE-OFF
+        LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+        String tradeName = openTrade.getName();
+
+        if (tradeName.contains("NIFTY") && !now.isBefore(LocalTime.of(15, 15))) {
+            logger.info("🕒 [{}][FAST-LOOP] 3:15 PM Square-off reached.", tradeName);
+            processExit(openTrade, null, "EOD_SQUARE_OFF", strategy);
+            return;
+        }
+        if (tradeName.contains("CRUDEOIL") && !now.isBefore(LocalTime.of(23, 0))) {
+            logger.info("🕒 [{}][FAST-LOOP] 11:00 PM Square-off reached.", tradeName);
+            processExit(openTrade, null, "EOD_SQUARE_OFF", strategy);
+            return;
+        }
+
+        // 2. Existing PnL Logic
         String baseSymbol = getBaseSymbol(openTrade.getName());
         BigDecimal currentPremium = getCurrentOptionPremium(baseSymbol, openTrade.getStrike(), openTrade.getOptionType());
         BigDecimal entryPremium = openTrade.getAskPrice();
