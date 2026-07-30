@@ -26,6 +26,6 @@ public class OptionRecommendation {
     private String smcSignal;
  // 🚀 ADD THESE THREE FIELDS
     private BigDecimal entryPremium;
-    private Double entryDelta;
-    private Double entryIv;
+    private BigDecimal entryDelta;
+    private BigDecimal entryIv;
 }

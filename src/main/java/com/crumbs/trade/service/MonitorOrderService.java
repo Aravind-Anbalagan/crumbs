@@ -526,6 +526,12 @@ public class MonitorOrderService {
         lastPnlSnapshot.remove(strategyKey);
         panicStreak.remove(strategyKey);
 
+        // ✅ ADD THIS: Wipe the Risk Config in the database so the next trade starts fresh!
+        if (config != null) {
+            config.setCurrentPeakPnl(null);
+            config.setCurrentTrailingFloor(null);
+            riskConfigRepository.save(config);
+        }
         if (closedCount > 0) {
             String emoji = totalRupeePnL.signum() >= 0 ? "✅" : "❌";
             telegramService.sendMessage(String.format(
@@ -547,15 +553,19 @@ public class MonitorOrderService {
      * Safely identifies if an order is a Long (Buyer) or Short (Seller) position.
      * Prioritizes the exact execution logic saved to the DB by the strategy.
      */
+    /**
+     * Safely identifies if an order is a Long (Buyer) or Short (Seller) position.
+     * Prioritizes the Master Risk Configuration over everything else.
+     */
     private boolean isShortPosition(Orders leg, RiskConfiguration config) {
-        // Priority 1: Check the strict database "type" written by the strategy engine
-        if (leg.getType() != null && !leg.getType().isBlank()) {
-            return "SELL".equalsIgnoreCase(leg.getType());
+        // ✅ PRIORITY 1: The Master Risk Configuration is the absolute truth!
+        if (config != null && config.getStrategyType() != null && !config.getStrategyType().isBlank()) {
+            return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
         }
 
-        // Priority 2: Fallback to the Risk table config
-        if (config != null && config.getStrategyType() != null) {
-            return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
+        // Priority 2: Fallback to the strict database "type" written by the strategy engine
+        if (leg.getType() != null && !leg.getType().isBlank()) {
+            return "SELL".equalsIgnoreCase(leg.getType());
         }
 
         // Priority 3: Legacy catch-all

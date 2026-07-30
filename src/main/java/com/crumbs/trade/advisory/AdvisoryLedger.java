@@ -7,7 +7,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "advisory_ledger")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -17,48 +18,78 @@ public class AdvisoryLedger {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    // --- Core Identifiers ---
     private String symbol;
 
+    @Column(name = "expiry_date")
     private String expiryDate;
 
-    @Column(nullable = false)
+    // 🚀 THE LAST UPDATE DATE (Updates every single day the cron runs)
     private LocalDateTime timestamp;
 
-    @Column(nullable = false)
-    private String status; // "ACTIVE" or "HISTORY"
+    // --- Technical State ---
+    private String status; // ACTIVE or HISTORY
 
-    // --- Market Snapshot ---
+    @Column(name = "spot_price", precision = 10, scale = 2)
     private BigDecimal spotPrice;
+
+    @Column(name = "daily_trend")
     private String dailyTrend;
+
+    @Column(precision = 10, scale = 2)
     private BigDecimal atr14;
+
+    @Column(name = "india_vix", precision = 10, scale = 2)
     private BigDecimal indiaVix;
+
+    @Column(precision = 10, scale = 2)
     private BigDecimal pcr;
 
-    // --- Samco Walls ---
+    // --- Samco Institutional Walls ---
+    @Column(name = "put_wall_strike", precision = 10, scale = 2)
     private BigDecimal putWallStrike;
-    private Long putWallOi;
+
+    // 🚀 CONVERTED TO BIGDECIMAL
+    @Column(name = "put_wall_oi")
+    private BigDecimal putWallOi;
+
+    @Column(name = "call_wall_strike", precision = 10, scale = 2)
     private BigDecimal callWallStrike;
-    private Long callWallOi;
+
+    // 🚀 CONVERTED TO BIGDECIMAL
+    @Column(name = "call_wall_oi")
+    private BigDecimal callWallOi;
+
+    @Column(name = "max_pain_strike", precision = 10, scale = 2)
     private BigDecimal maxPainStrike;
 
-    // --- Recommended Trade Execution ---
-    private BigDecimal recommendedStrike;
-    private String optionType; // "PE" or "CE"
-    private BigDecimal entryPremium;
-    private Double entryDelta;
-    private Double entryIv;
+    // --- 🚀 THE TRADE DATA (Carried over during MAINTAIN) ---
+    @Column(name = "recommended_strike", precision = 10, scale = 2)
+    private BigDecimal recommendedStrike;   // The specific strike we chose
 
-    // --- Decision State ---
-    @Column(nullable = false)
+    @Column(name = "option_type")
+    private String optionType;              // CE or PE
+
+    @Column(name = "entry_premium", precision = 10, scale = 2)
+    private BigDecimal entryPremium;        // The price of the option when we entered
+
+    @Column(name = "entry_delta", precision = 10, scale = 4)
+    private BigDecimal entryDelta;          // The Delta risk when we entered
+
+    @Column(name = "entry_iv", precision = 10, scale = 2)
+    private BigDecimal entryIv;             // The Implied Volatility when we entered
+
+    // 🚀 THE ORIGINAL ENTRY DATE (Stays exactly the same during MAINTAIN loops)
+    @Column(name = "entry_date")
+    private LocalDateTime entryDate;
+
+    // --- Output & Reasoning ---
+    @Column(name = "action_taken")
     private String actionTaken;
 
     @Column(length = 1000)
     private String reasoning;
-    
- // Inside AdvisoryLedger.java
+
     @Column(name = "smc_signal")
-    private String smcSignal; // Will store "BREAKOUT" or "BREAKDOWN"
-    
-    
+    private String smcSignal; // BREAKOUT or BREAKDOWN
 }

@@ -82,6 +82,12 @@
     flex: 0 0 60%;
 }
 
+/* 🚀 NEW: Allows horizontal scrolling for our new wide columns */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
 .advisory-table {
     width: 100%;
     border-collapse: collapse;
@@ -91,6 +97,7 @@
 .advisory-table th, .advisory-table td {
     padding: 14px 15px;
     border-bottom: 1px solid var(--glass-border);
+    white-space: nowrap; /* Keeps data on one line to prevent tall rows */
 }
 
 .advisory-table th {
@@ -116,6 +123,17 @@
     color: var(--text-muted);
     font-style: italic;
     margin-top: 2rem;
+}
+
+/* 🚀 NEW: Keeps dates and missing data looking clean */
+.timestamp-text, .expiry-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+
+.text-muted {
+    opacity: 0.5;
 }
 
 /* --- BADGES --- */

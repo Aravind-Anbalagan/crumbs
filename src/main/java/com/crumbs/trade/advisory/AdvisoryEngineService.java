@@ -100,11 +100,11 @@ public class AdvisoryEngineService {
         // Record Samco Walls
         if (oiData.putWall() != null) {
             newRecord.setPutWallStrike(oiData.putWall().strike());
-            newRecord.setPutWallOi(oiData.putWall().openInterest());
+            newRecord.setPutWallOi(BigDecimal.valueOf(oiData.putWall().openInterest()));
         }
         if (oiData.callWall() != null) {
             newRecord.setCallWallStrike(oiData.callWall().strike());
-            newRecord.setCallWallOi(oiData.callWall().openInterest());
+            newRecord.setCallWallOi(BigDecimal.valueOf(oiData.callWall().openInterest()));
         }
 
         // Record SMC Signal if detected
@@ -114,10 +114,10 @@ public class AdvisoryEngineService {
         // 5. Evaluate Stateful Comparison Matrix
         // ---------------------------------------------------------------------
         if (activeRecordOpt.isEmpty()) {
-            handleNewPosition(newRecord, mtfTrend, oiData);
+            handleNewPosition(newRecord, mtfTrend, oiData, now); // 🚀 NEW: Passed "now"
         } else {
             AdvisoryLedger activeRecord = activeRecordOpt.get();
-            evaluateStatefulMatrix(activeRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, exchange, indexes.getSymbol());
+            evaluateStatefulMatrix(activeRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now); // 🚀 NEW: Passed "now"
         }
 
         // Persist new active ledger entry
@@ -150,14 +150,12 @@ public class AdvisoryEngineService {
                                         MultiTimeframeTrend mtfTrend, BigDecimal atr14,
                                         AdvisoryOiService.AdvisoryOiData oiData,
                                         Optional<FuturesBreakEvent> smcSignalOpt,
-                                        String exchange, String symbol) {
+                                        LocalDateTime now) { // 🚀 NEW: Parameter added
 
         // 🚀 GUARD 0: The Phantom Position Guard
-        // If the previous state was NO_TRADE, we do not have an active position to maintain.
-        // Intercept it immediately and evaluate for a brand new entry.
         if ("NO_TRADE".equalsIgnoreCase(prev.getActionTaken()) || prev.getRecommendedStrike() == null) {
             closePreviousState(prev);
-            handleNewPosition(current, mtfTrend, oiData);
+            handleNewPosition(current, mtfTrend, oiData, now); // 🚀 NEW: Pass "now"
             return;
         }
 
@@ -172,11 +170,11 @@ public class AdvisoryEngineService {
         if (ceBreached || peBreached) {
             closePreviousState(prev);
             current.setActionTaken("EXIT_PROXIMITY_BREACH");
+            // 🚀 NEW: We are completely exiting, so we DO NOT carry over the entry date
             current.setReasoning(String.format("EMERGENCY EXIT: Spot price (%s) breached safety buffer for active %s strike (%s).",
                     spotPrice, prev.getOptionType(), prev.getRecommendedStrike()));
             return;
         }
-
 
         // GUARD 2: SMC Structural BOS Guard (Leading Override)
         if (smcSignalOpt.isPresent()) {
@@ -189,7 +187,7 @@ public class AdvisoryEngineService {
                 current.setActionTaken("REVERSE_SMC_BOS");
                 current.setReasoning(String.format("SMC STRUCTURAL OVERRIDE: Hourly %s detected at ₹%s. Institutional Demand/Supply broken against active %s position.",
                         bos.getBreakType(), bos.getBreakPrice(), prev.getOptionType()));
-                handleNewPosition(current, mtfTrend, oiData);
+                handleNewPosition(current, mtfTrend, oiData, now); // 🚀 NEW: Pass "now" for brand new trade
                 return;
             }
         }
@@ -200,7 +198,7 @@ public class AdvisoryEngineService {
             current.setActionTaken("REVERSE_TREND_FAIL");
             current.setReasoning(String.format("Trend flipped from %s to %s. Closing active %s position.",
                     prev.getDailyTrend(), mtfTrend.dailyTrend(), prev.getOptionType()));
-            handleNewPosition(current, mtfTrend, oiData);
+            handleNewPosition(current, mtfTrend, oiData, now); // 🚀 NEW: Pass "now"
             return;
         }
 
@@ -220,7 +218,7 @@ public class AdvisoryEngineService {
             closePreviousState(prev);
             current.setActionTaken("ADJUST_WALL_SHIFT");
             current.setReasoning("Institutional OI Wall migrated. Adjusting position to mirror new wall.");
-            handleNewPosition(current, mtfTrend, oiData);
+            handleNewPosition(current, mtfTrend, oiData, now); // 🚀 NEW: Pass "now"
             return;
         }
 
@@ -230,16 +228,17 @@ public class AdvisoryEngineService {
         current.setOptionType(prev.getOptionType());
         current.setRecommendedStrike(prev.getRecommendedStrike());
 
-        // 🚀 COPY THE PREMIUM AND GREEKS OVER TO TODAY'S RECORD
+        // 🚀 NEW: CARRY OVER PREMIUM, GREEKS, AND ORIGINAL ENTRY DATE
         current.setEntryPremium(prev.getEntryPremium());
         current.setEntryDelta(prev.getEntryDelta());
         current.setEntryIv(prev.getEntryIv());
+        current.setEntryDate(prev.getEntryDate() != null ? prev.getEntryDate() : prev.getTimestamp());
 
         current.setReasoning(String.format("Position intact. Holding %s %s wall. Premium decay progressing safely.",
                 prev.getRecommendedStrike(), prev.getOptionType()));
     }
 
-    private void handleNewPosition(AdvisoryLedger newRecord, MultiTimeframeTrend mtfTrend, AdvisoryOiService.AdvisoryOiData oiData) {
+    private void handleNewPosition(AdvisoryLedger newRecord, MultiTimeframeTrend mtfTrend, AdvisoryOiService.AdvisoryOiData oiData, LocalDateTime now) {
         BigDecimal minPremium = new BigDecimal("10.0");
 
         // Require Macro/Micro Alignment for maximum safety
@@ -264,8 +263,9 @@ public class AdvisoryEngineService {
                 newRecord.setOptionType("PE");
                 newRecord.setRecommendedStrike(oiData.putWall().strike());
                 newRecord.setEntryPremium(oiData.putWall().ltp());
-                newRecord.setEntryDelta(oiData.putWall().delta());
-                newRecord.setEntryIv(oiData.putWall().iv());
+                newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
+                newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
+                newRecord.setEntryDate(now); // 🚀 NEW: Stamp the initial entry time
                 newRecord.setReasoning(String.format("Confirmed MTF Bullish setup. Selling PE at Strong Put Wall %s (Premium: ₹%s)",
                         oiData.putWall().strike(), oiData.putWall().ltp()));
             }
@@ -283,8 +283,9 @@ public class AdvisoryEngineService {
                 newRecord.setOptionType("CE");
                 newRecord.setRecommendedStrike(oiData.callWall().strike());
                 newRecord.setEntryPremium(oiData.callWall().ltp());
-                newRecord.setEntryDelta(oiData.callWall().delta());
-                newRecord.setEntryIv(oiData.callWall().iv());
+                newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
+                newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
+                newRecord.setEntryDate(now); // 🚀 NEW: Stamp the initial entry time
                 newRecord.setReasoning(String.format("Confirmed MTF Bearish setup. Selling CE at Strong Call Wall %s (Premium: ₹%s)",
                         oiData.callWall().strike(), oiData.callWall().ltp()));
             }

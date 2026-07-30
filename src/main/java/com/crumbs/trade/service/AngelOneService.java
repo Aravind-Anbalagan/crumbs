@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.crumbs.trade.repo.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -28,34 +29,6 @@ import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.OptionsGreeks;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Strategy;
-import com.crumbs.trade.repo.AlertRepo;
-import com.crumbs.trade.repo.CPRRepo;
-import com.crumbs.trade.repo.IndexesRepo;
-import com.crumbs.trade.repo.IndicatorRepo;
-import com.crumbs.trade.repo.IntradayTradeRepo;
-import com.crumbs.trade.repo.LevelRepository;
-import com.crumbs.trade.repo.OIRepo;
-import com.crumbs.trade.repo.OIResultRepo;
-import com.crumbs.trade.repo.OptionsGreeksRepo;
-import com.crumbs.trade.repo.OrderRepository;
-import com.crumbs.trade.repo.PreMarketAnalysisRepo;
-import com.crumbs.trade.repo.PredictionHistoryRepo;
-import com.crumbs.trade.repo.PriceHeikinashiMcxRepo;
-import com.crumbs.trade.repo.PriceHeikinashiNiftyRepo;
-import com.crumbs.trade.repo.PriceRepo;
-import com.crumbs.trade.repo.PricesIndexRepo;
-import com.crumbs.trade.repo.PricesMcxRepo;
-import com.crumbs.trade.repo.PricesNiftyRepo;
-import com.crumbs.trade.repo.PsarMcxRepo;
-import com.crumbs.trade.repo.PsarNiftyRepo;
-import com.crumbs.trade.repo.ResultMcxRepo;
-import com.crumbs.trade.repo.ResultNiftyRepo;
-import com.crumbs.trade.repo.ResultVixRepo;
-import com.crumbs.trade.repo.SignalsRepo;
-import com.crumbs.trade.repo.StraddleIntradayRepo;
-import com.crumbs.trade.repo.StrategyRepo;
-import com.crumbs.trade.repo.TradeExecutionRepo;
-import com.crumbs.trade.repo.VixRepo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.mail.MessagingException;
@@ -148,7 +121,8 @@ public class AngelOneService {
 	@Autowired IntradayTradeRepo intradayTradeRepo;
 	@Autowired LevelRepository levelRepository;
 	@Autowired OptionsGreeksRepo optionsGreeksRepo;
-	
+	@Autowired
+    RiskConfigurationRepository riskConfigurationRepository;
 	/*
 	 * Get current price
 	 */
@@ -251,6 +225,7 @@ public class AngelOneService {
 		intradayTradeRepo.deleteAll();
 		levelRepository.deleteAll();
 		optionsGreeksRepo.deleteAll();
+        riskConfigurationRepository.resetAllTrailingData();
 		}
 	/*
 	 * Get current price (Dynamic Keyword) - Simple rate limit handling with exponential backoff.
