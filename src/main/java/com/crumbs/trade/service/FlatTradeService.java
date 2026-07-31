@@ -2,6 +2,7 @@ package com.crumbs.trade.service;
 
 import com.crumbs.trade.dto.*;
 import com.crumbs.trade.utility.Utility;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
@@ -12,6 +13,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.*;
@@ -30,7 +34,7 @@ import java.util.Map;
 @Service
 public class FlatTradeService {
     private static final Logger logger = LogManager.getLogger(FlatTradeService.class);
-    private static final String BASE_URL = "https://piconnect.flattrade.in/PiConnectTP";
+    private static final String BASE_URL = "https://piconnect.flattrade.in/PiConnectAPI";
     private static final String AUTH_URL = "https://authapi.flattrade.in/trade/apitoken";
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
@@ -49,8 +53,8 @@ public class FlatTradeService {
     @Autowired
     private BrokerConfigService brokerConfigService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
     /**
      * MAIN ENTRY POINT: Gets a valid token by checking Memory -> Database -> API Exchange.
      */
@@ -238,45 +242,57 @@ public class FlatTradeService {
     }
 
     /**
-     * Updated to return the Order ID (norenordno) and handle errors without DTO dependency.
-     */
-    /**
      * Updated to return the Token object with norenordno and price populated.
      */
     public Token PlaceOrderInFlatTrade(Token token) throws Exception {
         String key = getTokenForFlatTrade();
-        if (key == null) return null;
+        if (key == null) throw new RuntimeException("Token generation failed.");
 
-        token.setSymbol(Utility.normalizeToken(token.getSymbol()));
-        String body = "jData=" + objectMapper.writeValueAsString(setJDataForOrder(token)) + "&jKey=" + key;
-        
-        logger.info("[FLATTRADE-ORDER] Placing order for {}", token.getSymbol());
+        // WARNING: Ensure token.getSymbol() contains the hyphen (e.g., "RELIANCE-EQ").
+        // If your normalizeToken() removes the hyphen, do not use it here!
 
-        Map<String, Object> response = webClient.post().uri(BASE_URL + "/PlaceOrder")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .block();
+        // 1. Create the JSON string (Requires @JsonInclude(JsonInclude.Include.NON_NULL) on JData class)
+        String jDataJson = objectMapper.writeValueAsString(setJDataForOrder(token));
 
-        if (response != null && "Ok".equalsIgnoreCase((String) response.get("stat"))) {
-            String orderId = (String) response.get("norenordno");
-            logger.info("[FLATTRADE-SUCCESS] Order Placed: {}", orderId);
-            
-            // Populate the token with Order ID and fetch execution price
-            token.setOrderId(orderId);
-            
-            // Optional: Immediately fetch execution price to stay consistent with AngelOneService
-            JSONObject details = getIndividualOrderDetails(orderId);
-            if (details != null && details.has("avgprc")) {
-                token.setPrice(details.getDouble("avgprc"));
+        // 2. Build the raw unescaped string EXACTLY as FlatTrade wants it
+        String rawPayload = "jData=" + jDataJson + "&jKey=" + key;
+
+        logger.info("[FLATTRADE-ORDER] Sending Dynamic Payload: {}", rawPayload);
+
+        try {
+            // 3. Send with the contradictory header they require
+            String responseBody = webClient.post().uri(BASE_URL + "/PlaceOrder")
+                    .header("Content-Type", "application/json")
+                    .bodyValue(rawPayload)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            if (responseBody != null) {
+                JSONObject response = new JSONObject(responseBody);
+
+                if ("Ok".equalsIgnoreCase(response.optString("stat"))) {
+                    String orderId = response.getString("norenordno");
+                    logger.info("[FLATTRADE-SUCCESS] Order Placed: {}", orderId);
+
+                    token.setOrderId(orderId);
+                    return token;
+                } else {
+                    String error = response.optString("emsg", "Unknown API Error");
+                    logger.error("[FLATTRADE-ERROR] Exchange Rejected: {}", error);
+                    throw new RuntimeException("FlatTrade Order Error: " + error);
+                }
             }
-            
             return token;
-        } else {
-            String error = (response != null) ? (String) response.get("emsg") : "Empty response";
-            logger.error("[FLATTRADE-ERROR] Order failed: {}", error);
-            throw new RuntimeException("FlatTrade Order Error: " + error);
+
+        } catch (WebClientResponseException e) {
+            // 4. Always catch this so WebClient doesn't hide FlatTrade's error messages
+            String actualErrorBody = e.getResponseBodyAsString();
+            logger.error("[FLATTRADE-CRITICAL] HTTP {}. Server said: {}", e.getStatusCode(), actualErrorBody);
+            throw new RuntimeException("FlatTrade API Rejected Request: " + actualErrorBody);
+        } catch (Exception e) {
+            logger.error("[FLATTRADE-CRITICAL] Request Failed: {}", e.getMessage());
+            throw e;
         }
     }
 

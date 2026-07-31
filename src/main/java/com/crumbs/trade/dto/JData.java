@@ -1,10 +1,12 @@
 package com.crumbs.trade.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 @Data // includes getters, setters, toString, equals, hashCode
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class JData {
     private String uid;
     private String actid;
