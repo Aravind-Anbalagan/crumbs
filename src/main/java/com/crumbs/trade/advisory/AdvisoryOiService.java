@@ -45,7 +45,7 @@ public class AdvisoryOiService {
 
         try {
             String sessionToken = sessionManager.getSession(); // or getSamcoSession() based on your setup
-            
+
             // Fetch Option Chain JSON from Samco
             String jsonResponse = samco.getOptionChain(sessionToken, exchange, symbol, expiry, null, null);
 
@@ -58,12 +58,12 @@ public class AdvisoryOiService {
             SamcoOptionChainResponse response = objectMapper.readValue(jsonResponse, SamcoOptionChainResponse.class);
 
             if ("Success".equalsIgnoreCase(response.status()) && response.optionChainDetails() != null) {
-                
+
                 for (var detail : response.optionChainDetails()) {
                     long currentOi = parseLongSafely(detail.openInterest());
                     BigDecimal currentStrike = new BigDecimal(detail.strikePrice());
                     BigDecimal ltp = new BigDecimal(detail.lastTradedPrice() != null ? detail.lastTradedPrice() : "0");
-                    
+
                     double delta = parseDoubleSafely(detail.delta());
                     double theta = parseDoubleSafely(detail.theta());
                     double iv = parseDoubleSafely(detail.impliedVolatility());
@@ -81,9 +81,9 @@ public class AdvisoryOiService {
                 }
 
                 if (maxPut != null && maxCall != null) {
-                    log.info("🧱 Found PUT Wall: Strike {} (OI: {}, LTP: {}, Delta: {})", 
+                    log.info("🧱 Found PUT Wall: Strike {} (OI: {}, LTP: {}, Delta: {})",
                             maxPut.strike(), maxPut.openInterest(), maxPut.ltp(), maxPut.delta());
-                    log.info("🧱 Found CALL Wall: Strike {} (OI: {}, LTP: {}, Delta: {})", 
+                    log.info("🧱 Found CALL Wall: Strike {} (OI: {}, LTP: {}, Delta: {})",
                             maxCall.strike(), maxCall.openInterest(), maxCall.ltp(), maxCall.delta());
                 }
 
@@ -102,16 +102,16 @@ public class AdvisoryOiService {
     private Double parseDoubleSafely(String value) {
         try {
             return (value == null || value.trim().isEmpty() || "NA".equalsIgnoreCase(value)) ? 0.0 : Double.parseDouble(value);
-        } catch (NumberFormatException e) { 
-            return 0.0; 
+        } catch (NumberFormatException e) {
+            return 0.0;
         }
     }
 
     private long parseLongSafely(String value) {
         try {
             return (value == null || value.trim().isEmpty() || "NA".equalsIgnoreCase(value)) ? 0L : (long) Double.parseDouble(value); // Double parse first to handle floats safely
-        } catch (NumberFormatException e) { 
-            return 0L; 
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 }

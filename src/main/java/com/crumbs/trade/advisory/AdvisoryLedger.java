@@ -92,4 +92,10 @@ public class AdvisoryLedger {
 
     @Column(name = "smc_signal")
     private String smcSignal; // BREAKOUT or BREAKDOWN
+
+    @Column(name = "exit_premium", precision = 10, scale = 2)
+    private BigDecimal exitPremium;
+
+    @Column(name = "realized_pnl", precision = 10, scale = 2)
+    private BigDecimal realizedPnl;
 }

@@ -28,4 +28,6 @@ public class OptionRecommendation {
     private BigDecimal entryPremium;
     private BigDecimal entryDelta;
     private BigDecimal entryIv;
+    private BigDecimal unrealizedPnl;
+    private BigDecimal realizedPnl;
 }

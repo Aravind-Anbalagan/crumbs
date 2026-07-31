@@ -1,5 +1,5 @@
 /* =========================================================
-   ADVISORY DASHBOARD CSS
+   ADVISORY DASHBOARD CSS (UNIFIED HEADER EDITION)
    ========================================================= */
 
 .advisory-container {
@@ -7,26 +7,96 @@
     color: var(--text-main);
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 15px; /* Reduced gap to bring cards closer to header */
     height: 100%;
     box-sizing: border-box;
 }
 
-/* --- COMMAND BAR --- */
+/* --- 🚀 NEW: UNIFIED COMMAND BAR --- */
 .advisory-header {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap; /* Allows wrapping on smaller screens */
     align-items: center;
-    border-bottom: 1px solid var(--glass-border);
-    padding-bottom: 15px;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px 24px;
 }
 
-.advisory-header h2 {
+.header-title-area {
+    display: flex;
+    flex-direction: column;
+    min-width: max-content;
+}
+
+.header-title-area h2 {
     margin: 0;
     font-size: 1.5rem;
     background: var(--brand-gradient, linear-gradient(135deg, #00a8ff, #9c88ff));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: block;
+}
+
+/* Center Filter Area */
+.header-filters-area {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    justify-content: center;
+}
+
+.filter-inline-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.filter-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    width: 55px; /* Aligns Status and Action vertically */
+}
+
+/* Filter Chips */
+.filter-chip {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    color: var(--text-muted);
+    padding: 4px 12px;
+    border-radius: 15px; /* Pill shape */
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.filter-chip:hover {
+    border-color: rgba(0, 168, 255, 0.4);
+    color: var(--text-main);
+}
+
+.filter-chip.active {
+    background: rgba(0, 168, 255, 0.15);
+    border-color: #00a8ff;
+    color: #00a8ff;
+}
+
+/* Right Action Buttons Area */
+.header-actions-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .btn-primary {
@@ -38,19 +108,29 @@
     font-weight: 600;
     cursor: pointer;
     transition: opacity 0.2s, transform 0.1s;
+    white-space: nowrap;
 }
 
-.btn-primary:hover:not(:disabled) {
-    opacity: 0.9;
+.btn-primary:hover:not(:disabled) { opacity: 0.9; }
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-reset {
+    background: rgba(255, 71, 87, 0.1);
+    color: #ff4757;
+    border: 1px solid rgba(255, 71, 87, 0.3);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
 }
 
-.btn-primary:active:not(:disabled) {
+.btn-reset:hover {
+    background: rgba(255, 71, 87, 0.2);
     transform: scale(0.98);
-}
-
-.btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* --- MAIN LAYOUT (FLEXBOX) --- */
@@ -58,89 +138,158 @@
     display: flex;
     gap: 20px;
     flex: 1;
-    overflow: hidden; /* Keeps it within the viewport height */
+    overflow: hidden;
 }
 
-/* Resilient Glass Panel Base */
+.advisory-grid-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px; /* Scrollbar padding */
+    transition: flex 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Shrink grid slightly when history panel is open */
+.advisory-content:has(.advisory-history-panel) .advisory-grid-wrapper {
+    flex: 0 0 65%;
+}
+
+/* --- THE CARD GRID --- */
+.advisory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    align-items: start;
+}
+
+/* --- TRADING CARD STYLING --- */
 .glass-panel {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
     backdrop-filter: blur(12px);
+}
+
+.advisory-card {
     padding: 20px;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
-/* --- THE TABLE --- */
-.advisory-table-wrapper {
-    flex: 1;
-    transition: flex 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.advisory-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+    border-color: rgba(0, 168, 255, 0.4);
 }
 
-/* If history panel is present, shrink table to ~60% */
-.advisory-content:has(.advisory-history-panel) .advisory-table-wrapper {
-    flex: 0 0 60%;
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
 }
 
-/* 🚀 NEW: Allows horizontal scrolling for our new wide columns */
-.table-responsive {
-    width: 100%;
-    overflow-x: auto;
-}
-
-.advisory-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
-}
-
-.advisory-table th, .advisory-table td {
-    padding: 14px 15px;
-    border-bottom: 1px solid var(--glass-border);
-    white-space: nowrap; /* Keeps data on one line to prevent tall rows */
-}
-
-.advisory-table th {
-    color: var(--text-muted);
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.8rem;
-    letter-spacing: 0.5px;
-}
-
-.symbol-cell {
-    font-weight: 700;
+.symbol-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
     cursor: pointer;
+    color: var(--text-main);
     transition: color 0.2s;
 }
 
-.symbol-cell:hover {
-    color: #00a8ff; /* Brand Accent */
+.symbol-title:hover {
+    color: #00a8ff;
 }
 
-.loading-text {
-    text-align: center;
-    color: var(--text-muted);
-    font-style: italic;
-    margin-top: 2rem;
+.card-sub-header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
 }
 
-/* 🚀 NEW: Keeps dates and missing data looking clean */
-.timestamp-text, .expiry-text {
+.action-tag {
     font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.trend-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+.trend-tag.bullish { background: rgba(46, 213, 115, 0.15); color: #2ed573; }
+.trend-tag.bearish { background: rgba(255, 71, 87, 0.15); color: #ff4757; }
+.trend-tag.sideways { background: rgba(255, 255, 255, 0.1); color: var(--text-muted); }
+
+.card-divider {
+    border: 0;
+    height: 1px;
+    background: var(--glass-border);
+    margin: 12px 0;
+}
+
+/* --- CARD METRICS (INTERNAL GRID) --- */
+.card-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.metric-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.metric-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.metric-value {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.metric-value.highlight {
+    color: #00a8ff;
+}
+
+/* --- CARD FOOTER --- */
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+}
+
+.footer-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.expiry-text, .timestamp-text {
+    font-size: 0.75rem;
     color: var(--text-muted);
     font-family: monospace;
 }
 
-.text-muted {
-    opacity: 0.5;
-}
-
-/* --- BADGES --- */
+/* --- BADGES & PNL COLORS --- */
 .status-badge {
     padding: 4px 10px;
     border-radius: 20px;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -152,38 +301,43 @@
     border: 1px solid rgba(46, 213, 115, 0.4);
 }
 
-.status-badge.closed, .status-badge.history {
+.status-badge.closed, .status-badge.history, .status-badge.no_trade {
     background: rgba(255, 71, 87, 0.15);
     color: #ff4757;
     border: 1px solid rgba(255, 71, 87, 0.4);
 }
 
+.pnl-positive { color: #2ed573; }
+.pnl-negative { color: #ff4757; }
+.pnl-neutral { color: var(--text-muted); }
+.text-muted { opacity: 0.5; }
+
 /* --- ACTION BUTTONS --- */
-.btn-action {
+.btn-action-small {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--glass-border);
     color: var(--text-main);
     padding: 6px 12px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     transition: all 0.2s;
 }
 
-.btn-action:hover:not(:disabled) {
+.btn-action-small:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
+    border-color: rgba(0, 168, 255, 0.6);
 }
 
-.btn-action:disabled {
+.btn-action-small:disabled {
     opacity: 0.5;
     cursor: wait;
 }
 
 /* --- AUDIT TRAIL PANEL (SLIDE-IN) --- */
 .advisory-history-panel {
-    flex: 0 0 calc(40% - 20px);
+    flex: 0 0 calc(35% - 20px);
     animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
@@ -213,9 +367,7 @@
     transition: color 0.2s;
 }
 
-.btn-close:hover {
-    color: #ff4757;
-}
+.btn-close:hover { color: #ff4757; }
 
 /* --- VERTICAL TIMELINE --- */
 .history-timeline {
@@ -224,9 +376,9 @@
     gap: 15px;
     position: relative;
     padding-left: 10px;
+    overflow-y: auto;
 }
 
-/* The vertical connecting line */
 .history-timeline::before {
     content: '';
     position: absolute;
@@ -242,7 +394,6 @@
     padding-left: 25px;
 }
 
-/* The timeline dot */
 .timeline-item::before {
     content: '';
     position: absolute;
@@ -280,14 +431,14 @@
     border: 1px solid var(--glass-border);
 }
 
-/* Slide in animation for the panel */
+.empty-state, .loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 @keyframes slideInRight {
-    from {
-        opacity: 0;
-        transform: translateX(50px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
+    from { opacity: 0; transform: translateX(50px); }
+    to { opacity: 1; transform: translateX(0); }
 }

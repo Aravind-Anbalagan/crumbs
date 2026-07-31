@@ -87,4 +87,12 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     List<Indexes> findActiveContractsByExpiry(@Param("underlying") String underlying,
                                               @Param("expiryShort") String expiryShort,
                                               @Param("expiryLong") String expiryLong);
+
+    // Add this to IndexesRepo.java if it isn't there already:
+    @Query("SELECT i.token FROM Indexes i WHERE i.name = :name AND i.expiry = :expiry AND i.symbol LIKE :suffix")
+    String findTokenByNameAndExpiryAndSymbolLike(
+            @Param("name") String name,
+            @Param("expiry") String expiry,
+            @Param("suffix") String suffix
+    );
 }
