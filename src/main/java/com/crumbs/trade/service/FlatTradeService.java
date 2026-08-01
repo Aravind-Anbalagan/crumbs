@@ -331,11 +331,35 @@ public class FlatTradeService {
 
     private JData setJDataForOrder(Token token) {
         JData jdata = new JData();
-        jdata.setUid("MALIT158"); jdata.setActid("MALIT158");
-        jdata.setExch(token.getExch_seg()); jdata.setTsym(token.getSymbol());
-        jdata.setQty(String.valueOf(token.getQuantity())); jdata.setPrc("0");
-        jdata.setPrd("I"); jdata.setTrantype(token.getTransactionType());
-        jdata.setPrctyp("MKT"); jdata.setRet("DAY"); jdata.setOrdersource("API");
+        jdata.setUid("MALIT158");
+        jdata.setActid("MALIT158");
+        jdata.setExch(token.getExch_seg());
+        jdata.setTsym(token.getSymbol());
+        jdata.setQty(String.valueOf(token.getQuantity()));
+
+        // --- FORCE LIMIT ORDER LOGIC ---
+        // Brokers no longer allow "MKT" via API.
+        String orderType = (token.getOrderType() != null) ? token.getOrderType() : "LMT";
+        if ("MKT".equalsIgnoreCase(orderType)) {
+            logger.warn("[FLATTRADE-ORDER] Market orders not allowed by API. Converting to Limit order.");
+            orderType = "LMT";
+        }
+        jdata.setPrctyp(orderType);
+
+        // Set the price for the Limit Order (cannot be 0)
+        if (token.getPrice() != null && token.getPrice() > 0) {
+            jdata.setPrc(String.valueOf(token.getPrice()));
+        } else {
+            throw new IllegalArgumentException("API requires Limit Orders. You must provide a valid 'price' in your Token > 0.");
+        }
+
+        // Set Product Type dynamically (default to "I" for Intraday/MIS if null)
+        jdata.setPrd(token.getProductType() != null ? token.getProductType() : "I");
+
+        jdata.setTrantype(token.getTransactionType());
+        jdata.setRet("DAY");
+        jdata.setOrdersource("API");
+
         return jdata;
     }
 }
