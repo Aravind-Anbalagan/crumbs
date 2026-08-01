@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -133,5 +134,17 @@ public class AdvisoryDashboardController {
         } finally {
             executor.shutdown();
         }
+    }
+
+    // 🚀 NEW: Feeds the 31-Day Timeline UI
+    @GetMapping("/timeline")
+    public ResponseEntity<List<AdvisoryLedger>> getMonthlyTimeline() {
+        // Fetch the last 30 days of data so the UI can draw the lifecycle ribbons
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        List<AdvisoryLedger> timelineData = ledgerRepository.findAll().stream()
+                .filter(r -> r.getTimestamp() != null && r.getTimestamp().isAfter(thirtyDaysAgo))
+                .toList();
+
+        return ResponseEntity.ok(timelineData);
     }
 }
