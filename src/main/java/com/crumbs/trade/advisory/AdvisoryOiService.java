@@ -32,7 +32,8 @@ public class AdvisoryOiService {
     // 🚀 Holds both the Call Wall and Put Wall with their respective Greeks
     public record AdvisoryOiData(
             StrikeDetails putWall,
-            StrikeDetails callWall
+            StrikeDetails callWall,
+            String expiry
     ) {}
 
     public AdvisoryOiData fetchLiveOiAndGreeks(String symbol, String exchange, String expiry) {
@@ -43,21 +44,56 @@ public class AdvisoryOiService {
         long maxPutOi = 0L;
         long maxCallOi = 0L;
 
+        String resolvedExpiry = expiry;
+        String jsonResponse = null;
+
+        // 🚀 FIX: Incremental Backoff Retry Mechanism (max 4 attempts)
+        int maxRetries = 4;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                String sessionToken = sessionManager.getSession();
+                jsonResponse = samco.getOptionChain(sessionToken, exchange, symbol, expiry, null, null);
+                break; // API call succeeded! Break out of the retry loop.
+            } catch (Exception e) {
+                boolean isRateLimit = e.getMessage() != null && e.getMessage().contains("429");
+
+                if (isRateLimit) {
+                    log.warn("⏳ [Attempt {}/{}] Rate Limit (429) hit for {}. Breathing before retry...", attempt, maxRetries, symbol);
+                } else {
+                    log.warn("⏳ [Attempt {}/{}] Fetch failed for {}: {}. Breathing before retry...", attempt, maxRetries, symbol, e.getMessage());
+                }
+
+                if (attempt == maxRetries) {
+                    log.error("❌ Exhausted all {} retries for {}. Skipping OI fetch.", maxRetries, symbol);
+                    return new AdvisoryOiData(null, null, resolvedExpiry);
+                }
+
+                try {
+                    // Backoff timing: 2s, 4s, 6s... gives the server progressive breathing space
+                    Thread.sleep(2000L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.error("❌ Thread interrupted during retry sleep for {}.", symbol);
+                    return new AdvisoryOiData(null, null, resolvedExpiry);
+                }
+            }
+        }
+
+        // Proceed to parse the JSON only if we successfully retrieved it
         try {
-            String sessionToken = sessionManager.getSession(); // or getSamcoSession() based on your setup
-
-            // Fetch Option Chain JSON from Samco
-            String jsonResponse = samco.getOptionChain(sessionToken, exchange, symbol, expiry, null, null);
-
             if (jsonResponse == null || jsonResponse.isEmpty()) {
                 log.warn("⚠️ Samco returned empty option chain for {}", symbol);
-                return new AdvisoryOiData(null, null);
+                return new AdvisoryOiData(null, null, resolvedExpiry);
             }
 
-            // 🚀 Using your GreekStrategyService ObjectMapper Logic
             SamcoOptionChainResponse response = objectMapper.readValue(jsonResponse, SamcoOptionChainResponse.class);
 
-            if ("Success".equalsIgnoreCase(response.status()) && response.optionChainDetails() != null) {
+            if ("Success".equalsIgnoreCase(response.status()) && response.optionChainDetails() != null && !response.optionChainDetails().isEmpty()) {
+
+                // Override blank expiry with the dynamic nearest expiry from the chain
+                if (resolvedExpiry == null || resolvedExpiry.isBlank()) {
+                    resolvedExpiry = response.optionChainDetails().get(0).expiryDate();
+                }
 
                 for (var detail : response.optionChainDetails()) {
                     long currentOi = parseLongSafely(detail.openInterest());
@@ -88,17 +124,17 @@ public class AdvisoryOiService {
                 }
 
             } else {
-                log.error("❌ Samco API Error: {}", response.statusMessage());
+                log.error("❌ Samco API Error for {}: {}", symbol, response != null ? response.statusMessage() : "Unknown Error");
             }
 
         } catch (Exception e) {
             log.error("❌ Failed to parse OI and Greeks for {}: {}", symbol, e.getMessage(), e);
         }
 
-        return new AdvisoryOiData(maxPut, maxCall);
+        return new AdvisoryOiData(maxPut, maxCall, resolvedExpiry);
     }
 
-    // 🚀 Exact helper methods from your GreekStrategyService
+    // 🚀 Helper Methods
     private Double parseDoubleSafely(String value) {
         try {
             return (value == null || value.trim().isEmpty() || "NA".equalsIgnoreCase(value)) ? 0.0 : Double.parseDouble(value);
@@ -109,7 +145,7 @@ public class AdvisoryOiService {
 
     private long parseLongSafely(String value) {
         try {
-            return (value == null || value.trim().isEmpty() || "NA".equalsIgnoreCase(value)) ? 0L : (long) Double.parseDouble(value); // Double parse first to handle floats safely
+            return (value == null || value.trim().isEmpty() || "NA".equalsIgnoreCase(value)) ? 0L : (long) Double.parseDouble(value);
         } catch (NumberFormatException e) {
             return 0L;
         }

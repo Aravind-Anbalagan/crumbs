@@ -70,19 +70,32 @@ public class AdvisoryEngineService {
         Optional<FuturesBreakEvent> smcSignalOpt = evaluateSmcOracle(name, exchange, indexes.getSymbol(), spotPrice);
         if (smcSignalOpt == null) smcSignalOpt = Optional.empty();
 
-        // 3. Fetch Live Samco Option Chain Walls
-        AdvisoryOiService.AdvisoryOiData oiData = oiService.fetchLiveOiAndGreeks(
-                name, exchange, indexes.getExpiry()
-        );
+        // 3. Fetch Live Samco Option Chain Walls (Safely handle 429 Too Many Requests)
+        AdvisoryOiService.AdvisoryOiData oiData;
+        try {
+            oiData = oiService.fetchLiveOiAndGreeks(name, exchange, indexes.getExpiry());
+        } catch (Exception e) {
+            log.warn("⚠️ Skipping Advisory for {}: Failed to fetch live OI & Greeks - {}", name, e.getMessage());
+            return null;
+        }
+
+        // 🚀 FIX: Centralized Expiry Resolution
+        // If the index has no expiry (Spot), use the dynamic one returned by Samco Option Chain
+        String resolvedExpiry = (oiData.expiry() != null && !oiData.expiry().trim().isEmpty())
+                ? oiData.expiry()
+                : indexes.getExpiry();
 
         // 4. Retrieve Active State
         Optional<AdvisoryLedger> activeRecordOpt = ledgerRepository
                 .findTopBySymbolAndStatusOrderByTimestampDesc(name, "ACTIVE");
 
         LocalDateTime now = LocalDateTime.now();
+
+        // 🚀 We now inject `resolvedExpiry` DIRECTLY into the builder.
+        // This guarantees it is never blank for new evaluations.
         AdvisoryLedger newRecord = AdvisoryLedger.builder()
                 .symbol(name)
-                .expiryDate(indexes.getExpiry())
+                .expiryDate(resolvedExpiry)
                 .timestamp(now)
                 .status("ACTIVE")
                 .spotPrice(spotPrice)
@@ -110,7 +123,8 @@ public class AdvisoryEngineService {
         }
 
         ledgerRepository.save(newRecord);
-// 🚀 NEW: Calculate Unrealized PnL for ACTIVE trades before sending to UI
+
+        // 🚀 NEW: Calculate Unrealized PnL for ACTIVE trades before sending to UI
         BigDecimal unrealizedPnl = null;
         if ("ACTIVE".equalsIgnoreCase(newRecord.getStatus()) && newRecord.getEntryPremium() != null) {
             BigDecimal liveLtp = safelyFetchExitPremium(newRecord, exchange);
@@ -119,6 +133,7 @@ public class AdvisoryEngineService {
                 unrealizedPnl = newRecord.getEntryPremium().subtract(liveLtp);
             }
         }
+
         return OptionRecommendation.builder()
                 .symbol(name)
                 .timestamp(now)
@@ -133,8 +148,8 @@ public class AdvisoryEngineService {
                 .smcSignal(newRecord.getSmcSignal())
                 .unrealizedPnl(unrealizedPnl)
                 .entryPremium(newRecord.getEntryPremium())
-                .entryDelta(BigDecimal.valueOf(newRecord.getEntryDelta() != null ? newRecord.getEntryDelta().doubleValue() : null))
-                .entryIv(BigDecimal.valueOf(newRecord.getEntryIv() != null ? newRecord.getEntryIv().doubleValue() : null))
+                .entryDelta(newRecord.getEntryDelta())
+                .entryIv(newRecord.getEntryIv())
                 .build();
     }
 
@@ -230,6 +245,10 @@ public class AdvisoryEngineService {
         current.setActionTaken("MAINTAIN");
         current.setOptionType(prev.getOptionType());
         current.setRecommendedStrike(prev.getRecommendedStrike());
+
+        // 🚀 VERY IMPORTANT: When maintaining a trade, we overwrite the newly built nearest expiry
+        // with the OLD expiry of the currently active trade so it doesn't accidentally jump weeks.
+        current.setExpiryDate(prev.getExpiryDate());
 
         // CARRY OVER ORIGINAL ENTRY DATA
         current.setEntryPremium(prev.getEntryPremium());

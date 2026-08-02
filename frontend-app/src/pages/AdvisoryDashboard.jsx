@@ -5,13 +5,9 @@ export default function AdvisoryDashboard() {
     const [timelineData, setTimelineData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [scanningAll, setScanningAll] = useState(false);
-
-    // 🚀 NEW: State for the Clickable Dialog Modal
     const [dialogData, setDialogData] = useState(null);
 
     const today = new Date();
-    const currentMonth = today.toLocaleString('default', { month: 'long' });
-    const currentDay = today.getDate();
 
     useEffect(() => {
         fetchTimeline();
@@ -36,83 +32,125 @@ export default function AdvisoryDashboard() {
             .finally(() => setScanningAll(false));
     };
 
-    const daysInMonth = useMemo(() => {
-        if (timelineData.length === 0) {
-            return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    // 🚀 NEW: Dynamic NSE Expiry Cycle Calculator
+    const { startDate, endDate, daysArray, cycleRangeText } = useMemo(() => {
+        const getLastThursday = (year, month) => {
+            let d = new Date(year, month + 1, 0); // Last day of the month
+            while (d.getDay() !== 4) d.setDate(d.getDate() - 1); // 4 = Thursday
+            d.setHours(23, 59, 59, 999);
+            return d;
+        };
+
+        const now = new Date();
+        const currentExpiry = getLastThursday(now.getFullYear(), now.getMonth());
+
+        let start, end;
+        if (now.getTime() > currentExpiry.getTime()) {
+            // We passed this month's expiry -> We are in NEXT month's cycle
+            start = new Date(currentExpiry);
+            start.setDate(start.getDate() + 1);
+            start.setHours(0, 0, 0, 0);
+            end = getLastThursday(now.getFullYear(), now.getMonth() + 1);
+        } else {
+            // We are in CURRENT month's cycle
+            const prevExpiry = getLastThursday(now.getFullYear(), now.getMonth() - 1);
+            start = new Date(prevExpiry);
+            start.setDate(start.getDate() + 1);
+            start.setHours(0, 0, 0, 0);
+            end = currentExpiry;
         }
-        const latestRecord = [...timelineData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-        const latestDate = new Date(latestRecord.timestamp);
-        return new Date(latestDate.getFullYear(), latestDate.getMonth() + 1, 0).getDate();
-    }, [timelineData, today]);
 
-    const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-    const maxDayToDraw = useMemo(() => {
-        if (timelineData.length === 0) return currentDay;
-        const latestRecord = [...timelineData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-        const latestDate = new Date(latestRecord.timestamp);
-        if (latestDate.getMonth() === today.getMonth() && latestDate.getFullYear() === today.getFullYear()) {
-            return currentDay;
+        // Build the columns array
+        const days = [];
+        let curr = new Date(start);
+        while (curr <= end) {
+            const dateString = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
+            days.push({
+                dateString,
+                dayNum: curr.getDate(),
+                monthStr: curr.toLocaleString('default', { month: 'short' }),
+                isToday: curr.toDateString() === now.toDateString()
+            });
+            curr.setDate(curr.getDate() + 1);
         }
-        return daysInMonth;
-    }, [timelineData, today, currentDay, daysInMonth]);
 
-    // 🧠 DYNAMIC MATRIX LOGIC
+        const rangeText = `${start.getDate()} ${start.toLocaleString('default', { month: 'short' })} — ${end.getDate()} ${end.toLocaleString('default', { month: 'short' })}`;
+
+        return { startDate: start, endDate: end, daysArray: days, cycleRangeText: rangeText };
+    }, []);
+
+    // 🧠 DYNAMIC MATRIX LOGIC: Walks timeline from dawn of time to retain "Carry-over" trades
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
+        // Group ALL records by symbol and date
         timelineData.forEach(record => {
             if (!record.timestamp) return;
             const date = new Date(record.timestamp);
-            const day = date.getDate();
+            const dateString = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 
             if (!matrix[record.symbol]) matrix[record.symbol] = { records: {} };
-            matrix[record.symbol].records[day] = record;
+            matrix[record.symbol].records[dateString] = record;
         });
 
+        // Find the absolute earliest trade in DB to start tracking holding states
+        let globalMinDate = timelineData.length > 0
+            ? new Date(Math.min(...timelineData.map(r => new Date(r.timestamp))))
+            : startDate;
+        if (globalMinDate > startDate) globalMinDate = startDate;
+
         const formattedMatrix = [];
+
         for (const [symbol, data] of Object.entries(matrix)) {
             const rowDays = {};
             let isHolding = false;
             let currentTrade = null;
             let currentTrend = 'NEUTRAL';
 
-            for (let d = 1; d <= daysInMonth; d++) {
-                const record = data.records[d];
+            let curr = new Date(globalMinDate);
+            curr.setHours(0,0,0,0);
+
+            // Walk forward day-by-day
+            while(curr <= endDate) {
+                const dateString = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
+                const record = data.records[dateString];
+                let typeForDay = 'EMPTY';
 
                 if (record) {
                     const action = record.actionTaken || '';
-
-                    // Option Sellers: Selling PE = Bullish Market, Selling CE = Bearish Market
                     if (action === 'NEW_ENTRY') {
                         isHolding = true;
                         currentTrade = record;
                         currentTrend = record.optionType === 'PE' ? 'BULLISH' : 'BEARISH';
-                        rowDays[d] = { type: `ENTRY_${currentTrend}`, record };
+                        typeForDay = `ENTRY_${currentTrend}`;
                     }
                     else if (action.includes('EXIT') || action.includes('REVERSE')) {
                         isHolding = false;
-                        rowDays[d] = { type: 'EXIT', record };
+                        typeForDay = 'EXIT';
                         currentTrend = 'NEUTRAL';
                     }
                     else {
-                        rowDays[d] = { type: `ACTIVE_${currentTrend}`, record };
+                        typeForDay = `ACTIVE_${currentTrend}`;
                     }
                 } else {
-                    if (isHolding && d <= maxDayToDraw) {
-                        rowDays[d] = { type: `ACTIVE_${currentTrend}`, record: currentTrade };
-                    } else {
-                        rowDays[d] = { type: 'EMPTY' };
+                    if (isHolding && curr <= today) {
+                        typeForDay = `ACTIVE_${currentTrend}`;
                     }
                 }
+
+                // 🚀 ONLY attach to grid if it belongs to the CURRENT Expiry Cycle
+                if (curr >= startDate) {
+                     rowDays[dateString] = { type: typeForDay, record: record || currentTrade };
+                }
+
+                curr.setDate(curr.getDate() + 1);
             }
             formattedMatrix.push({ symbol, days: rowDays, latestTrade: currentTrade });
         }
 
         return formattedMatrix;
-    }, [timelineData, daysInMonth, maxDayToDraw]);
+    }, [timelineData, startDate, endDate, daysArray, today]);
 
-    // Format Helper
     const formatPnL = (pnl) => {
         if (pnl === null || pnl === undefined) return '-';
         const val = parseFloat(pnl);
@@ -127,7 +165,7 @@ export default function AdvisoryDashboard() {
             <div className="advisory-header glass-panel">
                 <div className="header-title-area">
                     <h2>Lifecycle Matrix</h2>
-                    <span className="subtitle">{currentMonth} {today.getFullYear()} Trading Ribbon</span>
+                    <span className="subtitle">Expiry Cycle: <strong>{cycleRangeText}</strong></span>
                 </div>
                 <button className="btn-primary" onClick={handleScanActive} disabled={scanningAll}>
                     {scanningAll ? '⏳ Scanning...' : '⚡ Scan Market'}
@@ -142,12 +180,15 @@ export default function AdvisoryDashboard() {
                     <div className="empty-state">No trades found in dataset.</div>
                 ) : (
                     <div className="timeline-board">
+
                         <div className="timeline-header-row">
                             <div className="timeline-symbol-col">Instrument</div>
-                            <div className="timeline-days-grid">
-                                {daysArray.map(day => (
-                                    <div key={day} className={`day-header ${day === currentDay ? 'is-today' : ''}`}>
-                                        {day}
+                            {/* Dynamic Columns based on Cycle length */}
+                            <div className="timeline-days-grid" style={{ gridTemplateColumns: `repeat(${daysArray.length}, minmax(25px, 1fr))` }}>
+                                {daysArray.map((dayObj) => (
+                                    <div key={dayObj.dateString} className={`day-header ${dayObj.isToday ? 'is-today' : ''}`}>
+                                        <span className="day-num">{dayObj.dayNum}</span>
+                                        <span className="day-month">{dayObj.monthStr}</span>
                                     </div>
                                 ))}
                             </div>
@@ -158,29 +199,29 @@ export default function AdvisoryDashboard() {
                                 <div className="timeline-symbol-col">
                                     <span className="symbol-name">{row.symbol}</span>
                                 </div>
-                                <div className="timeline-days-grid">
-                                    {daysArray.map(day => {
-                                        const cell = row.days[day];
+                                <div className="timeline-days-grid" style={{ gridTemplateColumns: `repeat(${daysArray.length}, minmax(25px, 1fr))` }}>
+                                    {daysArray.map(dayObj => {
+                                        const cell = row.days[dayObj.dateString];
+                                        if (!cell) return null;
                                         const type = cell.type;
+
                                         return (
                                             <div
-                                                                                            key={day}
-                                                                                            className={`day-cell ${type.toLowerCase()}`}
-                                                                                            onClick={() => cell.record && setDialogData({ ...cell.record, day })}
-                                                                                        >
-                                                                                            {/* 🚀 FIXED: Strict geometric shapes to prevent OS emojis */}
-                                                                                            {type === 'ENTRY_BULLISH' && <span className="marker-icon">▲</span>}
-                                                                                            {type === 'ENTRY_BEARISH' && <span className="marker-icon">▼</span>}
-                                                                                            {type === 'EXIT' && <span className="marker-icon">✕</span>}
+                                                key={dayObj.dateString}
+                                                className={`day-cell ${type.toLowerCase()}`}
+                                                onClick={() => cell.record && setDialogData({ ...cell.record, formattedDate: `${dayObj.dayNum} ${dayObj.monthStr}` })}
+                                            >
+                                                {type === 'ENTRY_BULLISH' && <span className="marker-icon">▲</span>}
+                                                {type === 'ENTRY_BEARISH' && <span className="marker-icon">▼</span>}
+                                                {type === 'EXIT' && <span className="marker-icon">✕</span>}
 
-                                                                                            {/* Tooltip (Fixed Z-Index via CSS) */}
-                                                                                            {type !== 'EMPTY' && cell.record && (
-                                                                                                <div className="day-tooltip">
-                                                                                                    <strong>{cell.record.actionTaken || 'HOLDING'}</strong>
-                                                                                                    <span>{cell.record.recommendedStrike} {cell.record.optionType}</span>
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
+                                                {type !== 'EMPTY' && cell.record && (
+                                                    <div className="day-tooltip">
+                                                        <strong>{cell.record.actionTaken || 'HOLDING'}</strong>
+                                                        <span>{cell.record.recommendedStrike} {cell.record.optionType}</span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -190,12 +231,12 @@ export default function AdvisoryDashboard() {
                 )}
             </div>
 
-            {/* 🚀 NEW: FULL SCREEN DIALOG MODAL */}
+            {/* FULL SCREEN DIALOG MODAL */}
             {dialogData && (
                 <div className="dialog-overlay" onClick={() => setDialogData(null)}>
                     <div className="dialog-box glass-panel" onClick={(e) => e.stopPropagation()}>
                         <div className="dialog-header">
-                            <h3>{dialogData.symbol} <span className="text-muted">| Day {dialogData.day}</span></h3>
+                            <h3>{dialogData.symbol} <span className="text-muted">| {dialogData.formattedDate}</span></h3>
                             <button className="btn-close" onClick={() => setDialogData(null)}>✖</button>
                         </div>
 

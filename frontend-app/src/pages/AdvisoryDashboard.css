@@ -147,7 +147,6 @@
     flex: 1;
     overflow-x: auto;
     overflow-y: auto;
-    padding-right: 5px;
 }
 
 .timeline-board {
@@ -161,18 +160,17 @@
     display: flex;
     align-items: center;
     border-bottom: 1px solid rgba(255,255,255,0.05);
-    position: relative; /* Required for z-index fix */
+    position: relative;
 }
 
-/* 🚀 FIX: Prevent Tooltip Overlap */
 .timeline-data-row:hover {
     background: rgba(255,255,255,0.02);
-    z-index: 10; /* Raises the entire hovered row above the rows below it */
+    z-index: 10;
 }
 
 /* Left Column: Symbol Name */
 .timeline-symbol-col {
-    flex: 0 0 150px;
+    flex: 0 0 130px;
     font-weight: 800;
     font-size: 0.9rem;
     padding: 15px 10px;
@@ -180,28 +178,45 @@
     letter-spacing: 0.5px;
 }
 
+/* 🚀 The Grid Container (Columns injected by React) */
 .timeline-days-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(31, 1fr);
     gap: 2px;
     padding-right: 10px;
 }
 
+/* 🚀 NEW: Stacked Month and Day Headers */
 .day-header {
-    text-align: center;
-    font-size: 0.65rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 8px;
+}
+
+.day-num {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--text-main);
+}
+
+.day-month {
+    font-size: 0.55rem;
+    text-transform: uppercase;
     color: var(--text-muted);
-    font-weight: 700;
-    padding-bottom: 10px;
 }
 
 .day-header.is-today {
-    color: #00a8ff;
     border-bottom: 2px solid #00a8ff;
 }
 
-/* --- 🚀 THE RIBBON CELLS (DIRECTIONAL COLORS) --- */
+.day-header.is-today .day-num,
+.day-header.is-today .day-month {
+    color: #00a8ff;
+}
+
+/* --- THE RIBBON CELLS (DIRECTIONAL COLORS) --- */
 .day-cell {
     height: 28px;
     border-radius: 3px;
@@ -212,24 +227,18 @@
     transition: filter 0.2s;
 }
 
-/* Clickable if not empty */
-.day-cell:not(.empty) {
-    cursor: pointer;
-}
-.day-cell:not(.empty):hover {
-    filter: brightness(1.2);
-}
+.day-cell:not(.empty) { cursor: pointer; }
+.day-cell:not(.empty):hover { filter: brightness(1.2); }
 
-/* State 1: LIGHT GREY (No active trade) */
+/* State 1: LIGHT GREY */
 .day-cell.empty {
-    background: #94a3b8; /* Light Grey */
+    background: #94a3b8;
     border: 1px solid rgba(255,255,255,0.1);
 }
 
 /* ================= BULLISH ================= */
-/* BULLISH ENTRY (Dark Green) */
 .day-cell.entry_bullish {
-    background: #14532d; /* Deep Dark Green */
+    background: #14532d;
     color: #ffffff;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
@@ -237,16 +246,14 @@
     z-index: 2;
 }
 
-/* BULLISH MAINTAIN (Light Green Ribbon) */
 .day-cell.active_bullish {
-    background: #22c55e; /* Vibrant Light Green */
+    background: #22c55e;
     border-radius: 0;
 }
 
 /* ================= BEARISH ================= */
-/* BEARISH ENTRY (Dark Red) */
 .day-cell.entry_bearish {
-    background: #7f1d1d; /* Deep Dark Red */
+    background: #7f1d1d;
     color: #ffffff;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
@@ -254,24 +261,21 @@
     z-index: 2;
 }
 
-/* BEARISH MAINTAIN (Light Red Ribbon) */
 .day-cell.active_bearish {
-    background: #f87171; /* Vibrant Light Red */
+    background: #f87171;
     border-radius: 0;
 }
 
 /* ================= EXITS ================= */
-/* EXIT / SL HIT (Pitch Black) */
 .day-cell.exit {
-    background: #0a0a0a; /* Pitch Black */
-    color: #ff4757; /* Bright Red 'X' inside the black box */
+    background: #0a0a0a;
+    color: #ff4757;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
     z-index: 2;
 }
 
-/* Forces standard geometric shapes, prevents emojis */
 .marker-icon {
     font-size: 0.75rem;
     font-weight: 900;
@@ -304,7 +308,7 @@
     gap: 4px;
 }
 
-/* --- 🚀 DIALOG OVERLAY & MODAL --- */
+/* --- DIALOG OVERLAY & MODAL --- */
 .dialog-overlay {
     position: fixed;
     top: 0; left: 0; width: 100vw; height: 100vh;
@@ -331,77 +335,50 @@
     margin-bottom: 15px;
 }
 
-.dialog-header h3 {
-    margin: 0;
-    font-size: 1.2rem;
-}
+.dialog-header h3 { margin: 0; font-size: 1.2rem; }
 
 .btn-close {
-    background: none;
-    border: none;
+    background: none; border: none;
     color: var(--text-muted);
-    font-size: 1.2rem;
-    cursor: pointer;
+    font-size: 1.2rem; cursor: pointer;
 }
 .btn-close:hover { color: #ff4757; }
 
 .dialog-status-row {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 15px; margin-bottom: 20px;
 }
 
 .dialog-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    margin-bottom: 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;
 }
 
 .d-box {
-    display: flex;
-    flex-direction: column;
+    display: flex; flex-direction: column;
     background: rgba(0,0,0,0.2);
-    padding: 10px;
-    border-radius: 8px;
+    padding: 10px; border-radius: 8px;
     border: 1px solid var(--glass-border);
 }
 
 .d-box label {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    margin-bottom: 4px;
+    font-size: 0.7rem; color: var(--text-muted);
+    text-transform: uppercase; margin-bottom: 4px;
 }
 
-.d-box span {
-    font-size: 0.95rem;
-    font-weight: bold;
-    color: var(--text-main);
-}
+.d-box span { font-size: 0.95rem; font-weight: bold; color: var(--text-main); }
 
 .dialog-reasoning {
     background: rgba(0, 168, 255, 0.05);
     border-left: 3px solid #00a8ff;
-    padding: 12px;
-    border-radius: 4px;
+    padding: 12px; border-radius: 4px;
 }
 
 .dialog-reasoning label {
-    display: block;
-    font-size: 0.75rem;
-    color: #00a8ff;
-    text-transform: uppercase;
-    font-weight: bold;
-    margin-bottom: 6px;
+    display: block; font-size: 0.75rem; color: #00a8ff;
+    text-transform: uppercase; font-weight: bold; margin-bottom: 6px;
 }
 
 .dialog-reasoning p {
-    margin: 0;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    color: var(--text-main);
+    margin: 0; font-size: 0.85rem; line-height: 1.4; color: var(--text-main);
 }
 
 /* Utilities */
@@ -411,21 +388,14 @@
 
 /* Badges */
 .status-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
 }
 .status-badge.active { background: rgba(46, 213, 115, 0.15); color: #2ed573; border: 1px solid rgba(46, 213, 115, 0.4); }
 .status-badge.history, .status-badge.no_trade { background: rgba(255, 71, 87, 0.15); color: #ff4757; border: 1px solid rgba(255, 71, 87, 0.4); }
 
 .empty-state, .loading-spinner {
-    text-align: center;
-    padding: 40px;
-    color: var(--text-muted);
-    font-style: italic;
+    text-align: center; padding: 40px; color: var(--text-muted); font-style: italic;
 }
 
 @keyframes popIn {
