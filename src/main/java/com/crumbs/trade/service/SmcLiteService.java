@@ -25,99 +25,108 @@ public class SmcLiteService {
     private static final Logger logger = LogManager.getLogger(SmcLiteService.class);
 
     // =========================================================
-    // 🛠️ SMC PINE SCRIPT SETTINGS
+    // 🛠️ SMC PINE SCRIPT & TRADE SETTINGS
     // =========================================================
     private static final int DEFAULT_SWING_LENGTH = 5; // Tuned for 1H intraday windows
     private static final int HISTORY_TO_KEEP = 20;
     private static final BigDecimal BOX_WIDTH = new BigDecimal("2.5");
 
+    // 🎚️ 1% Max Chase Percentage (Easily configurable: 0.01 = 1%, 0.005 = 0.5%)
+    private static final BigDecimal MAX_CHASE_PERCENT = new BigDecimal("0.01");
+
     @Autowired(required = false)
     private TelegramService telegramService;
 
-    // In-memory cache: Retains active Supply & Demand zones across scan cycles
+    // In-memory caches and concurrency locks
     private final Map<String, List<SmcZone>> supplyZonesCache = new ConcurrentHashMap<>();
     private final Map<String, List<SmcZone>> demandZonesCache = new ConcurrentHashMap<>();
+    private final Map<String, Object> symbolLocks = new ConcurrentHashMap<>(); // Per-symbol lock
 
     /**
-     * ✅ SYNCHRONIZED: Safe for 5-thread concurrent execution from FuturesStrategyService.
-     * ✅ TRUE SMC WIRED: Evaluates rolling pivots, builds Supply/Demand zones, and checks BOS.
+     * ✅ THREAD-SAFE: Uses per-symbol locking to allow concurrent multi-symbol scanning.
      */
-    public synchronized Optional<FuturesBreakEvent> evaluateAndNotify(String name, String indexType, 
-                                                                      List<HourlyCandle> candles, 
-                                                                      BigDecimal ltp, boolean canNotify) {
+    public Optional<FuturesBreakEvent> evaluateAndNotify(String name, String indexType,
+                                                         List<HourlyCandle> candles,
+                                                         BigDecimal ltp, boolean canNotify) {
+
         if (candles == null || candles.size() < (DEFAULT_SWING_LENGTH * 2 + 1)) {
             return Optional.empty();
         }
 
-        int size = candles.size();
-        BigDecimal atr = calculateAtr(candles);
+        // 🔒 Lock only the specific symbol being evaluated so other threads aren't blocked
+        Object symbolLock = symbolLocks.computeIfAbsent(name, k -> new Object());
 
-        List<SmcZone> supplyZones = supplyZonesCache.computeIfAbsent(name, k -> new ArrayList<>());
-        List<SmcZone> demandZones = demandZonesCache.computeIfAbsent(name, k -> new ArrayList<>());
+        synchronized (symbolLock) {
+            int size = candles.size();
+            BigDecimal atr = calculateAtr(candles);
 
-        // 1. 🏗️ BUILD STRUCTURE: Scan historical candles to establish active Supply/Demand zones
-        for (int i = DEFAULT_SWING_LENGTH; i < size - DEFAULT_SWING_LENGTH; i++) {
-            HourlyCandle bar = candles.get(i);
-            
-            // Detect Pivot High -> Create Supply Zone
-            if (isPivotHigh(candles, i, DEFAULT_SWING_LENGTH)) {
-                BigDecimal top = bar.high;
-                BigDecimal bottom = top.subtract(atr.multiply(BOX_WIDTH));
-                if (!isOverlapping(top, supplyZones, atr)) {
-                    addZoneAndPrune(supplyZones, new SmcZone("SUPPLY", top, bottom, top));
+            List<SmcZone> supplyZones = supplyZonesCache.computeIfAbsent(name, k -> new ArrayList<>());
+            List<SmcZone> demandZones = demandZonesCache.computeIfAbsent(name, k -> new ArrayList<>());
+
+            // 1. 🏗️ BUILD STRUCTURE: Scan historical candles to establish active Supply/Demand zones
+            for (int i = DEFAULT_SWING_LENGTH; i < size - DEFAULT_SWING_LENGTH; i++) {
+                HourlyCandle bar = candles.get(i);
+
+                // Detect Pivot High -> Create Supply Zone
+                if (isPivotHigh(candles, i, DEFAULT_SWING_LENGTH)) {
+                    BigDecimal top = bar.high;
+                    BigDecimal bottom = top.subtract(atr.multiply(BOX_WIDTH));
+                    if (!isOverlapping(top, supplyZones, atr)) {
+                        addZoneAndPrune(supplyZones, new SmcZone("SUPPLY", top, bottom, top));
+                    }
+                }
+
+                // Detect Pivot Low -> Create Demand Zone
+                if (isPivotLow(candles, i, DEFAULT_SWING_LENGTH)) {
+                    BigDecimal bottom = bar.low;
+                    BigDecimal top = bottom.add(atr.multiply(BOX_WIDTH));
+                    if (!isOverlapping(bottom, demandZones, atr)) {
+                        addZoneAndPrune(demandZones, new SmcZone("DEMAND", top, bottom, bottom));
+                    }
                 }
             }
-            
-            // Detect Pivot Low -> Create Demand Zone
-            if (isPivotLow(candles, i, DEFAULT_SWING_LENGTH)) {
-                BigDecimal bottom = bar.low;
-                BigDecimal top = bottom.add(atr.multiply(BOX_WIDTH));
-                if (!isOverlapping(bottom, demandZones, atr)) {
-                    addZoneAndPrune(demandZones, new SmcZone("DEMAND", top, bottom, bottom));
-                }
-            }
-        }
 
-        // 2. 💥 CHECK BOS & RECENCY: Evaluate if live LTP or latest closed bar broke an active zone
-        HourlyCandle latestBar = candles.get(size - 1);
-        BigDecimal evalPrice = (ltp != null && ltp.compareTo(BigDecimal.ZERO) > 0) ? ltp : latestBar.close;
+            // 2. 💥 CHECK BOS & RECENCY: Evaluate if live LTP or latest closed bar broke an active zone
+            HourlyCandle latestBar = candles.get(size - 1);
+            BigDecimal evalPrice = (ltp != null && ltp.compareTo(BigDecimal.ZERO) > 0) ? ltp : latestBar.close;
 
-        Optional<SmcSignal> bosSignal = checkBos(name, indexType, evalPrice, supplyZones, demandZones);
+            Optional<SmcSignal> bosSignal = checkBos(name, indexType, evalPrice, supplyZones, demandZones);
 
-        // 3. 📤 DISPATCH ALERT & RETURN EVENT
-        if (bosSignal.isPresent() && canNotify) {
-            SmcSignal sig = bosSignal.get();
-            logger.info("🔒 [SMC BOS CONFIRMED] {} {} at ₹{} (Broken Level: ₹{})", 
+            // 3. 📤 DISPATCH ALERT & RETURN EVENT
+            if (bosSignal.isPresent() && canNotify) {
+                SmcSignal sig = bosSignal.get();
+                logger.info("🔒 [SMC BOS CONFIRMED] {} {} at ₹{} (Broken Level: ₹{})",
                         name, sig.getBosType(), evalPrice, sig.getBrokenLevel());
-            
-            sendTelegramAlert(sig);
-            return Optional.of(mapToBreakEvent(name, indexType, sig, evalPrice));
-        }
 
-        return Optional.empty();
+                sendTelegramAlert(sig);
+                return Optional.of(mapToBreakEvent(name, indexType, sig, evalPrice));
+            }
+
+            return Optional.empty();
+        }
     }
 
     // =========================================================
     // 💥 BREAK OF STRUCTURE (BOS) EVALUATION
     // =========================================================
-    private Optional<SmcSignal> checkBos(String symbol, String indexType, BigDecimal price, 
+    private Optional<SmcSignal> checkBos(String symbol, String indexType, BigDecimal price,
                                          List<SmcZone> supplyZones, List<SmcZone> demandZones) {
-        
+
         // Check Bullish BOS (Breaking above Supply Top)
         Iterator<SmcZone> supplyIter = supplyZones.iterator();
         while (supplyIter.hasNext()) {
             SmcZone zone = supplyIter.next();
             if (price.compareTo(zone.getTop()) >= 0) {
-                supplyIter.remove(); // Always remove broken zone so it doesn't trigger repeatedly
-                
+                supplyIter.remove();
+
                 BigDecimal diff = price.subtract(zone.getTop()).abs();
                 BigDecimal maxAllowed = getMaxAllowedDifference(zone.getTop());
-                
+
                 if (diff.compareTo(maxAllowed) <= 0) {
                     return Optional.of(new SmcSignal(symbol, indexType, "BULLISH_BOS", "BUY", price, zone.getTop()));
                 } else {
-                    logger.info("🔕 [SMC-BOS SKIP] {} BULLISH breakout chased too far! LTP: ₹{}, BOS: ₹{}, Diff: ₹{} (Max: ₹{})", 
-                                symbol, price, zone.getTop(), diff, maxAllowed);
+                    logger.info("🔕 [SMC-BOS SKIP] {} BULLISH breakout chased too far! LTP: ₹{}, BOS: ₹{}, Diff: ₹{} (Max: ₹{})",
+                            symbol, price, zone.getTop(), diff, maxAllowed);
                 }
             }
         }
@@ -127,16 +136,16 @@ public class SmcLiteService {
         while (demandIter.hasNext()) {
             SmcZone zone = demandIter.next();
             if (price.compareTo(zone.getBottom()) <= 0) {
-                demandIter.remove(); // Always remove broken zone
-                
+                demandIter.remove();
+
                 BigDecimal diff = zone.getBottom().subtract(price).abs();
                 BigDecimal maxAllowed = getMaxAllowedDifference(zone.getBottom());
-                
+
                 if (diff.compareTo(maxAllowed) <= 0) {
                     return Optional.of(new SmcSignal(symbol, indexType, "BEARISH_BOS", "SELL", price, zone.getBottom()));
                 } else {
-                    logger.info("🔕 [SMC-BOS SKIP] {} BEARISH breakdown chased too far! LTP: ₹{}, BOS: ₹{}, Diff: ₹{} (Max: ₹{})", 
-                                symbol, price, zone.getBottom(), diff, maxAllowed);
+                    logger.info("🔕 [SMC-BOS SKIP] {} BEARISH breakdown chased too far! LTP: ₹{}, BOS: ₹{}, Diff: ₹{} (Max: ₹{})",
+                            symbol, price, zone.getBottom(), diff, maxAllowed);
                 }
             }
         }
@@ -145,17 +154,11 @@ public class SmcLiteService {
     }
 
     // ──────────────────────────────────────────────────────────
-    // 🎚️ PRICE TIER MAP FOR MAX SLIPPAGE / CHASE PROTECTION
+    // 🎚️ DYNAMIC MAX SLIPPAGE / CHASE PROTECTION
     // ──────────────────────────────────────────────────────────
     private BigDecimal getMaxAllowedDifference(BigDecimal bosLevel) {
-        double level = bosLevel.doubleValue();
-        if (level <= 100)   return new BigDecimal("2.00");
-        if (level <= 500)   return new BigDecimal("5.00");
-        if (level <= 1000)  return new BigDecimal("10.00");
-        if (level <= 2500)  return new BigDecimal("20.00");
-        if (level <= 5000)  return new BigDecimal("20.00");
-        if (level <= 10000) return new BigDecimal("50.00"); // Matches MCX CrudeOil nicely
-        return new BigDecimal("75.00"); // For NIFTY/BANKNIFTY or stocks > 10,000
+        // Automatically calculates max slippage using the configurable percentage
+        return bosLevel.multiply(MAX_CHASE_PERCENT).setScale(2, RoundingMode.HALF_UP);
     }
 
     private FuturesBreakEvent mapToBreakEvent(String name, String indexType, SmcSignal sig, BigDecimal ltp) {
@@ -166,7 +169,7 @@ public class SmcLiteService {
         event.setBreakPrice(sig.getBrokenLevel());
         event.setCurrentPrice(ltp);
         event.setReferenceLevel(sig.getBrokenLevel());
-        event.setStopLoss(sig.getBrokenLevel()); // Initial reference SL
+        event.setStopLoss(sig.getBrokenLevel());
         event.setStatus("ACTIVE");
         event.setBreakTime(LocalDateTime.now());
         return event;
@@ -183,10 +186,10 @@ public class SmcLiteService {
             💥 *BOS Level* : ₹%.2f
             💰 *Current LTP* : ₹%.2f
             ⏰ *Time* : %s
-            """, 
-            emoji, emoji, sig.getSymbol(), sig.getIndexType(), 
-            sig.getDirection(), sig.getBosType(), sig.getBrokenLevel(), 
-            sig.getCurrentPrice(), LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+            """,
+                emoji, emoji, sig.getSymbol(), sig.getIndexType(),
+                sig.getDirection(), sig.getBosType(), sig.getBrokenLevel(),
+                sig.getCurrentPrice(), LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
 
         try {
             telegramService.sendBroadcast(message);
@@ -196,7 +199,7 @@ public class SmcLiteService {
     }
 
     // =========================================================
-    // 📐 MATH & PIVOT UTILITIES (FIXED FOR EQUAL HIGHS/LOWS)
+    // 📐 MATH & PIVOT UTILITIES
     // =========================================================
     private boolean isPivotHigh(List<HourlyCandle> candles, int targetIdx, int len) {
         if (targetIdx - len < 0 || targetIdx + len >= candles.size()) return false;
@@ -221,8 +224,8 @@ public class SmcLiteService {
     private boolean isOverlapping(BigDecimal newPoi, List<SmcZone> existingZones, BigDecimal atr) {
         BigDecimal threshold = atr.multiply(BigDecimal.valueOf(2));
         for (SmcZone zone : existingZones) {
-            if (newPoi.compareTo(zone.getPoi().subtract(threshold)) >= 0 && 
-                newPoi.compareTo(zone.getPoi().add(threshold)) <= 0) {
+            if (newPoi.compareTo(zone.getPoi().subtract(threshold)) >= 0 &&
+                    newPoi.compareTo(zone.getPoi().add(threshold)) <= 0) {
                 return true;
             }
         }
