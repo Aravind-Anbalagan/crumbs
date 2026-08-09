@@ -178,7 +178,7 @@
     letter-spacing: 0.5px;
 }
 
-/* 🚀 The Grid Container (Columns injected by React) */
+/* The Grid Container (Columns injected by React) */
 .timeline-days-grid {
     flex: 1;
     display: grid;
@@ -186,7 +186,7 @@
     padding-right: 10px;
 }
 
-/* 🚀 NEW: Stacked Month and Day Headers */
+/* Stacked Month and Day Headers */
 .day-header {
     display: flex;
     flex-direction: column;
@@ -365,6 +365,16 @@
 }
 
 .d-box span { font-size: 0.95rem; font-weight: bold; color: var(--text-main); }
+
+/* 🚀 NEW: Visual highlight for Unrealized PnL block */
+.highlight-box {
+    background: rgba(0, 168, 255, 0.08);
+    border: 1px solid rgba(0, 168, 255, 0.4);
+}
+.highlight-box label {
+    color: #00a8ff;
+    font-weight: 800;
+}
 
 .dialog-reasoning {
     background: rgba(0, 168, 255, 0.05);

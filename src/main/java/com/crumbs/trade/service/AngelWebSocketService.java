@@ -4,12 +4,11 @@ import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.crumbs.trade.entity.Nifty;
+import com.crumbs.trade.repo.NiftyRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,7 +63,8 @@ public class AngelWebSocketService {
     private SseService sseService;
 
     private final String clientCode = "R705672";
-
+    @Autowired
+    private NiftyRepo niftyRepo;
     @Autowired
     private org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler taskScheduler;
     /**
@@ -366,5 +366,35 @@ public class AngelWebSocketService {
         lastTickTime.remove(key);
         
         log.info("Unsubscribed successfully | {}", key);
+    }
+
+    /**
+     * Bulk subscribes all active tokens from the fo_stocks table.
+     * Can be called manually or after morning pre-cache finishes.
+     */
+    public synchronized void subscribeAllFnoStocks() {
+        try {
+            List<Nifty> fnoStocks = niftyRepo.findAll();
+            Set<TokenID> tokenSet = new HashSet<>();
+
+            for (com.crumbs.trade.entity.Nifty stock : fnoStocks) {
+                String token = stock.getToken();
+                if (token != null && !token.trim().isEmpty()) {
+                    String normalizedToken = normalizeToken(token);
+                    String key = ExchangeType.NSE_CM.name() + "_" + normalizedToken;
+
+                    TokenID tokenId = new TokenID(ExchangeType.NSE_CM, normalizedToken);
+                    tokenSet.add(tokenId);
+                    subscribedTokens.put(key, tokenId);
+                }
+            }
+
+            if (!tokenSet.isEmpty() && smartStreamTicker != null) {
+                smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
+                log.info("✅ Bulk subscribed to {} F&O Stocks on NSE_CM", tokenSet.size());
+            }
+        } catch (Exception e) {
+            log.error("Failed to bulk subscribe F&O stocks", e);
+        }
     }
 }

@@ -32,11 +32,11 @@ export default function AdvisoryDashboard() {
             .finally(() => setScanningAll(false));
     };
 
-    // 🚀 NEW: Dynamic NSE Expiry Cycle Calculator
+    // 🚀 Dynamic NSE Expiry Cycle Calculator
     const { startDate, endDate, daysArray, cycleRangeText } = useMemo(() => {
         const getLastThursday = (year, month) => {
-            let d = new Date(year, month + 1, 0); // Last day of the month
-            while (d.getDay() !== 4) d.setDate(d.getDate() - 1); // 4 = Thursday
+            let d = new Date(year, month + 1, 0);
+            while (d.getDay() !== 4) d.setDate(d.getDate() - 1);
             d.setHours(23, 59, 59, 999);
             return d;
         };
@@ -46,13 +46,11 @@ export default function AdvisoryDashboard() {
 
         let start, end;
         if (now.getTime() > currentExpiry.getTime()) {
-            // We passed this month's expiry -> We are in NEXT month's cycle
             start = new Date(currentExpiry);
             start.setDate(start.getDate() + 1);
             start.setHours(0, 0, 0, 0);
             end = getLastThursday(now.getFullYear(), now.getMonth() + 1);
         } else {
-            // We are in CURRENT month's cycle
             const prevExpiry = getLastThursday(now.getFullYear(), now.getMonth() - 1);
             start = new Date(prevExpiry);
             start.setDate(start.getDate() + 1);
@@ -60,7 +58,6 @@ export default function AdvisoryDashboard() {
             end = currentExpiry;
         }
 
-        // Build the columns array
         const days = [];
         let curr = new Date(start);
         while (curr <= end) {
@@ -79,11 +76,10 @@ export default function AdvisoryDashboard() {
         return { startDate: start, endDate: end, daysArray: days, cycleRangeText: rangeText };
     }, []);
 
-    // 🧠 DYNAMIC MATRIX LOGIC: Walks timeline from dawn of time to retain "Carry-over" trades
+    // 🧠 DYNAMIC MATRIX LOGIC
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
-        // Group ALL records by symbol and date
         timelineData.forEach(record => {
             if (!record.timestamp) return;
             const date = new Date(record.timestamp);
@@ -93,7 +89,6 @@ export default function AdvisoryDashboard() {
             matrix[record.symbol].records[dateString] = record;
         });
 
-        // Find the absolute earliest trade in DB to start tracking holding states
         let globalMinDate = timelineData.length > 0
             ? new Date(Math.min(...timelineData.map(r => new Date(r.timestamp))))
             : startDate;
@@ -110,7 +105,6 @@ export default function AdvisoryDashboard() {
             let curr = new Date(globalMinDate);
             curr.setHours(0,0,0,0);
 
-            // Walk forward day-by-day
             while(curr <= endDate) {
                 const dateString = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
                 const record = data.records[dateString];
@@ -138,7 +132,6 @@ export default function AdvisoryDashboard() {
                     }
                 }
 
-                // 🚀 ONLY attach to grid if it belongs to the CURRENT Expiry Cycle
                 if (curr >= startDate) {
                      rowDays[dateString] = { type: typeForDay, record: record || currentTrade };
                 }
@@ -183,7 +176,6 @@ export default function AdvisoryDashboard() {
 
                         <div className="timeline-header-row">
                             <div className="timeline-symbol-col">Instrument</div>
-                            {/* Dynamic Columns based on Cycle length */}
                             <div className="timeline-days-grid" style={{ gridTemplateColumns: `repeat(${daysArray.length}, minmax(25px, 1fr))` }}>
                                 {daysArray.map((dayObj) => (
                                     <div key={dayObj.dateString} className={`day-header ${dayObj.isToday ? 'is-today' : ''}`}>
@@ -251,26 +243,50 @@ export default function AdvisoryDashboard() {
                                     <label>Strike</label>
                                     <span>{dialogData.recommendedStrike ? `${dialogData.recommendedStrike} ${dialogData.optionType}` : 'N/A'}</span>
                                 </div>
+                                {/* 🚀 NEW: Expiry Display added here */}
+                                <div className="d-box">
+                                    <label>Expiry Date</label>
+                                    <span>{dialogData.expiryDate || '-'}</span>
+                                </div>
                                 <div className="d-box">
                                     <label>Spot Price</label>
                                     <span>₹{dialogData.spotPrice}</span>
                                 </div>
                                 <div className="d-box">
-                                    <label>Entry Premium</label>
-                                    <span>₹{dialogData.entryPremium || '-'}</span>
-                                </div>
-                                <div className="d-box">
-                                    <label>Exit Premium</label>
-                                    <span>{dialogData.exitPremium ? `₹${dialogData.exitPremium}` : 'LIVE'}</span>
-                                </div>
-                                <div className="d-box">
-                                    <label>Realized PnL</label>
-                                    <span>{formatPnL(dialogData.realizedPnl)}</span>
-                                </div>
-                                <div className="d-box">
                                     <label>Daily Trend</label>
                                     <span>{dialogData.dailyTrend || '-'}</span>
                                 </div>
+                                <div className="d-box">
+                                    <label>Entry Premium</label>
+                                    <span>₹{dialogData.entryPremium || '-'}</span>
+                                </div>
+
+                                <div className="d-box">
+                                    <label>Live/Current Premium</label>
+                                    <span>
+                                        {dialogData.status === 'ACTIVE' && dialogData.currentPremium
+                                            ? `₹${dialogData.currentPremium}`
+                                            : '-'}
+                                    </span>
+                                </div>
+
+                                <div className="d-box">
+                                    <label>Exit Premium</label>
+                                    <span>{dialogData.exitPremium ? `₹${dialogData.exitPremium}` : (dialogData.status === 'ACTIVE' ? 'LIVE' : '-')}</span>
+                                </div>
+
+                                <div className="d-box">
+                                    <label>Realized PnL</label>
+                                    <span>{dialogData.status === 'HISTORY' ? formatPnL(dialogData.realizedPnl) : '-'}</span>
+                                </div>
+                            </div>
+
+                            {/* 🚀 NEW: Standalone Highlight Box for Unrealized PnL */}
+                            <div className="d-box highlight-box" style={{ marginBottom: '20px' }}>
+                                <label>Unrealized (MTM) PnL</label>
+                                <span style={{ fontSize: '1.2rem' }}>
+                                    {dialogData.status === 'ACTIVE' ? formatPnL(dialogData.unrealizedPnl) : 'N/A (Trade Closed)'}
+                                </span>
                             </div>
 
                             <div className="dialog-reasoning">

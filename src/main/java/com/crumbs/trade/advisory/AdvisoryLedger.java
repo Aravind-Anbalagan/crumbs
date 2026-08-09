@@ -98,4 +98,10 @@ public class AdvisoryLedger {
 
     @Column(name = "realized_pnl", precision = 10, scale = 2)
     private BigDecimal realizedPnl;
+
+    @Column(name = "current_premium")
+    private BigDecimal currentPremium;
+
+    @Column(name = "unrealized_pnl")
+    private BigDecimal unrealizedPnl;
 }
