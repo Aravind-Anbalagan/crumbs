@@ -102,8 +102,8 @@ public class FnoScannerService {
 
         AtomicInteger updatedCount = new AtomicInteger(0);
 
-        // Calculate last working day via NSEWorkingDays utility
-        final LocalDate prevTradingDay = NSEWorkingDays.getLastWorkingDay(LocalDate.now());
+        // Calculate last working day safely without modifying the shared utility
+        final LocalDate prevTradingDay = getStrictPreviousTradingDay(LocalDate.now());
         logger.info("📅 Determined Previous Trading Date as: {}", prevTradingDay);
 
         // Controlled concurrency (3 threads max to prevent 503 rate limits)
@@ -308,5 +308,23 @@ public class FnoScannerService {
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
+    }
+    // ──────────────────────────────────────────────────────────
+    //  Helpers
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * Finds the most recent trading day strictly BEFORE the given date.
+     * Evaluates backwards day-by-day using the shared utility's boolean check.
+     */
+    private LocalDate getStrictPreviousTradingDay(LocalDate date) {
+        LocalDate currentCheck = date.minusDays(1); // Always step back 1 day first (for 8:30 AM jobs)
+
+        // Keep looping backward until the shared utility confirms it's a working day
+        while (!NSEWorkingDays.isNSEWorkingDay(currentCheck)) {
+            currentCheck = currentCheck.minusDays(1);
+        }
+
+        return currentCheck;
     }
 }
