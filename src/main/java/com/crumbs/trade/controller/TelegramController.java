@@ -5,6 +5,7 @@ import com.crumbs.trade.service.TelegramService;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -109,5 +110,13 @@ public class TelegramController {
 
         // Telegram expects 200 always
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/test-new-chat")
+    public ResponseEntity<String> testNewChat(@RequestParam String msg) {
+        boolean sent = telegramService.sendToNewChat(msg);
+        return sent
+                ? ResponseEntity.ok("Message sent to new chat")
+                : ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to send message");
     }
 }

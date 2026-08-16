@@ -17,8 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,10 +38,51 @@ public class AdvisoryEngineService {
     private final AdvisoryLedgerRepository ledgerRepository;
     private final AngelWebSocketService webSocketService;
 
+    // =========================================================================
+    // 🛡️ PER-SYMBOL LOCK (Defense in Depth)
+    // =========================================================================
+    // The scheduler now dedupes the Nifty table before dispatching, so this
+    // should never be contended in normal operation. It exists as a hard
+    // safety net: if a duplicate active-token row ever slips back into the
+    // data, a manual re-run overlaps a scheduled run, or a retry fires
+    // concurrently with the original attempt, this guarantees only one
+    // processAdvisory() call per symbol can be evaluating/writing the ledger
+    // at a time. Without this, two concurrent calls for the same symbol can
+    // both read "no ACTIVE record" and both write NEW_ENTRY, or one can read
+    // stale state mid-write by the other — which is what produced the
+    // same-millisecond NEW_ENTRY + EXIT_PROXIMITY_BREACH pairs in the ledger.
+    private static final Map<String, Lock> SYMBOL_LOCKS = new ConcurrentHashMap<>();
+
     public record MultiTimeframeTrend(String dailyTrend, String weeklyTrend, boolean isAligned) {}
 
-    @Transactional
     public OptionRecommendation processAdvisory(String name, String token) {
+        Lock lock = SYMBOL_LOCKS.computeIfAbsent(name, k -> new ReentrantLock());
+
+        boolean acquired;
+        try {
+            // Don't wait forever behind a stuck/slow evaluation of the same symbol.
+            acquired = lock.tryLock(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("❌ Interrupted while waiting for lock on {}. Skipping this run.", name);
+            return null;
+        }
+
+        if (!acquired) {
+            log.error("⚠️ Could not acquire lock for {} within 30s — another evaluation is already in " +
+                    "progress for this symbol. Skipping to avoid a ledger race.", name);
+            return null;
+        }
+
+        try {
+            return processAdvisoryInternal(name, token);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Transactional
+    protected OptionRecommendation processAdvisoryInternal(String name, String token) {
         log.info("🧠 Running Stateful EOD Advisory Engine for: {} (Token: {})", name, token);
 
         Indexes indexes = indexesRepo.findByToken(token);
@@ -278,15 +324,40 @@ public class AdvisoryEngineService {
     }
 
     // =========================================================================
-    // 🛡️ NEW POSITION HANDLER (With Moneyness & Cooldown)
+    // 🛡️ NEW POSITION HANDLER (With Moneyness, Same-Day Guard & Cooldown)
     // =========================================================================
 
     private void handleNewPosition(AdvisoryLedger newRecord, MultiTimeframeTrend mtfTrend, AdvisoryOiService.AdvisoryOiData oiData, LocalDateTime now, BigDecimal spotPrice) {
         BigDecimal minPremium = new BigDecimal("10.0");
 
         // Fetch the last closed trade to check for recent stop-outs (Cooldown Logic)
+        // and same-day re-entry (Lifecycle Logic).
         Optional<AdvisoryLedger> lastClosedOpt = ledgerRepository
                 .findTopBySymbolAndStatusOrderByTimestampDesc(newRecord.getSymbol(), "HISTORY");
+
+        // =====================================================================
+        // 🚨 SAME-DAY RE-ENTRY GUARD
+        // =====================================================================
+        // Lifecycle rule: NEW_ENTRY -> MAINTAIN/EXIT -> once a position closes,
+        // no new position for that symbol until the NEXT scheduled run (i.e.
+        // the next calendar day this engine runs). This is intentionally
+        // unconditional — unlike isRecentlyBreached() below, it does not care
+        // WHY the prior trade closed (proximity breach, wall shift, trend
+        // flip, phantom state, etc.) or what strike it was on. It exists as
+        // a safety net independent of the scheduler-level dedup fix: even if
+        // two calls for this symbol ever race again, this stops the second
+        // one from stacking a fresh NEW_ENTRY on top of an exit that just
+        // happened in the same session.
+        if (lastClosedOpt.isPresent()) {
+            LocalDate lastCloseDate = lastClosedOpt.get().getTimestamp().toLocalDate();
+            if (lastCloseDate.equals(now.toLocalDate())) {
+                newRecord.setActionTaken("NO_TRADE_SAME_DAY_EXIT");
+                newRecord.setReasoning(String.format(
+                        "Position already closed today (%s) for this symbol. Re-entry deferred to next session.",
+                        lastClosedOpt.get().getActionTaken()));
+                return;
+            }
+        }
 
         if (!mtfTrend.isAligned()) {
             newRecord.setActionTaken("HOLD_TIME_FRAME_MISALIGNMENT");

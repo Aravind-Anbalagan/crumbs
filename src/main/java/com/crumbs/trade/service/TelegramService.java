@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
 public class TelegramService {
 
     static Logger logger = LoggerFactory.getLogger(TelegramService.class);
-
+    private static final String NEW_CHAT_ID = "8948124698";
     private static final int TELEGRAM_MAX_CHARS = 3800;
 
     private static final Pattern VALID_TAG = Pattern.compile(
@@ -45,6 +45,12 @@ public class TelegramService {
 
     @Value("${telegram.chat-id:}")
     private String configuredChatId;
+
+    @Value("${telegram.new-bot-token}")
+    private String newBotToken;
+
+    @Value("${telegram.new-chat-id}")
+    private String newChatId;
 
     private String cachedChatId;
     private Long updateOffset = 0L;
@@ -469,5 +475,45 @@ public class TelegramService {
         result = result.replace(PLACEHOLDER, "&lt;");
 
         return result;
+    }
+
+    public boolean sendToNewChat(String text) {
+        try {
+            return sendChunkedToSingleChatWithToken(newBotToken, newChatId, text);
+        } catch (Exception e) {
+            logger.error("❌ Failed to send message to new bot: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean sendChunkedToSingleChatWithToken(String token, String chatId, String text) {
+        List<String> chunks = splitAtLineBoundary(text);
+        boolean allSent = true;
+        for (int i = 0; i < chunks.size(); i++) {
+            try {
+                String safe = sanitizeHtml(chunks.get(i));
+                String url  = String.format("%s/bot%s/sendMessage", baseUrl, token);
+                Map<String, Object> body = Map.of(
+                        "chat_id",    chatId,
+                        "text",       safe,
+                        "parse_mode", "HTML"
+                );
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+                ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    logger.info("✅ New-bot chunk {}/{} sent ({} chars)", i + 1, chunks.size(), safe.length());
+                } else {
+                    logger.error("❌ New-bot chunk {}/{} failed. Status: {}", i + 1, chunks.size(), response.getStatusCode());
+                    allSent = false;
+                }
+                if (i < chunks.size() - 1) Thread.sleep(500);
+            } catch (Exception e) {
+                logger.error("❌ New-bot chunk {}/{} error: {}", i + 1, chunks.size(), e.getMessage());
+                allSent = false;
+            }
+        }
+        return allSent;
     }
 }
