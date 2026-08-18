@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,7 +56,7 @@ public class FnoScannerService {
     private final AngelOne angelOne;
     private final AngelWebSocketService angelWebSocketService;
     private final TelegramService telegramService; // Injected Telegram Service
-
+    private final SmcLiteService smcLiteService;
     // ──────────────────────────────────────────────────────────
     //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 8:30 AM)
     // ──────────────────────────────────────────────────────────
@@ -144,6 +145,8 @@ public class FnoScannerService {
 
                     sleepQuietly(BATCH_FETCH_DELAY_MS);
 
+                } catch (SmartAPIException e) {
+                    throw new RuntimeException(e);
                 } catch (Exception e) {
                     boolean isRateLimit = e.getMessage() != null &&
                             (e.getMessage().contains("503") || e.getMessage().contains("Too Many Requests"));
@@ -154,8 +157,6 @@ public class FnoScannerService {
                     } else {
                         logger.error("Error fetching batch for prev close: {}", e.getMessage());
                     }
-                } catch (SmartAPIException e) {
-                    throw new RuntimeException(e);
                 }
             }, executor));
         }
@@ -198,8 +199,8 @@ public class FnoScannerService {
 
         // Container to store stocks exceeding the +/- 5% threshold for Telegram alert
         List<String[]> highMoverRows = new ArrayList<>();
-        // Header row aligned with TelegramService.sendStockAlert column widths {12, 8, 8, 8, 6}
-        highMoverRows.add(new String[]{"Stock", "LTP", "PrevClose", "Change%", "Move"});
+        // header row
+        highMoverRows.add(new String[]{"Stock", "Chg%", "Signal"});
 
         for (Nifty stock : stocks) {
             String token = stock.getToken();
@@ -236,12 +237,12 @@ public class FnoScannerService {
                 String moveType = percentage.compareTo(BigDecimal.ZERO) >= 0 ? "GAIN" : "DROP";
                 String changeStr = (percentage.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + percentage + "%";
 
+                String signal = safeGetTradeSignal(stock.getName(), ltp, moveType);
+
                 highMoverRows.add(new String[]{
                         stock.getName(),
-                        ltp.toString(),
-                        prevClose.toString(),
                         changeStr,
-                        moveType
+                        signal
                 });
             }
         }
@@ -326,5 +327,73 @@ public class FnoScannerService {
         }
 
         return currentCheck;
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  S/R Trade Signal — zone status + move direction + BOS context
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * Turns SmcLiteService's ZoneInfo + move direction + recent BOS status into
+     * a short, human-readable trade signal for Telegram.
+     *
+     * - NEAR_RESISTANCE / NEAR_SUPPORT: price approaching a known zone, hasn't
+     *   entered it yet → Reversal, fade it.
+     * - INSIDE_ZONE: price already trading inside the zone, direction unclear
+     *   → Straddle, sell both sides.
+     * - NO_NEARBY_ZONE: no close level. If a BOS already confirmed a break in
+     *   the same direction, this is a validated breakout — say so explicitly,
+     *   it's stronger than raw momentum. Otherwise it's just trending with no
+     *   structural confirmation yet.
+     * - NO_ZONE_DATA: symbol hasn't been SMC-evaluated yet → No trade.
+     */
+    private String determineTradeSignal(SmcLiteService.ZoneInfo zoneInfo, String moveType,
+                                        Optional<SmcLiteService.BosRecord> bos) {
+        switch (zoneInfo.getStatus()) {
+            case NEAR_RESISTANCE:
+                return "↩️ Reversal SELL, near resistance ₹" + zoneInfo.getLevel();
+            case NEAR_SUPPORT:
+                return "↩️ Reversal BUY, near support ₹" + zoneInfo.getLevel();
+            case INSIDE_ZONE:
+                return "🎯 Straddle, price inside zone ₹" + zoneInfo.getLevel();
+            case NO_NEARBY_ZONE:
+                return buildDirectionalSignal(moveType, zoneInfo, bos);
+            case NO_ZONE_DATA:
+            default:
+                return "⏳ No trade, zone data not ready";
+        }
+    }
+
+    private String buildDirectionalSignal(String moveType, SmcLiteService.ZoneInfo zoneInfo,
+                                          Optional<SmcLiteService.BosRecord> bos) {
+        String dirWord = "GAIN".equals(moveType) ? "BUY" : "SELL";
+
+        if (bos.isPresent() && dirWord.equals(bos.get().getDirection())) {
+            return "📈 Breakout " + dirWord + ", confirmed @₹" + bos.get().getBrokenLevel();
+        }
+
+        if (zoneInfo.getDistancePct() != null) {
+            return "📈 Trending " + dirWord + ", next level " + zoneInfo.getDistancePct() + "% away";
+        }
+        return "📈 Trending " + dirWord + ", no level nearby";
+    }
+
+    /**
+     * Best-effort S/R + BOS signal lookup. If SmcLiteService fails for ANY reason
+     * (missing cache, bad data, runtime exception), we swallow it and fall back
+     * to a neutral, non-actionable result so the core % alert — the stable,
+     * load-bearing part of this system — always goes out. A broken S/R
+     * enhancement must never suppress or delay the underlying notification.
+     */
+    private String safeGetTradeSignal(String name, BigDecimal ltp, String moveType) {
+        try {
+            SmcLiteService.ZoneInfo zoneInfo = smcLiteService.getZoneProximity(name, ltp, moveType);
+            Optional<SmcLiteService.BosRecord> bos = smcLiteService.getRecentBos(name);
+            return determineTradeSignal(zoneInfo, moveType, bos);
+        } catch (Exception e) {
+            logger.warn("⚠️ S/R zone lookup failed for {} — sending alert without zone context. Reason: {}",
+                    name, e.getMessage());
+            return "⚠️ No trade, zone check failed";
+        }
     }
 }

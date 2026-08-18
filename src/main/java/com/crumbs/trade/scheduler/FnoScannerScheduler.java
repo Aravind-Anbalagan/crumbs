@@ -19,9 +19,10 @@ public class FnoScannerScheduler {
 
     /**
      * Step 1: Pre-caches yesterday's closing prices.
-     * Runs exactly at 9:16 AM IST, Monday to Friday.
+     * Runs at 8:45 AM IST (Monday–Friday) so the WebSocket bulk-subscribe
+     * in precacheFnoPreviousClose() completes well before the 9:15 AM open.
      */
-    @Scheduled(cron = "0 16 9 * * MON-FRI", zone = ZONE)
+    @Scheduled(cron = "0 45 8 * * MON-FRI", zone = ZONE)
     public void runMorningSetup() {
         logger.info("⏰ Triggering Morning F&O Scanner Setup...");
         fnoScannerService.precacheFnoPreviousClose();

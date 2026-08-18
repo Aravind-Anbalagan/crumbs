@@ -3,6 +3,7 @@ package com.crumbs.trade.scheduler;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
+import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,17 +34,17 @@ public class FuturesStrategyScheduler {
      * Executes once at 8:45 AM every morning (Monday through Friday)
      * Automatically handles the heavy broker REST API calls outside market hours.
      */
+    @SneakyThrows
     @Scheduled(cron = "0 45 8 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMorningStructureInitialization() {
         if (!isActive("FUTURE")) {
             return;
         }
-        
         try {
             logger.info("🌅 Beginning morning pre-cache initialization scheduler...");
             futuresStrategyService.initializeDailyExpiryStructure();
             logger.info("🌅 Morning initialization setup complete.");
-        } catch (Exception | SmartAPIException e) {
+        } catch (Exception e) {
             logger.error("🛑 Critical Exception caught during morning structure initialization", e);
         }
     }
@@ -76,7 +77,6 @@ public class FuturesStrategyScheduler {
     private void executeIfMarketOpen() {
         LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
 
-        // Safeguard: Hard block any execution outside NSE hours
         if (now.isBefore(MARKET_START) || now.isAfter(MARKET_END)) {
             logger.info("Market Closed - skipping execution (Current Time: {})", now);
             return;
@@ -89,10 +89,32 @@ public class FuturesStrategyScheduler {
             logger.error("Scheduled execution failed", e);
         }
     }
-    
+
     private boolean isActive(String strategy) {
-        return "Y".equalsIgnoreCase(
-                strategyRepo.findByName(strategy).getActive()
-        );
+        var config = strategyRepo.findByName(strategy);
+        return config != null && "Y".equalsIgnoreCase(config.getActive());
+    }
+
+
+    /**
+     * 🔁 Lightweight BOS recheck — runs every 15 min, between the hourly full scans.
+     * Does NOT call the broker API or rebuild zones — it just re-checks already-cached
+     * SMC zones against fresh LTPs, so a broken zone gets removed the moment it's
+     * crossed instead of sitting stale in the cache for up to an hour.
+     */
+    @Scheduled(cron = "0 */15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
+    public void schedulerBosRecheck() {
+        if (!isActive("FUTURE")) {
+            return;
+        }
+        LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+        if (now.isBefore(MARKET_START) || now.isAfter(MARKET_END)) {
+            return;
+        }
+        try {
+            futuresStrategyService.recheckAllBosOnly();
+        } catch (Exception e) {
+            logger.error("BOS recheck failed", e);
+        }
     }
 }

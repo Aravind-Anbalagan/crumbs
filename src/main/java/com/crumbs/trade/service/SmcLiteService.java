@@ -23,14 +23,15 @@ import com.crumbs.trade.service.FuturesStrategyService.HourlyCandle;
 public class SmcLiteService {
 
     private static final Logger logger = LogManager.getLogger(SmcLiteService.class);
-
+    private final Map<String, BosRecord> recentBosCache = new ConcurrentHashMap<>();
     // =========================================================
     // 🛠️ SMC PINE SCRIPT & TRADE SETTINGS
     // =========================================================
     private static final int DEFAULT_SWING_LENGTH = 5; // Tuned for 1H intraday windows
     private static final int HISTORY_TO_KEEP = 20;
     private static final BigDecimal BOX_WIDTH = new BigDecimal("2.5");
-
+    private final Map<String, LocalDateTime> lastNotifiedAt = new ConcurrentHashMap<>();
+    private static final long NOTIFY_COOLDOWN_MINUTES = 60;
     // 🎚️ 1% Max Chase Percentage (Easily configurable: 0.01 = 1%, 0.005 = 0.5%)
     private static final BigDecimal MAX_CHASE_PERCENT = new BigDecimal("0.01");
 
@@ -41,7 +42,16 @@ public class SmcLiteService {
     private final Map<String, List<SmcZone>> supplyZonesCache = new ConcurrentHashMap<>();
     private final Map<String, List<SmcZone>> demandZonesCache = new ConcurrentHashMap<>();
     private final Map<String, Object> symbolLocks = new ConcurrentHashMap<>(); // Per-symbol lock
-
+    // Add near the top-level config constants
+    private static final BigDecimal NEAR_ZONE_PERCENT = new BigDecimal("0.5"); // within 0.5% of a zone edge = "near"
+    private static final BigDecimal HUNDRED = new BigDecimal("100");
+    public enum ZoneStatus {
+        NEAR_SUPPORT,
+        NEAR_RESISTANCE,
+        INSIDE_ZONE,
+        NO_NEARBY_ZONE,   // zones exist for this symbol, but price isn't close to one
+        NO_ZONE_DATA      // this symbol hasn't been SMC-evaluated yet
+    }
     /**
      * ✅ THREAD-SAFE: Uses per-symbol locking to allow concurrent multi-symbol scanning.
      */
@@ -93,13 +103,17 @@ public class SmcLiteService {
             Optional<SmcSignal> bosSignal = checkBos(name, indexType, evalPrice, supplyZones, demandZones);
 
             // 3. 📤 DISPATCH ALERT & RETURN EVENT
-            if (bosSignal.isPresent() && canNotify) {
+            if (bosSignal.isPresent()) {
                 SmcSignal sig = bosSignal.get();
-                logger.info("🔒 [SMC BOS CONFIRMED] {} {} at ₹{} (Broken Level: ₹{})",
-                        name, sig.getBosType(), evalPrice, sig.getBrokenLevel());
+                recentBosCache.put(name, new BosRecord(sig.getDirection(), sig.getBrokenLevel(), LocalDateTime.now()));
 
-                sendTelegramAlert(sig);
-                return Optional.of(mapToBreakEvent(name, indexType, sig, evalPrice));
+                if (canNotify) {
+                    logger.info("🔒 [SMC BOS CONFIRMED] {} {} at ₹{} (Broken Level: ₹{})",
+                            name, sig.getBosType(), evalPrice, sig.getBrokenLevel());
+
+                    sendTelegramAlertThrottled(sig);
+                    return Optional.of(mapToBreakEvent(name, indexType, sig, evalPrice));
+                }
             }
 
             return Optional.empty();
@@ -288,5 +302,198 @@ public class SmcLiteService {
         public String getDirection() { return direction; }
         public BigDecimal getCurrentPrice() { return currentPrice; }
         public BigDecimal getBrokenLevel() { return brokenLevel; }
+    }
+    public static class ZoneInfo {
+        private final ZoneStatus status;
+        private final BigDecimal level;       // the S/R price level in question
+        private final BigDecimal distancePct; // distance from LTP to that level, in %
+
+        public ZoneInfo(ZoneStatus status, BigDecimal level, BigDecimal distancePct) {
+            this.status = status; this.level = level; this.distancePct = distancePct;
+        }
+        public ZoneStatus getStatus() { return status; }
+        public BigDecimal getLevel() { return level; }
+        public BigDecimal getDistancePct() { return distancePct; }
+    }
+
+    /**
+     * Read-only lookup for FnoScannerService: does this symbol's LTP sit near a known
+     * Supply (resistance) or Demand (support) zone, or is it moving through open space?
+     *
+     * Does NOT build zones itself — it reads whatever the hourly SMC evaluation cycle
+     * has already cached for this symbol. If that symbol hasn't gone through
+     * evaluateAndNotify() yet, this returns NO_ZONE_DATA (see note below on keeping
+     * caches warm).
+     */
+    public ZoneInfo getZoneProximity(String name, BigDecimal ltp, String moveDirection) {
+        if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+            return new ZoneInfo(ZoneStatus.NO_ZONE_DATA, null, null);
+        }
+
+        Object symbolLock = symbolLocks.computeIfAbsent(name, k -> new Object());
+        synchronized (symbolLock) {
+            List<SmcZone> supplyZones = supplyZonesCache.getOrDefault(name, List.of());
+            List<SmcZone> demandZones = demandZonesCache.getOrDefault(name, List.of());
+
+            if (supplyZones.isEmpty() && demandZones.isEmpty()) {
+                return new ZoneInfo(ZoneStatus.NO_ZONE_DATA, null, null);
+            }
+
+            // Check the zone in the direction of the current move first — that's the
+            // one that actually decides whether a straddle is safe right now.
+            boolean checkResistanceFirst = "GAIN".equalsIgnoreCase(moveDirection);
+
+            ZoneInfo primary = checkResistanceFirst
+                    ? evaluateResistance(supplyZones, ltp)
+                    : evaluateSupport(demandZones, ltp);
+
+            if (primary.getStatus() != ZoneStatus.NO_NEARBY_ZONE) {
+                return primary;
+            }
+
+            // Fallback: check the opposite side in case price already reversed
+            return checkResistanceFirst
+                    ? evaluateSupport(demandZones, ltp)
+                    : evaluateResistance(supplyZones, ltp);
+        }
+    }
+
+    /**
+     * Read-only lookup for FnoScannerService: was a BOS confirmed for this symbol
+     * recently? Only returns same-trading-day records — a break from yesterday
+     * isn't useful context for a live intraday scanner.
+     */
+    public Optional<BosRecord> getRecentBos(String name) {
+        BosRecord rec = recentBosCache.get(name);
+        if (rec == null) return Optional.empty();
+        if (!rec.getConfirmedAt().toLocalDate().equals(LocalDateTime.now().toLocalDate())) {
+            return Optional.empty(); // stale — from a prior day, drop it
+        }
+        return Optional.of(rec);
+    }
+    private ZoneInfo evaluateResistance(List<SmcZone> supplyZones, BigDecimal ltp) {
+        SmcZone nearest = findNearestZoneAbove(supplyZones, ltp);
+        if (nearest == null) return new ZoneInfo(ZoneStatus.NO_NEARBY_ZONE, null, null);
+
+        if (ltp.compareTo(nearest.getBottom()) >= 0 && ltp.compareTo(nearest.getTop()) <= 0) {
+            return new ZoneInfo(ZoneStatus.INSIDE_ZONE, nearest.getTop(), BigDecimal.ZERO);
+        }
+
+        BigDecimal distancePct = nearest.getBottom().subtract(ltp)
+                .divide(ltp, 4, RoundingMode.HALF_UP).multiply(HUNDRED);
+
+        return distancePct.compareTo(NEAR_ZONE_PERCENT) <= 0
+                ? new ZoneInfo(ZoneStatus.NEAR_RESISTANCE, nearest.getTop(), distancePct)
+                : new ZoneInfo(ZoneStatus.NO_NEARBY_ZONE, nearest.getTop(), distancePct);
+    }
+
+    private ZoneInfo evaluateSupport(List<SmcZone> demandZones, BigDecimal ltp) {
+        SmcZone nearest = findNearestZoneBelow(demandZones, ltp);
+        if (nearest == null) return new ZoneInfo(ZoneStatus.NO_NEARBY_ZONE, null, null);
+
+        if (ltp.compareTo(nearest.getBottom()) >= 0 && ltp.compareTo(nearest.getTop()) <= 0) {
+            return new ZoneInfo(ZoneStatus.INSIDE_ZONE, nearest.getBottom(), BigDecimal.ZERO);
+        }
+
+        BigDecimal distancePct = ltp.subtract(nearest.getTop())
+                .divide(ltp, 4, RoundingMode.HALF_UP).multiply(HUNDRED);
+
+        return distancePct.compareTo(NEAR_ZONE_PERCENT) <= 0
+                ? new ZoneInfo(ZoneStatus.NEAR_SUPPORT, nearest.getBottom(), distancePct)
+                : new ZoneInfo(ZoneStatus.NO_NEARBY_ZONE, nearest.getBottom(), distancePct);
+    }
+
+    private SmcZone findNearestZoneAbove(List<SmcZone> zones, BigDecimal price) {
+        SmcZone nearest = null;
+        for (SmcZone z : zones) {
+            if (z.getTop().compareTo(price) < 0) continue; // fully below price, irrelevant
+            if (nearest == null || z.getBottom().compareTo(nearest.getBottom()) < 0) nearest = z;
+        }
+        return nearest;
+    }
+
+    private SmcZone findNearestZoneBelow(List<SmcZone> zones, BigDecimal price) {
+        SmcZone nearest = null;
+        for (SmcZone z : zones) {
+            if (z.getBottom().compareTo(price) > 0) continue; // fully above price, irrelevant
+            if (nearest == null || z.getTop().compareTo(nearest.getTop()) > 0) nearest = z;
+        }
+        return nearest;
+    }
+
+    /**
+     * BOS-only recheck: mutates the cache (removes broken zones) but does NOT
+     * rebuild zones and does NOT fetch candles. Safe to call every 15 min.
+     */
+    public Optional<FuturesBreakEvent> recheckBosOnly(String name, String indexType,
+                                                      BigDecimal ltp, boolean canNotify) {
+        if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+            return Optional.empty();
+        }
+
+        Object symbolLock = symbolLocks.computeIfAbsent(name, k -> new Object());
+        synchronized (symbolLock) {
+            List<SmcZone> supplyZones = supplyZonesCache.get(name);
+            List<SmcZone> demandZones = demandZonesCache.get(name);
+
+            if ((supplyZones == null || supplyZones.isEmpty()) &&
+                    (demandZones == null || demandZones.isEmpty())) {
+                return Optional.empty();
+            }
+
+            Optional<SmcSignal> bosSignal = checkBos(name, indexType, ltp,
+                    supplyZones != null ? supplyZones : List.of(),
+                    demandZones != null ? demandZones : List.of());
+
+            if (bosSignal.isPresent()) {
+                SmcSignal sig = bosSignal.get();
+                recentBosCache.put(name, new BosRecord(sig.getDirection(), sig.getBrokenLevel(), LocalDateTime.now()));
+
+                if (canNotify) {
+                    logger.info("🔒 [SMC BOS - 15min recheck] {} {} at ₹{}", name, sig.getBosType(), ltp);
+                    sendTelegramAlertThrottled(sig);
+                    return Optional.of(mapToBreakEvent(name, indexType, sig, ltp));
+                }
+            }
+            return Optional.empty();
+        }
+    }
+
+
+    private boolean sendTelegramAlertThrottled(SmcSignal sig) {
+        String key = sig.getSymbol() + "_" + sig.getBosType();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime lastSent = lastNotifiedAt.get(key);
+
+        if (lastSent != null && lastSent.plusMinutes(NOTIFY_COOLDOWN_MINUTES).isAfter(now)) {
+            logger.info("🔕 [SMC-BOS THROTTLED] {} {} — already notified at {} (cooldown active)",
+                    sig.getSymbol(), sig.getBosType(), lastSent);
+            return false;
+        }
+
+        sendTelegramAlert(sig);
+        lastNotifiedAt.put(key, now);
+        return true;
+    }
+    // Tracks the most recent confirmed BOS per symbol, so FnoScannerService can
+// check "was there already a confirmed break here?" without touching the
+// FuturesBreakEvent repo. Refreshed every time evaluateAndNotify() or
+// recheckBosOnly() confirms a break — at least every 15 min during market
+// hours, so it's never more than one recheck cycle stale.
+
+
+    public static class BosRecord {
+        private final String direction;       // "BUY" or "SELL"
+        private final BigDecimal brokenLevel;
+        private final LocalDateTime confirmedAt;
+
+        public BosRecord(String direction, BigDecimal brokenLevel, LocalDateTime confirmedAt) {
+            this.direction = direction;
+            this.brokenLevel = brokenLevel;
+            this.confirmedAt = confirmedAt;
+        }
+        public String getDirection() { return direction; }
+        public BigDecimal getBrokenLevel() { return brokenLevel; }
+        public LocalDateTime getConfirmedAt() { return confirmedAt; }
     }
 }

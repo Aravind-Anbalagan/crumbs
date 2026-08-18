@@ -255,8 +255,8 @@ public class TelegramService {
 
     public void sendStockAlert(List<String[]> rows) {
         try {
-            String  message = buildStockTable(rows);
-            boolean sent    = sendMessage(message);
+            String  message = buildfnoStockTable(rows);
+            boolean sent    = sendToNewChat(message);
             logger.info("📨 Stock alert sent: {}", sent);
             saveAlertIfEnabled("STOCK_ALERT", message, "INFO", sent);
         } catch (Exception e) {
@@ -290,7 +290,33 @@ public class TelegramService {
         sb.append("</pre>");
         return sb.toString();
     }
+    public String buildfnoStockTable(List<String[]> rows) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("📊 <b>F&O Alert — Stocks Moving &gt; 5%</b>\n");
 
+        // rows.get(0) is the header {"Stock","PrevClose","Change%","S/R Zone"} — skip it
+        for (int i = 1; i < rows.size(); i++) {
+            String[] row = rows.get(i);
+            String name       = escapeHtml(safe(row[0]));
+            String prevClose  = escapeHtml(safe(row[1]));
+            String changePct  = escapeHtml(safe(row[2]));
+            String zoneLabel  = escapeHtml(safe(row[3]));
+
+            boolean isGain = changePct.startsWith("+");
+            String arrow = isGain ? "🟢" : "🔴";
+
+            sb.append("\n").append(arrow).append(" <b>").append(name).append("</b>\n")
+                    .append("   Prev: ₹").append(prevClose)
+                    .append("  |  Chg: <code>").append(changePct).append("</code>\n")
+                    .append("   ").append(zoneLabel).append("\n");
+        }
+
+        return sb.toString();
+    }
+
+    private String safe(String value) {
+        return (value == null || value.equalsIgnoreCase("null")) ? "-" : value;
+    }
     // =========================================================
     // MA Hierarchy alert
     // =========================================================
