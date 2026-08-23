@@ -2,11 +2,13 @@ package com.crumbs.trade.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -56,7 +58,7 @@ public class FnoScannerService {
     private final AngelOne angelOne;
     private final AngelWebSocketService angelWebSocketService;
     private final TelegramService telegramService; // Injected Telegram Service
-    private final SmcLiteService smcLiteService;
+
     // ──────────────────────────────────────────────────────────
     //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 8:30 AM)
     // ──────────────────────────────────────────────────────────
@@ -68,6 +70,18 @@ public class FnoScannerService {
         if (fnoStocks.isEmpty()) {
             logger.warn("⚠️ No active F&O stocks found in FO_STOCKS table. Skipping prevClose cache.");
             return;
+        }
+
+        // 🧹 Reset yesterday's TRANSACTIONAL data only (range-tracking fields).
+        // Master data (id, name, token, is_active) is untouched. prevClose/
+        // prevCloseDate are about to be overwritten below anyway, so no need
+        // to null them separately — only the range-bucket fields need an
+        // explicit reset, otherwise today's first breakout would inherit
+        // yesterday's rangeEnteredAt and show a bogus multi-hour interval.
+        for (Nifty stock : fnoStocks) {
+            stock.setCurrentRangeBucket(null);
+            stock.setRangeDirection(null);
+            stock.setRangeEnteredAt(null);
         }
 
         SmartConnect smartConnect = angelOne.signIn();
@@ -177,7 +191,74 @@ public class FnoScannerService {
     }
 
     // ──────────────────────────────────────────────────────────
-    //  STEP 2: 30-Min Percentage Change Calculation & Alerting
+    //  STEP 0: Sync F&O Master List — INSERT-ONLY for new symbols
+    // ──────────────────────────────────────────────────────────
+    /**
+     * Adds any symbol in {@code latestNames} that doesn't already exist in
+     * FO_STOCKS. Existing rows are NEVER touched by this method — their
+     * token, prevClose, percentageChange, and range-tracking fields
+     * (currentRangeBucket / rangeDirection / rangeEnteredAt) are left exactly
+     * as-is. Only brand-new symbols get inserted, with tracking fields left
+     * null so they start clean the first time they cross the threshold.
+     *
+     * Comparison is case-insensitive and trims whitespace to avoid duplicate
+     * rows caused by formatting differences between the source list and what
+     * is already stored.
+     *
+     * @param latestNames the current/full list of F&O-eligible symbol names
+     *                     from whatever your master source is (broker
+     *                     instrument master, file, API, etc). Plug in the
+     *                     actual fetch wherever this is called from.
+     */
+    @Transactional
+    public void syncFnoMasterList(List<String> latestNames) {
+        if (latestNames == null || latestNames.isEmpty()) {
+            logger.warn("⚠️ syncFnoMasterList called with empty/null name list. Skipping — refusing to no-op silently against a bad source.");
+            return;
+        }
+
+        List<Nifty> existingStocks = niftyRepo.findAll();
+
+        Set<String> existingNamesNormalized = new HashSet<>();
+        for (Nifty stock : existingStocks) {
+            if (stock.getName() != null) {
+                existingNamesNormalized.add(stock.getName().trim().toUpperCase());
+            }
+        }
+
+        List<Nifty> newStocks = new ArrayList<>();
+        for (String rawName : latestNames) {
+            if (rawName == null || rawName.trim().isEmpty()) {
+                continue;
+            }
+            String normalized = rawName.trim().toUpperCase();
+
+            if (!existingNamesNormalized.contains(normalized)) {
+                Nifty newStock = new Nifty();
+                newStock.setName(rawName.trim());
+                newStock.setIsActive(true);
+                // token, prevClose, percentageChange, and range-tracking fields
+                // are intentionally left null — they'll be populated by
+                // precacheFnoPreviousClose() and calculateFnoPercentageChange()
+                // on their normal schedule.
+                newStocks.add(newStock);
+                existingNamesNormalized.add(normalized); // guard against dupes within latestNames itself
+            }
+        }
+
+        if (newStocks.isEmpty()) {
+            logger.info("✅ F&O master list sync: no new symbols found. {} existing symbols untouched.", existingStocks.size());
+            return;
+        }
+
+        niftyRepo.saveAll(newStocks);
+        logger.info("🆕 F&O master list sync: inserted {} new symbol(s). {} existing symbol(s) left untouched: {}",
+                newStocks.size(), existingStocks.size(), newStocks.stream().map(Nifty::getName).toList());
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  STEP 2: 15-Min Percentage Change Calculation, Range-Bucket
+    //  Tracking & Alerting
     // ──────────────────────────────────────────────────────────
     @Transactional
     public void calculateFnoPercentageChange() {
@@ -186,7 +267,7 @@ public class FnoScannerService {
             return;
         }
 
-        logger.info("⏱️ Running 30-min F&O Percentage Change Calculation...");
+        logger.info("⏱️ Running 15-min F&O Percentage Change Calculation...");
 
         List<Nifty> stocks = niftyRepo.findAll();
         if (stocks.isEmpty()) {
@@ -197,10 +278,10 @@ public class FnoScannerService {
         LocalDateTime now = LocalDateTime.now();
         int updateCount = 0;
 
-        // Container to store stocks exceeding the +/- 5% threshold for Telegram alert
+        // Container to store stocks currently in a tracked +/- 5% range bucket for Telegram alert
         List<String[]> highMoverRows = new ArrayList<>();
         // header row
-        highMoverRows.add(new String[]{"Stock", "Chg%", "Signal"});
+        highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction"});
 
         for (Nifty stock : stocks) {
             String token = stock.getToken();
@@ -232,26 +313,49 @@ public class FnoScannerService {
             stock.setPercentageUpdatedTime(now);
             updateCount++;
 
-            // 🎯 Check if stock gain/drop exceeds threshold (|percentage| >= THRESHOLD_PERCENTAGE)
-            if (percentage.abs().compareTo(THRESHOLD_PERCENTAGE) >= 0) {
-                String moveType = percentage.compareTo(BigDecimal.ZERO) >= 0 ? "GAIN" : "DROP";
-                String changeStr = (percentage.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + percentage + "%";
+            // ── Range bucket + duration tracking ──
+            BigDecimal absPct = percentage.abs();
+            String rangeBucket = determineRangeBucket(absPct);
+            String moveDirection = percentage.compareTo(BigDecimal.ZERO) >= 0 ? "UP" : "DOWN";
 
-                String signal = safeGetTradeSignal(stock.getName(), ltp, moveType);
-
-                highMoverRows.add(new String[]{
-                        stock.getName(),
-                        changeStr,
-                        signal
-                });
+            if (rangeBucket == null) {
+                // Dropped back below threshold — clear tracking so the next breakout starts a fresh clock
+                if (stock.getCurrentRangeBucket() != null) {
+                    stock.setCurrentRangeBucket(null);
+                    stock.setRangeDirection(null);
+                    stock.setRangeEnteredAt(null);
+                }
+                continue;
             }
+
+            boolean sameRangeAndDirection = rangeBucket.equals(stock.getCurrentRangeBucket())
+                    && moveDirection.equals(stock.getRangeDirection());
+
+            if (!sameRangeAndDirection) {
+                // Just crossed into this bucket, or reversed direction — reset the clock
+                stock.setCurrentRangeBucket(rangeBucket);
+                stock.setRangeDirection(moveDirection);
+                stock.setRangeEnteredAt(now);
+            }
+
+            Duration stayDuration = Duration.between(stock.getRangeEnteredAt(), now);
+            String intervalStr = formatDuration(stayDuration);
+            String changeStr = (moveDirection.equals("UP") ? "+" : "") + percentage + "%";
+
+            highMoverRows.add(new String[]{
+                    stock.getName(),
+                    rangeBucket,
+                    intervalStr,
+                    changeStr,
+                    moveDirection
+            });
         }
 
         if (updateCount > 0) {
             niftyRepo.saveAll(stocks);
             logger.info("✅ Percentage Change updated for {}/{} F&O stocks.", updateCount, stocks.size());
 
-            // 📢 Send Telegram Alert if enabled and high movers are detected
+            // 📢 Send Telegram Alert if enabled and tracked movers are present
             if (ENABLE_TELEGRAM_ALERTS && highMoverRows.size() > 1) { // > 1 because row 0 is header
                 logger.info("📢 Found {} stocks moving > {}%. Sending Telegram alert...",
                         highMoverRows.size() - 1, THRESHOLD_PERCENTAGE);
@@ -310,9 +414,6 @@ public class FnoScannerService {
             Thread.currentThread().interrupt();
         }
     }
-    // ──────────────────────────────────────────────────────────
-    //  Helpers
-    // ──────────────────────────────────────────────────────────
 
     /**
      * Finds the most recent trading day strictly BEFORE the given date.
@@ -330,70 +431,36 @@ public class FnoScannerService {
     }
 
     // ──────────────────────────────────────────────────────────
-    //  S/R Trade Signal — zone status + move direction + BOS context
+    //  Range-Bucket Tracking Helpers
     // ──────────────────────────────────────────────────────────
 
     /**
-     * Turns SmcLiteService's ZoneInfo + move direction + recent BOS status into
-     * a short, human-readable trade signal for Telegram.
+     * Maps an absolute percentage move to a fixed-width range bucket for
+     * tracking purposes. Returns null if the move hasn't reached the alert
+     * threshold at all (currently 5%).
      *
-     * - NEAR_RESISTANCE / NEAR_SUPPORT: price approaching a known zone, hasn't
-     *   entered it yet → Reversal, fade it.
-     * - INSIDE_ZONE: price already trading inside the zone, direction unclear
-     *   → Straddle, sell both sides.
-     * - NO_NEARBY_ZONE: no close level. If a BOS already confirmed a break in
-     *   the same direction, this is a validated breakout — say so explicitly,
-     *   it's stronger than raw momentum. Otherwise it's just trending with no
-     *   structural confirmation yet.
-     * - NO_ZONE_DATA: symbol hasn't been SMC-evaluated yet → No trade.
+     * Buckets: 5-6%, 6-7%, 7-8%, 8-9%, 9-10%, 10%+
      */
-    private String determineTradeSignal(SmcLiteService.ZoneInfo zoneInfo, String moveType,
-                                        Optional<SmcLiteService.BosRecord> bos) {
-        switch (zoneInfo.getStatus()) {
-            case NEAR_RESISTANCE:
-                return "↩️ Reversal SELL, near resistance ₹" + zoneInfo.getLevel();
-            case NEAR_SUPPORT:
-                return "↩️ Reversal BUY, near support ₹" + zoneInfo.getLevel();
-            case INSIDE_ZONE:
-                return "🎯 Straddle, price inside zone ₹" + zoneInfo.getLevel();
-            case NO_NEARBY_ZONE:
-                return buildDirectionalSignal(moveType, zoneInfo, bos);
-            case NO_ZONE_DATA:
-            default:
-                return "⏳ No trade, zone data not ready";
-        }
-    }
-
-    private String buildDirectionalSignal(String moveType, SmcLiteService.ZoneInfo zoneInfo,
-                                          Optional<SmcLiteService.BosRecord> bos) {
-        String dirWord = "GAIN".equals(moveType) ? "BUY" : "SELL";
-
-        if (bos.isPresent() && dirWord.equals(bos.get().getDirection())) {
-            return "📈 Breakout " + dirWord + ", confirmed @₹" + bos.get().getBrokenLevel();
-        }
-
-        if (zoneInfo.getDistancePct() != null) {
-            return "📈 Trending " + dirWord + ", next level " + zoneInfo.getDistancePct() + "% away";
-        }
-        return "📈 Trending " + dirWord + ", no level nearby";
+    private String determineRangeBucket(BigDecimal absPercentage) {
+        double val = absPercentage.doubleValue();
+        if (val < THRESHOLD_PERCENTAGE.doubleValue()) return null;
+        if (val < 6) return "5-6%";
+        if (val < 7) return "6-7%";
+        if (val < 8) return "7-8%";
+        if (val < 9) return "8-9%";
+        if (val < 10) return "9-10%";
+        return "10%+";
     }
 
     /**
-     * Best-effort S/R + BOS signal lookup. If SmcLiteService fails for ANY reason
-     * (missing cache, bad data, runtime exception), we swallow it and fall back
-     * to a neutral, non-actionable result so the core % alert — the stable,
-     * load-bearing part of this system — always goes out. A broken S/R
-     * enhancement must never suppress or delay the underlying notification.
+     * Formats a Duration as "N min" under an hour, or "N.N hours" beyond that,
+     * for display in the Telegram "Interval" column.
      */
-    private String safeGetTradeSignal(String name, BigDecimal ltp, String moveType) {
-        try {
-            SmcLiteService.ZoneInfo zoneInfo = smcLiteService.getZoneProximity(name, ltp, moveType);
-            Optional<SmcLiteService.BosRecord> bos = smcLiteService.getRecentBos(name);
-            return determineTradeSignal(zoneInfo, moveType, bos);
-        } catch (Exception e) {
-            logger.warn("⚠️ S/R zone lookup failed for {} — sending alert without zone context. Reason: {}",
-                    name, e.getMessage());
-            return "⚠️ No trade, zone check failed";
+    private String formatDuration(Duration duration) {
+        long minutes = duration.toMinutes();
+        if (minutes < 60) {
+            return minutes + " min";
         }
+        return String.format("%.1f hours", minutes / 60.0);
     }
 }

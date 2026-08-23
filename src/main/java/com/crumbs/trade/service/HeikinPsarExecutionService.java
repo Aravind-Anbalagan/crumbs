@@ -44,7 +44,7 @@ public class HeikinPsarExecutionService {
     private static final String TRADE_MODE = "SCALPING"; // "SCALPING" or "TREND_FOLLOWING"
     private static final boolean IS_OPTION_BUYER = true; // true = Option Buying, false = Option Selling
 
-    private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("50.00");
+    private static final BigDecimal SCALP_TARGET_POINTS = new BigDecimal("25.00");
     private static final BigDecimal SCALP_SL_POINTS = new BigDecimal("10.00");
 
     private static final BigDecimal NIFTY_BIG_CANDLE_THRESHOLD = new BigDecimal("25.00");

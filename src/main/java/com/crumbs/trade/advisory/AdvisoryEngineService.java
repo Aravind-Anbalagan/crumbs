@@ -60,7 +60,6 @@ public class AdvisoryEngineService {
 
         boolean acquired;
         try {
-            // Don't wait forever behind a stuck/slow evaluation of the same symbol.
             acquired = lock.tryLock(30, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -76,6 +75,11 @@ public class AdvisoryEngineService {
 
         try {
             return processAdvisoryInternal(name, token);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            log.error("🛡️ DB constraint blocked a duplicate ACTIVE row for {} — a cross-instance race " +
+                            "was caught at the database level. Skipping this run; existing ACTIVE record stands.",
+                    name, e);
+            return null;
         } finally {
             lock.unlock();
         }
