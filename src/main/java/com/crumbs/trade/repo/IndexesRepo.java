@@ -1,4 +1,5 @@
 package com.crumbs.trade.repo;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -7,30 +8,39 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
 import com.crumbs.trade.entity.Indexes;
+
 import jakarta.transaction.Transactional;
+
 @Repository
 public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     Indexes findByNameAndSymbol(String name, String symbol);
+
     Indexes findByNameAndSymbolAndExchange(String name, String symbol,String exchange);
 
     @Modifying
     @Query("delete from Indexes I")
     void deleteAll();
+
     @Modifying
     @Transactional
     @Query("UPDATE Indexes u SET u.volume = :volume")
     void updateVolume(@Param("volume") String volume);
+
     List<Indexes> findByNameIn(List<String> names);
+
     List<Indexes> findByExchangeInAndVolume(List<String> exchange, String volume);
+
     List<Indexes> findByExchangeIn(List<String> exchange);
+
     @Query(value = """
             SELECT * FROM (
-                SELECT *, 
-                       ROW_NUMBER() OVER (
-                           PARTITION BY NAME 
-                           ORDER BY CASE 
-                                        WHEN EXCHANGE = 'NSE' THEN 1
+                SELECT *,
+                        ROW_NUMBER() OVER (
+                           PARTITION BY NAME
+                            ORDER BY CASE
+                                         WHEN EXCHANGE = 'NSE' THEN 1
                                         WHEN EXCHANGE = 'BSE' THEN 2
                                         ELSE 3
                                     END
@@ -60,18 +70,18 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     List<Indexes> findByNameInAndExchange(List<String> names,String exchange);
 
     Indexes findByToken(String token);
-    
- // Finds records by Name (e.g. "NIFTY") where Symbol contains a specific word (e.g. "FUT")
+
+    // Finds records by Name (e.g. "NIFTY") where Symbol contains a specific word (e.g. "FUT")
     List<Indexes> findByNameAndSymbolContaining(String name, String symbolPart);
-    
+
     List<Indexes> findByName(String name);
-       
+
     /**
      * 1. Used by getEnrichedLivePositions() to map broker trades to database tokens.
      */
     @Query("SELECT i FROM Indexes i WHERE i.name = :underlying " +
-           "AND i.symbol LIKE %:strikeSuffix " +
-           "AND (i.expiry = :expiryShort OR i.expiry = :expiryLong)")
+            "AND i.symbol LIKE %:strikeSuffix " +
+            "AND (i.expiry = :expiryShort OR i.expiry = :expiryLong)")
     Optional<Indexes> findOptionToken(@Param("underlying") String underlying,
                                       @Param("strikeSuffix") String strikeSuffix,
                                       @Param("expiryShort") String expiryShort,
@@ -82,8 +92,8 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
      * for a given index and expiry date, ordered cleanly by strike price.
      */
     @Query("SELECT i FROM Indexes i WHERE i.name = :underlying " +
-           "AND (i.expiry = :expiryShort OR i.expiry = :expiryLong) " +
-           "ORDER BY i.strike ASC")
+            "AND (i.expiry = :expiryShort OR i.expiry = :expiryLong) " +
+            "ORDER BY i.strike ASC")
     List<Indexes> findActiveContractsByExpiry(@Param("underlying") String underlying,
                                               @Param("expiryShort") String expiryShort,
                                               @Param("expiryLong") String expiryLong);
@@ -95,4 +105,23 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
             @Param("expiry") String expiry,
             @Param("suffix") String suffix
     );
+
+    // ──────────────────────────────────────────────────────────
+    //  🆕 NEW: Option-strategy support (straddle/strangle lookup)
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * 🆕 Returns every distinct expiry string stored for a given underlying,
+     * across the given exchange list (currently just NFO — kept as a list
+     * parameter so scope can be widened later without another repo change).
+     */
+    @Query("SELECT DISTINCT i.expiry FROM Indexes i WHERE i.name = :name AND i.exchange IN :exchanges AND i.expiry IS NOT NULL")
+    List<String> findDistinctExpiriesByNameAndExchangeIn(@Param("name") String name, @Param("exchanges") List<String> exchanges);
+
+    /**
+     * 🆕 Returns every CE/PE contract for a given underlying + exact expiry
+     * string, across the given exchange list (currently just NFO), ordered
+     * by strike.
+     */
+    List<Indexes> findByNameAndExchangeInAndExpiryOrderByStrikeAsc(String name, List<String> exchanges, String expiry);
 }

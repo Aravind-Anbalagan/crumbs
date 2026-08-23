@@ -58,6 +58,7 @@ public class FnoScannerService {
     private final AngelOne angelOne;
     private final AngelWebSocketService angelWebSocketService;
     private final TelegramService telegramService; // Injected Telegram Service
+    private final TokenService tokenService; // 🆕 ATM CE/PE token resolution + strategy signals (fail-safe, never throws)
 
     // ──────────────────────────────────────────────────────────
     //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 8:30 AM)
@@ -278,10 +279,18 @@ public class FnoScannerService {
         LocalDateTime now = LocalDateTime.now();
         int updateCount = 0;
 
+        // 🆕 Broker session for ATM option-chain lookups, signed in LAZILY —
+        // only the first time a stock actually enters a tracked bucket this
+        // scan. If sign-in fails, optionSignInFailed stays true and every
+        // subsequent stock this scan just gets Type=Err without retrying —
+        // the % change alert itself is completely unaffected either way.
+        SmartConnect[] optionsConnectHolder = new SmartConnect[1];
+        boolean[] optionSignInFailed = {false};
+
         // Container to store stocks currently in a tracked +/- 5% range bucket for Telegram alert
         List<String[]> highMoverRows = new ArrayList<>();
         // header row
-        highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction"});
+        highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction", "Type"});
 
         for (Nifty stock : stocks) {
             String token = stock.getToken();
@@ -342,12 +351,18 @@ public class FnoScannerService {
             String intervalStr = formatDuration(stayDuration);
             String changeStr = (moveDirection.equals("UP") ? "+" : "") + percentage + "%";
 
+            // 🆕 Straddle/Strangle Type — fully guarded, can NEVER break this alert.
+            // safeGetOptionStrategyType() below never throws; worst case it returns "Err".
+            String strategyType = safeGetOptionStrategyType(
+                    optionsConnectHolder, optionSignInFailed, stock.getName(), ltp);
+
             highMoverRows.add(new String[]{
                     stock.getName(),
                     rangeBucket,
                     intervalStr,
                     changeStr,
-                    moveDirection
+                    moveDirection,
+                    strategyType
             });
         }
 
@@ -369,6 +384,39 @@ public class FnoScannerService {
     // ──────────────────────────────────────────────────────────
     //  Helpers
     // ──────────────────────────────────────────────────────────
+
+    /**
+     * Lazily signs in to the broker (once per scan, only if actually needed)
+     * and delegates to TokenService for the Straddle/Strangle call.
+     * This wrapper is the second layer of protection on top of
+     * TokenService's own internal guarding — sign-in itself is the
+     * one thing TokenService doesn't own, so it's guarded here.
+     * ALWAYS returns a value, NEVER throws — guaranteed not to affect the
+     * surrounding % change alert.
+     */
+    private String safeGetOptionStrategyType(SmartConnect[] connectHolder, boolean[] signInFailed,
+                                             String stockName, BigDecimal spotLtp) {
+        try {
+            if (signInFailed[0]) {
+                return TokenService.TYPE_ERROR;
+            }
+
+            if (connectHolder[0] == null) {
+                connectHolder[0] = angelOne.signIn();
+                if (connectHolder[0] == null) {
+                    logger.warn("⚠️ Broker sign-in failed for option-strategy lookups this scan. All Type values will be Err.");
+                    signInFailed[0] = true;
+                    return TokenService.TYPE_ERROR;
+                }
+            }
+
+            return tokenService.determineStraddleOrStrangle(connectHolder[0], stockName, spotLtp);
+
+        } catch (Exception e) {
+            logger.warn("⚠️ Unexpected error resolving option strategy type for {} — Reason: {}", stockName, e.getMessage());
+            return TokenService.TYPE_ERROR;
+        }
+    }
 
     private String lookupTokenFromIndexes(String name) {
         Indexes eqStock = indexesRepo.findByNameAndExchange(name, EXCHANGE);
