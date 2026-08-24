@@ -290,25 +290,41 @@ public class TelegramService {
         sb.append("</pre>");
         return sb.toString();
     }
+    /**
+     * ✅ FIXED: Now correctly handles all 6 columns from FnoScannerService
+     * Header: {"Stock", "Range", "Interval", "Chg%", "Direction", "Type"}
+     */
     public String buildfnoStockTable(List<String[]> rows) {
         StringBuilder sb = new StringBuilder();
-        sb.append("📊 <b>F&O Alert — Stocks Moving &gt; 5%</b>\n");
+        sb.append("📊 <b>F&O Alert — Stocks Moving &gt; 5%</b>\n\n");
 
-        // rows.get(0) is the header {"Stock","PrevClose","Change%","S/R Zone"} — skip it
+        // rows.get(0) is the header {"Stock", "Range", "Interval", "Chg%", "Direction", "Type"} — skip it
         for (int i = 1; i < rows.size(); i++) {
             String[] row = rows.get(i);
-            String name       = escapeHtml(safe(row[0]));
-            String prevClose  = escapeHtml(safe(row[1]));
-            String changePct  = escapeHtml(safe(row[2]));
-            String zoneLabel  = escapeHtml(safe(row[3]));
 
-            boolean isGain = changePct.startsWith("+");
+            // Handle case where row might have fewer elements
+            if (row.length < 6) {
+                logger.warn("⚠️ Row {} has only {} columns, expected 6. Skipping.", i, row.length);
+                continue;
+            }
+
+            String name         = escapeHtml(safe(row[0]));  // Stock name
+            String rangeBucket  = escapeHtml(safe(row[1]));  // Range (5-6%, 6-7%, etc)
+            String interval     = escapeHtml(safe(row[2]));  // Interval (time spent in this range)
+            String changePct    = escapeHtml(safe(row[3]));  // Change %
+            String direction    = escapeHtml(safe(row[4]));  // Direction (UP/DOWN)
+            String strategyType = escapeHtml(safe(row[5]));  // Type (Straddle/Strangle/Err)
+
+            // Determine emoji based on direction
+            boolean isGain = direction.equals("UP");
             String arrow = isGain ? "🟢" : "🔴";
 
-            sb.append("\n").append(arrow).append(" <b>").append(name).append("</b>\n")
-                    .append("   Prev: ₹").append(prevClose)
-                    .append("  |  Chg: <code>").append(changePct).append("</code>\n")
-                    .append("   ").append(zoneLabel).append("\n");
+            // Format the message nicely
+            sb.append(arrow).append(" <b>").append(name).append("</b>\n")
+                    .append("   <i>Range:</i> ").append(rangeBucket)
+                    .append("  |  <i>Duration:</i> ").append(interval).append("\n")
+                    .append("   <i>Change:</i> <code>").append(changePct).append("</code>")
+                    .append("  |  <i>Type:</i> ").append(strategyType).append("\n\n");
         }
 
         return sb.toString();
