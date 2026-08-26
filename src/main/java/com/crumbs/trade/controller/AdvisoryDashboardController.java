@@ -8,12 +8,15 @@ import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Nifty;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.NiftyRepo;
+import com.crumbs.trade.utility.CycleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -37,12 +40,18 @@ public class AdvisoryDashboardController {
     // =========================================================
     // 📊 VIEW 1: GLOBAL DASHBOARD (Sub-10ms Load)
     // =========================================================
-    
+
     @GetMapping("/dashboard")
     public ResponseEntity<List<AdvisoryLedger>> getDashboardSummary() {
-        // Fetches only the currently ACTIVE rows for all symbols directly from the DB.
-        // Extremely fast for the UI to load on refresh.
-        List<AdvisoryLedger> activeRecords = ledgerRepository.findByStatus("ACTIVE");
+        // 🔄 NSE CYCLE FILTERING: Show only ACTIVE trades in current cycle
+        CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
+
+        List<AdvisoryLedger> activeRecords = ledgerRepository.findByStatusAndTimestampBetween(
+                "ACTIVE",
+                cycle.startDate().atStartOfDay(),
+                LocalDateTime.of(cycle.endDate(), LocalTime.of(23, 59, 59))
+        );
+
         return ResponseEntity.ok(activeRecords);
     }
 
@@ -139,12 +148,20 @@ public class AdvisoryDashboardController {
     // 🚀 NEW: Feeds the 31-Day Timeline UI
     @GetMapping("/timeline")
     public ResponseEntity<List<AdvisoryLedger>> getMonthlyTimeline() {
-        // Fetch the last 30 days of data so the UI can draw the lifecycle ribbons
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
-        List<AdvisoryLedger> timelineData = ledgerRepository.findAll().stream()
-                .filter(r -> r.getTimestamp() != null && r.getTimestamp().isAfter(thirtyDaysAgo))
-                .toList();
+        // 🔄 NSE CYCLE FILTERING: Return only current cycle data
+        CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
 
+        List<AdvisoryLedger> timelineData = ledgerRepository.findByTimestampBetween(
+                cycle.startDate().atStartOfDay(),
+                LocalDateTime.of(cycle.endDate(), LocalTime.of(23, 59, 59))
+        );
+
+        log.info("📊 Timeline: Returning {} records for NSE cycle {} → {}",
+                timelineData.size(), cycle.startDate(), cycle.endDate());
+
+        if (timelineData.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
         return ResponseEntity.ok(timelineData);
     }
 }

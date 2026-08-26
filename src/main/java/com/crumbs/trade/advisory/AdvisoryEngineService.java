@@ -10,6 +10,7 @@ import com.crumbs.trade.service.AngelWebSocketService;
 import com.crumbs.trade.service.FuturesStrategyService.HourlyCandle;
 import com.crumbs.trade.service.SRService;
 import com.crumbs.trade.service.SmcLiteService;
+import com.crumbs.trade.utility.CycleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -110,12 +111,14 @@ public class AdvisoryEngineService {
                 .findTopBySymbolAndStatusOrderByTimestampDesc(name, "ACTIVE");
 
         LocalDateTime now = LocalDateTime.now();
-
+        CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
         AdvisoryLedger newRecord = AdvisoryLedger.builder()
                 .symbol(name)
                 .expiryDate(resolvedExpiry)
                 .timestamp(now)
                 .status("ACTIVE")
+                .cycleStartDate(cycle.startDate())  // 🚀 NEW
+                .cycleEndDate(cycle.endDate())      // 🚀 NEW
                 .spotPrice(spotPrice)
                 .dailyTrend(mtfTrend.dailyTrend())
                 .atr14(atr14)

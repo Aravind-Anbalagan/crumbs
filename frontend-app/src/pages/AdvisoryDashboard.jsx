@@ -23,17 +23,12 @@ function getFilterCategory(todayCell) {
 }
 
 // Maps action taken to color class (for visual distinction)
-function getColorClass(record) {
-    if (!record) return 'color-no_trade';
-    const action = record.actionTaken || '';
-
-    if (action === 'NEW_ENTRY') return 'color-new_entry';
-    if (action === 'MAINTAIN') return 'color-maintain';
-    if (action === 'SL') return 'color-exit-sl';
-    if (action === 'TARGET') return 'color-exit-target';
-    if (action === 'NO_TRADE') return 'color-no_trade';
-
-    return 'color-no_trade';
+function getColorFromCellType(type) {
+    if (type === 'ENTRY_BULLISH' || type === 'ENTRY_BEARISH') return 'color-new_entry';
+    if (type === 'ACTIVE_BULLISH' || type === 'ACTIVE_BEARISH') return 'color-maintain';
+    if (type === 'EXIT_SL') return 'color-exit-sl';
+    if (type === 'EXIT_TARGET') return 'color-exit-target';
+    return 'color-no_trade'; // NO_TRADE, EMPTY
 }
 
 export default function AdvisoryDashboard() {
@@ -73,7 +68,14 @@ export default function AdvisoryDashboard() {
                 if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
                 return res.json();
             })
-            .then(data => setTimelineData(Array.isArray(data) ? data : []))
+            .then(data => {
+                const arrayData = Array.isArray(data) ? data : [];
+                console.log(`📊 Timeline fetched: ${arrayData.length} records`);
+                if (isNewCycle) {
+                    console.log(`🔄 NEW CYCLE detected. Filtering to current cycle only (${cycleRangeText})`);
+                }
+                setTimelineData(arrayData);
+            })
             .catch(err => {
                 console.error("Timeline fetch error:", err);
                 setError('Could not load the advisory timeline. Please refresh or try again.');
@@ -96,29 +98,40 @@ export default function AdvisoryDashboard() {
             .finally(() => setScanningAll(false));
     };
 
-    // 🚀 Dynamic NSE Expiry Cycle Calculator
-    const { startDate, endDate, daysArray, cycleRangeText } = useMemo(() => {
-        const getLastThursday = (year, month) => {
+    // 🚀 Dynamic NSE Expiry Cycle Calculator (Last TUESDAY of month)
+    const { startDate, endDate, daysArray, cycleRangeText, isNewCycle } = useMemo(() => {
+        // NSE options expiry: Last TUESDAY of each month (not Thursday)
+        const getLastTuesday = (year, month) => {
             let d = new Date(year, month + 1, 0);
-            while (d.getDay() !== 4) d.setDate(d.getDate() - 1);
+            // TUESDAY = day 2 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
+            while (d.getDay() !== 2) d.setDate(d.getDate() - 1);
             d.setHours(23, 59, 59, 999);
             return d;
         };
 
         const now = new Date();
-        const currentExpiry = getLastThursday(now.getFullYear(), now.getMonth());
+        now.setHours(0, 0, 0, 0);
+        const currentExpiry = getLastTuesday(now.getFullYear(), now.getMonth());
 
-        let start, end;
+        let start, end, newCycleStarted = false;
+
+        // 🔄 NEW CYCLE DETECTION: if today > current expiry, we're in a new cycle
         if (now.getTime() > currentExpiry.getTime()) {
+            newCycleStarted = true;
+            // New cycle starts from day after last expiry
             start = new Date(currentExpiry);
             start.setDate(start.getDate() + 1);
             start.setHours(0, 0, 0, 0);
-            end = getLastThursday(now.getFullYear(), now.getMonth() + 1);
+            // Cycle ends on next month's last TUESDAY
+            end = getLastTuesday(now.getFullYear(), now.getMonth() + 1);
         } else {
-            const prevExpiry = getLastThursday(now.getFullYear(), now.getMonth() - 1);
+            // Still in current cycle
+            // Cycle starts from day after previous month's last TUESDAY
+            const prevExpiry = getLastTuesday(now.getFullYear(), now.getMonth() - 1);
             start = new Date(prevExpiry);
             start.setDate(start.getDate() + 1);
             start.setHours(0, 0, 0, 0);
+            // Cycle ends on current month's last TUESDAY
             end = currentExpiry;
         }
 
@@ -139,14 +152,23 @@ export default function AdvisoryDashboard() {
 
         const rangeText = `${start.getDate()} ${start.toLocaleString('default', { month: 'short' })} — ${end.getDate()} ${end.toLocaleString('default', { month: 'short' })}`;
 
-        return { startDate: start, endDate: end, daysArray: days, cycleRangeText: rangeText };
+        return { startDate: start, endDate: end, daysArray: days, cycleRangeText: rangeText, isNewCycle: newCycleStarted };
     }, []);
 
-    // 🧠 DYNAMIC MATRIX LOGIC
+    // 🧠 DYNAMIC MATRIX LOGIC - Only process current cycle data
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
-        timelineData.forEach(record => {
+        // 🔄 FILTER: Only include trades that fall within the current cycle
+        const filteredTimelineData = timelineData.filter(record => {
+            if (!record.timestamp) return false;
+            const recordDate = new Date(record.timestamp);
+            recordDate.setHours(0, 0, 0, 0);
+            // Include only if record is within [startDate, endDate]
+            return recordDate >= startDate && recordDate <= endDate;
+        });
+
+        filteredTimelineData.forEach(record => {
             if (!record.timestamp) return;
             const date = new Date(record.timestamp);
             const dateString = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -154,11 +176,6 @@ export default function AdvisoryDashboard() {
             if (!matrix[record.symbol]) matrix[record.symbol] = { records: {} };
             matrix[record.symbol].records[dateString] = record;
         });
-
-        let globalMinDate = timelineData.length > 0
-            ? new Date(Math.min(...timelineData.map(r => new Date(r.timestamp))))
-            : startDate;
-        if (globalMinDate > startDate) globalMinDate = startDate;
 
         const formattedMatrix = [];
         const todayDateString = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
@@ -170,7 +187,7 @@ export default function AdvisoryDashboard() {
             let currentTrend = 'NEUTRAL';
             let todayCell = null;
 
-            let curr = new Date(globalMinDate);
+            let curr = new Date(startDate);
             curr.setHours(0,0,0,0);
 
             while(curr <= endDate) {
@@ -277,7 +294,10 @@ export default function AdvisoryDashboard() {
             <div className="advisory-header glass-panel">
                 <div className="header-title-area">
                     <h2>Lifecycle Matrix</h2>
-                    <span className="subtitle">Expiry Cycle: <strong>{cycleRangeText}</strong></span>
+                    <span className="subtitle">
+                        Expiry Cycle: <strong>{cycleRangeText}</strong>
+                        {isNewCycle && <span className="new-cycle-badge">🔄 NEW CYCLE</span>}
+                    </span>
                 </div>
 
                 <div className="legend-row">
@@ -360,7 +380,7 @@ export default function AdvisoryDashboard() {
                                                 const cell = row.days[dayObj.dateString];
                                                 if (!cell) return null;
                                                 const type = cell.type;
-                                                const colorClass = cell.record ? getColorClass(cell.record) : 'color-no_trade';
+                                                const colorClass = getColorFromCellType(type);
 
                                                 return (
                                                     <div
