@@ -201,7 +201,7 @@ public class StraddleVwapService {
             String session = sessionManager.getSession();
             BigDecimal spotPrice = null;
 
-            if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
+            if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name) || name.contains("BANK")) {
                 spotPrice = samco.getIndexPrice(session, name);
             } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
                 spotPrice = samco.getLtp(session, strategy.getExchange(), tokenService.getSymbolByName(name));

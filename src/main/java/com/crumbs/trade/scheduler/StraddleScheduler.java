@@ -32,7 +32,7 @@ public class StraddleScheduler {
 
         CompletableFuture<Void> sensexFuture =
                 CompletableFuture.runAsync(() ->
-                        executionService.execute("SENSEX"));
+                        executionService.execute("BANKNIFTY"));
 
         CompletableFuture.allOf(
                 niftyFuture,

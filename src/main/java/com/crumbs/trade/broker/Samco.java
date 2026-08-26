@@ -226,6 +226,9 @@ public class Samco {
         if("NIFTY".equalsIgnoreCase(indexName))
         {
         	indexName="NIFTY 50";
+        } else if ("BANKNIFTY".equalsIgnoreCase(indexName) )
+        {
+            indexName ="NIFTY BANK";
         }
         // Pass the dynamic indexName ("NIFTY 50" or "SENSEX")
         IndexDetailsResponse indexQuote = quoteApi.getIndexQuote(sessionToken, indexName);

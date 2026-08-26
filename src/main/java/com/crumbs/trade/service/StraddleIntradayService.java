@@ -164,7 +164,7 @@ public class StraddleIntradayService {
             String session) {
 
         if ("NIFTY".equalsIgnoreCase(name)
-                || "SENSEX".equalsIgnoreCase(name)) {
+                || "SENSEX".equalsIgnoreCase(name) || name.contains("BANK")) {
             return samco.getIndexPrice(session, name);
         }
 
