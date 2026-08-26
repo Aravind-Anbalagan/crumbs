@@ -1,6 +1,19 @@
 /* =========================================================
-   ADVISORY LIFECYCLE MATRIX (THE RIBBON DESIGN)
+   ADVISORY LIFECYCLE MATRIX — 4 COLOR SCHEME
    ========================================================= */
+
+:root {
+    --color-entry: #10b981;       /* Bright Green - NEW_ENTRY */
+    --color-maintain: #fbbf24;    /* Bright Yellow - MAINTAIN */
+    --color-exit-sl: #ef4444;     /* Bright Red - SL EXIT */
+    --color-exit-target: #1f2937; /* Black/Dark Grey - TARGET EXIT */
+    --color-no-trade: #cbd5e1;    /* Light Grey - NO_TRADE */
+
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --glass-bg: rgba(15, 23, 42, 0.7);
+    --glass-border: rgba(148, 163, 184, 0.2);
+}
 
 .advisory-container {
     padding: 20px;
@@ -20,7 +33,7 @@
     padding: 20px;
 }
 
-/* --- 🚀 UNIFIED COMMAND BAR --- */
+/* --- UNIFIED COMMAND BAR --- */
 .advisory-header {
     display: flex;
     flex-wrap: wrap;
@@ -39,7 +52,7 @@
 .header-title-area h2 {
     margin: 0;
     font-size: 1.5rem;
-    background: var(--brand-gradient, linear-gradient(135deg, #00a8ff, #9c88ff));
+    background: linear-gradient(135deg, #00a8ff, #9c88ff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -51,16 +64,8 @@
     display: block;
 }
 
-/* Center Filter Area */
-/* Right Action Buttons Area */
-.header-actions-area {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
 .btn-primary {
-    background: var(--brand-gradient, linear-gradient(135deg, #00a8ff, #9c88ff));
+    background: linear-gradient(135deg, #00a8ff, #9c88ff);
     color: #fff;
     border: none;
     padding: 10px 20px;
@@ -75,33 +80,15 @@
 .btn-primary:active:not(:disabled) { transform: scale(0.98); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-reset {
-    background: rgba(255, 71, 87, 0.1);
-    color: #ff4757;
-    border: 1px solid rgba(255, 71, 87, 0.3);
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-}
-
-.btn-reset:hover {
-    background: rgba(255, 71, 87, 0.2);
-    transform: scale(0.98);
-}
-
-/* --- 🚨 ERROR BANNER --- */
+/* --- ERROR BANNER --- */
 .error-banner {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 12px 18px;
-    background: rgba(255, 71, 87, 0.12);
-    border: 1px solid rgba(255, 71, 87, 0.4);
-    color: #ff4757;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #ef4444;
     font-size: 0.85rem;
     font-weight: 600;
 }
@@ -109,14 +96,14 @@
 .error-banner button {
     background: none;
     border: none;
-    color: #ff4757;
+    color: #ef4444;
     font-size: 1rem;
     font-weight: 800;
     cursor: pointer;
     padding: 0 4px;
 }
 
-/* --- 🎨 LEGEND (inline in the header row) --- */
+/* --- LEGEND (4 COLORS ONLY) --- */
 .legend-row {
     display: flex;
     flex-wrap: wrap;
@@ -140,32 +127,23 @@
 }
 
 .legend-swatch {
-    width: 11px;
-    height: 11px;
+    width: 14px;
+    height: 14px;
     border-radius: 3px;
     display: inline-block;
     flex-shrink: 0;
 }
 
-.legend-swatch.entry_bullish { background: #14532d; }
-.legend-swatch.entry_bearish { background: #7f1d1d; }
-.legend-swatch.active_bullish { background: #22c55e; }
-.legend-swatch.active_bearish { background: #f87171; }
-.legend-swatch.exit { background: #0a0a0a; border: 1px solid rgba(255,255,255,0.15); }
-.legend-swatch.no_trade {
-    background-image: repeating-linear-gradient(45deg, #3a3f52, #3a3f52 4px, #2b2f3d 4px, #2b2f3d 8px);
-}
-.legend-swatch.empty { background: #94a3b8; }
+/* 5-Color Legend Swatches */
+.legend-swatch.color-new_entry { background: var(--color-entry); }
+.legend-swatch.color-maintain { background: var(--color-maintain); }
+.legend-swatch.color-exit-sl { background: var(--color-exit-sl); }
+.legend-swatch.color-exit-target { background: var(--color-exit-target); }
+.legend-swatch.color-no_trade { background: var(--color-no-trade); }
 
-/* --- 🔎 FILTER BAR --- */
+/* --- FILTER BAR --- */
 .filter-bar {
     padding: 10px 20px;
-}
-
-.header-filters-area {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
 }
 
 .filter-inline-group {
@@ -207,7 +185,7 @@
     color: #00a8ff;
 }
 
-/* --- THE TIMELINE BOARD --- */
+/* --- TIMELINE BOARD --- */
 .timeline-wrapper {
     flex: 1;
     display: flex;
@@ -229,7 +207,7 @@
     min-width: 1000px;
 }
 
-/* --- 📄 PAGINATION --- */
+/* --- PAGINATION --- */
 .pagination-bar {
     display: flex;
     align-items: center;
@@ -268,7 +246,7 @@
     white-space: nowrap;
 }
 
-/* Grid Layout */
+/* --- GRID LAYOUT --- */
 .timeline-header-row, .timeline-data-row {
     display: flex;
     align-items: center;
@@ -281,7 +259,6 @@
     z-index: 10;
 }
 
-/* Left Column: Symbol Name */
 .timeline-symbol-col {
     flex: 0 0 130px;
     font-weight: 800;
@@ -291,7 +268,6 @@
     letter-spacing: 0.5px;
 }
 
-/* The Grid Container (Columns injected by React) */
 .timeline-days-grid {
     flex: 1;
     display: grid;
@@ -299,7 +275,7 @@
     padding-right: 10px;
 }
 
-/* Stacked Month and Day Headers */
+/* --- DAY HEADERS --- */
 .day-header {
     display: flex;
     flex-direction: column;
@@ -329,93 +305,108 @@
     color: #00a8ff;
 }
 
-/* Weekend columns are visually de-emphasized since the engine never runs then */
 .day-header.is-weekend .day-num,
 .day-header.is-weekend .day-month {
     opacity: 0.35;
 }
 
-/* --- THE RIBBON CELLS (DIRECTIONAL COLORS) --- */
+/* =========================================================
+   4-COLOR DAY CELLS (THE CORE)
+   ========================================================= */
+
 .day-cell {
     height: 28px;
-    border-radius: 3px;
+    border-radius: 4px;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: filter 0.2s;
+    transition: filter 0.2s, transform 0.15s;
+    font-weight: 700;
+    cursor: pointer;
 }
 
-.day-cell:not(.empty) { cursor: pointer; }
-.day-cell:not(.empty):hover { filter: brightness(1.2); }
+.day-cell:hover:not(.empty) {
+    filter: brightness(1.15);
+    transform: scale(1.05);
+}
 
-/* State 1: LIGHT GREY (no scan ran this day) */
-.day-cell.empty {
-    background: #94a3b8;
+/* EMPTY (No data this day) */
+.day-cell.color-no_trade {
+    background: var(--color-no-trade);
     border: 1px solid rgba(255,255,255,0.1);
+    color: #475569;
+    cursor: not-allowed;
 }
 
-.day-cell.empty.is-weekend {
-    background: rgba(148, 163, 184, 0.3);
+.day-cell.color-no_trade .marker-icon {
+    font-size: 0.75rem;
+    color: #475569;
 }
 
-/* State: NO TRADE (scan ran, deliberately took no position) */
-.day-cell.no_trade {
-    background-image: repeating-linear-gradient(45deg, #3a3f52, #3a3f52 4px, #2b2f3d 4px, #2b2f3d 8px);
-    border: 1px solid rgba(255,255,255,0.06);
-    color: var(--text-muted);
+.day-cell.color-no_trade.is-weekend {
+    opacity: 0.4;
 }
 
-.day-cell.no_trade .marker-icon {
-    font-size: 1rem;
-    color: var(--text-muted);
+.day-cell.color-no_trade:hover {
+    filter: none;
+    transform: none;
 }
 
-/* ================= BULLISH ================= */
-.day-cell.entry_bullish {
-    background: #14532d;
-    color: #ffffff;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-    box-shadow: 0 0 10px rgba(20, 83, 45, 0.5);
-    z-index: 2;
+/* NEW ENTRY (Bright Green) */
+.day-cell.color-new_entry {
+    background: var(--color-entry);
+    color: white;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
 }
 
-.day-cell.active_bullish {
-    background: #22c55e;
-    border-radius: 0;
+.day-cell.color-new_entry .marker-icon {
+    font-size: 0.85rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-/* ================= BEARISH ================= */
-.day-cell.entry_bearish {
-    background: #7f1d1d;
-    color: #ffffff;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-    box-shadow: 0 0 10px rgba(127, 29, 29, 0.5);
-    z-index: 2;
+/* MAINTAIN (Bright Yellow) */
+.day-cell.color-maintain {
+    background: var(--color-maintain);
+    color: #1f2937;
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.3);
+    font-weight: 800;
 }
 
-.day-cell.active_bearish {
-    background: #f87171;
-    border-radius: 0;
+.day-cell.color-maintain .marker-icon {
+    font-size: 0.8rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-/* ================= EXITS ================= */
-.day-cell.exit {
-    background: #0a0a0a;
-    color: #ff4757;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
-    z-index: 2;
+/* EXIT - STOP LOSS (Bright Red) */
+.day-cell.color-exit-sl {
+    background: var(--color-exit-sl);
+    color: white;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+.day-cell.color-exit-sl .marker-icon {
+    font-size: 0.85rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* EXIT - TARGET (Black/Dark) */
+.day-cell.color-exit-target {
+    background: var(--color-exit-target);
+    color: #10b981;
+    box-shadow: 0 0 12px rgba(31, 41, 55, 0.5);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.day-cell.color-exit-target .marker-icon {
+    font-size: 0.85rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    color: #10b981;
 }
 
 .marker-icon {
-    font-size: 0.75rem;
     font-weight: 900;
     font-family: "Arial", "Helvetica", sans-serif;
-    text-shadow: 0px 1px 2px rgba(0,0,0,0.6);
 }
 
 /* --- HOVER TOOLTIPS --- */
@@ -470,42 +461,70 @@
     margin-bottom: 15px;
 }
 
-.dialog-header h3 { margin: 0; font-size: 1.2rem; }
+.dialog-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
 
 .btn-close {
-    background: none; border: none;
+    background: none;
+    border: none;
     color: var(--text-muted);
-    font-size: 1.2rem; cursor: pointer;
+    font-size: 1.2rem;
+    cursor: pointer;
 }
-.btn-close:hover { color: #ff4757; }
+
+.btn-close:hover {
+    color: #ef4444;
+}
+
+.dialog-content {
+    max-height: 60vh;
+    overflow-y: auto;
+}
 
 .dialog-status-row {
-    display: flex; align-items: center; gap: 15px; margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
 }
 
 .dialog-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
 }
 
 .d-box {
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     background: rgba(0,0,0,0.2);
-    padding: 10px; border-radius: 8px;
+    padding: 10px;
+    border-radius: 8px;
     border: 1px solid var(--glass-border);
 }
 
 .d-box label {
-    font-size: 0.7rem; color: var(--text-muted);
-    text-transform: uppercase; margin-bottom: 4px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    font-weight: 700;
 }
 
-.d-box span { font-size: 0.95rem; font-weight: bold; color: var(--text-main); }
+.d-box span {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: var(--text-main);
+}
 
-/* 🚀 Visual highlight for Unrealized PnL block */
 .highlight-box {
     background: rgba(0, 168, 255, 0.08);
     border: 1px solid rgba(0, 168, 255, 0.4);
 }
+
 .highlight-box label {
     color: #00a8ff;
     font-weight: 800;
@@ -514,33 +533,58 @@
 .dialog-reasoning {
     background: rgba(0, 168, 255, 0.05);
     border-left: 3px solid #00a8ff;
-    padding: 12px; border-radius: 4px;
+    padding: 12px;
+    border-radius: 4px;
 }
 
 .dialog-reasoning label {
-    display: block; font-size: 0.75rem; color: #00a8ff;
-    text-transform: uppercase; font-weight: bold; margin-bottom: 6px;
+    display: block;
+    font-size: 0.75rem;
+    color: #00a8ff;
+    text-transform: uppercase;
+    font-weight: bold;
+    margin-bottom: 6px;
 }
 
 .dialog-reasoning p {
-    margin: 0; font-size: 0.85rem; line-height: 1.4; color: var(--text-main);
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-main);
 }
 
-/* Utilities */
+/* --- UTILITIES --- */
 .text-green { color: #2ed573; }
-.text-red { color: #ff4757; }
+.text-red { color: #ef4444; }
 .text-muted { color: var(--text-muted); }
 
-/* Badges */
 .status-badge {
-    padding: 4px 10px; border-radius: 20px;
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
 }
-.status-badge.active { background: rgba(46, 213, 115, 0.15); color: #2ed573; border: 1px solid rgba(46, 213, 115, 0.4); }
-.status-badge.history, .status-badge.no_trade { background: rgba(255, 71, 87, 0.15); color: #ff4757; border: 1px solid rgba(255, 71, 87, 0.4); }
 
-.empty-state, .loading-spinner {
-    text-align: center; padding: 40px; color: var(--text-muted); font-style: italic;
+.status-badge.active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.status-badge.history,
+.status-badge.no_trade {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.empty-state,
+.loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+    font-style: italic;
 }
 
 @keyframes popIn {

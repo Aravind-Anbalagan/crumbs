@@ -3,22 +3,37 @@ import './AdvisoryDashboard.css';
 
 const PAGE_SIZE = 10;
 
-// Classifies a row's TODAY cell into one of the filter buckets.
-// Kept outside the component since it's a pure function of its input.
+// Classifies a row's TODAY cell into one of 5 filter buckets (using backend states)
 function getFilterCategory(todayCell) {
     if (!todayCell) return 'OTHER';
     switch (todayCell.type) {
         case 'ENTRY_BULLISH':
         case 'ENTRY_BEARISH':
             return 'NEW_ENTRY';
-        case 'EXIT':
-            return 'EXIT';
+        case 'EXIT_SL':
+            return 'EXIT_SL';
+        case 'EXIT_TARGET':
+            return 'EXIT_TARGET';
         case 'ACTIVE_BULLISH':
         case 'ACTIVE_BEARISH':
             return 'MAINTAIN';
         default:
-            return 'OTHER'; // NO_TRADE / EMPTY
+            return 'NO_TRADE'; // NO_TRADE / EMPTY → unified grey
     }
+}
+
+// Maps action taken to color class (for visual distinction)
+function getColorClass(record) {
+    if (!record) return 'color-no_trade';
+    const action = record.actionTaken || '';
+
+    if (action === 'NEW_ENTRY') return 'color-new_entry';
+    if (action === 'MAINTAIN') return 'color-maintain';
+    if (action === 'SL') return 'color-exit-sl';
+    if (action === 'TARGET') return 'color-exit-target';
+    if (action === 'NO_TRADE') return 'color-no_trade';
+
+    return 'color-no_trade';
 }
 
 export default function AdvisoryDashboard() {
@@ -36,13 +51,10 @@ export default function AdvisoryDashboard() {
         fetchTimeline();
     }, []);
 
-    // Jump back to page 1 whenever the filter changes or fresh data arrives,
-    // so the user never lands on a now-empty page.
     useEffect(() => {
         setCurrentPage(1);
     }, [filterType, timelineData]);
 
-    // Close the detail dialog on Escape for keyboard users.
     useEffect(() => {
         if (!dialogData) return;
         const handleKey = (e) => {
@@ -167,9 +179,6 @@ export default function AdvisoryDashboard() {
                 let typeForDay = 'EMPTY';
 
                 if (record) {
-                    // Always track the most recently seen record, so gap days
-                    // (weekends/holidays) fall back to the latest known state
-                    // rather than whatever the position looked like on entry day.
                     currentTrade = record;
                     const action = record.actionTaken || '';
 
@@ -178,19 +187,20 @@ export default function AdvisoryDashboard() {
                         currentTrend = record.optionType === 'PE' ? 'BULLISH' : 'BEARISH';
                         typeForDay = `ENTRY_${currentTrend}`;
                     }
-                    else if (action.includes('EXIT') || action.includes('REVERSE')) {
+                    else if (action === 'SL') {
                         isHolding = false;
-                        typeForDay = 'EXIT';
+                        typeForDay = 'EXIT_SL';
+                        currentTrend = 'NEUTRAL';
+                    }
+                    else if (action === 'TARGET') {
+                        isHolding = false;
+                        typeForDay = 'EXIT_TARGET';
                         currentTrend = 'NEUTRAL';
                     }
                     else if (action === 'MAINTAIN' && isHolding) {
                         typeForDay = `ACTIVE_${currentTrend}`;
                     }
                     else {
-                        // NO_TRADE, NO_TRADE_ITM_RISK, NO_TRADE_COOLDOWN,
-                        // NO_TRADE_SAME_DAY_EXIT, HOLD_TIME_FRAME_MISALIGNMENT —
-                        // the engine ran and deliberately took no position.
-                        // This is distinct from EMPTY (engine never ran that day).
                         typeForDay = 'NO_TRADE';
                     }
                 } else {
@@ -221,18 +231,28 @@ export default function AdvisoryDashboard() {
         return formattedMatrix;
     }, [timelineData, startDate, endDate, daysArray, today]);
 
-    // Counts per filter bucket, computed off the full (unpaginated) matrix.
+    // Counts per filter bucket (group SL and TARGET under EXIT)
     const filterCounts = useMemo(() => {
-        const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0 };
+        const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0, NO_TRADE: 0 };
         symbolMatrix.forEach(row => {
             const cat = getFilterCategory(row.todayCell);
-            if (counts[cat] !== undefined) counts[cat] += 1;
+            if (cat === 'EXIT_SL' || cat === 'EXIT_TARGET') {
+                counts['EXIT'] += 1;
+            } else if (counts[cat] !== undefined) {
+                counts[cat] += 1;
+            }
         });
         return counts;
     }, [symbolMatrix]);
 
     const filteredMatrix = useMemo(() => {
         if (filterType === 'ALL') return symbolMatrix;
+        if (filterType === 'EXIT') {
+            return symbolMatrix.filter(row => {
+                const cat = getFilterCategory(row.todayCell);
+                return cat === 'EXIT_SL' || cat === 'EXIT_TARGET';
+            });
+        }
         return symbolMatrix.filter(row => getFilterCategory(row.todayCell) === filterType);
     }, [symbolMatrix, filterType]);
 
@@ -253,7 +273,7 @@ export default function AdvisoryDashboard() {
 
     return (
         <div className="advisory-container">
-            {/* HEADER (title + legend + action all in one row) */}
+            {/* HEADER */}
             <div className="advisory-header glass-panel">
                 <div className="header-title-area">
                     <h2>Lifecycle Matrix</h2>
@@ -261,13 +281,11 @@ export default function AdvisoryDashboard() {
                 </div>
 
                 <div className="legend-row">
-                    <span className="legend-item"><span className="legend-swatch entry_bullish" />Entry (Bullish)</span>
-                    <span className="legend-item"><span className="legend-swatch entry_bearish" />Entry (Bearish)</span>
-                    <span className="legend-item"><span className="legend-swatch active_bullish" />Holding (Bullish)</span>
-                    <span className="legend-item"><span className="legend-swatch active_bearish" />Holding (Bearish)</span>
-                    <span className="legend-item"><span className="legend-swatch exit" />Exit</span>
-                    <span className="legend-item"><span className="legend-swatch no_trade" />No Trade</span>
-                    <span className="legend-item"><span className="legend-swatch empty" />No Data</span>
+                    <span className="legend-item"><span className="legend-swatch color-new_entry" />New Entry</span>
+                    <span className="legend-item"><span className="legend-swatch color-maintain" />Maintain</span>
+                    <span className="legend-item"><span className="legend-swatch color-exit-sl" />Exit (SL)</span>
+                    <span className="legend-item"><span className="legend-swatch color-exit-target" />Exit (Target)</span>
+                    <span className="legend-item"><span className="legend-swatch color-no_trade" />No Trade</span>
                 </div>
 
                 <button className="btn-primary" onClick={handleScanActive} disabled={scanningAll}>
@@ -283,7 +301,7 @@ export default function AdvisoryDashboard() {
                 </div>
             )}
 
-            {/* FILTER BAR — filters by TODAY's action for each instrument */}
+            {/* FILTER BAR */}
             <div className="filter-bar glass-panel">
                 <div className="filter-inline-group">
                     <span className="filter-label">Today</span>
@@ -342,16 +360,18 @@ export default function AdvisoryDashboard() {
                                                 const cell = row.days[dayObj.dateString];
                                                 if (!cell) return null;
                                                 const type = cell.type;
+                                                const colorClass = cell.record ? getColorClass(cell.record) : 'color-no_trade';
 
                                                 return (
                                                     <div
                                                         key={dayObj.dateString}
-                                                        className={`day-cell ${type.toLowerCase()} ${cell.isWeekend ? 'is-weekend' : ''}`}
+                                                        className={`day-cell ${colorClass} ${cell.isWeekend ? 'is-weekend' : ''}`}
                                                         onClick={() => cell.record && setDialogData({ ...cell.record, formattedDate: `${dayObj.dayNum} ${dayObj.monthStr}` })}
                                                     >
                                                         {type === 'ENTRY_BULLISH' && <span className="marker-icon">▲</span>}
                                                         {type === 'ENTRY_BEARISH' && <span className="marker-icon">▼</span>}
-                                                        {type === 'EXIT' && <span className="marker-icon">✕</span>}
+                                                        {type === 'EXIT_SL' && <span className="marker-icon">✕</span>}
+                                                        {type === 'EXIT_TARGET' && <span className="marker-icon">✓</span>}
                                                         {type === 'NO_TRADE' && <span className="marker-icon">·</span>}
 
                                                         {type !== 'EMPTY' && cell.record && (
@@ -371,7 +391,7 @@ export default function AdvisoryDashboard() {
                             </div>
                         </div>
 
-                        {/* PAGINATION — stays pinned under the scrollable board */}
+                        {/* PAGINATION */}
                         <div className="pagination-bar">
                             <button
                                 className="pagination-btn"
@@ -395,7 +415,7 @@ export default function AdvisoryDashboard() {
                 )}
             </div>
 
-            {/* FULL SCREEN DIALOG MODAL */}
+            {/* DIALOG MODAL */}
             {dialogData && (
                 <div className="dialog-overlay" onClick={() => setDialogData(null)}>
                     <div className="dialog-box glass-panel" onClick={(e) => e.stopPropagation()}>
