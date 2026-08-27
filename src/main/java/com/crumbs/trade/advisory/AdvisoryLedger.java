@@ -115,4 +115,21 @@ public class AdvisoryLedger {
 
     @Column(name = "unrealized_pnl", precision = 10, scale = 2)
     private BigDecimal unrealizedPnl;
+
+    // --- Position Tracking Additions ---
+    @Column(name = "days_in_position")
+    private Integer daysInPosition;
+
+    @Column(name = "previous_record_id")
+    private Long previousRecordId;
+
+    @Column(name = "previous_status", length = 50)
+    private String previousStatus;
+
+    @Column(name = "previous_action", length = 50)
+    private String previousAction;
+
+    @Builder.Default
+    @Column(name = "is_new_day", columnDefinition = "boolean default true")
+    private Boolean isNewDay = true;
 }

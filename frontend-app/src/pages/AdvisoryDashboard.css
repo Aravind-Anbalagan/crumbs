@@ -1,13 +1,14 @@
 /* =========================================================
-   ADVISORY LIFECYCLE MATRIX — 4 COLOR SCHEME
+   ADVISORY LIFECYCLE MATRIX & DASHBOARD CSS
    ========================================================= */
 
 :root {
-    --color-entry: #10b981;       /* Bright Green - NEW_ENTRY */
-    --color-maintain: #fbbf24;    /* Bright Yellow - MAINTAIN */
-    --color-exit-sl: #ef4444;     /* Bright Red - SL EXIT */
-    --color-exit-target: #1f2937; /* Black/Dark Grey - TARGET EXIT */
-    --color-no-trade: #cbd5e1;    /* Light Grey - NO_TRADE */
+    --color-entry-pe: #047857;   /* Dark Green - PE NEW_ENTRY */
+    --color-entry-ce: #b91c1c;   /* Dark Red - CE NEW_ENTRY */
+    --color-maintain: #fbbf24;   /* Yellow - MAINTAIN */
+    --color-exit-sl: #0b0d11;    /* Black - SL EXIT */
+    --color-exit-target: #f97316;/* Orange - TARGET EXIT */
+    --color-no-trade: #94a3b8;   /* Grey - NO_TRADE / EMPTY */
 
     --text-main: #e2e8f0;
     --text-muted: #94a3b8;
@@ -123,7 +124,7 @@
     padding: 0 4px;
 }
 
-/* --- LEGEND (4 COLORS ONLY) --- */
+/* --- LEGEND --- */
 .legend-row {
     display: flex;
     flex-wrap: wrap;
@@ -154,8 +155,8 @@
     flex-shrink: 0;
 }
 
-/* 5-Color Legend Swatches */
-.legend-swatch.color-new_entry { background: var(--color-entry); }
+.legend-swatch.color-new_entry-pe { background: var(--color-entry-pe); }
+.legend-swatch.color-new_entry-ce { background: var(--color-entry-ce); }
 .legend-swatch.color-maintain { background: var(--color-maintain); }
 .legend-swatch.color-exit-sl { background: var(--color-exit-sl); }
 .legend-swatch.color-exit-target { background: var(--color-exit-target); }
@@ -331,7 +332,7 @@
 }
 
 /* =========================================================
-   4-COLOR DAY CELLS (THE CORE)
+   DAY CELLS — STRICT COLOR & ICON OVERRIDES
    ========================================================= */
 
 .day-cell {
@@ -346,14 +347,54 @@
     cursor: pointer;
 }
 
-.day-cell:hover:not(.empty) {
+.day-cell:hover:not(.color-no_trade) {
     filter: brightness(1.15);
     transform: scale(1.05);
 }
 
-/* EMPTY (No data this day) */
+/* 1. PE NEW ENTRY (Dark Green) */
+.day-cell.color-new_entry-pe {
+    background: var(--color-entry-pe) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 10px rgba(4, 120, 87, 0.4);
+}
+
+/* 2. CE NEW ENTRY (Dark Red) */
+.day-cell.color-new_entry-ce {
+    background: var(--color-entry-ce) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 10px rgba(185, 28, 28, 0.4);
+}
+
+/* 3. MAINTAIN / HOLDING (Yellow for both CE/PE) */
+.day-cell.color-maintain {
+    background: var(--color-maintain) !important;
+    color: #1f2937 !important;
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+    font-weight: 800;
+}
+
+/* 4. EXIT - STOP LOSS (Black with Skull) */
+.day-cell.color-exit-sl {
+    background: var(--color-exit-sl) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+    font-size: 0.85rem;
+}
+
+/* 5. EXIT - TARGET (Orange with Tick) */
+.day-cell.color-exit-target {
+    background: var(--color-exit-target) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+    font-weight: 900;
+    font-size: 0.85rem;
+}
+
+/* 6. NO_TRADE / EMPTY / ERR / OTHER (Grey) */
 .day-cell.color-no_trade {
-    background: var(--color-no-trade);
+    background: var(--color-no-trade) !important;
     border: 1px solid rgba(255,255,255,0.1);
     color: #475569;
     cursor: not-allowed;
@@ -371,57 +412,6 @@
 .day-cell.color-no_trade:hover {
     filter: none;
     transform: none;
-}
-
-/* NEW ENTRY (Bright Green) */
-.day-cell.color-new_entry {
-    background: var(--color-entry);
-    color: white;
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
-}
-
-.day-cell.color-new_entry .marker-icon {
-    font-size: 0.85rem;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-/* MAINTAIN (Bright Yellow) */
-.day-cell.color-maintain {
-    background: var(--color-maintain);
-    color: #1f2937;
-    box-shadow: 0 0 12px rgba(251, 191, 36, 0.3);
-    font-weight: 800;
-}
-
-.day-cell.color-maintain .marker-icon {
-    font-size: 0.8rem;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-/* EXIT - STOP LOSS (Bright Red) */
-.day-cell.color-exit-sl {
-    background: var(--color-exit-sl);
-    color: white;
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
-}
-
-.day-cell.color-exit-sl .marker-icon {
-    font-size: 0.85rem;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-/* EXIT - TARGET (Black/Dark) */
-.day-cell.color-exit-target {
-    background: var(--color-exit-target);
-    color: #10b981;
-    box-shadow: 0 0 12px rgba(31, 41, 55, 0.5);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.day-cell.color-exit-target .marker-icon {
-    font-size: 0.85rem;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    color: #10b981;
 }
 
 .marker-icon {

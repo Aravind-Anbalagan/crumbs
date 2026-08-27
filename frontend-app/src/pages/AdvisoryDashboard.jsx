@@ -3,7 +3,16 @@ import './AdvisoryDashboard.css';
 
 const PAGE_SIZE = 10;
 
-// Classifies a row's TODAY cell into one of 5 filter buckets (using backend states)
+// 🧠 Robust action classifier for SL and TARGET
+function getActionType(action) {
+    const act = (action || '').trim().toUpperCase();
+    if (act === 'NEW_ENTRY') return 'ENTRY';
+    if (act === 'MAINTAIN') return 'MAINTAIN';
+    if (act.includes('SL') || act.includes('STOP') || act.includes('LOSS')) return 'EXIT_SL';
+    if (act.includes('TARGET') || act.includes('PROFIT')) return 'EXIT_TARGET';
+    return 'NO_TRADE';
+}
+
 function getFilterCategory(todayCell) {
     if (!todayCell) return 'OTHER';
     switch (todayCell.type) {
@@ -18,17 +27,17 @@ function getFilterCategory(todayCell) {
         case 'ACTIVE_BEARISH':
             return 'MAINTAIN';
         default:
-            return 'NO_TRADE'; // NO_TRADE / EMPTY → unified grey
+            return 'NO_TRADE';
     }
 }
 
-// Maps action taken to color class (for visual distinction)
 function getColorFromCellType(type) {
-    if (type === 'ENTRY_BULLISH' || type === 'ENTRY_BEARISH') return 'color-new_entry';
-    if (type === 'ACTIVE_BULLISH' || type === 'ACTIVE_BEARISH') return 'color-maintain';
+    if (type === 'ENTRY_BULLISH') return 'color-new_entry-pe';
+    if (type === 'ENTRY_BEARISH') return 'color-new_entry-ce';
+    if (type && type.startsWith('ACTIVE_')) return 'color-maintain';
     if (type === 'EXIT_SL') return 'color-exit-sl';
     if (type === 'EXIT_TARGET') return 'color-exit-target';
-    return 'color-no_trade'; // NO_TRADE, EMPTY
+    return 'color-no_trade';
 }
 
 export default function AdvisoryDashboard() {
@@ -69,12 +78,7 @@ export default function AdvisoryDashboard() {
                 return res.json();
             })
             .then(data => {
-                const arrayData = Array.isArray(data) ? data : [];
-                console.log(`📊 Timeline fetched: ${arrayData.length} records`);
-                if (isNewCycle) {
-                    console.log(`🔄 NEW CYCLE detected. Filtering to current cycle only (${cycleRangeText})`);
-                }
-                setTimelineData(arrayData);
+                setTimelineData(Array.isArray(data) ? data : []);
             })
             .catch(err => {
                 console.error("Timeline fetch error:", err);
@@ -98,12 +102,10 @@ export default function AdvisoryDashboard() {
             .finally(() => setScanningAll(false));
     };
 
-    // 🚀 Dynamic NSE Expiry Cycle Calculator (Last TUESDAY of month)
-    const { startDate, endDate, daysArray, cycleRangeText, isNewCycle } = useMemo(() => {
-        // NSE options expiry: Last TUESDAY of each month (not Thursday)
+    // 🚀 Dynamic Expiry Cycle Calculator (RESTORED: Last TUESDAY of month)
+    const { startDate, endDate, daysArray, cycleRangeText, expiryDateText, isNewCycle } = useMemo(() => {
         const getLastTuesday = (year, month) => {
             let d = new Date(year, month + 1, 0);
-            // TUESDAY = day 2 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
             while (d.getDay() !== 2) d.setDate(d.getDate() - 1);
             d.setHours(23, 59, 59, 999);
             return d;
@@ -115,28 +117,24 @@ export default function AdvisoryDashboard() {
 
         let start, end, newCycleStarted = false;
 
-        // 🔄 NEW CYCLE DETECTION: if today > current expiry, we're in a new cycle
         if (now.getTime() > currentExpiry.getTime()) {
             newCycleStarted = true;
-            // New cycle starts from day after last expiry
             start = new Date(currentExpiry);
             start.setDate(start.getDate() + 1);
             start.setHours(0, 0, 0, 0);
-            // Cycle ends on next month's last TUESDAY
             end = getLastTuesday(now.getFullYear(), now.getMonth() + 1);
         } else {
-            // Still in current cycle
-            // Cycle starts from day after previous month's last TUESDAY
             const prevExpiry = getLastTuesday(now.getFullYear(), now.getMonth() - 1);
             start = new Date(prevExpiry);
             start.setDate(start.getDate() + 1);
             start.setHours(0, 0, 0, 0);
-            // Cycle ends on current month's last TUESDAY
             end = currentExpiry;
         }
 
         const days = [];
         let curr = new Date(start);
+
+        // This loop strictly caps the visual grid from Start Date to End Date
         while (curr <= end) {
             const dateString = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
             const dow = curr.getDay();
@@ -151,71 +149,83 @@ export default function AdvisoryDashboard() {
         }
 
         const rangeText = `${start.getDate()} ${start.toLocaleString('default', { month: 'short' })} — ${end.getDate()} ${end.toLocaleString('default', { month: 'short' })}`;
+        const exactExpiryText = `${end.getDate()} ${end.toLocaleString('default', { month: 'short' })} ${end.getFullYear()}`;
 
-        return { startDate: start, endDate: end, daysArray: days, cycleRangeText: rangeText, isNewCycle: newCycleStarted };
+        return {
+            startDate: start,
+            endDate: end,
+            daysArray: days,
+            cycleRangeText: rangeText,
+            expiryDateText: exactExpiryText,
+            isNewCycle: newCycleStarted
+        };
     }, []);
 
-    // 🧠 DYNAMIC MATRIX LOGIC - Only process current cycle data
+    // 🧠 DYNAMIC MATRIX LOGIC — Hardened against timezone shifts & string casing
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
-        // 🔄 FILTER: Only include trades that fall within the current cycle
         const filteredTimelineData = timelineData.filter(record => {
             if (!record.timestamp) return false;
             const recordDate = new Date(record.timestamp);
+            if (isNaN(recordDate.getTime())) return false;
             recordDate.setHours(0, 0, 0, 0);
-            // Include only if record is within [startDate, endDate]
+            // Strictly bound the timeline processing to the active cycle dates
             return recordDate >= startDate && recordDate <= endDate;
         });
 
         filteredTimelineData.forEach(record => {
             if (!record.timestamp) return;
             const date = new Date(record.timestamp);
-            const dateString = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-
+            if (isNaN(date.getTime())) return;
+            const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             if (!matrix[record.symbol]) matrix[record.symbol] = { records: {} };
             matrix[record.symbol].records[dateString] = record;
         });
 
         const formattedMatrix = [];
-        const todayDateString = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        const todayDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
         for (const [symbol, data] of Object.entries(matrix)) {
             const rowDays = {};
             let isHolding = false;
-            let currentTrade = null;
             let currentTrend = 'NEUTRAL';
+            let latestTrade = null;
             let todayCell = null;
 
             let curr = new Date(startDate);
-            curr.setHours(0,0,0,0);
+            curr.setHours(0, 0, 0, 0);
 
-            while(curr <= endDate) {
-                const dateString = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
+            while (curr <= endDate) {
+                const dateString = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
                 const record = data.records[dateString];
                 let typeForDay = 'EMPTY';
 
                 if (record) {
-                    currentTrade = record;
-                    const action = record.actionTaken || '';
+                    latestTrade = record;
+                    const actionCategory = getActionType(record.actionTaken);
 
-                    if (action === 'NEW_ENTRY') {
+                    if (actionCategory === 'ENTRY') {
                         isHolding = true;
-                        currentTrend = record.optionType === 'PE' ? 'BULLISH' : 'BEARISH';
+                        currentTrend = (record.optionType || '').toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
                         typeForDay = `ENTRY_${currentTrend}`;
                     }
-                    else if (action === 'SL') {
+                    else if (actionCategory === 'MAINTAIN') {
+                        isHolding = true;
+                        if (record.optionType) {
+                            currentTrend = record.optionType.toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
+                        }
+                        typeForDay = `ACTIVE_${currentTrend}`;
+                    }
+                    else if (actionCategory === 'EXIT_SL') {
                         isHolding = false;
                         typeForDay = 'EXIT_SL';
                         currentTrend = 'NEUTRAL';
                     }
-                    else if (action === 'TARGET') {
+                    else if (actionCategory === 'EXIT_TARGET') {
                         isHolding = false;
                         typeForDay = 'EXIT_TARGET';
                         currentTrend = 'NEUTRAL';
-                    }
-                    else if (action === 'MAINTAIN' && isHolding) {
-                        typeForDay = `ACTIVE_${currentTrend}`;
                     }
                     else {
                         typeForDay = 'NO_TRADE';
@@ -230,25 +240,21 @@ export default function AdvisoryDashboard() {
                     const dow = curr.getDay();
                     const dayCell = {
                         type: typeForDay,
-                        record: record || currentTrade,
+                        record: record || latestTrade,
                         isWeekend: dow === 0 || dow === 6
                     };
                     rowDays[dateString] = dayCell;
-
                     if (dateString === todayDateString) {
                         todayCell = dayCell;
                     }
                 }
-
                 curr.setDate(curr.getDate() + 1);
             }
-            formattedMatrix.push({ symbol, days: rowDays, latestTrade: currentTrade, todayCell });
+            formattedMatrix.push({ symbol, days: rowDays, latestTrade, todayCell });
         }
-
         return formattedMatrix;
     }, [timelineData, startDate, endDate, daysArray, today]);
 
-    // Counts per filter bucket (group SL and TARGET under EXIT)
     const filterCounts = useMemo(() => {
         const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0, NO_TRADE: 0 };
         symbolMatrix.forEach(row => {
@@ -274,7 +280,6 @@ export default function AdvisoryDashboard() {
     }, [symbolMatrix, filterType]);
 
     const totalPages = Math.max(1, Math.ceil(filteredMatrix.length / PAGE_SIZE));
-
     const pagedMatrix = useMemo(() => {
         const start = (currentPage - 1) * PAGE_SIZE;
         return filteredMatrix.slice(start, start + PAGE_SIZE);
@@ -290,22 +295,23 @@ export default function AdvisoryDashboard() {
 
     return (
         <div className="advisory-container">
-            {/* HEADER */}
             <div className="advisory-header glass-panel">
                 <div className="header-title-area">
                     <h2>Lifecycle Matrix</h2>
                     <span className="subtitle">
-                        Expiry Cycle: <strong>{cycleRangeText}</strong>
-                        {isNewCycle && <span className="new-cycle-badge">🔄 NEW CYCLE</span>}
+                        Cycle: <strong>{cycleRangeText}</strong>
+                        <span style={{ margin: '0 10px', color: 'var(--glass-border)' }}>|</span>
+                        Expiry: <strong style={{ color: '#00a8ff' }}>{expiryDateText}</strong>
+                        {isNewCycle && <span className="new-cycle-badge" style={{ marginLeft: '10px' }}>🔄 NEW CYCLE</span>}
                     </span>
                 </div>
 
                 <div className="legend-row">
-                    <span className="legend-item"><span className="legend-swatch color-new_entry" />New Entry</span>
+                    <span className="legend-item"><span className="legend-swatch color-new_entry-pe" />PE Entry</span>
+                    <span className="legend-item"><span className="legend-swatch color-new_entry-ce" />CE Entry</span>
                     <span className="legend-item"><span className="legend-swatch color-maintain" />Maintain</span>
                     <span className="legend-item"><span className="legend-swatch color-exit-sl" />Exit (SL)</span>
                     <span className="legend-item"><span className="legend-swatch color-exit-target" />Exit (Target)</span>
-                    <span className="legend-item"><span className="legend-swatch color-no_trade" />No Trade</span>
                 </div>
 
                 <button className="btn-primary" onClick={handleScanActive} disabled={scanningAll}>
@@ -313,7 +319,6 @@ export default function AdvisoryDashboard() {
                 </button>
             </div>
 
-            {/* ERROR BANNER */}
             {error && (
                 <div className="error-banner glass-panel">
                     <span>⚠️ {error}</span>
@@ -321,7 +326,6 @@ export default function AdvisoryDashboard() {
                 </div>
             )}
 
-            {/* FILTER BAR */}
             <div className="filter-bar glass-panel">
                 <div className="filter-inline-group">
                     <span className="filter-label">Today</span>
@@ -342,7 +346,6 @@ export default function AdvisoryDashboard() {
                 </div>
             </div>
 
-            {/* TIMELINE GRID */}
             <div className="timeline-wrapper glass-panel">
                 {loading ? (
                     <div className="loading-spinner">Constructing Timeline Matrix...</div>
@@ -354,7 +357,6 @@ export default function AdvisoryDashboard() {
                     <>
                         <div className="timeline-scroll-area">
                             <div className="timeline-board">
-
                                 <div className="timeline-header-row">
                                     <div className="timeline-symbol-col">Instrument</div>
                                     <div className="timeline-days-grid" style={{ gridTemplateColumns: `repeat(${daysArray.length}, minmax(25px, 1fr))` }}>
@@ -390,7 +392,8 @@ export default function AdvisoryDashboard() {
                                                     >
                                                         {type === 'ENTRY_BULLISH' && <span className="marker-icon">▲</span>}
                                                         {type === 'ENTRY_BEARISH' && <span className="marker-icon">▼</span>}
-                                                        {type === 'EXIT_SL' && <span className="marker-icon">✕</span>}
+                                                        {(type === 'ACTIVE_BULLISH' || type === 'ACTIVE_BEARISH') && <span className="marker-icon">→</span>}
+                                                        {type === 'EXIT_SL' && <span className="marker-icon">💀</span>}
                                                         {type === 'EXIT_TARGET' && <span className="marker-icon">✓</span>}
                                                         {type === 'NO_TRADE' && <span className="marker-icon">·</span>}
 
@@ -411,31 +414,15 @@ export default function AdvisoryDashboard() {
                             </div>
                         </div>
 
-                        {/* PAGINATION */}
                         <div className="pagination-bar">
-                            <button
-                                className="pagination-btn"
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
-                            >
-                                ‹ Prev
-                            </button>
-                            <span className="pagination-info">
-                                Page {currentPage} of {totalPages} · {filteredMatrix.length} instrument{filteredMatrix.length === 1 ? '' : 's'}
-                            </span>
-                            <button
-                                className="pagination-btn"
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
-                            >
-                                Next ›
-                            </button>
+                            <button className="pagination-btn" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>‹ Prev</button>
+                            <span className="pagination-info">Page {currentPage} of {totalPages} · {filteredMatrix.length} instrument{filteredMatrix.length === 1 ? '' : 's'}</span>
+                            <button className="pagination-btn" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next ›</button>
                         </div>
                     </>
                 )}
             </div>
 
-            {/* DIALOG MODAL */}
             {dialogData && (
                 <div className="dialog-overlay" onClick={() => setDialogData(null)}>
                     <div className="dialog-box glass-panel" onClick={(e) => e.stopPropagation()}>
@@ -443,13 +430,11 @@ export default function AdvisoryDashboard() {
                             <h3>{dialogData.symbol} <span className="text-muted">| {dialogData.formattedDate}</span></h3>
                             <button className="btn-close" onClick={() => setDialogData(null)}>✖</button>
                         </div>
-
                         <div className="dialog-content">
                             <div className="dialog-status-row">
                                 <span className={`status-badge ${dialogData.status?.toLowerCase()}`}>{dialogData.status}</span>
                                 <strong>{dialogData.actionTaken}</strong>
                             </div>
-
                             <div className="dialog-grid">
                                 <div className="d-box">
                                     <label>Strike</label>
@@ -471,34 +456,25 @@ export default function AdvisoryDashboard() {
                                     <label>Entry Premium</label>
                                     <span>₹{dialogData.entryPremium || '-'}</span>
                                 </div>
-
                                 <div className="d-box">
                                     <label>Live/Current Premium</label>
-                                    <span>
-                                        {dialogData.status === 'ACTIVE' && dialogData.currentPremium
-                                            ? `₹${dialogData.currentPremium}`
-                                            : '-'}
-                                    </span>
+                                    <span>{dialogData.status === 'ACTIVE' && dialogData.currentPremium ? `₹${dialogData.currentPremium}` : '-'}</span>
                                 </div>
-
                                 <div className="d-box">
                                     <label>Exit Premium</label>
                                     <span>{dialogData.exitPremium ? `₹${dialogData.exitPremium}` : (dialogData.status === 'ACTIVE' ? 'LIVE' : '-')}</span>
                                 </div>
-
                                 <div className="d-box">
                                     <label>Realized PnL</label>
                                     <span>{dialogData.status === 'HISTORY' ? formatPnL(dialogData.realizedPnl) : '-'}</span>
                                 </div>
                             </div>
-
                             <div className="d-box highlight-box" style={{ marginBottom: '20px' }}>
                                 <label>Unrealized (MTM) PnL</label>
                                 <span style={{ fontSize: '1.2rem' }}>
                                     {dialogData.status === 'ACTIVE' ? formatPnL(dialogData.unrealizedPnl) : 'N/A (Trade Closed)'}
                                 </span>
                             </div>
-
                             <div className="dialog-reasoning">
                                 <label>AI Reasoning & Logic</label>
                                 <p>{dialogData.reasoning || 'No specific reasoning provided by the engine.'}</p>

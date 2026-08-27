@@ -107,8 +107,9 @@ public class AdvisoryEngineService {
         String resolvedExpiry = (oiData.expiry() != null && !oiData.expiry().trim().isEmpty())
                 ? oiData.expiry() : indexes.getExpiry();
 
-        Optional<AdvisoryLedger> activeRecordOpt = ledgerRepository
-                .findTopBySymbolAndStatusOrderByTimestampDesc(name, "ACTIVE");
+        // 🚀 FIX: Always create NEW record (don't overwrite previous day's)
+        Optional<AdvisoryLedger> previousRecordOpt = ledgerRepository
+                .findTopBySymbolOrderByTimestampDesc(name);  // Changed query
 
         LocalDateTime now = LocalDateTime.now();
         CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
@@ -116,13 +117,22 @@ public class AdvisoryEngineService {
                 .symbol(name)
                 .expiryDate(resolvedExpiry)
                 .timestamp(now)
-                .status("ACTIVE")
-                .cycleStartDate(cycle.startDate())  // 🚀 NEW
-                .cycleEndDate(cycle.endDate())      // 🚀 NEW
+                .status("ACTIVE")  // Default status
+                .cycleStartDate(cycle.startDate())
+                .cycleEndDate(cycle.endDate())
                 .spotPrice(spotPrice)
                 .dailyTrend(mtfTrend.dailyTrend())
                 .atr14(atr14)
+                .isNewDay(true)  // 🚀 NEW: Mark as new record
                 .build();
+
+        // 🚀 NEW: Link to previous day's record
+        if (previousRecordOpt.isPresent()) {
+            AdvisoryLedger prevRecord = previousRecordOpt.get();
+            newRecord.setPreviousRecordId(prevRecord.getId());
+            newRecord.setPreviousStatus(prevRecord.getStatus());
+            newRecord.setPreviousAction(prevRecord.getActionTaken());
+        }
 
         if (oiData.putWall() != null) {
             newRecord.setPutWallStrike(oiData.putWall().strike());
@@ -136,19 +146,29 @@ public class AdvisoryEngineService {
         smcSignalOpt.ifPresent(bos -> newRecord.setSmcSignal(bos.getBreakType()));
 
         // DECIDE: New position or hold/exit existing?
-        if (activeRecordOpt.isEmpty()) {
+        if (previousRecordOpt.isEmpty()) {
             evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice);
         } else {
-            AdvisoryLedger activeRecord = activeRecordOpt.get();
-            evaluateHoldOrExit(activeRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
+            AdvisoryLedger prevRecord = previousRecordOpt.get();
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
         }
 
-        // SAVE LOGIC: Only persist ACTIVE trades with strikes, or HISTORY exits
-        if ("ACTIVE".equals(newRecord.getStatus())) {
-            if (newRecord.getRecommendedStrike() != null &&
-                    (newRecord.getActionTaken().equals("NEW_ENTRY") || newRecord.getActionTaken().equals("MAINTAIN"))) {
+        // 🚀 FIX: Save ALL records (not conditional)
+        boolean shouldSave = false;
+        String saveReason = "";
 
-                if (newRecord.getEntryPremium() != null) {
+        if ("ACTIVE".equals(newRecord.getStatus())) {
+            // Save ACTIVE records that have: NEW_ENTRY, MAINTAIN, or NO_TRADE
+            if ("NEW_ENTRY".equals(newRecord.getActionTaken()) ||
+                    "MAINTAIN".equals(newRecord.getActionTaken()) ||
+                    "NO_TRADE".equals(newRecord.getActionTaken())) {
+                shouldSave = true;
+                saveReason = newRecord.getActionTaken();
+
+                // Calculate MTM for active trades
+                if (newRecord.getEntryPremium() != null &&
+                        (newRecord.getActionTaken().equals("NEW_ENTRY") ||
+                                newRecord.getActionTaken().equals("MAINTAIN"))) {
                     BigDecimal liveLtp = safelyFetchExitPremium(newRecord, exchange);
                     if (liveLtp != null) {
                         BigDecimal unrealizedPnl = newRecord.getEntryPremium().subtract(liveLtp);
@@ -158,12 +178,18 @@ public class AdvisoryEngineService {
                                 newRecord.getSymbol(), newRecord.getEntryPremium(), liveLtp, unrealizedPnl);
                     }
                 }
-                ledgerRepository.save(newRecord);
-                log.info("✅ SAVED ACTIVE: {} - {}", newRecord.getSymbol(), newRecord.getActionTaken());
             }
         } else if ("HISTORY".equals(newRecord.getStatus())) {
+            // Always save exits (SL or TARGET)
+            shouldSave = true;
+            saveReason = newRecord.getActionTaken();
+        }
+
+        if (shouldSave) {
             ledgerRepository.save(newRecord);
-            log.info("🔴 SAVED EXIT: {} - {} ({})", newRecord.getSymbol(), newRecord.getActionTaken(), newRecord.getReasoning());
+            log.info("✅ SAVED RECORD ({}): {} - {}", saveReason, newRecord.getSymbol(), newRecord.getActionTaken());
+        } else {
+            log.warn("⊘ SKIPPED SAVE: {} - {} (no valid action)", newRecord.getSymbol(), newRecord.getActionTaken());
         }
 
         return OptionRecommendation.builder()
@@ -256,6 +282,7 @@ public class AdvisoryEngineService {
             newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
             newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
             newRecord.setEntryDate(now);
+            newRecord.setDaysInPosition(1);  // 🚀 NEW: Track days held
             newRecord.setStatus("ACTIVE");
             newRecord.setReasoning(String.format("BULLISH: Selling PE at ₹%s (Premium: ₹%s)", putStrike, oiData.putWall().ltp()));
         }
@@ -299,6 +326,7 @@ public class AdvisoryEngineService {
             newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
             newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
             newRecord.setEntryDate(now);
+            newRecord.setDaysInPosition(1);  // 🚀 NEW: Track days held
             newRecord.setStatus("ACTIVE");
             newRecord.setReasoning(String.format("BEARISH: Selling CE at ₹%s (Premium: ₹%s)", callStrike, oiData.callWall().ltp()));
         }
@@ -318,8 +346,8 @@ public class AdvisoryEngineService {
                                     Optional<FuturesBreakEvent> smcSignalOpt,
                                     LocalDateTime now, String exchange) {
 
-        // Transfer ID to update existing record
-        current.setId(prev.getId());
+        // 🚀 FIX: DON'T copy ID - create new record!
+        // current.setId(prev.getId());  ❌ REMOVED
 
         // Lock in original position specs
         current.setOptionType(prev.getOptionType());
@@ -329,6 +357,13 @@ public class AdvisoryEngineService {
         current.setEntryDelta(prev.getEntryDelta());
         current.setEntryIv(prev.getEntryIv());
         current.setEntryDate(prev.getEntryDate() != null ? prev.getEntryDate() : prev.getTimestamp());
+
+        // 🚀 NEW: Track days held
+        int daysHeld = (int) java.time.temporal.ChronoUnit.DAYS.between(
+                current.getEntryDate().toLocalDate(),
+                now.toLocalDate()
+        ) + 1;
+        current.setDaysInPosition(daysHeld);
 
         // ===================================================================
         // GUARD 1: Proximity Stop Loss
@@ -419,8 +454,8 @@ public class AdvisoryEngineService {
         // ===================================================================
         current.setActionTaken("MAINTAIN");
         current.setStatus("ACTIVE");
-        current.setReasoning(String.format("Holding %s %s. Premium decay progressing safely.",
-                prev.getRecommendedStrike(), prev.getOptionType()));
+        current.setReasoning(String.format("Holding %s %s (Day %d). Premium decay progressing safely.",
+                prev.getRecommendedStrike(), prev.getOptionType(), daysHeld));
     }
 
     // =========================================================================

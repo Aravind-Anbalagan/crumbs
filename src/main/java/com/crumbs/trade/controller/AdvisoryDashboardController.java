@@ -1,9 +1,6 @@
 package com.crumbs.trade.controller;
 
-import com.crumbs.trade.advisory.AdvisoryEngineService;
-import com.crumbs.trade.advisory.AdvisoryLedger;
-import com.crumbs.trade.advisory.AdvisoryLedgerRepository;
-import com.crumbs.trade.advisory.OptionRecommendation;
+import com.crumbs.trade.advisory.*;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Nifty;
 import com.crumbs.trade.repo.IndexesRepo;
@@ -11,15 +8,14 @@ import com.crumbs.trade.repo.NiftyRepo;
 import com.crumbs.trade.utility.CycleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,139 +25,254 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/advisory")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*") // Allow UI to connect
+@CrossOrigin(origins = "*")
 public class AdvisoryDashboardController {
 
     private final AdvisoryEngineService engineService;
     private final NiftyRepo niftyRepo;
     private final IndexesRepo indexesRepo;
     private final AdvisoryLedgerRepository ledgerRepository;
+    private final AdvisoryEngineScheduler advisoryEngineScheduler;
 
-    // =========================================================
-    // 📊 VIEW 1: GLOBAL DASHBOARD (Sub-10ms Load)
-    // =========================================================
+    // =========================================================================
+    // 🚀 NEW ENDPOINTS FOR COMPLETE LIFECYCLE TRACKING
+    // =========================================================================
 
-    @GetMapping("/dashboard")
-    public ResponseEntity<List<AdvisoryLedger>> getDashboardSummary() {
-        // 🔄 NSE CYCLE FILTERING: Show only ACTIVE trades in current cycle
-        CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
+    /**
+     * Get complete lifecycle for a single symbol
+     * Shows all entries, maintains, and exits in order
+     */
+    @GetMapping("/timeline/symbol/{symbol}")
+    public ResponseEntity<?> getSymbolLifecycle(
+            @PathVariable String symbol,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
-        List<AdvisoryLedger> activeRecords = ledgerRepository.findByStatusAndTimestampBetween(
-                "ACTIVE",
-                cycle.startDate().atStartOfDay(),
-                LocalDateTime.of(cycle.endDate(), LocalTime.of(23, 59, 59))
-        );
+        log.info("📊 Fetching lifecycle for symbol: {}", symbol);
+
+        List<AdvisoryLedger> records;
+
+        if (startDate != null && endDate != null) {
+            LocalDateTime start = startDate.atStartOfDay();
+            LocalDateTime end = endDate.atTime(23, 59, 59);
+            records = ledgerRepository.findBySymbolAndTimestampBetweenOrderByTimestampAsc(symbol, start, end);
+        } else {
+            // Default: last 90 days
+            LocalDateTime ninetyDaysAgo = LocalDateTime.now().minusDays(90);
+            LocalDateTime now = LocalDateTime.now();
+            records = ledgerRepository.findBySymbolAndTimestampBetweenOrderByTimestampAsc(
+                    symbol, ninetyDaysAgo, now);
+        }
+
+        if (records.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        // Transform to lifecycle view
+        Map<String, Object> lifecycle = buildSymbolLifecycleResponse(symbol, records);
+        return ResponseEntity.ok(lifecycle);
+    }
+
+    /**
+     * Get all symbols with complete history
+     * Default: last 30 days
+     */
+    @GetMapping("/timeline/all-symbols")
+    public ResponseEntity<?> getAllSymbolsLifecycle(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        log.info("📊 Fetching complete timeline for all symbols");
+
+        List<AdvisoryLedger> allRecords;
+
+        if (startDate != null && endDate != null) {
+            LocalDateTime start = startDate.atStartOfDay();
+            LocalDateTime end = endDate.atTime(23, 59, 59);
+            allRecords = ledgerRepository.findAllInDateRangeOrderedBySymbolAndDate(start, end);
+        } else {
+            // Default: last 30 days
+            LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+            allRecords = ledgerRepository.findAllAfterTimestampOrderedBySymbolAndDate(thirtyDaysAgo);
+        }
+
+        if (allRecords.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        // Group by symbol
+        Map<String, List<AdvisoryLedger>> groupedBySymbol = allRecords.stream()
+                .collect(Collectors.groupingBy(AdvisoryLedger::getSymbol, Collectors.toList()));
+
+        // Build response for each symbol
+        Map<String, Object> response = new LinkedHashMap<>();
+        for (String symbol : groupedBySymbol.keySet()) {
+            response.put(symbol, buildSymbolLifecycleResponse(symbol, groupedBySymbol.get(symbol)));
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get timeline data in flat format (for legacy dashboard compatibility)
+     * Returns all records, frontend handles filtering
+     */
+    @GetMapping("/timeline")
+    public ResponseEntity<?> getTimelineFlat(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate) {
+
+        LocalDateTime start;
+        if (startDate != null) {
+            start = startDate.atStartOfDay();
+        } else {
+            // Default: last 30 days
+            start = LocalDateTime.now().minusDays(30);
+        }
+
+        List<AdvisoryLedger> records = ledgerRepository.findAllAfterTimestampOrderedBySymbolAndDate(start);
+
+        if (records.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok(records);
+    }
+
+    /**
+     * Get currently active positions only
+     * Useful for real-time monitoring dashboard
+     */
+    @GetMapping("/active-positions")
+    public ResponseEntity<?> getActivePositions() {
+        log.info("🟢 Fetching currently active positions");
+
+        List<AdvisoryLedger> activeRecords = ledgerRepository.findCurrentlyActivePositions();
+
+        if (activeRecords.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
 
         return ResponseEntity.ok(activeRecords);
     }
 
-    // =========================================================
-    // 🔎 VIEW 2: SYMBOL DRILL-DOWN (The Timeline)
-    // =========================================================
-    
-    @GetMapping("/history/{symbol}")
-    public ResponseEntity<List<AdvisoryLedger>> getSymbolHistory(@PathVariable String symbol) {
-        // Returns the historical audit trail for the Timeline component
-        List<AdvisoryLedger> history = ledgerRepository.findBySymbolOrderByTimestampDesc(symbol);
-        if (history.isEmpty()) return ResponseEntity.noContent().build();
-        return ResponseEntity.ok(history);
+    /**
+     * Get analytics for a symbol
+     * Win rate, avg days held, total PnL, etc.
+     */
+    @GetMapping("/analytics/{symbol}")
+    public ResponseEntity<?> getSymbolAnalytics(@PathVariable String symbol) {
+        log.info("📈 Fetching analytics for: {}", symbol);
+
+        long targetHits = ledgerRepository.countTargetHits(symbol);
+        long stopLosses = ledgerRepository.countStopLosses(symbol);
+        Double avgDaysHeld = ledgerRepository.getAverageDaysInPosition(symbol);
+        java.math.BigDecimal totalPnL = ledgerRepository.getTotalRealizedPnL(symbol);
+
+        long totalTrades = targetHits + stopLosses;
+        double winRate = totalTrades > 0 ? (double) targetHits / totalTrades * 100 : 0;
+
+        Map<String, Object> analytics = new LinkedHashMap<>();
+        analytics.put("symbol", symbol);
+        analytics.put("totalTrades", totalTrades);
+        analytics.put("targetHits", targetHits);
+        analytics.put("stopLosses", stopLosses);
+        analytics.put("winRate", String.format("%.2f%%", winRate));
+        analytics.put("avgDaysInPosition", avgDaysHeld != null ? String.format("%.1f", avgDaysHeld) : "N/A");
+        analytics.put("totalRealizedPnL", totalPnL);
+
+        return ResponseEntity.ok(analytics);
     }
 
-    // =========================================================
-    // ⚙️ ADMIN COMMANDS (Manual Engine Triggers)
-    // =========================================================
-
-    @PostMapping("/trigger/{symbol}")
-    public ResponseEntity<OptionRecommendation> triggerSingleEngine(@PathVariable String symbol) {
-        // 🚀 Fix: Look up the token first before passing it to the engine
-        Indexes index = indexesRepo.findByNameAndExchange(symbol, "NSE"); 
-        
-        if (index == null) {
-            log.warn("Cannot run engine: No index found for symbol {}", symbol);
-            return ResponseEntity.badRequest().build();
-        }
-        
-        OptionRecommendation rec = engineService.processAdvisory(symbol, index.getToken());
-        if (rec == null) return ResponseEntity.noContent().build();
-        return ResponseEntity.ok(rec);
+    /**
+     * Get specific trade details (for modal/detail view)
+     */
+    @GetMapping("/trade/{recordId}")
+    public ResponseEntity<?> getTradeDetails(@PathVariable Long recordId) {
+        return ledgerRepository.findById(recordId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
+
+    // =========================================================================
+    // 🏃 SCAN OPERATIONS
+    // =========================================================================
 
     @PostMapping("/scan-active")
-    public ResponseEntity<List<OptionRecommendation>> triggerFullScan() {
-        log.info("🚀 Initiating Full Advisory Scan for Active Nifty 50 Stocks...");
-        List<Nifty> activeStocks = niftyRepo.findByIsActiveTrueAndTokenIsNotNull();
-
-        // 🛡️ 1. Reduce to 3 threads. Option Chains are massive (~2.5MB each).
-        ExecutorService executor = Executors.newFixedThreadPool(3);
-        List<CompletableFuture<OptionRecommendation>> futures = new ArrayList<>();
-
+    public ResponseEntity<?> scanActivePositions() {
+        log.info("🔄 Triggering manual active scan across all symbols from UI...");
         try {
-            for (Nifty stock : activeStocks) {
-                CompletableFuture<OptionRecommendation> future = CompletableFuture.supplyAsync(() -> {
-                    int maxRetries = 3;
+            // 🚀 Runs the exact same deduped, 3-thread pooled, rate-limited scan as the cron
+            advisoryEngineScheduler.runDailyAdvisoryScan();
 
-                    // 🛡️ 2. Self-Healing Retry Loop
-                    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                        try {
-                            Thread.sleep(300); // Base stagger
-                            return engineService.processAdvisory(stock.getName(), stock.getToken());
-
-                        } catch (Exception e) {
-                            // Extract full error string including the nested Samco Exception
-                            String errorLog = e.getMessage() + (e.getCause() != null ? e.getCause().getMessage() : "");
-
-                            // 🛡️ 3. Catch the NGINX 429 Block and Cool Down
-                            if (errorLog.contains("429") && attempt < maxRetries) {
-                                log.warn("⏳ 429 Rate Limit hit for {} (Attempt {}/{}). Cooling down for 3s...",
-                                        stock.getName(), attempt, maxRetries);
-                                try {
-                                    Thread.sleep(3000);
-                                } catch (InterruptedException ie) {
-                                    Thread.currentThread().interrupt();
-                                }
-                                continue; // Loop again and retry!
-                            }
-
-                            log.error("❌ Error evaluating {}: {}", stock.getName(), e.getMessage());
-                            return null; // Fail gracefully if it's not a 429
-                        }
-                    }
-                    return null;
-                }, executor);
-
-                futures.add(future);
-            }
-
-            List<OptionRecommendation> recommendations = futures.stream()
-                    .map(CompletableFuture::join)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-
-            log.info("✅ Full Advisory Scan Complete. Generated {} recommendations.", recommendations.size());
-            return ResponseEntity.ok(recommendations);
-
-        } finally {
-            executor.shutdown();
+            return ResponseEntity.ok(Map.of(
+                    "status", "SUCCESS",
+                    "message", "Scan completed successfully",
+                    "timestamp", LocalDateTime.now()
+            ));
+        } catch (Exception e) {
+            log.error("❌ Manual scan execution failed: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "ERROR",
+                    "message", "Scan failed: " + e.getMessage(),
+                    "timestamp", LocalDateTime.now()
+            ));
         }
     }
 
-    // 🚀 NEW: Feeds the 31-Day Timeline UI
-    @GetMapping("/timeline")
-    public ResponseEntity<List<AdvisoryLedger>> getMonthlyTimeline() {
-        // 🔄 NSE CYCLE FILTERING: Return only current cycle data
-        CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
+    // =========================================================================
+    // 🛠️ HELPER METHODS
+    // =========================================================================
 
-        List<AdvisoryLedger> timelineData = ledgerRepository.findByTimestampBetween(
-                cycle.startDate().atStartOfDay(),
-                LocalDateTime.of(cycle.endDate(), LocalTime.of(23, 59, 59))
-        );
+    /**
+     * Transform raw records into a structured lifecycle response
+     */
+    private Map<String, Object> buildSymbolLifecycleResponse(String symbol, List<AdvisoryLedger> records) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("symbol", symbol);
+        response.put("totalRecords", records.size());
 
-        log.info("📊 Timeline: Returning {} records for NSE cycle {} → {}",
-                timelineData.size(), cycle.startDate(), cycle.endDate());
+        // Calculate stats
+        long activeCount = records.stream().filter(r -> "ACTIVE".equals(r.getStatus())).count();
+        long historyCount = records.stream().filter(r -> "HISTORY".equals(r.getStatus())).count();
+        long targetHits = records.stream().filter(r -> "TARGET".equals(r.getActionTaken())).count();
+        long stopLosses = records.stream().filter(r -> "SL".equals(r.getActionTaken())).count();
 
-        if (timelineData.isEmpty()) {
-            return ResponseEntity.noContent().build();
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("activeRecords", activeCount);
+        stats.put("closedRecords", historyCount);
+        stats.put("targetHits", targetHits);
+        stats.put("stopLosses", stopLosses);
+        stats.put("winRate", historyCount > 0 ?
+                String.format("%.1f%%", (double) targetHits / historyCount * 100) : "N/A");
+
+        response.put("stats", stats);
+
+        // Timeline events
+        List<Map<String, Object>> timeline = new ArrayList<>();
+        for (AdvisoryLedger record : records) {
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("date", record.getTimestamp().toLocalDate());
+            event.put("time", record.getTimestamp().toLocalTime());
+            event.put("action", record.getActionTaken());
+            event.put("status", record.getStatus());
+            event.put("strike", record.getRecommendedStrike());
+            event.put("optionType", record.getOptionType());
+            event.put("spotPrice", record.getSpotPrice());
+            event.put("entryPremium", record.getEntryPremium());
+            event.put("exitPremium", record.getExitPremium());
+            event.put("currentPremium", record.getCurrentPremium());
+            event.put("unrealizedPnL", record.getUnrealizedPnl());
+            event.put("realizedPnL", record.getRealizedPnl());
+            event.put("daysHeld", record.getDaysInPosition());
+            event.put("reasoning", record.getReasoning());
+            event.put("trend", record.getDailyTrend());
+            event.put("atr14", record.getAtr14());
+
+            timeline.add(event);
         }
-        return ResponseEntity.ok(timelineData);
+
+        response.put("timeline", timeline);
+
+        return response;
     }
 }
