@@ -2,6 +2,7 @@ package com.crumbs.trade.controller;
 
 import com.crumbs.trade.scheduler.StraddleScheduler;
 import com.crumbs.trade.service.ShortStraddleService;
+import com.crumbs.trade.service.StraddleExecutionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,11 +16,13 @@ public class StaraddleController {
 
     private final StraddleScheduler straddleScheduler;
     private final ShortStraddleService shortStraddleService;
+    private final StraddleExecutionService straddleExecutionService;
     @PostMapping("/nifty")
     public ResponseEntity<String> triggerNiftyStraddle() {
         try {
             // Manually invoke the scheduled method
-            straddleScheduler.straddleNifty();
+            //straddleScheduler.straddleNifty();
+            straddleExecutionService.execute("BANKNIFTY");
             return ResponseEntity.ok("NIFTY and SENSEX straddle execution completed successfully.");
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
