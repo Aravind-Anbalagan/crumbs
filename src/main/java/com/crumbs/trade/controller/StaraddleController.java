@@ -1,6 +1,7 @@
 package com.crumbs.trade.controller;
 
 import com.crumbs.trade.scheduler.StraddleScheduler;
+import com.crumbs.trade.service.ShortStraddleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaraddleController {
 
     private final StraddleScheduler straddleScheduler;
-
+    private final ShortStraddleService shortStraddleService;
     @PostMapping("/nifty")
     public ResponseEntity<String> triggerNiftyStraddle() {
         try {

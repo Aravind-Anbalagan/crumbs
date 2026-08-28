@@ -23,7 +23,7 @@ public class ShortStraddleScheduler {
         executeIfActive(() -> shortStraddleService.evaluate("NIFTY"));
         
         // Then immediately evaluates SENSEX
-        executeIfActive(() -> shortStraddleService.evaluate("SENSEX"));
+        executeIfActive(() -> shortStraddleService.evaluate("BANKNIFTY"));
     }
     // ==================== CRUDE OIL (4:00:00 PM - 11:31:59 PM) - now every second ====================
     @Schedules({

@@ -97,7 +97,7 @@ public class ShortStraddleService {
         int maxAllowed = strategyConfig.getMaxDailyTrades() > 0 ? strategyConfig.getMaxDailyTrades() : 3;
 
         if ("NIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(NIFTY_START)) return;
-        if ("SENSEX".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return;
+        if ("BANKNIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return;
         if (tradeName.contains("CRUDE") && now.isBefore(CRUDE_START)) return;
         if (tradeName.contains("NATURALGAS") && now.isBefore(NATURALGAS_START)) return;
 
@@ -158,7 +158,7 @@ public class ShortStraddleService {
                                 processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
                         )
                 );
-            } else if ("SENSEX".equalsIgnoreCase(baseSymbol)) {
+            } else if ("BANKNIFTY".equalsIgnoreCase(baseSymbol)) {
                 getSensexIndexAtm(tradeName).ifPresent(atmStrike ->
                         straddleRepository.findLatestBySymbolAndStrike(baseSymbol, atmStrike).ifPresent(tick ->
                                 processEntrySequence(tradeName, tick, strategyConfig, sourceConfig)
@@ -457,7 +457,7 @@ public class ShortStraddleService {
 
     private boolean isSquareOffTime(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(NIFTY_SQUARE_OFF);
-        if ("SENSEX".equalsIgnoreCase(symbol)) return !now.isBefore(SENSEX_SQUARE_OFF);
+        if ("BANKNIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(SENSEX_SQUARE_OFF);
         if (symbol.contains("CRUDE")) return !now.isBefore(CRUDE_SQUARE_OFF);
         if (symbol.contains("NATURALGAS")) return !now.isBefore(NATURALGAS_SQUARE_OFF);
         return false;
@@ -465,7 +465,7 @@ public class ShortStraddleService {
 
     private boolean isWithinEntryWindow(String symbol, LocalTime now) {
         if ("NIFTY".equalsIgnoreCase(symbol)) return now.isBefore(NIFTY_ENTRY_CUTOFF);
-        if ("SENSEX".equalsIgnoreCase(symbol)) return now.isBefore(SENSEX_ENTRY_CUTOFF);
+        if ("BANKNIFTY".equalsIgnoreCase(symbol)) return now.isBefore(SENSEX_ENTRY_CUTOFF);
         if (symbol.contains("CRUDE")) return now.isBefore(CRUDE_ENTRY_CUTOFF);
         if (symbol.contains("NATURALGAS")) return now.isBefore(NATURALGAS_ENTRY_CUTOFF);
         return true;
@@ -493,7 +493,7 @@ public class ShortStraddleService {
     }
 
     private Optional<BigDecimal> getSensexIndexAtm(String tradeName) {
-        Strategy indexConfig = strategyRepo.findByName("SENSEX_INDEX");
+        Strategy indexConfig = strategyRepo.findByName("BANKNIFTY");
 
         if (indexConfig == null || indexConfig.getToken() == null) {
             log.error("❌ [{}] SENSEX_INDEX config missing in DB. Cannot determine Index ATM.", tradeName);
@@ -503,13 +503,13 @@ public class ShortStraddleService {
         BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.BSE_CM, indexConfig.getToken());
 
         if (indexLtp == null || indexLtp.compareTo(BigDecimal.ZERO) <= 0) {
-            log.warn("⚠️ [{}] SENSEX Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);
+            log.warn("⚠️ [{}] BANKNIFTY Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);
             return Optional.empty();
         }
 
         BigDecimal strikeStep = new BigDecimal("100");
         BigDecimal atmStrike = indexLtp.divide(strikeStep, 0, RoundingMode.HALF_UP).multiply(strikeStep);
-        log.debug("📉 [{}] SENSEX INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
+        log.debug("📉 [{}] BANKNIFTY INDEX Live LTP: {} -> Calculated ATM Strike: {}", tradeName, indexLtp, atmStrike);
 
         return Optional.of(atmStrike);
     }
