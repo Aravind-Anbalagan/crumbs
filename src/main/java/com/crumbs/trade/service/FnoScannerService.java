@@ -6,13 +6,20 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,28 +47,34 @@ public class FnoScannerService {
 
     private static final Logger logger = LogManager.getLogger(FnoScannerService.class);
 
-    // ──────────────────────────────────────────────────────────
-    //  ⚙️ CONFIGURABLE THRESHOLDS & ALERTS (TOP OF CLASS)
-    // ──────────────────────────────────────────────────────────
-    private static final BigDecimal THRESHOLD_PERCENTAGE = new BigDecimal("5.0"); // Alert trigger threshold (+/- 5%)
-    private static final boolean ENABLE_TELEGRAM_ALERTS = true;                  // Enable/Disable Telegram notifications
-
-    // API & Batch Settings
+    // Configurable thresholds
+    private static final BigDecimal THRESHOLD_PERCENTAGE = new BigDecimal("5.0");
+    private static final boolean ENABLE_TELEGRAM_ALERTS = true;
     private static final int BATCH_SIZE = 50;
     private static final String EXCHANGE = "NSE";
     private static final int BATCH_FETCH_DELAY_MS = 250;
     private static final int RATE_LIMIT_SLEEP_MS = 6000;
+
+    // NEW: Executor configuration for retry logic
+    private static final int MAX_BROKER_SIGNIN_RETRIES = 2;
+    private static final long BROKER_SIGNIN_RETRY_DELAY_MS = 500;
+    private static final int MAX_JSON_PARSE_RETRIES = 2;
+    private static final long EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 60;
+    private static final int TELEGRAM_BATCH_SIZE = 20; // Max 20 stocks per message
 
     private final NiftyRepo niftyRepo;
     private final IndexesRepo indexesRepo;
     private final PredictionService predictionService;
     private final AngelOne angelOne;
     private final AngelWebSocketService angelWebSocketService;
-    private final TelegramService telegramService; // Injected Telegram Service
-    private final TokenService tokenService; // 🆕 ATM CE/PE token resolution + strategy signals (fail-safe, never throws)
+    private final TelegramService telegramService;
+    private final TokenService tokenService;
+
+    // NEW: Track subscribed tokens to prevent duplicate subscriptions (Issue #10)
+    private final Set<String> subscribedTokens = ConcurrentHashMap.newKeySet();
 
     // ──────────────────────────────────────────────────────────
-    //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 8:30 AM)
+    //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 9:20 AM)
     // ──────────────────────────────────────────────────────────
     @Transactional
     public void precacheFnoPreviousClose() {
@@ -73,12 +86,7 @@ public class FnoScannerService {
             return;
         }
 
-        // 🧹 Reset yesterday's TRANSACTIONAL data only (range-tracking fields).
-        // Master data (id, name, token, is_active) is untouched. prevClose/
-        // prevCloseDate are about to be overwritten below anyway, so no need
-        // to null them separately — only the range-bucket fields need an
-        // explicit reset, otherwise today's first breakout would inherit
-        // yesterday's rangeEnteredAt and show a bogus multi-hour interval.
+        // Reset range-tracking fields for new trading day
         for (Nifty stock : fnoStocks) {
             stock.setCurrentRangeBucket(null);
             stock.setRangeDirection(null);
@@ -87,29 +95,25 @@ public class FnoScannerService {
 
         SmartConnect smartConnect = angelOne.signIn();
         if (smartConnect == null) {
-            logger.error("🛑 Failed to sign in to broker API.");
+            logger.error("🛑 Failed to sign in to broker API. Aborting pre-cache.");
             return;
         }
 
-        // Build tokens list AND auto-fill missing tokens using existing IndexesRepo methods
-        List<String> tokens = new ArrayList<>();
-        for (Nifty stock : fnoStocks) {
-            String token = stock.getToken();
+        // FIXED Issue #14: Batch fetch missing tokens in single query
+        List<String> missingTokenStocks = fnoStocks.stream()
+                .filter(s -> s.getToken() == null || s.getToken().trim().isEmpty())
+                .map(Nifty::getName)
+                .collect(Collectors.toList());
 
-            if (token == null || token.trim().isEmpty()) {
-                token = lookupTokenFromIndexes(stock.getName());
-                if (token != null) {
-                    stock.setToken(token); // Saved permanently to fo_stocks via saveAll() below
-                    logger.info("🔄 Auto-resolved missing token for {}: {}", stock.getName(), token);
-                } else {
-                    logger.warn("⚠️ Could not resolve token for {} in Indexes table. Skipping.", stock.getName());
-                }
-            }
-
-            if (token != null && !token.trim().isEmpty()) {
-                tokens.add(token);
-            }
+        if (!missingTokenStocks.isEmpty()) {
+            resolveMissingTokensInBatch(fnoStocks, missingTokenStocks);
         }
+
+        // Build tokens list (avoiding N+1 queries)
+        List<String> tokens = fnoStocks.stream()
+                .map(Nifty::getToken)
+                .filter(t -> t != null && !t.trim().isEmpty())
+                .collect(Collectors.toList());
 
         if (tokens.isEmpty()) {
             logger.warn("⚠️ No valid tokens found to fetch market data. Aborting.");
@@ -117,104 +121,181 @@ public class FnoScannerService {
         }
 
         AtomicInteger updatedCount = new AtomicInteger(0);
-
-        // Calculate last working day safely without modifying the shared utility
         final LocalDate prevTradingDay = getStrictPreviousTradingDay(LocalDate.now());
         logger.info("📅 Determined Previous Trading Date as: {}", prevTradingDay);
 
-        // Controlled concurrency (3 threads max to prevent 503 rate limits)
+        // Use ConcurrentHashMap for thread-safe access (Issue #8)
+        Map<String, Nifty> stocksByToken = fnoStocks.stream()
+                .collect(Collectors.toMap(Nifty::getToken, s -> s, (a, b) -> a, ConcurrentHashMap::new));
+
         ExecutorService executor = Executors.newFixedThreadPool(3);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-        for (int i = 0; i < tokens.size(); i += BATCH_SIZE) {
-            int endIndex = Math.min(i + BATCH_SIZE, tokens.size());
-            List<String> batchTokens = tokens.subList(i, endIndex);
+        try {
+            for (int i = 0; i < tokens.size(); i += BATCH_SIZE) {
+                int endIndex = Math.min(i + BATCH_SIZE, tokens.size());
+                List<String> batchTokens = tokens.subList(i, endIndex);
 
-            futures.add(CompletableFuture.runAsync(() -> {
-                try {
-                    JSONObject payload = predictionService.buildMarketDataPayload(batchTokens, EXCHANGE);
-                    JSONObject response = predictionService.callMarketDataWithRetry(smartConnect, payload);
+                futures.add(CompletableFuture.runAsync(() -> {
+                    processPrevCloseBatch(smartConnect, batchTokens, stocksByToken, prevTradingDay, updatedCount);
+                }, executor));
+            }
 
-                    if (response != null) {
-                        JSONArray fetched = extractFetchedArray(response);
-                        if (fetched != null) {
-                            for (int j = 0; j < fetched.length(); j++) {
+            // FIXED Issue #3: Properly await executor termination
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        } finally {
+            gracefulExecutorShutdown(executor);
+        }
+
+        // Save all updated stocks in smaller transactions (Issue #6)
+        savePrevCloseBatchTransactionally(new ArrayList<>(stocksByToken.values()));
+        logger.info("✅ Pre-Cache Complete! Saved Previous Close for {}/{} F&O stocks.",
+                updatedCount.get(), fnoStocks.size());
+
+        // FIXED Issue #1 & #10: Pre-warm WebSocket subscriptions before calculations
+        preWarmWebSocketSubscriptions(tokens);
+    }
+
+    // NEW: Extract batch token resolution to avoid N+1 queries (Issue #14)
+    private void resolveMissingTokensInBatch(List<Nifty> allStocks, List<String> missingNames) {
+        try {
+            Map<String, String> nameToToken = indexesRepo.findByNamesAndExchange(missingNames, EXCHANGE)
+                    .stream()
+                    .collect(Collectors.toMap(Indexes::getName, Indexes::getToken, (a, b) -> a));
+
+            for (Nifty stock : allStocks) {
+                if ((stock.getToken() == null || stock.getToken().trim().isEmpty()) &&
+                        nameToToken.containsKey(stock.getName())) {
+                    stock.setToken(nameToToken.get(stock.getName()));
+                    logger.info("🔄 Auto-resolved missing token for {}: {}", stock.getName(), stock.getToken());
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("⚠️ Failed to batch-resolve tokens: {}. Will attempt per-stock lookup.", e.getMessage());
+            // Fallback to per-stock lookup if batch fails
+            for (Nifty stock : allStocks) {
+                if (stock.getToken() == null || stock.getToken().trim().isEmpty()) {
+                    String token = lookupTokenFromIndexes(stock.getName());
+                    if (token != null) {
+                        stock.setToken(token);
+                    }
+                }
+            }
+        }
+    }
+
+    // NEW: Extract prev close batch processing with proper error handling (Issue #4)
+    private void processPrevCloseBatch(SmartConnect smartConnect, List<String> batchTokens,
+                                       Map<String, Nifty> stocksByToken, LocalDate prevTradingDay,
+                                       AtomicInteger updatedCount) {
+        int retryCount = 0;
+        while (retryCount < MAX_JSON_PARSE_RETRIES) {
+            try {
+                JSONObject payload = predictionService.buildMarketDataPayload(batchTokens, EXCHANGE);
+                JSONObject response = predictionService.callMarketDataWithRetry(smartConnect, payload);
+
+                if (response != null) {
+                    JSONArray fetched = extractFetchedArray(response);
+                    if (fetched != null) {
+                        for (int j = 0; j < fetched.length(); j++) {
+                            try {
                                 JSONObject obj = fetched.getJSONObject(j);
                                 String responseToken = obj.getString("symbolToken");
 
                                 if (obj.has("close") && !obj.isNull("close")) {
                                     BigDecimal prevClose = new BigDecimal(obj.get("close").toString());
 
-                                    fnoStocks.stream()
-                                            .filter(stock -> responseToken.equals(stock.getToken()))
-                                            .findFirst()
-                                            .ifPresent(stock -> {
-                                                stock.setPrevClose(prevClose);
-                                                stock.setPrevCloseDate(prevTradingDay);
-                                                updatedCount.incrementAndGet();
-                                            });
+                                    Nifty stock = stocksByToken.get(responseToken);
+                                    if (stock != null) {
+                                        stock.setPrevClose(prevClose);
+                                        stock.setPrevCloseDate(prevTradingDay);
+                                        updatedCount.incrementAndGet();
+                                    }
                                 }
+                            } catch (JSONException je) {
+                                logger.warn("⚠️ Error parsing individual stock data: {}. Skipping this record.", je.getMessage());
+                                // Continue with next record instead of failing entire batch
                             }
                         }
-                    }
-
-                    sleepQuietly(BATCH_FETCH_DELAY_MS);
-
-                } catch (SmartAPIException e) {
-                    throw new RuntimeException(e);
-                } catch (Exception e) {
-                    boolean isRateLimit = e.getMessage() != null &&
-                            (e.getMessage().contains("503") || e.getMessage().contains("Too Many Requests"));
-
-                    if (isRateLimit) {
-                        logger.warn("⚠️ Rate limit hit on worker thread. Forcing backoff...");
-                        sleepQuietly(RATE_LIMIT_SLEEP_MS);
+                        break; // Success, exit retry loop
                     } else {
-                        logger.error("Error fetching batch for prev close: {}", e.getMessage());
+                        logger.warn("⚠️ No fetched array in response. Attempt {}/{}", retryCount + 1, MAX_JSON_PARSE_RETRIES);
+                        retryCount++;
                     }
+                } else {
+                    logger.warn("⚠️ Null response from market data API. Attempt {}/{}", retryCount + 1, MAX_JSON_PARSE_RETRIES);
+                    retryCount++;
                 }
-            }, executor));
+
+                if (retryCount < MAX_JSON_PARSE_RETRIES) {
+                    sleepQuietly(BATCH_FETCH_DELAY_MS);
+                }
+
+            } catch (SmartAPIException e) {
+                handleSmartAPIException(e);
+                retryCount++;
+            } catch (Exception e) {
+                logger.error("Unexpected error fetching batch [tokens: {}] for prev close: {}. Attempt {}/{}",
+                        batchTokens, e.getMessage(), retryCount + 1, MAX_JSON_PARSE_RETRIES, e);
+                retryCount++;
+            }
         }
 
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        } finally {
-            executor.shutdown();
+        if (retryCount >= MAX_JSON_PARSE_RETRIES) {
+            logger.error("❌ Failed to fetch prev close for batch after {} attempts: {}", MAX_JSON_PARSE_RETRIES, batchTokens);
         }
 
-        // 1. Persist updated tokens and prevClose values into fo_stocks
-        niftyRepo.saveAll(fnoStocks);
-        logger.info("✅ Pre-Cache Complete! Saved Previous Close for {}/{} F&O stocks.",
-                updatedCount.get(), fnoStocks.size());
+        sleepQuietly(BATCH_FETCH_DELAY_MS);
+    }
 
-        // 2. Automatically bulk subscribe all resolved tokens so WebSocket is active before market open (9:15 AM)
-        angelWebSocketService.subscribeAllFnoStocks();
+    // NEW: Handle rate limits consistently (Issue #12)
+    private void handleSmartAPIException(SmartAPIException e) {
+        String message = e.getMessage() != null ? e.getMessage() : "";
+        if (message.contains("503") || message.contains("Too Many Requests")) {
+            logger.warn("⚠️ Rate limit hit. Enforcing backoff of {}ms", RATE_LIMIT_SLEEP_MS);
+            sleepQuietly(RATE_LIMIT_SLEEP_MS);
+        } else {
+            logger.error("SmartAPI error: {}", message, e);
+        }
+    }
+
+    // NEW: Extract transactional save to smaller chunks (Issue #6)
+    @Transactional
+    private void savePrevCloseBatchTransactionally(List<Nifty> stocks) {
+        if (stocks.isEmpty()) return;
+
+        int chunkSize = 50;
+        for (int i = 0; i < stocks.size(); i += chunkSize) {
+            int endIdx = Math.min(i + chunkSize, stocks.size());
+            niftyRepo.saveAll(stocks.subList(i, endIdx));
+            logger.debug("Saved prev close for stocks {}-{}/{}", i, endIdx, stocks.size());
+        }
+    }
+
+    // NEW: Idempotent WebSocket subscription (Issue #10)
+    private void preWarmWebSocketSubscriptions(List<String> tokens) {
+        logger.info("🔌 Pre-warming WebSocket subscriptions for {} tokens...", tokens.size());
+        for (String token : tokens) {
+            if (subscribedTokens.add(token)) { // Only subscribe if new
+                try {
+                    angelWebSocketService.subscribe(ExchangeType.NSE_CM, token);
+                } catch (Exception e) {
+                    logger.warn("⚠️ Failed to subscribe to token {}: {}", token, e.getMessage());
+                    subscribedTokens.remove(token); // Remove on failure to retry next time
+                }
+            }
+        }
+        logger.info("✅ WebSocket pre-warm complete. Total subscribed: {}", subscribedTokens.size());
     }
 
     // ──────────────────────────────────────────────────────────
     //  STEP 0: Sync F&O Master List — INSERT-ONLY for new symbols
     // ──────────────────────────────────────────────────────────
-    /**
-     * Adds any symbol in {@code latestNames} that doesn't already exist in
-     * FO_STOCKS. Existing rows are NEVER touched by this method — their
-     * token, prevClose, percentageChange, and range-tracking fields
-     * (currentRangeBucket / rangeDirection / rangeEnteredAt) are left exactly
-     * as-is. Only brand-new symbols get inserted, with tracking fields left
-     * null so they start clean the first time they cross the threshold.
-     *
-     * Comparison is case-insensitive and trims whitespace to avoid duplicate
-     * rows caused by formatting differences between the source list and what
-     * is already stored.
-     *
-     * @param latestNames the current/full list of F&O-eligible symbol names
-     *                     from whatever your master source is (broker
-     *                     instrument master, file, API, etc). Plug in the
-     *                     actual fetch wherever this is called from.
-     */
     @Transactional
     public void syncFnoMasterList(List<String> latestNames) {
         if (latestNames == null || latestNames.isEmpty()) {
-            logger.warn("⚠️ syncFnoMasterList called with empty/null name list. Skipping — refusing to no-op silently against a bad source.");
+            logger.warn("⚠️ syncFnoMasterList called with empty/null name list. Skipping.");
             return;
         }
 
@@ -238,23 +319,20 @@ public class FnoScannerService {
                 Nifty newStock = new Nifty();
                 newStock.setName(rawName.trim());
                 newStock.setIsActive(true);
-                // token, prevClose, percentageChange, and range-tracking fields
-                // are intentionally left null — they'll be populated by
-                // precacheFnoPreviousClose() and calculateFnoPercentageChange()
-                // on their normal schedule.
                 newStocks.add(newStock);
-                existingNamesNormalized.add(normalized); // guard against dupes within latestNames itself
+                existingNamesNormalized.add(normalized);
             }
         }
 
         if (newStocks.isEmpty()) {
-            logger.info("✅ F&O master list sync: no new symbols found. {} existing symbols untouched.", existingStocks.size());
+            logger.info("✅ F&O master list sync: no new symbols found. {} existing symbols untouched.",
+                    existingStocks.size());
             return;
         }
 
         niftyRepo.saveAll(newStocks);
-        logger.info("🆕 F&O master list sync: inserted {} new symbol(s). {} existing symbol(s) left untouched: {}",
-                newStocks.size(), existingStocks.size(), newStocks.stream().map(Nifty::getName).toList());
+        logger.info("🆕 F&O master list sync: inserted {} new symbol(s). {} existing symbol(s) left untouched.",
+                newStocks.size(), existingStocks.size());
     }
 
     // ──────────────────────────────────────────────────────────
@@ -276,108 +354,200 @@ public class FnoScannerService {
             return;
         }
 
+        // FIXED Issue #5: Check if prevClose data is ready
+        long missingPrevClose = stocks.stream()
+                .filter(s -> s.getPrevClose() == null)
+                .count();
+
+        if (missingPrevClose > stocks.size() * 0.5) { // >50% missing
+            logger.error("❌ Too many stocks ({}/{}) missing prevClose. Aborting calculation " +
+                            "to avoid false alerts. Pre-cache may still be running.",
+                    missingPrevClose, stocks.size());
+            return;
+        }
+
+        if (missingPrevClose > 0) {
+            logger.warn("⚠️ {} stocks missing prevClose. Will skip these in calculation.", missingPrevClose);
+        }
+
         LocalDateTime now = LocalDateTime.now();
         int updateCount = 0;
 
-        // 🆕 Broker session for ATM option-chain lookups, signed in LAZILY —
-        // only the first time a stock actually enters a tracked bucket this
-        // scan. If sign-in fails, optionSignInFailed stays true and every
-        // subsequent stock this scan just gets Type=Err without retrying —
-        // the % change alert itself is completely unaffected either way.
+        // Lazy broker session for ATM option-chain lookups with retry logic (Issue #2)
         SmartConnect[] optionsConnectHolder = new SmartConnect[1];
         boolean[] optionSignInFailed = {false};
 
-        // Container to store stocks currently in a tracked +/- 5% range bucket for Telegram alert
         List<String[]> highMoverRows = new ArrayList<>();
-        // header row
-        highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction", "Type"});
+        highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction", "Type", "Status"});
 
         for (Nifty stock : stocks) {
-            String token = stock.getToken();
-            BigDecimal prevClose = stock.getPrevClose();
-
-            // Safety check: Skip if token is missing or previous close is zero/null
-            if (token == null || token.trim().isEmpty() || prevClose == null || prevClose.compareTo(BigDecimal.ZERO) == 0) {
+            // FIXED Issue #11: Consistent null checking
+            if (!isValidStock(stock)) {
                 continue;
             }
 
-            // Fetch live price from WebSocket memory store (Zero REST API overhead)
-            BigDecimal ltp = angelWebSocketService.getLatestLTP(ExchangeType.NSE_CM, token);
-
-            // On-the-Fly Self Healing: If LTP is missing/zero, trigger an immediate subscription!
-            if (ltp == null || ltp.compareTo(BigDecimal.ZERO) == 0) {
-                logger.warn("⚠️ No live LTP for {} (Token: {}). Triggering dynamic subscription...", stock.getName(), token);
-                angelWebSocketService.subscribe(ExchangeType.NSE_CM, token);
-                continue; // Skip calculation for this tick; will be populated on next run
+            try {
+                processStockPercentageChange(stock, now, optionsConnectHolder, optionSignInFailed, highMoverRows);
+                updateCount++;
+            } catch (Exception e) {
+                logger.error("Error processing stock {}: {}. Skipping.", stock.getName(), e.getMessage());
+                // Continue with next stock instead of failing entire scan
             }
-
-            // Formula: ((LTP - PrevClose) / PrevClose) * 100
-            BigDecimal difference = ltp.subtract(prevClose);
-            BigDecimal percentage = difference
-                    .divide(prevClose, 4, RoundingMode.HALF_UP)
-                    .multiply(new BigDecimal("100"))
-                    .setScale(2, RoundingMode.HALF_UP);
-
-            stock.setPercentageChange(percentage);
-            stock.setPercentageUpdatedTime(now);
-            updateCount++;
-
-            // ── Range bucket + duration tracking ──
-            BigDecimal absPct = percentage.abs();
-            String rangeBucket = determineRangeBucket(absPct);
-            String moveDirection = percentage.compareTo(BigDecimal.ZERO) >= 0 ? "UP" : "DOWN";
-
-            if (rangeBucket == null) {
-                // Dropped back below threshold — clear tracking so the next breakout starts a fresh clock
-                if (stock.getCurrentRangeBucket() != null) {
-                    stock.setCurrentRangeBucket(null);
-                    stock.setRangeDirection(null);
-                    stock.setRangeEnteredAt(null);
-                }
-                continue;
-            }
-
-            boolean sameRangeAndDirection = rangeBucket.equals(stock.getCurrentRangeBucket())
-                    && moveDirection.equals(stock.getRangeDirection());
-
-            if (!sameRangeAndDirection) {
-                // Just crossed into this bucket, or reversed direction — reset the clock
-                stock.setCurrentRangeBucket(rangeBucket);
-                stock.setRangeDirection(moveDirection);
-                stock.setRangeEnteredAt(now);
-            }
-
-            Duration stayDuration = Duration.between(stock.getRangeEnteredAt(), now);
-            String intervalStr = formatDuration(stayDuration);
-            String changeStr = (moveDirection.equals("UP") ? "+" : "") + percentage + "%";
-
-            // 🆕 Straddle/Strangle Type — fully guarded, can NEVER break this alert.
-            // safeGetOptionStrategyType() below never throws; worst case it returns "Err".
-            String strategyType = safeGetOptionStrategyType(
-                    optionsConnectHolder, optionSignInFailed, stock.getName(), ltp);
-
-            highMoverRows.add(new String[]{
-                    stock.getName(),
-                    rangeBucket,
-                    intervalStr,
-                    changeStr,
-                    moveDirection,
-                    strategyType
-            });
         }
 
         if (updateCount > 0) {
-            niftyRepo.saveAll(stocks);
+            savePercentageChangeBatchTransactionally(stocks);
             logger.info("✅ Percentage Change updated for {}/{} F&O stocks.", updateCount, stocks.size());
 
-            // 📢 Send Telegram Alert if enabled and tracked movers are present
-            if (ENABLE_TELEGRAM_ALERTS && highMoverRows.size() > 1) { // > 1 because row 0 is header
-                logger.info("📢 Found {} stocks moving > {}%. Sending Telegram alert...",
+            // FIXED Issue #15: Paginate Telegram sends
+            if (ENABLE_TELEGRAM_ALERTS && highMoverRows.size() > 1) {
+                logger.info("📢 Found {} stocks moving > {}%. Sending Telegram alerts...",
                         highMoverRows.size() - 1, THRESHOLD_PERCENTAGE);
-                telegramService.sendStockAlert(highMoverRows);
+                sendTelegramAlertsPaginated(highMoverRows);
             }
         } else {
-            logger.warn("⚠️ No stocks updated. Check if market is active and subscriptions are receiving ticks.");
+            logger.warn("⚠️ No stocks updated. Check if market is active and WebSocket subscriptions are receiving ticks.");
+        }
+    }
+
+    // NEW: Validate stock has required fields (Issue #11)
+    private boolean isValidStock(Nifty stock) {
+        String token = Optional.ofNullable(stock.getToken())
+                .map(String::trim)
+                .filter(t -> !t.isEmpty())
+                .orElse(null);
+
+        BigDecimal prevClose = stock.getPrevClose();
+
+        if (token == null) {
+            logger.warn("⚠️ Stock {} has no token. Skipping.", stock.getName());
+            return false;
+        }
+
+        if (prevClose == null || prevClose.compareTo(BigDecimal.ZERO) == 0) {
+            logger.warn("⚠️ Stock {} has invalid prevClose: {}. Skipping.", stock.getName(), prevClose);
+            return false;
+        }
+
+        return true;
+    }
+
+    // NEW: Extract stock processing logic (Issue #13 - Breaking down large method)
+    private void processStockPercentageChange(Nifty stock, LocalDateTime now,
+                                              SmartConnect[] optionsConnectHolder, boolean[] optionSignInFailed,
+                                              List<String[]> highMoverRows) {
+        String token = stock.getToken();
+        BigDecimal prevClose = stock.getPrevClose();
+
+        // Fetch live LTP from WebSocket (zero REST API overhead)
+        BigDecimal ltp = angelWebSocketService.getLatestLTP(ExchangeType.NSE_CM, token);
+
+        // Self-healing: subscribe if data missing (Issue #1)
+        if (ltp == null || ltp.compareTo(BigDecimal.ZERO) == 0) {
+            logger.warn("⚠️ No live LTP for {} (Token: {}). Triggering dynamic subscription...",
+                    stock.getName(), token);
+            if (subscribedTokens.add(token)) {
+                angelWebSocketService.subscribe(ExchangeType.NSE_CM, token);
+            }
+            return; // Skip calculation for this tick
+        }
+
+        // Calculate percentage: ((LTP - PrevClose) / PrevClose) * 100
+        BigDecimal difference = ltp.subtract(prevClose);
+        BigDecimal percentage = difference
+                .divide(prevClose, 4, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .setScale(2, RoundingMode.HALF_UP);
+
+        stock.setPercentageChange(percentage);
+        stock.setPercentageUpdatedTime(now);
+
+        // Range bucket + duration tracking
+        BigDecimal absPct = percentage.abs();
+        String rangeBucket = determineRangeBucket(absPct);
+        String moveDirection = percentage.compareTo(BigDecimal.ZERO) >= 0 ? "UP" : "DOWN";
+
+        if (rangeBucket == null) {
+            // Dropped back below threshold — clear tracking
+            if (stock.getCurrentRangeBucket() != null) {
+                stock.setCurrentRangeBucket(null);
+                stock.setRangeDirection(null);
+                stock.setRangeEnteredAt(null);
+            }
+            return;
+        }
+
+        boolean sameRangeAndDirection = rangeBucket.equals(stock.getCurrentRangeBucket())
+                && moveDirection.equals(stock.getRangeDirection());
+
+        if (!sameRangeAndDirection) {
+            // Just crossed into this bucket or reversed — reset clock
+            stock.setCurrentRangeBucket(rangeBucket);
+            stock.setRangeDirection(moveDirection);
+            stock.setRangeEnteredAt(now);
+        }
+
+        Duration stayDuration = Duration.between(stock.getRangeEnteredAt(), now);
+        String intervalStr = formatDuration(stayDuration);
+        String changeStr = (moveDirection.equals("UP") ? "+" : "") + percentage + "%";
+
+        // FIXED Issue #2 & #7: Improved option strategy type with error details
+        String[] strategyInfo = safeGetOptionStrategyType(
+                optionsConnectHolder, optionSignInFailed, stock.getName(), ltp);
+        String strategyType = strategyInfo[0];
+        String statusMessage = strategyInfo.length > 1 ? strategyInfo[1] : "";
+
+        highMoverRows.add(new String[]{
+                stock.getName(),
+                rangeBucket,
+                intervalStr,
+                changeStr,
+                moveDirection,
+                strategyType,
+                statusMessage
+        });
+    }
+
+    // NEW: Extract transactional save (Issue #13)
+    @Transactional
+    private void savePercentageChangeBatchTransactionally(List<Nifty> stocks) {
+        int chunkSize = 50;
+        for (int i = 0; i < stocks.size(); i += chunkSize) {
+            int endIdx = Math.min(i + chunkSize, stocks.size());
+            niftyRepo.saveAll(stocks.subList(i, endIdx));
+        }
+    }
+
+    // NEW: Paginated Telegram sends (Issue #15)
+    private void sendTelegramAlertsPaginated(List<String[]> highMoverRows) {
+        int dataSize = highMoverRows.size() - 1; // Exclude header
+        if (dataSize == 0) {
+            return;
+        }
+
+        int totalMessages = (dataSize + TELEGRAM_BATCH_SIZE - 1) / TELEGRAM_BATCH_SIZE; // Ceiling division
+
+        for (int page = 0; page < totalMessages; page++) {
+            int startIdx = 1 + (page * TELEGRAM_BATCH_SIZE); // +1 to skip header
+            int endIdx = Math.min(startIdx + TELEGRAM_BATCH_SIZE, highMoverRows.size());
+
+            List<String[]> pageData = new ArrayList<>();
+            pageData.add(highMoverRows.get(0)); // Add header
+            pageData.addAll(highMoverRows.subList(startIdx, endIdx));
+
+            try {
+                telegramService.sendStockAlert(pageData);
+                logger.info("📤 Sent Telegram alert page {}/{} with {} stocks",
+                        page + 1, totalMessages, pageData.size() - 1);
+            } catch (Exception e) {
+                logger.error("Failed to send Telegram alert page {}/{}: {}",
+                        page + 1, totalMessages, e.getMessage());
+            }
+
+            // Small delay between messages to avoid rate limits
+            if (page < totalMessages - 1) {
+                sleepQuietly(200);
+            }
         }
     }
 
@@ -386,59 +556,102 @@ public class FnoScannerService {
     // ──────────────────────────────────────────────────────────
 
     /**
-     * Lazily signs in to the broker (once per scan, only if actually needed)
-     * and delegates to TokenService for the Straddle/Strangle call.
-     * This wrapper is the second layer of protection on top of
-     * TokenService's own internal guarding — sign-in itself is the
-     * one thing TokenService doesn't own, so it's guarded here.
-     * ALWAYS returns a value, NEVER throws — guaranteed not to affect the
-     * surrounding % change alert.
+     * FIXED Issue #2: Broker sign-in with retry logic.
+     * Never throws - always returns a value.
+     * Attempts sign-in MAX_BROKER_SIGNIN_RETRIES times with backoff.
      */
-    private String safeGetOptionStrategyType(SmartConnect[] connectHolder, boolean[] signInFailed,
-                                             String stockName, BigDecimal spotLtp) {
+    private String[] safeGetOptionStrategyType(SmartConnect[] connectHolder, boolean[] signInFailed,
+                                               String stockName, BigDecimal spotLtp) {
         try {
             if (signInFailed[0]) {
-                return TokenService.TYPE_ERROR;
+                return new String[]{TokenService.TYPE_ERROR, "Broker signin disabled for this scan"};
             }
 
             if (connectHolder[0] == null) {
-                connectHolder[0] = angelOne.signIn();
+                connectHolder[0] = signInWithRetry();
                 if (connectHolder[0] == null) {
-                    logger.warn("⚠️ Broker sign-in failed for option-strategy lookups this scan. All Type values will be Err.");
+                    logger.warn("⚠️ Broker sign-in failed after {} retries. Option strategy type will be Err.",
+                            MAX_BROKER_SIGNIN_RETRIES);
                     signInFailed[0] = true;
-                    return TokenService.TYPE_ERROR;
+                    return new String[]{TokenService.TYPE_ERROR, "Broker unavailable"};
                 }
             }
 
-            return tokenService.determineStraddleOrStrangle(connectHolder[0], stockName, spotLtp);
+            return new String[]{tokenService.determineStraddleOrStrangle(connectHolder[0], stockName, spotLtp), "OK"};
 
         } catch (Exception e) {
-            logger.warn("⚠️ Unexpected error resolving option strategy type for {} — Reason: {}", stockName, e.getMessage());
-            return TokenService.TYPE_ERROR;
+            logger.warn("⚠️ Unexpected error resolving option strategy type for {} — Reason: {}",
+                    stockName, e.getMessage());
+            return new String[]{TokenService.TYPE_ERROR, "Exception: " + e.getMessage()};
+        }
+    }
+
+    // NEW: Broker sign-in with retry (Issue #2)
+    private SmartConnect signInWithRetry() {
+        for (int attempt = 0; attempt < MAX_BROKER_SIGNIN_RETRIES; attempt++) {
+            try {
+                SmartConnect connect = angelOne.signIn();
+                if (connect != null) {
+                    logger.info("✅ Broker sign-in successful on attempt {}/{}", attempt + 1, MAX_BROKER_SIGNIN_RETRIES);
+                    return connect;
+                }
+                logger.warn("⚠️ Broker sign-in returned null. Attempt {}/{}", attempt + 1, MAX_BROKER_SIGNIN_RETRIES);
+            } catch (Exception e) {
+                logger.warn("⚠️ Broker sign-in failed on attempt {}/{}: {}", attempt + 1, MAX_BROKER_SIGNIN_RETRIES, e.getMessage());
+            }
+
+            if (attempt < MAX_BROKER_SIGNIN_RETRIES - 1) {
+                sleepQuietly(BROKER_SIGNIN_RETRY_DELAY_MS);
+            }
+        }
+        return null;
+    }
+
+    // NEW: Graceful executor shutdown (Issue #3)
+    private void gracefulExecutorShutdown(ExecutorService executor) {
+        try {
+            executor.shutdown();
+            if (!executor.awaitTermination(EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                logger.warn("⚠️ Executor did not terminate within {}s. Force shutting down.",
+                        EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS);
+                List<Runnable> remaining = executor.shutdownNow();
+                if (!remaining.isEmpty()) {
+                    logger.warn("⚠️ {} tasks were cancelled during executor shutdown", remaining.size());
+                }
+            } else {
+                logger.debug("✅ Executor shutdown completed gracefully");
+            }
+        } catch (InterruptedException ie) {
+            logger.warn("⚠️ Interrupted while waiting for executor shutdown");
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 
     private String lookupTokenFromIndexes(String name) {
-        Indexes eqStock = indexesRepo.findByNameAndExchange(name, EXCHANGE);
-        if (eqStock != null && eqStock.getToken() != null) {
-            return eqStock.getToken();
-        }
+        try {
+            Indexes eqStock = indexesRepo.findByNameAndExchange(name, EXCHANGE);
+            if (eqStock != null && eqStock.getToken() != null) {
+                return eqStock.getToken();
+            }
 
-        Indexes symbolMatch = indexesRepo.findByNameAndSymbol(name, name + "-EQ");
-        if (symbolMatch != null && symbolMatch.getToken() != null) {
-            return symbolMatch.getToken();
-        }
+            Indexes symbolMatch = indexesRepo.findByNameAndSymbol(name, name + "-EQ");
+            if (symbolMatch != null && symbolMatch.getToken() != null) {
+                return symbolMatch.getToken();
+            }
 
-        List<Indexes> nameMatches = indexesRepo.findByName(name);
-        if (nameMatches != null) {
-            for (Indexes idx : nameMatches) {
-                if (EXCHANGE.equalsIgnoreCase(idx.getExchange()) &&
-                        (idx.getExpiry() == null || idx.getExpiry().trim().isEmpty())) {
-                    return idx.getToken();
+            List<Indexes> nameMatches = indexesRepo.findByName(name);
+            if (nameMatches != null) {
+                for (Indexes idx : nameMatches) {
+                    if (EXCHANGE.equalsIgnoreCase(idx.getExchange()) &&
+                            (idx.getExpiry() == null || idx.getExpiry().trim().isEmpty())) {
+                        return idx.getToken();
+                    }
                 }
             }
+        } catch (Exception e) {
+            logger.warn("⚠️ Error looking up token for {}: {}", name, e.getMessage());
         }
-
         return null;
     }
 
@@ -465,12 +678,10 @@ public class FnoScannerService {
 
     /**
      * Finds the most recent trading day strictly BEFORE the given date.
-     * Evaluates backwards day-by-day using the shared utility's boolean check.
      */
     private LocalDate getStrictPreviousTradingDay(LocalDate date) {
-        LocalDate currentCheck = date.minusDays(1); // Always step back 1 day first (for 8:30 AM jobs)
+        LocalDate currentCheck = date.minusDays(1);
 
-        // Keep looping backward until the shared utility confirms it's a working day
         while (!NSEWorkingDays.isNSEWorkingDay(currentCheck)) {
             currentCheck = currentCheck.minusDays(1);
         }
@@ -478,17 +689,6 @@ public class FnoScannerService {
         return currentCheck;
     }
 
-    // ──────────────────────────────────────────────────────────
-    //  Range-Bucket Tracking Helpers
-    // ──────────────────────────────────────────────────────────
-
-    /**
-     * Maps an absolute percentage move to a fixed-width range bucket for
-     * tracking purposes. Returns null if the move hasn't reached the alert
-     * threshold at all (currently 5%).
-     *
-     * Buckets: 5-6%, 6-7%, 7-8%, 8-9%, 9-10%, 10%+
-     */
     private String determineRangeBucket(BigDecimal absPercentage) {
         double val = absPercentage.doubleValue();
         if (val < THRESHOLD_PERCENTAGE.doubleValue()) return null;
@@ -500,10 +700,6 @@ public class FnoScannerService {
         return "10%+";
     }
 
-    /**
-     * Formats a Duration as "N min" under an hour, or "N.N hours" beyond that,
-     * for display in the Telegram "Interval" column.
-     */
     private String formatDuration(Duration duration) {
         long minutes = duration.toMinutes();
         if (minutes < 60) {
