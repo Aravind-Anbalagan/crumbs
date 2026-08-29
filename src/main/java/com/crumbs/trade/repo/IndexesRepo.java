@@ -124,4 +124,8 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
      * by strike.
      */
     List<Indexes> findByNameAndExchangeInAndExpiryOrderByStrikeAsc(String name, List<String> exchanges, String expiry);
+    // ADD THIS NEW METHOD:
+    @Query("SELECT i FROM Indexes i WHERE i.name IN :names AND i.exchange = :exchange")
+    List<Indexes> findByNamesAndExchange(@Param("names") List<String> names,
+                                         @Param("exchange") String exchange);
 }
