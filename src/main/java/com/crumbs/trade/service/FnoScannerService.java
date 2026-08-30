@@ -6,8 +6,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,8 +33,10 @@ import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Nifty;
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.NiftyRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
 import lombok.RequiredArgsConstructor;
@@ -55,7 +55,7 @@ public class FnoScannerService {
     private static final int BATCH_FETCH_DELAY_MS = 250;
     private static final int RATE_LIMIT_SLEEP_MS = 6000;
 
-    // NEW: Executor configuration for retry logic
+    // Executor configuration for retry logic
     private static final int MAX_BROKER_SIGNIN_RETRIES = 2;
     private static final long BROKER_SIGNIN_RETRY_DELAY_MS = 500;
     private static final int MAX_JSON_PARSE_RETRIES = 2;
@@ -70,13 +70,18 @@ public class FnoScannerService {
     private final TelegramService telegramService;
     private final TokenService tokenService;
 
-    // NEW: Track subscribed tokens to prevent duplicate subscriptions (Issue #10)
+    // 🚀 INJECTED EXECUTION ENGINE & STRATEGY REPO
+    private final FnoOrderService fnoOrderService;
+    private final StrategyRepo strategyRepo;
+
+    // Track subscribed tokens to prevent duplicate subscriptions
     private final Set<String> subscribedTokens = ConcurrentHashMap.newKeySet();
 
     // ──────────────────────────────────────────────────────────
     //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 9:20 AM)
     // ──────────────────────────────────────────────────────────
-    @Transactional
+
+    // REMOVED @Transactional here to protect DB connection pool during external HTTP calls
     public void precacheFnoPreviousClose() {
         logger.info("🌅 Starting Multi-Threaded Pre-Cache for F&O Previous Close...");
 
@@ -99,7 +104,7 @@ public class FnoScannerService {
             return;
         }
 
-        // FIXED Issue #14: Batch fetch missing tokens in single query
+        // Batch fetch missing tokens in single query
         List<String> missingTokenStocks = fnoStocks.stream()
                 .filter(s -> s.getToken() == null || s.getToken().trim().isEmpty())
                 .map(Nifty::getName)
@@ -124,7 +129,7 @@ public class FnoScannerService {
         final LocalDate prevTradingDay = getStrictPreviousTradingDay(LocalDate.now());
         logger.info("📅 Determined Previous Trading Date as: {}", prevTradingDay);
 
-        // Use ConcurrentHashMap for thread-safe access (Issue #8)
+        // Use ConcurrentHashMap for thread-safe access
         Map<String, Nifty> stocksByToken = fnoStocks.stream()
                 .collect(Collectors.toMap(Nifty::getToken, s -> s, (a, b) -> a, ConcurrentHashMap::new));
 
@@ -141,23 +146,23 @@ public class FnoScannerService {
                 }, executor));
             }
 
-            // FIXED Issue #3: Properly await executor termination
+            // Properly await executor termination
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         } finally {
             gracefulExecutorShutdown(executor);
         }
 
-        // Save all updated stocks in smaller transactions (Issue #6)
+        // Save all updated stocks in smaller transactions
         savePrevCloseBatchTransactionally(new ArrayList<>(stocksByToken.values()));
         logger.info("✅ Pre-Cache Complete! Saved Previous Close for {}/{} F&O stocks.",
                 updatedCount.get(), fnoStocks.size());
 
-        // FIXED Issue #1 & #10: Pre-warm WebSocket subscriptions before calculations
+        // Pre-warm WebSocket subscriptions before calculations
         preWarmWebSocketSubscriptions(tokens);
     }
 
-    // NEW: Extract batch token resolution to avoid N+1 queries (Issue #14)
+    // Extract batch token resolution to avoid N+1 queries
     private void resolveMissingTokensInBatch(List<Nifty> allStocks, List<String> missingNames) {
         try {
             Map<String, String> nameToToken = indexesRepo.findByNamesAndExchange(missingNames, EXCHANGE)
@@ -185,7 +190,7 @@ public class FnoScannerService {
         }
     }
 
-    // NEW: Extract prev close batch processing with proper error handling (Issue #4)
+    // Extract prev close batch processing with proper error handling
     private void processPrevCloseBatch(SmartConnect smartConnect, List<String> batchTokens,
                                        Map<String, Nifty> stocksByToken, LocalDate prevTradingDay,
                                        AtomicInteger updatedCount) {
@@ -249,7 +254,7 @@ public class FnoScannerService {
         sleepQuietly(BATCH_FETCH_DELAY_MS);
     }
 
-    // NEW: Handle rate limits consistently (Issue #12)
+    // Handle rate limits consistently
     private void handleSmartAPIException(SmartAPIException e) {
         String message = e.getMessage() != null ? e.getMessage() : "";
         if (message.contains("503") || message.contains("Too Many Requests")) {
@@ -260,7 +265,7 @@ public class FnoScannerService {
         }
     }
 
-    // NEW: Extract transactional save to smaller chunks (Issue #6)
+    // Extract transactional save to smaller chunks
     @Transactional
     private void savePrevCloseBatchTransactionally(List<Nifty> stocks) {
         if (stocks.isEmpty()) return;
@@ -273,7 +278,7 @@ public class FnoScannerService {
         }
     }
 
-    // NEW: Idempotent WebSocket subscription (Issue #10)
+    // Idempotent WebSocket subscription
     private void preWarmWebSocketSubscriptions(List<String> tokens) {
         logger.info("🔌 Pre-warming WebSocket subscriptions for {} tokens...", tokens.size());
         for (String token : tokens) {
@@ -354,7 +359,7 @@ public class FnoScannerService {
             return;
         }
 
-        // FIXED Issue #5: Check if prevClose data is ready
+        // Check if prevClose data is ready
         long missingPrevClose = stocks.stream()
                 .filter(s -> s.getPrevClose() == null)
                 .count();
@@ -373,21 +378,32 @@ public class FnoScannerService {
         LocalDateTime now = LocalDateTime.now();
         int updateCount = 0;
 
-        // Lazy broker session for ATM option-chain lookups with retry logic (Issue #2)
+        // Lazy broker session for ATM option-chain lookups with retry logic
         SmartConnect[] optionsConnectHolder = new SmartConnect[1];
         boolean[] optionSignInFailed = {false};
+
+        // 🚀 FETCH LIVE TRADING FLAG FROM STRATEGY TABLE
+        boolean isLiveTrading = false;
+        try {
+            Strategy strategy = strategyRepo.findByName("FNO_SCANNER");
+            if (strategy != null && "Y".equalsIgnoreCase(strategy.getLive())) {
+                isLiveTrading = true;
+            }
+        } catch (Exception e) {
+            logger.warn("⚠️ Could not fetch strategy config for FNO_SCANNER: {}", e.getMessage());
+        }
 
         List<String[]> highMoverRows = new ArrayList<>();
         highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction", "Type", "Status"});
 
         for (Nifty stock : stocks) {
-            // FIXED Issue #11: Consistent null checking
             if (!isValidStock(stock)) {
                 continue;
             }
 
             try {
-                processStockPercentageChange(stock, now, optionsConnectHolder, optionSignInFailed, highMoverRows);
+                // Pass isLiveTrading flag down to process method
+                processStockPercentageChange(stock, now, optionsConnectHolder, optionSignInFailed, highMoverRows, isLiveTrading);
                 updateCount++;
             } catch (Exception e) {
                 logger.error("Error processing stock {}: {}. Skipping.", stock.getName(), e.getMessage());
@@ -399,7 +415,7 @@ public class FnoScannerService {
             savePercentageChangeBatchTransactionally(stocks);
             logger.info("✅ Percentage Change updated for {}/{} F&O stocks.", updateCount, stocks.size());
 
-            // FIXED Issue #15: Paginate Telegram sends
+            // Paginate Telegram sends
             if (ENABLE_TELEGRAM_ALERTS && highMoverRows.size() > 1) {
                 logger.info("📢 Found {} stocks moving > {}%. Sending Telegram alerts...",
                         highMoverRows.size() - 1, THRESHOLD_PERCENTAGE);
@@ -410,7 +426,7 @@ public class FnoScannerService {
         }
     }
 
-    // NEW: Validate stock has required fields (Issue #11)
+    // Validate stock has required fields
     private boolean isValidStock(Nifty stock) {
         String token = Optional.ofNullable(stock.getToken())
                 .map(String::trim)
@@ -432,17 +448,17 @@ public class FnoScannerService {
         return true;
     }
 
-    // NEW: Extract stock processing logic (Issue #13 - Breaking down large method)
+    // Extract stock processing logic
     private void processStockPercentageChange(Nifty stock, LocalDateTime now,
                                               SmartConnect[] optionsConnectHolder, boolean[] optionSignInFailed,
-                                              List<String[]> highMoverRows) {
+                                              List<String[]> highMoverRows, boolean isLiveTrading) {
         String token = stock.getToken();
         BigDecimal prevClose = stock.getPrevClose();
 
         // Fetch live LTP from WebSocket (zero REST API overhead)
         BigDecimal ltp = angelWebSocketService.getLatestLTP(ExchangeType.NSE_CM, token);
 
-        // Self-healing: subscribe if data missing (Issue #1)
+        // Self-healing: subscribe if data missing
         if (ltp == null || ltp.compareTo(BigDecimal.ZERO) == 0) {
             logger.warn("⚠️ No live LTP for {} (Token: {}). Triggering dynamic subscription...",
                     stock.getName(), token);
@@ -491,7 +507,7 @@ public class FnoScannerService {
         String intervalStr = formatDuration(stayDuration);
         String changeStr = (moveDirection.equals("UP") ? "+" : "") + percentage + "%";
 
-        // FIXED Issue #2 & #7: Improved option strategy type with error details
+        // Improved option strategy type with error details
         String[] strategyInfo = safeGetOptionStrategyType(
                 optionsConnectHolder, optionSignInFailed, stock.getName(), ltp);
         String strategyType = strategyInfo[0];
@@ -506,9 +522,68 @@ public class FnoScannerService {
                 strategyType,
                 statusMessage
         });
+
+        // 🚀 TRIGGER ASYNC ORDER DISPATCH
+        dispatchOrderExecution(stock, ltp, strategyType, isLiveTrading);
     }
 
-    // NEW: Extract transactional save (Issue #13)
+    /**
+     * Resolves ATM/OTM options and triggers asynchronous limit-sniper order execution in FnoOrderService.
+     */
+    private void dispatchOrderExecution(Nifty stock, BigDecimal spotLtp, String strategyType, boolean isLiveTrading) {
+        if (strategyType == null || TokenService.TYPE_ERROR.equalsIgnoreCase(strategyType)) {
+            logger.warn("⚠️ Cannot execute order for {}: Strategy determination returned error.", stock.getName());
+            return;
+        }
+
+        try {
+            Optional<TokenService.AtmContracts> atmOpt = tokenService.resolveAtmContracts(stock.getName(), spotLtp);
+            if (atmOpt.isEmpty()) {
+                logger.warn("⚠️ No ATM contracts found for {}. Order dispatch skipped.", stock.getName());
+                return;
+            }
+
+            TokenService.AtmContracts atm = atmOpt.get();
+
+            // Fetch lotsize from Indexes metadata (defaults to 1 if not present)
+            int quantity = 1;
+            Indexes meta = indexesRepo.findByNameAndExchange(stock.getName(), EXCHANGE);
+            if (meta != null && meta.getLotsize() > 0) {
+                quantity = meta.getLotsize();
+            }
+
+            // Standardize format: "RELIANCE28AUG242900CE"
+            String ceTradingSymbol = stock.getName() + atm.expiry() + atm.strike().intValue() + "CE";
+            String peTradingSymbol = stock.getName() + atm.expiry() + atm.strike().intValue() + "PE";
+
+            String strategyKey = "FNO_SCANNER_" + stock.getName();
+
+            logger.info("🚀 [TRIGGER TRADE] {} | CE: {} | PE: {} | Qty: {} | Live: {}",
+                    strategyKey, ceTradingSymbol, peTradingSymbol, quantity, isLiveTrading);
+
+            // Hand off to FnoOrderService (Runs asynchronous Limit Chaser)
+            fnoOrderService.executeStrategyPair(
+                    strategyKey,
+                    stock.getName(),
+                    atm.ceToken(),
+                    ceTradingSymbol,
+                    atm.strike(),
+                    spotLtp,
+                    atm.peToken(),
+                    peTradingSymbol,
+                    atm.strike(),
+                    spotLtp,
+                    quantity,
+                    "NFO",
+                    isLiveTrading
+            );
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to dispatch order for {}: {}", stock.getName(), e.getMessage());
+        }
+    }
+
+    // Extract transactional save
     @Transactional
     private void savePercentageChangeBatchTransactionally(List<Nifty> stocks) {
         int chunkSize = 50;
@@ -518,7 +593,7 @@ public class FnoScannerService {
         }
     }
 
-    // NEW: Paginated Telegram sends (Issue #15)
+    // Paginated Telegram sends
     private void sendTelegramAlertsPaginated(List<String[]> highMoverRows) {
         int dataSize = highMoverRows.size() - 1; // Exclude header
         if (dataSize == 0) {
@@ -556,7 +631,7 @@ public class FnoScannerService {
     // ──────────────────────────────────────────────────────────
 
     /**
-     * FIXED Issue #2: Broker sign-in with retry logic.
+     * Broker sign-in with retry logic.
      * Never throws - always returns a value.
      * Attempts sign-in MAX_BROKER_SIGNIN_RETRIES times with backoff.
      */
@@ -586,7 +661,7 @@ public class FnoScannerService {
         }
     }
 
-    // NEW: Broker sign-in with retry (Issue #2)
+    // Broker sign-in with retry
     private SmartConnect signInWithRetry() {
         for (int attempt = 0; attempt < MAX_BROKER_SIGNIN_RETRIES; attempt++) {
             try {
@@ -607,7 +682,7 @@ public class FnoScannerService {
         return null;
     }
 
-    // NEW: Graceful executor shutdown (Issue #3)
+    // Graceful executor shutdown
     private void gracefulExecutorShutdown(ExecutorService executor) {
         try {
             executor.shutdown();

@@ -18,7 +18,7 @@ import org.hibernate.annotations.CreationTimestamp; // Add this import
 public class Orders {
 	@Id
 	@Column(name="id", nullable = false, unique = true)
-	@GeneratedValue(strategy= GenerationType.AUTO)
+	@GeneratedValue(strategy= GenerationType.IDENTITY)
 	Long id;
 	@Column(name="orderid")
 	String orderid;
