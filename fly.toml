@@ -1,35 +1,23 @@
-# fly.toml app configuration file for crumbs
-app            = 'crumbs'
-primary_region = 'bom'        # changed from iad → bom (Mumbai, closest to NSE)
+# fly.toml app configuration file generated for crumbs on 2026-02-26T09:03:23Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'crumbs'
+primary_region = 'bom'
 
 [build]
 
-[env]
-  TZ                     = "Asia/Kolkata"   # critical for 3:20 PM force exit
-  SPRING_PROFILES_ACTIVE = "prod"
-
-[[mounts]]
-  source      = 'data'
-  destination = '/app/data'
-
 [http_service]
-  internal_port        = 8080
-  force_https          = true
-  auto_stop_machines   = false   # critical — bot must never sleep
-  auto_start_machines  = false   # critical — bot must always be running
-  min_machines_running = 1       # always keep 1 machine running
-  processes            = ['app']
-
-  # HTTP health check
-  [[http_service.checks]]
-    interval     = "30s"
-    timeout      = "10s"
-    grace_period = "120s"        # Java needs ~60s to start
-    method       = "GET"
-    path         = "/"
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  memory     = '2gb'             # increased — Java needs headroom
-  cpu_kind   = 'shared'
-  cpus       = 1
-  memory_mb  = 2048
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 2048
