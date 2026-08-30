@@ -43,7 +43,7 @@ import com.crumbs.trade.utility.NiftyIndexType;
 @Service
 public class FuturesStrategyService {
 
-	// 1. Inject self lazily to avoid circular dependency
+    // 1. Inject self lazily to avoid circular dependency
     @Autowired @Lazy private FuturesStrategyService self;
     private static final Logger logger = LogManager.getLogger(FuturesStrategyService.class);
     private static final String EXCHANGE = "NSE";
@@ -106,7 +106,7 @@ public class FuturesStrategyService {
         boolean isVolumeSurge;
         boolean isBullish;
 
-        public CandleMetrics(BigDecimal atr, BigDecimal recentSwingHigh, BigDecimal recentSwingLow, 
+        public CandleMetrics(BigDecimal atr, BigDecimal recentSwingHigh, BigDecimal recentSwingLow,
                              BigDecimal bodyStrengthPct, boolean isVolumeSurge, boolean isBullish) {
             this.atr = atr;
             this.recentSwingHigh = recentSwingHigh;
@@ -137,7 +137,7 @@ public class FuturesStrategyService {
     //  Entry point
     // ─────────────────────────────────────────────
 
-    
+
     public void executeAll() throws SmartAPIException {
         FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_50")
                 .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
@@ -195,13 +195,13 @@ public class FuturesStrategyService {
 
         for (Futures f : futuresList) {
             Indexes idx = indexByName.get(f.getName());
-			if (idx == null) {
-				if("NIFTY 50".equalsIgnoreCase(f.getName()))
-            	{
-            		idx = indexByName.get(f.getName());
-            	}
-				continue;
-			}
+            if (idx == null) {
+                if("NIFTY 50".equalsIgnoreCase(f.getName()))
+                {
+                    idx = indexByName.get(f.getName());
+                }
+                continue;
+            }
 
             BigDecimal todayPrice = todayPriceMap.get(idx.getToken());
             if (todayPrice == null) continue;
@@ -211,7 +211,7 @@ public class FuturesStrategyService {
                 logger.debug("Skipping {} - Morning setup hasn't cached OHLC data yet", f.getName());
                 continue;
             }
-            
+
             ExpiryOHLC ohlc = new ExpiryOHLC(BigDecimal.ZERO, f.getExpiryHigh(), f.getExpiryLow(), f.getExpiryClose());
 
             BigDecimal percentMove = todayPrice.subtract(ohlc.close)
@@ -243,8 +243,8 @@ public class FuturesStrategyService {
     // ─────────────────────────────────────────────
 
     private FuturesFilter buildFilter(String name, String indexType, BigDecimal todayPrice,
-            ExpiryOHLC ohlc, BigDecimal percentMove, BigDecimal rangePercent,
-            LocalDate expiryDate, FuturesConfig config) {
+                                      ExpiryOHLC ohlc, BigDecimal percentMove, BigDecimal rangePercent,
+                                      LocalDate expiryDate, FuturesConfig config) {
 
         FuturesFilter ff = new FuturesFilter();
         ff.setName(name);
@@ -280,7 +280,7 @@ public class FuturesStrategyService {
         if (Boolean.TRUE.equals(f.getIsNifty500()))    list.add("NIFTY_500");
         return list;
     }
-    
+
     @Transactional
     public void updateFilters(FuturesConfig config, List<FuturesFilter> result) {
         String indexType = config.getIndexType();
@@ -289,196 +289,197 @@ public class FuturesStrategyService {
         logger.info("Saved {} filters for {} (with HIGH/LOW/RANGE data)", saved.size(), indexType);
     }
 
- // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
     //  Breakout scan — Re-structured for Multi-Threading
     // ─────────────────────────────────────────────
- public void runBreakoutScan(SmartConnect smartConnect,
-                             Map<String, BigDecimal> ltpMap,
-                             Map<String, Indexes> indexByName) {
+    public void runBreakoutScan(SmartConnect smartConnect,
+                                Map<String, BigDecimal> ltpMap,
+                                Map<String, Indexes> indexByName) {
 
-     logger.info("========== BREAKOUT SCAN STARTED (MULTI-THREADED) ==========");
+        logger.info("========== BREAKOUT SCAN STARTED (MULTI-THREADED) ==========");
+        // ✅ TRACK EXISTING POSITIONS FIRST
+        self.trackExistingPositions(ltpMap, indexByName);
+        List<FuturesFilter> filters = filterRepo.findAll();
+        logger.info("Found {} filters to scan", filters.size());
 
-     List<FuturesFilter> filters = filterRepo.findAll();
-     logger.info("Found {} filters to scan", filters.size());
+        if (filters.isEmpty() || smartConnect == null) {
+            logger.warn("Filters empty or SmartConnect is null — aborting scan.");
+            return;
+        }
 
-     if (filters.isEmpty() || smartConnect == null) {
-         logger.warn("Filters empty or SmartConnect is null — aborting scan.");
-         return;
-     }
+        Map<String, FuturesConfig> configMap = configRepo.findByActive("Y").stream()
+                .collect(Collectors.toMap(FuturesConfig::getIndexType, c -> c));
 
-     Map<String, FuturesConfig> configMap = configRepo.findByActive("Y").stream()
-             .collect(Collectors.toMap(FuturesConfig::getIndexType, c -> c));
+        List<Futures> futuresList = futuresRepo.findAll();
+        Map<String, Futures> futuresMap = futuresList.stream()
+                .collect(Collectors.toMap(Futures::getName, f -> f));
 
-     List<Futures> futuresList = futuresRepo.findAll();
-     Map<String, Futures> futuresMap = futuresList.stream()
-             .collect(Collectors.toMap(Futures::getName, f -> f));
+        // ✅ THREAD-SAFE DATA STRUCTURES
+        List<FuturesBreakEvent> detectedEvents = Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger scannedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger breakoutCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger breakdownCount = new java.util.concurrent.atomic.AtomicInteger(0);
 
-     // ✅ THREAD-SAFE DATA STRUCTURES
-     List<FuturesBreakEvent> detectedEvents = Collections.synchronizedList(new ArrayList<>());
-     java.util.concurrent.atomic.AtomicInteger scannedCount = new java.util.concurrent.atomic.AtomicInteger(0);
-     java.util.concurrent.atomic.AtomicInteger breakoutCount = new java.util.concurrent.atomic.AtomicInteger(0);
-     java.util.concurrent.atomic.AtomicInteger breakdownCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        // ✅ Per-stock candle cache so a stock in multiple index buckets (NIFTY_50 + NIFTY_100 etc.)
+        // only gets ONE broker candle fetch and ONE SMC evaluation/notify, not one per filter row.
+        Map<String, List<HourlyCandle>> candleCacheByName = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.Set<String> smcEvaluatedNames = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-     // ✅ Per-stock candle cache so a stock in multiple index buckets (NIFTY_50 + NIFTY_100 etc.)
-     // only gets ONE broker candle fetch and ONE SMC evaluation/notify, not one per filter row.
-     Map<String, List<HourlyCandle>> candleCacheByName = new java.util.concurrent.ConcurrentHashMap<>();
-     java.util.Set<String> smcEvaluatedNames = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        // Distinct stock names actually present in the filters, so we only touch each stock once.
+        List<String> uniqueNames = filters.stream()
+                .map(FuturesFilter::getName)
+                .distinct()
+                .toList();
 
-     // Distinct stock names actually present in the filters, so we only touch each stock once.
-     List<String> uniqueNames = filters.stream()
-             .map(FuturesFilter::getName)
-             .distinct()
-             .toList();
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(5);
+        LocalTime MARKET_CUTOFF = LocalTime.of(15, 30);
 
-     java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(5);
-     LocalTime MARKET_CUTOFF = LocalTime.of(15, 30);
+        try {
+            // ──────────────────────────────────────────────────────────
+            // PASS 1: one candle fetch + one SMC evaluation PER UNIQUE STOCK
+            // ──────────────────────────────────────────────────────────
+            List<java.util.concurrent.CompletableFuture<Void>> smcFutures = uniqueNames.stream().map(name ->
+                    java.util.concurrent.CompletableFuture.runAsync(() -> {
 
-     try {
-         // ──────────────────────────────────────────────────────────
-         // PASS 1: one candle fetch + one SMC evaluation PER UNIQUE STOCK
-         // ──────────────────────────────────────────────────────────
-         List<java.util.concurrent.CompletableFuture<Void>> smcFutures = uniqueNames.stream().map(name ->
-                 java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        if (LocalTime.now(ZoneId.of("Asia/Kolkata")).isAfter(MARKET_CUTOFF)) {
+                            return;
+                        }
 
-                     if (LocalTime.now(ZoneId.of("Asia/Kolkata")).isAfter(MARKET_CUTOFF)) {
-                         return;
-                     }
+                        scannedCount.incrementAndGet();
 
-                     scannedCount.incrementAndGet();
+                        Indexes idx = indexByName.get(name);
+                        BigDecimal ltp = ltpMap.get(idx != null ? idx.getToken() : null);
+                        if (idx == null || ltp == null) {
+                            logger.debug("Skipping {} - no index mapping or LTP", name);
+                            return;
+                        }
 
-                     Indexes idx = indexByName.get(name);
-                     BigDecimal ltp = ltpMap.get(idx != null ? idx.getToken() : null);
-                     if (idx == null || ltp == null) {
-                         logger.debug("Skipping {} - no index mapping or LTP", name);
-                         return;
-                     }
+                        Futures futuresEntity = futuresMap.get(name);
+                        String primaryIndexType = determinePrimaryIndexType(futuresEntity);
 
-                     Futures futuresEntity = futuresMap.get(name);
-                     String primaryIndexType = determinePrimaryIndexType(futuresEntity);
+                        List<HourlyCandle> hourlyCandles = new ArrayList<>();
+                        try {
+                            JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
+                            if (rawCandles != null && !rawCandles.isEmpty()) {
+                                hourlyCandles = parseToHourlyCandles(rawCandles);
 
-                     List<HourlyCandle> hourlyCandles = new ArrayList<>();
-                     try {
-                         JSONArray rawCandles = fetchOneHourCandle(smartConnect, idx);
-                         if (rawCandles != null && !rawCandles.isEmpty()) {
-                             hourlyCandles = parseToHourlyCandles(rawCandles);
+                                if (!hourlyCandles.isEmpty()) {
+                                    CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
+                                    if (metrics != null && metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
+                                        logger.warn("⚠️ [{}] Latest candle has weak body ({}%) - potential false breakout",
+                                                name, metrics.bodyStrengthPct);
+                                    }
 
-                             if (!hourlyCandles.isEmpty()) {
-                                 CandleMetrics metrics = analyzeCandleStructure(hourlyCandles);
-                                 if (metrics != null && metrics.bodyStrengthPct.compareTo(new BigDecimal("35.00")) < 0) {
-                                     logger.warn("⚠️ [{}] Latest candle has weak body ({}%) - potential false breakout",
-                                             name, metrics.bodyStrengthPct);
-                                 }
+                                    boolean canNotify = configMap.values().stream()
+                                            .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
+                                            .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
+                                            .findFirst()
+                                            .orElse(false);
 
-                                 boolean canNotify = configMap.values().stream()
-                                         .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
-                                         .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
-                                         .findFirst()
-                                         .orElse(false);
+                                    smcLiteService.evaluateAndNotify(name, primaryIndexType, hourlyCandles, ltp, canNotify)
+                                            .ifPresent(smcSignal ->
+                                                    logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", name, smcSignal.getCurrentPrice()));
 
-                                 smcLiteService.evaluateAndNotify(name, primaryIndexType, hourlyCandles, ltp, canNotify)
-                                         .ifPresent(smcSignal ->
-                                                 logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", name, smcSignal.getCurrentPrice()));
+                                    smcEvaluatedNames.add(name);
+                                }
+                            }
+                        } catch (Exception e) {
+                            logger.error("🛑 SMC evaluation processing failed for {}: {}", name, e.getMessage());
+                        }
 
-                                 smcEvaluatedNames.add(name);
-                             }
-                         }
-                     } catch (Exception e) {
-                         logger.error("🛑 SMC evaluation processing failed for {}: {}", name, e.getMessage());
-                     }
+                        candleCacheByName.put(name, hourlyCandles);
 
-                     candleCacheByName.put(name, hourlyCandles);
+                    }, executor)
+            ).toList();
 
-                 }, executor)
-         ).toList();
+            java.util.concurrent.CompletableFuture.allOf(smcFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
 
-         java.util.concurrent.CompletableFuture.allOf(smcFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
+            // ──────────────────────────────────────────────────────────
+            // PASS 2: expiry breakout check PER FILTER ROW, reusing cached candles
+            // ──────────────────────────────────────────────────────────
+            List<java.util.concurrent.CompletableFuture<Void>> breakoutFutures = filters.stream().map(f ->
+                    java.util.concurrent.CompletableFuture.runAsync(() -> {
 
-         // ──────────────────────────────────────────────────────────
-         // PASS 2: expiry breakout check PER FILTER ROW, reusing cached candles
-         // ──────────────────────────────────────────────────────────
-         List<java.util.concurrent.CompletableFuture<Void>> breakoutFutures = filters.stream().map(f ->
-                 java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        if (LocalTime.now(ZoneId.of("Asia/Kolkata")).isAfter(MARKET_CUTOFF)) {
+                            return;
+                        }
 
-                     if (LocalTime.now(ZoneId.of("Asia/Kolkata")).isAfter(MARKET_CUTOFF)) {
-                         return;
-                     }
+                        Indexes idx = indexByName.get(f.getName());
+                        BigDecimal ltp = ltpMap.get(idx != null ? idx.getToken() : null);
+                        if (idx == null || ltp == null) return;
 
-                     Indexes idx = indexByName.get(f.getName());
-                     BigDecimal ltp = ltpMap.get(idx != null ? idx.getToken() : null);
-                     if (idx == null || ltp == null) return;
+                        List<HourlyCandle> hourlyCandles = candleCacheByName.getOrDefault(f.getName(), Collections.emptyList());
 
-                     List<HourlyCandle> hourlyCandles = candleCacheByName.getOrDefault(f.getName(), Collections.emptyList());
+                        if (f.getLastExpiryHigh() == null || f.getLastExpiryLow() == null || hourlyCandles.isEmpty()) {
+                            return;
+                        }
 
-                     if (f.getLastExpiryHigh() == null || f.getLastExpiryLow() == null || hourlyCandles.isEmpty()) {
-                         return;
-                     }
+                        HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
+                        BigDecimal hourClose = lastCandle.close;
+                        String indexType = f.getIndexType();
+                        LocalDateTime timestamp = LocalDateTime.now().withNano(0);
+                        boolean criteriaMet = false;
 
-                     HourlyCandle lastCandle = hourlyCandles.get(hourlyCandles.size() - 1);
-                     BigDecimal hourClose = lastCandle.close;
-                     String indexType = f.getIndexType();
-                     LocalDateTime timestamp = LocalDateTime.now().withNano(0);
-                     boolean criteriaMet = false;
+                        if ("UP".equals(f.getDirection()) &&
+                                hourClose.compareTo(f.getLastExpiryHigh()) > 0 &&
+                                ltp.compareTo(f.getLastExpiryHigh()) > 0) {
 
-                     if ("UP".equals(f.getDirection()) &&
-                             hourClose.compareTo(f.getLastExpiryHigh()) > 0 &&
-                             ltp.compareTo(f.getLastExpiryHigh()) > 0) {
+                            logger.info("🚀 BREAKOUT: {} → 1H Close={} & LTP={} > ExpiryHigh={}", f.getName(), hourClose, ltp, f.getLastExpiryHigh());
+                            FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", timestamp, indexType);
+                            if (event != null) {
+                                event.setCurrentPrice(ltp);
+                                detectedEvents.add(event);
+                                breakoutCount.incrementAndGet();
+                                criteriaMet = true;
+                            }
+                        }
 
-                         logger.info("🚀 BREAKOUT: {} → 1H Close={} & LTP={} > ExpiryHigh={}", f.getName(), hourClose, ltp, f.getLastExpiryHigh());
-                         FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKOUT", timestamp, indexType);
-                         if (event != null) {
-                             event.setCurrentPrice(ltp);
-                             detectedEvents.add(event);
-                             breakoutCount.incrementAndGet();
-                             criteriaMet = true;
-                         }
-                     }
+                        if ("DOWN".equals(f.getDirection()) &&
+                                hourClose.compareTo(f.getLastExpiryLow()) < 0 &&
+                                ltp.compareTo(f.getLastExpiryLow()) < 0) {
 
-                     if ("DOWN".equals(f.getDirection()) &&
-                             hourClose.compareTo(f.getLastExpiryLow()) < 0 &&
-                             ltp.compareTo(f.getLastExpiryLow()) < 0) {
+                            logger.info("📉 BREAKDOWN: {} → 1H Close={} & LTP={} < ExpiryLow={}", f.getName(), hourClose, ltp, f.getLastExpiryLow());
+                            FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", timestamp, indexType);
+                            if (event != null) {
+                                event.setCurrentPrice(ltp);
+                                detectedEvents.add(event);
+                                breakdownCount.incrementAndGet();
+                                criteriaMet = true;
+                            }
+                        }
 
-                         logger.info("📉 BREAKDOWN: {} → 1H Close={} & LTP={} < ExpiryLow={}", f.getName(), hourClose, ltp, f.getLastExpiryLow());
-                         FuturesBreakEvent event = createBreakEventNoSave(f, hourClose, "BREAKDOWN", timestamp, indexType);
-                         if (event != null) {
-                             event.setCurrentPrice(ltp);
-                             detectedEvents.add(event);
-                             breakdownCount.incrementAndGet();
-                             criteriaMet = true;
-                         }
-                     }
+                        if (!criteriaMet) {
+                            logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | 1H Close={} | LTP={} | No level breached (High={}, Low={})",
+                                    f.getName(), indexType, hourClose, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow());
+                        }
 
-                     if (!criteriaMet) {
-                         logger.debug("ℹ️ [EXPIRY SCAN DONE] {} ({}) | 1H Close={} | LTP={} | No level breached (High={}, Low={})",
-                                 f.getName(), indexType, hourClose, ltp, f.getLastExpiryHigh(), f.getLastExpiryLow());
-                     }
+                    }, executor)
+            ).toList();
 
-                 }, executor)
-         ).toList();
+            java.util.concurrent.CompletableFuture.allOf(breakoutFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
 
-         java.util.concurrent.CompletableFuture.allOf(breakoutFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
+        } finally {
+            executor.shutdown();
+        }
 
-     } finally {
-         executor.shutdown();
-     }
+        logger.info("📊 Scan Summary: Scanned={}, Breakouts={}, Breakdowns={}",
+                scannedCount.get(), breakoutCount.get(), breakdownCount.get());
 
-     logger.info("📊 Scan Summary: Scanned={}, Breakouts={}, Breakdowns={}",
-             scannedCount.get(), breakoutCount.get(), breakdownCount.get());
+        if (!detectedEvents.isEmpty()) {
+            logger.info("Processing {} detected events for save/dedup", detectedEvents.size());
+            List<FuturesBreakEvent> newSignals = self.saveAllBreakEventsWithDedup(detectedEvents);
+            if (!newSignals.isEmpty()) {
+                logger.info("✅ Sending notifications for {} NEW signals", newSignals.size());
+                sendBreakoutNotificationsWithConfig(newSignals);
+            } else {
+                logger.info("ℹ️ Expiry breakout scanning completed. No new signals to notify.");
+            }
+        } else {
+            logger.info("✅ Expiry breakout scanning completed across {} instruments. No criteria met.", scannedCount.get());
+        }
 
-     if (!detectedEvents.isEmpty()) {
-         logger.info("Processing {} detected events for save/dedup", detectedEvents.size());
-         List<FuturesBreakEvent> newSignals = self.saveAllBreakEventsWithDedup(detectedEvents);
-         if (!newSignals.isEmpty()) {
-             logger.info("✅ Sending notifications for {} NEW signals", newSignals.size());
-             sendBreakoutNotificationsWithConfig(newSignals);
-         } else {
-             logger.info("ℹ️ Expiry breakout scanning completed. No new signals to notify.");
-         }
-     } else {
-         logger.info("✅ Expiry breakout scanning completed across {} instruments. No criteria met.", scannedCount.get());
-     }
-
-     logger.info("========== BREAKOUT SCAN COMPLETED ==========");
- }
+        logger.info("========== BREAKOUT SCAN COMPLETED ==========");
+    }
 
     // ─────────────────────────────────────────────
     //  Save & dedup
@@ -504,9 +505,9 @@ public class FuturesStrategyService {
 
             if (existingOpt.isPresent()) {
                 FuturesBreakEvent record = existingOpt.get();
-                
+
                 boolean isSameMonth = record.getBreakDate().getMonth() == newEvent.getBreakDate().getMonth()
-                                   && record.getBreakDate().getYear() == newEvent.getBreakDate().getYear();
+                        && record.getBreakDate().getYear() == newEvent.getBreakDate().getYear();
 
                 record.setCurrentPrice(newEvent.getCurrentPrice());
                 record.setPercentMove(newEvent.getPercentMove());
@@ -514,11 +515,11 @@ public class FuturesStrategyService {
                 record.setBreakTime(newEvent.getBreakTime());
                 record.setReferenceLevel(newEvent.getReferenceLevel());
                 record.setStopLoss(newEvent.getStopLoss());
-                
+
                 if (isSameMonth) {
                     if ("INACTIVE".equals(record.getStatus())) {
                         logger.debug("🛑 {} already hit SL this month. Keeping INACTIVE.", record.getName());
-                    } 
+                    }
                     else if (checkStopLoss(record)) {
                         record.setStatus("INACTIVE");
                         record.setExitReason("SL_HIT");
@@ -527,24 +528,24 @@ public class FuturesStrategyService {
                         logger.warn("❌ SL Hit: {} {} | Entry={} | Exit={} | %Move={}%",
                                 record.getName(), record.getBreakType(),
                                 record.getBreakPrice(), record.getExitPrice(), record.getPercentMove());
-                    } 
+                    }
                     else {
                         record.setStatus("ACTIVE");
                         logger.info("🔄 Same-Month Update: {} {} | Price={} | PnL={}% — Silent (No Alert)",
                                 record.getName(), record.getBreakType(),
                                 record.getCurrentPrice(), record.getPercentMove());
                     }
-                    
+
                     futuresBreakEventRepo.save(record);
                     updatedCount++;
-                    
+
                 } else {
                     record.setStatus("ACTIVE");
                     record.setExitReason(null);
                     record.setExitPrice(null);
                     record.setExitDate(null);
                     record.setBreakPrice(newEvent.getBreakPrice());
-                    
+
                     FuturesBreakEvent saved = futuresBreakEventRepo.save(record);
                     newSignals.add(saved);
                     logger.info("🔔 Previous-Month Rollover Alert (ID={}): {} {} at {} — Will Notify!",
@@ -566,7 +567,7 @@ public class FuturesStrategyService {
         logger.info("======== SAVE & DEDUP DONE: Alerts To Send={}, Silently Updated={} ========",
                 newSignals.size(), updatedCount);
 
-        return newSignals; 
+        return newSignals;
     }
 
     // ─────────────────────────────────────────────
@@ -592,7 +593,7 @@ public class FuturesStrategyService {
     }
 
     private FuturesBreakEvent createBreakEventNoSave(FuturesFilter f, BigDecimal hourClose,
-            String breakType, LocalDateTime hourEnd, String primaryIndexType) {
+                                                     String breakType, LocalDateTime hourEnd, String primaryIndexType) {
 
         FuturesBreakEvent event = new FuturesBreakEvent();
         event.setName(f.getName());
@@ -621,13 +622,13 @@ public class FuturesStrategyService {
         return event;
     }
 
- // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
     //  API calls — shared session, with delays & 503 handling
     // ─────────────────────────────────────────────
 
     private JSONArray fetchOneHourCandle(SmartConnect smartConnect, Indexes idx) {
         int maxRetries = 5;
-        long delay = 3000; 
+        long delay = 3000;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -635,7 +636,7 @@ public class FuturesStrategyService {
                     logger.info("Retrying 1H candle for {} after {}ms (attempt {}/{})...",
                             idx.getName(), delay, attempt, maxRetries);
                     sleepQuietly(delay);
-                    delay *= 2; 
+                    delay *= 2;
                 }
 
                 LocalDateTime[] window = resolveNseOneHourWindow();
@@ -666,7 +667,7 @@ public class FuturesStrategyService {
                     logger.warn("⚠️ 503/Rate Limit hit for {} (attempt {}/{}). Forcing hard backoff of {}ms.",
                             idx.getName(), attempt, maxRetries, RATE_LIMIT_SLEEP_MS);
                     // ✅ Apply the hard 6-second rate limit penalty immediately
-                    sleepQuietly(RATE_LIMIT_SLEEP_MS); 
+                    sleepQuietly(RATE_LIMIT_SLEEP_MS);
                 } else {
                     logger.warn("Error fetching 1H candle for {} (attempt {}/{}): {} — will retry",
                             idx.getName(), attempt, maxRetries, e.getMessage());
@@ -681,7 +682,7 @@ public class FuturesStrategyService {
 
     public ExpiryOHLC fetchExpiryOHLC(SmartConnect smartConnect, Indexes idx, LocalDate expiryDate) {
         int maxRetries = 5;
-        long delay = 3000; 
+        long delay = 3000;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -689,7 +690,7 @@ public class FuturesStrategyService {
                     logger.info("Retrying {} after {}ms (attempt {}/{})...",
                             idx.getName(), delay, attempt, maxRetries);
                     sleepQuietly(delay);
-                    delay *= 2; 
+                    delay *= 2;
                 }
 
                 LocalDate tradingDate = NSEWorkingDays.isNSEWorkingDay(expiryDate) ?
@@ -722,7 +723,7 @@ public class FuturesStrategyService {
             } catch (Exception e) {
                 boolean is503 = e.getMessage() != null &&
                         (e.getMessage().contains("503") || e.getMessage().contains("timedout"));
-                
+
                 if (is503) {
                     logger.warn("⚠️ 503/timeout for {} (attempt {}/{}) — will retry",
                             idx.getName(), attempt, maxRetries);
@@ -896,7 +897,7 @@ public class FuturesStrategyService {
         // ✅ Fetch 15 days back to feed 100+ candles to the SMC Engine
         LocalDate currentTradingDay = NSEWorkingDays.isNSEWorkingDay(today) ?
                 today : NSEWorkingDays.getLastWorkingDay(today);
-        LocalDate prevDay = currentTradingDay.minusDays(15); 
+        LocalDate prevDay = currentTradingDay.minusDays(15);
         LocalDate previousTradingDay = NSEWorkingDays.isNSEWorkingDay(prevDay) ?
                 prevDay : NSEWorkingDays.getLastWorkingDay(prevDay);
 
@@ -949,7 +950,7 @@ public class FuturesStrategyService {
         try { Thread.sleep(ms); }
         catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
     }
-    
+
     // ─────────────────────────────────────────────
     //  NEW: Candlestick & SMC Pattern Engine
     // ─────────────────────────────────────────────
@@ -957,17 +958,17 @@ public class FuturesStrategyService {
     private List<HourlyCandle> parseToHourlyCandles(JSONArray rawCandles) {
         List<HourlyCandle> candles = new ArrayList<>();
         if (rawCandles == null) return candles;
-        
+
         try {
             for (int i = 0; i < rawCandles.length(); i++) {
                 JSONArray c = rawCandles.getJSONArray(i);
                 candles.add(new HourlyCandle(
-                    c.getString(0),
-                    c.getBigDecimal(1),
-                    c.getBigDecimal(2),
-                    c.getBigDecimal(3),
-                    c.getBigDecimal(4),
-                    c.getBigDecimal(5).longValue() // Bulletproof against decimal volumes
+                        c.getString(0),
+                        c.getBigDecimal(1),
+                        c.getBigDecimal(2),
+                        c.getBigDecimal(3),
+                        c.getBigDecimal(4),
+                        c.getBigDecimal(5).longValue() // Bulletproof against decimal volumes
                 ));
             }
         } catch (Exception e) {
@@ -1020,7 +1021,7 @@ public class FuturesStrategyService {
     // ──────────────────────────────────────────────────────────────────────────
     // 🌅 MORNING INITIALIZATION: Pre-cache Expiry Structure in Master Database Table
     // ──────────────────────────────────────────────────────────────────────────
-  
+
     public void initializeDailyExpiryStructure() throws SmartAPIException {
         FuturesConfig masterConfig = configRepo.findByIndexType("NIFTY_50")
                 .filter(c -> "Y".equalsIgnoreCase(c.getActive())).orElse(null);
@@ -1031,7 +1032,7 @@ public class FuturesStrategyService {
         }
 
         LocalDate targetExpiryDate = resolveExecutionDate(masterConfig);
-        List<Futures> futuresList = futuresRepo.findAll(); 
+        List<Futures> futuresList = futuresRepo.findAll();
 
         logger.info("🌅 Starting Daily Expiry Pre-cache. Target Date: {}. Processing {} records...", targetExpiryDate, futuresList.size());
 
@@ -1054,16 +1055,16 @@ public class FuturesStrategyService {
         int updatedCount = 0;
 
         for (Futures f : futuresList) {
-        	
+
             Indexes idx = indexByName.get(f.getName());
             if (idx == null)
             {
-            	//Add Index
-            	if("NIFTY 50".equalsIgnoreCase(f.getName()))
-            	{
-            		idx = indexByName.get(f.getName());
-            	}
-            	continue;
+                //Add Index
+                if("NIFTY 50".equalsIgnoreCase(f.getName()))
+                {
+                    idx = indexByName.get(f.getName());
+                }
+                continue;
             }
 
             if (f.getLastExpiryDate() != null && f.getLastExpiryDate().equals(targetExpiryDate) && f.getExpiryClose() != null) {
@@ -1082,7 +1083,7 @@ public class FuturesStrategyService {
             f.setExpiryClose(ohlc.close);
             f.setLastExpiryDate(targetExpiryDate);
             f.setLastUpdated(LocalDateTime.now());
-            
+
             futuresRepo.save(f);
             updatedCount++;
 
@@ -1120,5 +1121,87 @@ public class FuturesStrategyService {
         }
 
         logger.info("🔁 BOS-only recheck done — checked {} instruments", checked);
+    }
+    @Transactional
+    public void trackExistingPositions(Map<String, BigDecimal> ltpMap, Map<String, Indexes> indexByName) {
+        List<FuturesBreakEvent> activeEvents = futuresBreakEventRepo.findByStatus("ACTIVE");
+        List<FuturesBreakEvent> slHits = new ArrayList<>();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+
+        for (FuturesBreakEvent event : activeEvents) {
+            Indexes idx = indexByName.get(event.getName());
+            if (idx == null) continue;
+
+            BigDecimal ltp = ltpMap.get(idx.getToken());
+            if (ltp == null) continue;
+
+            event.setCurrentPrice(ltp);
+
+            // 1. Update Holding Days
+            if (event.getBreakDate() != null) {
+                long days = java.time.temporal.ChronoUnit.DAYS.between(event.getBreakDate(), today);
+                event.setHoldingDays((int) days);
+            }
+
+            // 2. Track Highest and Lowest Prices
+            if (event.getHighestPrice() == null || ltp.compareTo(event.getHighestPrice()) > 0) {
+                event.setHighestPrice(ltp);
+            }
+            if (event.getLowestPrice() == null || ltp.compareTo(event.getLowestPrice()) < 0) {
+                event.setLowestPrice(ltp);
+            }
+
+            // 3. Calculate PnL and Check SL
+            BigDecimal pnl = ltp.subtract(event.getBreakPrice())
+                    .divide(event.getBreakPrice(), 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
+
+            if ("BREAKOUT".equals(event.getBreakType())) {
+                if (event.getStopLoss() != null && ltp.compareTo(event.getStopLoss()) <= 0) {
+                    event.setStatus("INACTIVE");
+                    event.setExitReason("SL_HIT");
+                    slHits.add(event);
+                }
+            } else if ("BREAKDOWN".equals(event.getBreakType())) {
+                pnl = pnl.negate(); // Reverse PnL for short trades
+                if (event.getStopLoss() != null && ltp.compareTo(event.getStopLoss()) >= 0) {
+                    event.setStatus("INACTIVE");
+                    event.setExitReason("SL_HIT");
+                    slHits.add(event);
+                }
+            }
+
+            event.setPercentMove(pnl);
+            futuresBreakEventRepo.save(event);
+        }
+
+        if (!slHits.isEmpty()) {
+            sendTelegramBatch("❌ *SL HIT ALERT (EXISTING POSITIONS)*", slHits);
+        }
+    }
+
+    public void sendEODReport() {
+        List<FuturesBreakEvent> activeEvents = futuresBreakEventRepo.findByStatus("ACTIVE");
+        if (activeEvents.isEmpty()) return;
+
+        StringBuilder msg = new StringBuilder("📊 *EOD ACTIVE POSITIONS REPORT*\n\n```\n");
+        msg.append(String.format("%-10s | %-3s | %-6s | %-4s | %s%n", "STOCK", "DIR", "PNL%", "DAYS", "PEAK"));
+        msg.append("------------------------------------------\n");
+
+        for (FuturesBreakEvent e : activeEvents) {
+            String dir = "BREAKOUT".equals(e.getBreakType()) ? "UP" : "DN";
+            BigDecimal pnl = e.getPercentMove() != null ? e.getPercentMove() : BigDecimal.ZERO;
+            Integer days = e.getHoldingDays() != null ? e.getHoldingDays() : 0;
+
+            // Show Highest Price for BUYs, Lowest Price for SELLs
+            BigDecimal peak = "UP".equals(dir)
+                    ? (e.getHighestPrice() != null ? e.getHighestPrice() : e.getCurrentPrice())
+                    : (e.getLowestPrice() != null ? e.getLowestPrice() : e.getCurrentPrice());
+
+            msg.append(String.format("%-10s | %-3s | %+5.2f%% | %-4d | %7.2f%n", e.getName(), dir, pnl, days, peak));
+        }
+        msg.append("```");
+        try { telegramService.sendBroadcast(msg.toString()); }
+        catch (Exception ex) { logger.error("EOD report failed", ex); }
     }
 }

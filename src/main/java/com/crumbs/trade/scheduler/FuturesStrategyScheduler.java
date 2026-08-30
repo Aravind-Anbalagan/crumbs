@@ -68,10 +68,19 @@ public class FuturesStrategyScheduler {
      */
     @Scheduled(cron = "0 30 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void schedulerEOD() {
-         if (!isActive("FUTURE")) {
-             return;
-         }
-         executeIfMarketOpen();
+        if (!isActive("FUTURE")) {
+            return;
+        }
+
+        // 1. This triggers runBreakoutScan -> which now tracks existing trades too
+        executeIfMarketOpen();
+
+        // 2. Send the EOD total report
+        try {
+            futuresStrategyService.sendEODReport();
+        } catch (Exception e) {
+            logger.error("Failed to send EOD report", e);
+        }
     }
 
     private void executeIfMarketOpen() {

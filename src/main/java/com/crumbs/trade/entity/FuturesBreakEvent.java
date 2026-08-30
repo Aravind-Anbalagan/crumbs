@@ -74,6 +74,17 @@ public class FuturesBreakEvent {
     
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // In FuturesBreakEvent.java
+
+    @Column(name = "highest_price")
+    private BigDecimal highestPrice;
+
+    @Column(name = "lowest_price")
+    private BigDecimal lowestPrice;
+
+    @Column(name = "holding_days")
+    private Integer holdingDays;
     
     @PrePersist
     protected void onCreate() {

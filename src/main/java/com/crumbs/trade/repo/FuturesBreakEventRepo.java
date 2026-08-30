@@ -59,4 +59,6 @@ public interface FuturesBreakEventRepo
     
  // Single record lookup — no date, no status
     Optional<FuturesBreakEvent> findByNameAndBreakType(String name, String breakType);
+    List<FuturesBreakEvent> findByStatus(String status);
+    List<FuturesBreakEvent> findByStatusOrderByBreakDateAsc(String status);
 }
