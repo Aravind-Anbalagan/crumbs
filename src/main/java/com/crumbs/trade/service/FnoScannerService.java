@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import com.crumbs.trade.entity.Orders;
+import com.crumbs.trade.repo.OrderRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.json.JSONArray;
@@ -69,7 +71,7 @@ public class FnoScannerService {
     private final AngelWebSocketService angelWebSocketService;
     private final TelegramService telegramService;
     private final TokenService tokenService;
-
+    private final OrderRepository orderRepository;
     // 🚀 INJECTED EXECUTION ENGINE & STRATEGY REPO
     private final FnoOrderService fnoOrderService;
     private final StrategyRepo strategyRepo;
@@ -536,6 +538,12 @@ public class FnoScannerService {
             return;
         }
 
+        // ✅ ADD THESE 4 LINES:
+        if (hasActiveTradeTodayForStock(stock.getName())) {
+            logger.info("🔐 [DAILY LOCK] Skipping {} - already has active trade today.", stock.getName());
+            return;
+        }
+
         try {
             Optional<TokenService.AtmContracts> atmOpt = tokenService.resolveAtmContracts(stock.getName(), spotLtp);
             if (atmOpt.isEmpty()) {
@@ -781,5 +789,25 @@ public class FnoScannerService {
             return minutes + " min";
         }
         return String.format("%.1f hours", minutes / 60.0);
+    }
+
+    /**
+     * Checks if any OPEN/ENTRY order exists for this stock from the FNO_SCANNER strategy.
+     * Prevents duplicate order execution.
+     */
+    private boolean hasActiveTradeTodayForStock(String stockName) {
+        try {
+            long activeTradesToday = orderRepository.countActiveTradesToday(stockName);
+
+            if (activeTradesToday > 0) {
+                logger.info("🔐 [DAILY LOCK] {} already has active trade. Skipping.", stockName);
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            logger.warn("⚠️ Error checking daily lock for {}: {}. Proceeding with caution.",
+                    stockName, e.getMessage());
+            return false;
+        }
     }
 }

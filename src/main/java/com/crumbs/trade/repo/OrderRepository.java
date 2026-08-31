@@ -89,4 +89,18 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM Orders o WHERE o.name = :name AND o.status = 'OPEN'")
     List<Orders> findByNameAndStatusForUpdate(@Param("name") String name);
+
+    @Query("SELECT o FROM Orders o WHERE o.signal = :signal AND o.status = :status AND o.active = :active")
+    List<Orders> findBySignalAndStatusAndActive(
+            @Param("signal") String signal,
+            @Param("status") String status,
+            @Param("active") Integer active
+    );
+
+    @Query("SELECT COUNT(o) FROM Orders o WHERE o.name = :stockName AND o.active = 1")
+    long countActiveTradesToday(@Param("stockName") String stockName);
+
+    @Query("SELECT o FROM Orders o WHERE o.name = :stockName AND o.active = 1")
+    List<Orders> findActiveTradesToday(@Param("stockName") String stockName);
+
 }

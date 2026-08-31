@@ -146,10 +146,17 @@ public class AdvisoryEngineService {
         smcSignalOpt.ifPresent(bos -> newRecord.setSmcSignal(bos.getBreakType()));
 
         // DECIDE: New position or hold/exit existing?
-        if (previousRecordOpt.isEmpty()) {
+        AdvisoryLedger prevRecord = previousRecordOpt.orElse(null);
+
+        // 🎯 If expiry changed (new month), treat as fresh entry regardless of previous
+        boolean expiryChanged = prevRecord != null &&
+                !prevRecord.getExpiryDate().equals(resolvedExpiry);
+
+        if (previousRecordOpt.isEmpty() || expiryChanged || "NO_TRADE".equals(prevRecord.getActionTaken())) {
+            // New month or no previous position or previous was NO_TRADE → Fresh entry
             evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice);
         } else {
-            AdvisoryLedger prevRecord = previousRecordOpt.get();
+            // Same expiry + active position → Hold or exit
             evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
         }
 
@@ -462,12 +469,20 @@ public class AdvisoryEngineService {
     // EXIT HANDLER (SL or TARGET)
     // =========================================================================
     private void executeExit(AdvisoryLedger current, String exchange, String action, String reason) {
-        current.setActionTaken(action);  // "SL" or "TARGET"
+        current.setActionTaken(action);
         current.setReasoning(reason);
         current.setStatus("HISTORY");
 
+        // 🎯 At the exact moment SL is hit, fetch current LTP
         BigDecimal exitPremium = safelyFetchExitPremium(current, exchange);
 
+        // Fallback: If fetch fails, use last known MTM (from this morning's update)
+        if (exitPremium == null && current.getCurrentPremium() != null) {
+            log.warn("⚠️ Real-time LTP failed. Using MTM from morning: ₹{}", current.getCurrentPremium());
+            exitPremium = current.getCurrentPremium();
+        }
+
+        // Calculate PnL immediately
         if (exitPremium != null && current.getEntryPremium() != null) {
             current.setExitPremium(exitPremium);
             BigDecimal pnl = current.getEntryPremium().subtract(exitPremium);
@@ -493,22 +508,36 @@ public class AdvisoryEngineService {
     }
 
     private BigDecimal safelyFetchExitPremium(AdvisoryLedger prev, String exchange) {
-        if (prev.getRecommendedStrike() == null || prev.getOptionType() == null || prev.getExpiryDate() == null) {
+        if (prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
             return null;
         }
+
         try {
-            String strikeStr = String.valueOf(prev.getRecommendedStrike().intValue());
+            String strikeStr = prev.getRecommendedStrike().toPlainString();
             String suffix = "%" + strikeStr + prev.getOptionType();
-            String optionToken = indexesRepo.findTokenByNameAndExpiryAndSymbolLike(prev.getSymbol(), prev.getExpiryDate(), suffix);
-            if (optionToken == null) return null;
+            String optionToken = indexesRepo.findTokenByNameAndExpiryAndSymbolLike(
+                    prev.getSymbol(), prev.getExpiryDate(), suffix);
+
+            if (optionToken == null) {
+                log.warn("⚠️ Token not found for {}", prev.getSymbol());
+                return null;
+            }
 
             ExchangeType exType = exchange.contains("MCX") ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
             BigDecimal exitLtp = webSocketService.getLatestLTP(exType, optionToken);
-            return (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) ? exitLtp : null;
+
+            if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) {
+                log.info("✅ Exit LTP fetched for {}: ₹{}", prev.getSymbol(), exitLtp);
+                return exitLtp;
+            }
+
+            log.warn("⚠️ Invalid LTP for {}: {}", prev.getSymbol(), exitLtp);
+            return null;
+
         } catch (Exception e) {
-            log.warn("⚠️ Failed to fetch Exit LTP for {}. Error: {}", prev.getSymbol(), e.getMessage());
+            log.error("❌ Exception fetching exit LTP for {}: {}", prev.getSymbol(), e.getMessage(), e);
+            return null;
         }
-        return null;
     }
 
     private Optional<FuturesBreakEvent> evaluateSmcOracle(String name, String exchange, String symbol, BigDecimal spotPrice) {
@@ -555,4 +584,6 @@ public class AdvisoryEngineService {
         }
         return trSum.divide(new BigDecimal(period), 2, RoundingMode.HALF_UP);
     }
+
+
 }

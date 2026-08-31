@@ -120,4 +120,10 @@ public interface AdvisoryLedgerRepository extends JpaRepository<AdvisoryLedger, 
      */
     @Query("SELECT COALESCE(SUM(a.realizedPnl), 0) FROM AdvisoryLedger a WHERE a.symbol = :symbol AND a.status = 'HISTORY'")
     java.math.BigDecimal getTotalRealizedPnL(@Param("symbol") String symbol);
+
+    @Query("SELECT a FROM AdvisoryLedger a WHERE a.status = ?1 " +
+            "AND a.timestamp >= ?2 AND a.timestamp <= ?3 " +
+            "AND a.exitPremium IS NULL ORDER BY a.timestamp DESC")
+    List<AdvisoryLedger> findByStatusAndTimestampBetweenAndExitPremiumIsNull(
+            String status, LocalDateTime startTime, LocalDateTime endTime);
 }
