@@ -500,7 +500,7 @@ public class ShortStraddleService {
             return Optional.empty();
         }
 
-        BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.BSE_CM, indexConfig.getToken());
+        BigDecimal indexLtp = angelWebSocketService.getLatestLTP(ExchangeType.NSE_CM, indexConfig.getToken());
 
         if (indexLtp == null || indexLtp.compareTo(BigDecimal.ZERO) <= 0) {
             log.warn("⚠️ [{}] BANKNIFTY Index LTP unavailable from WebSocket. Skipping entry scan.", tradeName);

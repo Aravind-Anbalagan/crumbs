@@ -22,7 +22,7 @@ public class StaraddleController {
         try {
             // Manually invoke the scheduled method
             //straddleScheduler.straddleNifty();
-            straddleExecutionService.execute("BANKNIFTY");
+            shortStraddleService.evaluate("BANKNIFTY");
             return ResponseEntity.ok("NIFTY and SENSEX straddle execution completed successfully.");
         } catch (Exception e) {
             return ResponseEntity.internalServerError()

@@ -133,7 +133,13 @@ public class FnoScannerService {
 
         // Use ConcurrentHashMap for thread-safe access
         Map<String, Nifty> stocksByToken = fnoStocks.stream()
-                .collect(Collectors.toMap(Nifty::getToken, s -> s, (a, b) -> a, ConcurrentHashMap::new));
+                .filter(s -> s.getToken() != null) // Filter out null keys to prevent NPE
+                .collect(Collectors.toMap(
+                        Nifty::getToken,
+                        s -> s,
+                        (a, b) -> a,
+                        ConcurrentHashMap::new
+                ));
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
         List<CompletableFuture<Void>> futures = new ArrayList<>();

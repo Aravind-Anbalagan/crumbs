@@ -128,4 +128,15 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
     @Query("SELECT i FROM Indexes i WHERE i.name IN :names AND i.exchange = :exchange")
     List<Indexes> findByNamesAndExchange(@Param("names") List<String> names,
                                          @Param("exchange") String exchange);
+
+    /**
+     * Fetches all active F&O contracts for a given symbol (Index or Stock).
+     */
+    @Query("SELECT i FROM Indexes i WHERE UPPER(TRIM(i.name)) = UPPER(TRIM(:name)) " +
+            "AND UPPER(TRIM(i.exchange)) = 'NFO' " +
+            "AND i.expiry IS NOT NULL " +
+            "AND i.strike IS NOT NULL")
+    List<Indexes> findNfoContractsByName(@Param("name") String name);
+
+
 }

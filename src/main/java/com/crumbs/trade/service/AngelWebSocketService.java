@@ -320,9 +320,9 @@ public class AngelWebSocketService {
             }
 
             // 4. SENSEX (BSE Derivatives)
-            Strategy sensex = strategyRepo.findByName("SENSEX");
+            Strategy sensex = strategyRepo.findByName("BANKNIFTY");
             if (sensex != null) {
-                subscribe(ExchangeType.BSE_FO, sensex.getToken()); 
+                subscribe(ExchangeType.NSE_CM, sensex.getToken());
             }
 
             // 5. SENSEX INDEX (BSE Cash/Index)

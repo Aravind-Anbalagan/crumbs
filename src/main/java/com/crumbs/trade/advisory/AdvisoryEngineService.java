@@ -152,11 +152,22 @@ public class AdvisoryEngineService {
         boolean expiryChanged = prevRecord != null &&
                 !prevRecord.getExpiryDate().equals(resolvedExpiry);
 
-        if (previousRecordOpt.isEmpty() || expiryChanged || "NO_TRADE".equals(prevRecord.getActionTaken())) {
-            // New month or no previous position or previous was NO_TRADE → Fresh entry
+        // 🔧 FIX 1: Also check if previous position is CLOSED (HISTORY status)
+        // This prevents evaluateHoldOrExit() from being called on already-closed positions
+        boolean prevPositionClosed = prevRecord != null && "HISTORY".equals(prevRecord.getStatus());
+
+        if (previousRecordOpt.isEmpty() || expiryChanged || prevPositionClosed || "NO_TRADE".equals(prevRecord.getActionTaken())) {
+            // New month OR no previous position OR previous position already closed OR blocked entry → Fresh entry evaluation
+            log.info("🔄 FRESH ENTRY PATH for {}: ", name);
+            if (previousRecordOpt.isEmpty()) log.info("  └─ No previous record");
+            else if (expiryChanged) log.info("  └─ Expiry changed from {} to {}", prevRecord.getExpiryDate(), resolvedExpiry);
+            else if (prevPositionClosed) log.info("  └─ Previous position closed (Status: HISTORY)");
+            else if ("NO_TRADE".equals(prevRecord.getActionTaken())) log.info("  └─ Previous was NO_TRADE");
+
             evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice);
         } else {
-            // Same expiry + active position → Hold or exit
+            // Same expiry + ACTIVE position with valid entry → Hold or exit
+            log.info("🔄 HOLD/EXIT PATH for {}: Previous action={}", name, prevRecord.getActionTaken());
             evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
         }
 
@@ -230,13 +241,15 @@ public class AdvisoryEngineService {
         Optional<AdvisoryLedger> lastClosedOpt = ledgerRepository
                 .findTopBySymbolAndStatusOrderByTimestampDesc(newRecord.getSymbol(), "HISTORY");
 
-        // Same-day re-entry guard
+        // 🔧 FIX 3: Same-day re-entry guard - Block if ANY position closed today (SL or TARGET)
         if (lastClosedOpt.isPresent()) {
             LocalDate lastCloseDate = lastClosedOpt.get().getTimestamp().toLocalDate();
             if (lastCloseDate.equals(now.toLocalDate())) {
+                String closureReason = lastClosedOpt.get().getActionTaken(); // SL or TARGET
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Position closed today already. Re-entry deferred to next session.");
+                newRecord.setReasoning(String.format("Position closed today (%s). Re-entry deferred to next session.", closureReason));
                 newRecord.setStatus("ACTIVE");
+                log.info("🛑 Same-day re-entry blocked for {} (Previous {})", newRecord.getSymbol(), closureReason);
                 return;
             }
         }
@@ -352,6 +365,18 @@ public class AdvisoryEngineService {
                                     AdvisoryOiService.AdvisoryOiData oiData,
                                     Optional<FuturesBreakEvent> smcSignalOpt,
                                     LocalDateTime now, String exchange) {
+
+        // 🔧 FIX 2: Defensive check - position must have valid entry details
+        // This prevents SL logic from executing on NO_TRADE records or records with missing data
+        if (prev.getEntryPremium() == null || prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
+            log.warn("⚠️ Invalid position state for {}. Entry details missing (EntryPremium={}, Strike={}, Type={}). " +
+                            "Treating as fresh entry.",
+                    prev.getSymbol(), prev.getEntryPremium(), prev.getRecommendedStrike(), prev.getOptionType());
+            current.setActionTaken("NO_TRADE");
+            current.setStatus("ACTIVE");
+            current.setReasoning("Previous position has no valid entry details. Cannot evaluate hold/exit.");
+            return;
+        }
 
         // 🚀 FIX: DON'T copy ID - create new record!
         // current.setId(prev.getId());  ❌ REMOVED

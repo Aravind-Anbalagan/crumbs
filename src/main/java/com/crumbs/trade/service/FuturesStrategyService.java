@@ -1122,6 +1122,7 @@ public class FuturesStrategyService {
 
         logger.info("🔁 BOS-only recheck done — checked {} instruments", checked);
     }
+
     @Transactional
     public void trackExistingPositions(Map<String, BigDecimal> ltpMap, Map<String, Indexes> indexByName) {
         List<FuturesBreakEvent> activeEvents = futuresBreakEventRepo.findByStatus("ACTIVE");
@@ -1137,6 +1138,17 @@ public class FuturesStrategyService {
 
             event.setCurrentPrice(ltp);
 
+            // ✅ CRITICAL: Only process current month records for SL checks
+            boolean isSameMonth = event.getBreakDate().getMonth() == today.getMonth()
+                    && event.getBreakDate().getYear() == today.getYear();
+
+            if (!isSameMonth) {
+                logger.debug("⏩ Skipping SL check for {} - breakdate {} is not current month. Updating price only.",
+                        event.getName(), event.getBreakDate());
+                futuresBreakEventRepo.save(event); // Still save price updates for old records
+                continue;
+            }
+
             // 1. Update Holding Days
             if (event.getBreakDate() != null) {
                 long days = java.time.temporal.ChronoUnit.DAYS.between(event.getBreakDate(), today);
@@ -1151,32 +1163,44 @@ public class FuturesStrategyService {
                 event.setLowestPrice(ltp);
             }
 
-            // 3. Calculate PnL and Check SL
+            // 3. Calculate PnL and Check SL (ONLY FOR CURRENT MONTH)
             BigDecimal pnl = ltp.subtract(event.getBreakPrice())
                     .divide(event.getBreakPrice(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
 
+            boolean slHitThisMonth = false;
+
             if ("BREAKOUT".equals(event.getBreakType())) {
                 if (event.getStopLoss() != null && ltp.compareTo(event.getStopLoss()) <= 0) {
-                    event.setStatus("INACTIVE");
-                    event.setExitReason("SL_HIT");
-                    slHits.add(event);
+                    slHitThisMonth = true;
                 }
             } else if ("BREAKDOWN".equals(event.getBreakType())) {
                 pnl = pnl.negate(); // Reverse PnL for short trades
                 if (event.getStopLoss() != null && ltp.compareTo(event.getStopLoss()) >= 0) {
-                    event.setStatus("INACTIVE");
-                    event.setExitReason("SL_HIT");
-                    slHits.add(event);
+                    slHitThisMonth = true;
                 }
+            }
+
+            // ✅ CRITICAL: Only mark as INACTIVE and alert ONCE per month
+            if (slHitThisMonth) {
+                event.setStatus("INACTIVE");
+                event.setExitReason("SL_HIT");
+                event.setExitPrice(ltp);
+                event.setExitDate(LocalDateTime.now());
+                slHits.add(event);
+                logger.warn("❌ SL HIT (Current Month): {} {} | Entry={} | Exit={} | PnL={}%",
+                        event.getName(), event.getBreakType(),
+                        event.getBreakPrice(), ltp, pnl);
             }
 
             event.setPercentMove(pnl);
             futuresBreakEventRepo.save(event);
         }
 
+        // ✅ Send alert ONLY if there are new SL hits in current month
         if (!slHits.isEmpty()) {
-            sendTelegramBatch("❌ *SL HIT ALERT (EXISTING POSITIONS)*", slHits);
+            logger.info("📢 Sending SL hit alerts for {} current-month positions", slHits.size());
+            sendTelegramBatch("❌ *SL HIT ALERT (CURRENT MONTH ONLY)*", slHits);
         }
     }
 
