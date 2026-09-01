@@ -1204,15 +1204,34 @@ public class FuturesStrategyService {
         }
     }
 
+    /**
+     * ✅ FIXED: Sends EOD report for CURRENT MONTH active positions only.
+     * Old/previous month records are excluded automatically.
+     * SL-hit records are already filtered out (status != "ACTIVE").
+     */
     public void sendEODReport() {
         List<FuturesBreakEvent> activeEvents = futuresBreakEventRepo.findByStatus("ACTIVE");
-        if (activeEvents.isEmpty()) return;
 
-        StringBuilder msg = new StringBuilder("📊 *EOD ACTIVE POSITIONS REPORT*\n\n```\n");
+        // ✅ Filter to CURRENT MONTH ONLY
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        List<FuturesBreakEvent> currentMonthEvents = activeEvents.stream()
+                .filter(e -> {
+                    if (e.getBreakDate() == null) return false;
+                    return e.getBreakDate().getMonth() == today.getMonth()
+                            && e.getBreakDate().getYear() == today.getYear();
+                })
+                .toList();
+
+        if (currentMonthEvents.isEmpty()) {
+            logger.info("✅ EOD Report: No active positions for current month.");
+            return;
+        }
+
+        StringBuilder msg = new StringBuilder("📊 *EOD ACTIVE POSITIONS REPORT (CURRENT MONTH)*\n\n```\n");
         msg.append(String.format("%-10s | %-3s | %-6s | %-4s | %s%n", "STOCK", "DIR", "PNL%", "DAYS", "PEAK"));
         msg.append("------------------------------------------\n");
 
-        for (FuturesBreakEvent e : activeEvents) {
+        for (FuturesBreakEvent e : currentMonthEvents) {
             String dir = "BREAKOUT".equals(e.getBreakType()) ? "UP" : "DN";
             BigDecimal pnl = e.getPercentMove() != null ? e.getPercentMove() : BigDecimal.ZERO;
             Integer days = e.getHoldingDays() != null ? e.getHoldingDays() : 0;
@@ -1222,10 +1241,18 @@ public class FuturesStrategyService {
                     ? (e.getHighestPrice() != null ? e.getHighestPrice() : e.getCurrentPrice())
                     : (e.getLowestPrice() != null ? e.getLowestPrice() : e.getCurrentPrice());
 
-            msg.append(String.format("%-10s | %-3s | %+5.2f%% | %-4d | %7.2f%n", e.getName(), dir, pnl, days, peak));
+            msg.append(String.format("%-10s | %-3s | %+5.2f%% | %-4d | %7.2f%n",
+                    e.getName(), dir, pnl, days, peak));
         }
         msg.append("```");
-        try { telegramService.sendBroadcast(msg.toString()); }
-        catch (Exception ex) { logger.error("EOD report failed", ex); }
+        msg.append("\n\n_Active positions from previous months are automatically archived._");
+
+        try {
+            telegramService.sendBroadcast(msg.toString());
+            logger.info("✅ EOD Report sent for {} current-month positions", currentMonthEvents.size());
+        }
+        catch (Exception ex) {
+            logger.error("EOD report failed", ex);
+        }
     }
 }
