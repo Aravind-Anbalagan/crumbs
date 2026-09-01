@@ -99,7 +99,7 @@ public class StraddleTokenService {
             if (upperName.contains("SENSEX")) {
                 rangeValue = 1000;
             } else if (upperName.contains("GOLDM")) {
-                rangeValue = 500;
+                rangeValue = 3000;
             }
         }
 
