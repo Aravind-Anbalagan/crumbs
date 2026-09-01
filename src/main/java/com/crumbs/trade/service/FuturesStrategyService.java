@@ -376,7 +376,7 @@ public class FuturesStrategyService {
                                             .findFirst()
                                             .orElse(false);
 
-                                    smcLiteService.evaluateAndNotify(name, primaryIndexType, hourlyCandles, ltp, canNotify)
+                                    smcLiteService.evaluateAndNotify(name, primaryIndexType, hourlyCandles, ltp, false)
                                             .ifPresent(smcSignal ->
                                                     logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", name, smcSignal.getCurrentPrice()));
 
