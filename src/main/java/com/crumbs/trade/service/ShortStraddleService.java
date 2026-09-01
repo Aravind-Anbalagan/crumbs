@@ -99,7 +99,7 @@ public class ShortStraddleService {
         if ("NIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(NIFTY_START)) return;
         if ("BANKNIFTY".equalsIgnoreCase(baseSymbol) && now.isBefore(SENSEX_START)) return;
         if (tradeName.contains("CRUDE") && now.isBefore(CRUDE_START)) return;
-        if (tradeName.contains("NATURALGAS") && now.isBefore(NATURALGAS_START)) return;
+        if (tradeName.contains("GOLDM") && now.isBefore(NATURALGAS_START)) return;
 
         List<Orders> allActiveOrders = ordersRepository.findByNameAndSignalAndActive(tradeName, STRATEGY_SIGNAL, STATUS_ACTIVE);
 
@@ -459,7 +459,7 @@ public class ShortStraddleService {
         if ("NIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(NIFTY_SQUARE_OFF);
         if ("BANKNIFTY".equalsIgnoreCase(symbol)) return !now.isBefore(SENSEX_SQUARE_OFF);
         if (symbol.contains("CRUDE")) return !now.isBefore(CRUDE_SQUARE_OFF);
-        if (symbol.contains("NATURALGAS")) return !now.isBefore(NATURALGAS_SQUARE_OFF);
+        if (symbol.contains("GOLDM")) return !now.isBefore(NATURALGAS_SQUARE_OFF);
         return false;
     }
 
@@ -467,7 +467,7 @@ public class ShortStraddleService {
         if ("NIFTY".equalsIgnoreCase(symbol)) return now.isBefore(NIFTY_ENTRY_CUTOFF);
         if ("BANKNIFTY".equalsIgnoreCase(symbol)) return now.isBefore(SENSEX_ENTRY_CUTOFF);
         if (symbol.contains("CRUDE")) return now.isBefore(CRUDE_ENTRY_CUTOFF);
-        if (symbol.contains("NATURALGAS")) return now.isBefore(NATURALGAS_ENTRY_CUTOFF);
+        if (symbol.contains("GOLDM")) return now.isBefore(NATURALGAS_ENTRY_CUTOFF);
         return true;
     }
 

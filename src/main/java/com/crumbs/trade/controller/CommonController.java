@@ -369,15 +369,23 @@ public class CommonController {
         // ✅ Stock Options (F&O)
         boolean isStockOption = exchSeg.equals("NFO") && "OPTSTK".equals(instrumentType);
 
+        // ✅ MCX Commodities (Strictly fetch from MCX to avoid NCO duplicates)
+        boolean isMcxCommodity = exchSeg.equals("MCX") &&
+                (name.equals("CRUDEOIL") ||
+                        name.equals("CRUDEOILM") ||
+                        name.equals("GOLDM") ||
+                        name.equals("SILVERM"));
+
+        // ✅ Specific broad market indices
+        boolean isSpecificIndex = name.equals("NIFTY") ||
+                name.equals("BANKNIFTY") ||
+                name.equals("SENSEX") ||
+                name.equals("INDIA VIX");
+
         return (isNoDigitName && (isEquity || isStockOption))
                 || exchSeg.equals("BSE")
-                || name.equals("NIFTY")
-                || name.equals("SENSEX")
-                || name.equals("CRUDEOIL")
-                || name.equals("CRUDEOILM")
-                || name.equals("NATURALGAS")
-                || name.equals("INDIA VIX")
-                || name.equals("SILVERM")
+                || isSpecificIndex
+                || isMcxCommodity
                 || optionNameList.contains(name);
     }
 

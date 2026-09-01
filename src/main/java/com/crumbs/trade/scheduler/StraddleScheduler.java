@@ -53,7 +53,7 @@ public class StraddleScheduler {
 
         CompletableFuture<Void> gasFuture =
                 CompletableFuture.runAsync(() ->
-                        executionService.execute("NATURALGAS"));
+                        executionService.execute("GOLDM"));
 
         CompletableFuture.allOf(
                 crudeFuture,

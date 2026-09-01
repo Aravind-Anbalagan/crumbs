@@ -53,7 +53,7 @@ public class StraddleTokenService {
             return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol();
         } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name)) {
             return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol1();
-        } else if ("NATURALGAS".equalsIgnoreCase(name)) {
+        } else if ("GOLDM".equalsIgnoreCase(name)) {
             Strategy strategy = strategyRepo.findByName(name);
             return strategy != null ? strategy.getSymbol() : "NATURALGAS";
         }
@@ -68,8 +68,8 @@ public class StraddleTokenService {
             String upperName = name.toUpperCase();
             if (upperName.contains("SENSEX") || upperName.contains("BANK") || upperName.contains("CRUDEOIL")) {
                 stepInterval = 100;
-            } else if (upperName.contains("NATURALGAS")) {
-                stepInterval = 5; 
+            } else if (upperName.contains("GOLDM")) {
+                stepInterval = 500;
             }
         }
         int nearest = chartService.findNearestMultiple(price.intValue(), stepInterval);
@@ -88,8 +88,8 @@ public class StraddleTokenService {
             String upperName = name.toUpperCase();
             if (upperName.contains("SENSEX") || upperName.contains("BANK") || upperName.contains("CRUDEOIL")) {
                 stepInterval = 100;
-            } else if (upperName.contains("NATURALGAS")) {
-                stepInterval = 5; 
+            } else if (upperName.contains("GOLDM")) {
+                stepInterval = 500;
             }
         }
 
@@ -98,8 +98,8 @@ public class StraddleTokenService {
             String upperName = name.toUpperCase();
             if (upperName.contains("SENSEX")) {
                 rangeValue = 1000;
-            } else if (upperName.contains("NATURALGAS")) {
-                rangeValue = 50; 
+            } else if (upperName.contains("GOLDM")) {
+                rangeValue = 500;
             }
         }
 

@@ -332,7 +332,7 @@ public class AngelWebSocketService {
             }
 
             // 6. NATURALGAS (MCX Derivatives)
-            Strategy naturalgas = strategyRepo.findByName("NATURALGAS");
+            Strategy naturalgas = strategyRepo.findByName("GOLDM");
             if (naturalgas != null) {
                 subscribe(ExchangeType.MCX_FO, naturalgas.getToken());
             }

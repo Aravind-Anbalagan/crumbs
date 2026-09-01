@@ -120,7 +120,7 @@ public class StraddleIntradayService {
             BigDecimal spotPrice = null;
             if ("NIFTY".equalsIgnoreCase(name) || "SENSEX".equalsIgnoreCase(name)) {
                 spotPrice = samco.getIndexPrice(session, name);
-            } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "NATURALGAS".equalsIgnoreCase(name)) {
+            } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name) || "GOLDM".equalsIgnoreCase(name)) {
                 spotPrice = samco.getLtp(session, strategy.getExchange(), tokenService.getSymbolByName(name));
             }
             if (spotPrice == null || spotPrice.compareTo(BigDecimal.ZERO) <= 0) return new ArrayList<>();
@@ -170,7 +170,7 @@ public class StraddleIntradayService {
 
         if ("CRUDEOIL".equalsIgnoreCase(name)
                 || "CRUDEOILM".equalsIgnoreCase(name)
-                || "NATURALGAS".equalsIgnoreCase(name)) {
+                || "GOLDM".equalsIgnoreCase(name)) {
 
             return samco.getLtp(
                     session,
