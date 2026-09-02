@@ -39,4 +39,7 @@ public class FuturesConfig {
     @Column(name = "indexType")
     private String indexType;
 
+    @Column(name = "smc_notification_required")
+    private String smcNotificationRequired;
+
 }

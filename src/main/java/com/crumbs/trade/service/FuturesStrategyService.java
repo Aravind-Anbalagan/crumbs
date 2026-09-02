@@ -370,15 +370,20 @@ public class FuturesStrategyService {
                                                 name, metrics.bodyStrengthPct);
                                     }
 
-                                    boolean canNotify = configMap.values().stream()
+                                    // ✅ FIX: Check SMC notifications INDEPENDENTLY (separate from breakout alerts)
+                                    boolean smcNotifyEnabled = configMap.values().stream()
                                             .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
-                                            .map(c -> "Y".equalsIgnoreCase(c.getNotificationRequired()))
+                                            .map(c -> "Y".equalsIgnoreCase(c.getSmcNotificationRequired()))
                                             .findFirst()
                                             .orElse(false);
 
-                                    smcLiteService.evaluateAndNotify(name, primaryIndexType, hourlyCandles, ltp, false)
-                                            .ifPresent(smcSignal ->
-                                                    logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", name, smcSignal.getCurrentPrice()));
+                                    if (smcNotifyEnabled) {
+                                        smcLiteService.evaluateAndNotify(name, primaryIndexType, hourlyCandles, ltp, false)
+                                                .ifPresent(smcSignal ->
+                                                        logger.info("🧠 [SMC BOS CONFIRMED] {} Triggered at ₹{}", name, smcSignal.getCurrentPrice()));
+                                    } else {
+                                        logger.debug("⏭️ SMC notifications disabled for {}. Skipping SMC evaluation.", primaryIndexType);
+                                    }
 
                                     smcEvaluatedNames.add(name);
                                 }
@@ -1107,6 +1112,10 @@ public class FuturesStrategyService {
         Map<String, Indexes> indexByName = indexesList.stream()
                 .collect(Collectors.toMap(Indexes::getName, i -> i, (exist, dup) -> exist));
 
+        // ✅ FIX: Load config map once to check notifications
+        Map<String, FuturesConfig> configMap = configRepo.findByActive("Y").stream()
+                .collect(Collectors.toMap(FuturesConfig::getIndexType, c -> c));
+
         int checked = 0;
         for (Futures f : futuresList) {
             Indexes idx = indexByName.get(f.getName());
@@ -1116,7 +1125,19 @@ public class FuturesStrategyService {
             if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             String primaryIndexType = determinePrimaryIndexType(f);
-            smcLiteService.recheckBosOnly(f.getName(), primaryIndexType, ltp, true);
+
+            // ✅ FIX: Check if SMC notifications are enabled (INDEPENDENT flag)
+            boolean smcNotifyEnabled = configMap.values().stream()
+                    .filter(c -> c.getIndexType().equalsIgnoreCase(primaryIndexType))
+                    .map(c -> "Y".equalsIgnoreCase(c.getSmcNotificationRequired()))
+                    .findFirst()
+                    .orElse(false);
+
+            if (smcNotifyEnabled) {
+                smcLiteService.recheckBosOnly(f.getName(), primaryIndexType, ltp, true);
+            } else {
+                logger.debug("⏭️ SMC notifications disabled for {}. Skipping BOS recheck.", primaryIndexType);
+            }
             checked++;
         }
 
