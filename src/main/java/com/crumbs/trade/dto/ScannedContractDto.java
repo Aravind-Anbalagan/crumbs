@@ -36,8 +36,8 @@ public class ScannedContractDto {
     // ==========================================
     private BigDecimal spotPrice;                   // Live underlying spot price
     private BigDecimal currentLtp;                  // Option premium LTP
-    private Double currentStochRsi;                 // Latest 14-period Stochastic RSI
-    private Double previousStochRsi;                // Previous cycle's StochRSI (for hook detection)
+    private Double currentRsi;
+    private Double previousRsi;
 
     // ==========================================
     // 3. Stateful Extreme Tracking (Your Fields)
