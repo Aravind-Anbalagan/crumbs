@@ -49,6 +49,8 @@ public class ScannedContractDto {
     private int aboveRSI80Count;                    // Consecutive check cycles stayed >= 80.0
     private int belowRSI20Count;                    // Consecutive check cycles stayed <= 20.0
 
+    private Double currentMa;
+    private boolean isPriceAboveMa;
     // ==========================================
     // 4. Recommended Engine Improvements
     // ==========================================

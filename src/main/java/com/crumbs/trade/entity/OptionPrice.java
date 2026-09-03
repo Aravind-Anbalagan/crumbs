@@ -66,4 +66,7 @@ public class OptionPrice {
     // Used specifically for finding the unique record for the day
     private LocalDate evaluatedDate;
     private LocalDateTime evaluatedAt;
+
+    private Double currentMa;
+    private boolean isPriceAboveMa;
 }

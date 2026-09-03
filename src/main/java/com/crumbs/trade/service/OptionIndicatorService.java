@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.ScannedContractDto;
+import com.crumbs.trade.utility.MaCalculation;
 import com.crumbs.trade.utility.NSEWorkingDays;
 import com.crumbs.trade.utility.RsiCalculation;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class OptionIndicatorService {
     private static final double OVERSOLD_LEVEL = 20.0;
     // Angel One allows ~3 requests per second. 350ms ensures we stay safely under the limit.
     private static final long MIN_API_DELAY_MS = 500;
+    private static final int MA_PERIOD = 20;
     private long lastApiCallTime = 0;
     private final AngelOne angelOne;
 
@@ -88,6 +90,16 @@ public class OptionIndicatorService {
                                 Double latestClose = closes.get(closes.size() - 1);
                                 dto.setCurrentLtp(BigDecimal.valueOf(latestClose));
 
+
+                                // MOVING AVERAGE LOGIC
+                                if (closes.size() >= MA_PERIOD) {
+                                    Double currentMa = MaCalculation.calculateSMA(closes, MA_PERIOD);
+                                    if (currentMa != null) {
+                                        dto.setCurrentMa(currentMa);
+                                        dto.setPriceAboveMa(latestClose > currentMa);
+                                    }
+                                }
+                                // RSI
                                 if (closes.size() >= RSI_PERIOD + 1) {
                                     Double currentRsi = RsiCalculation.calculate(closes, RSI_PERIOD);
                                     if (currentRsi != null) {

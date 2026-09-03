@@ -37,7 +37,11 @@ public class OptionScannerConfig {
      */
     @Builder.Default
     private int strikeDistance = 10;
-
+    /**
+     * Moving Average Period (Default: 20)
+     */
+    @Builder.Default
+    private int maPeriod = 20;
     /**
      * Allowed moneyness types: ATM, ITM, OTM.
      */
