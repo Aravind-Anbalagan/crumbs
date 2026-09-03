@@ -96,8 +96,38 @@ public class FnoOrderService {
         // 1. PAPER TRADING
         // =========================================================================
         if (!isLive) {
-            log.info("📄 [PAPER] Order registered for {} {} @ ₹{}", strategyName, tradingSymbol, initialLtp);
-            finalizeOrderInDb(legOrder, initialLtp, PAPER_ORDER_ID_MARKER);
+            // 🔧 FIX: Don't use initialLtp (spot price)! Fetch actual option premium.
+            BigDecimal paperPremium = null;
+
+            // Try to get real market depth for the option token
+            SmartConnect paperConnect = null;
+            try {
+                paperConnect = angelOne.signIn();
+                if (paperConnect != null) {
+                    paperPremium = getBestBidFromFullDepth(paperConnect, exchange, token, null);
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ [PAPER] Failed to fetch real option premium for {}: {}. Using fallback.",
+                        tradingSymbol, e.getMessage());
+            }
+
+            // Fallback: If real depth unavailable, simulate premium as % of underlying
+            if (paperPremium == null || paperPremium.compareTo(BigDecimal.ZERO) <= 0) {
+                // Estimate option premium as 2-3% of spot price at ATM
+                // Example: RBLBANK spot = 409.10 → estimated CE/PE premium ≈ 10-12 rupees
+                paperPremium = initialLtp
+                        .multiply(new BigDecimal("0.025"))  // 2.5% average for ATM straddle
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                log.info("📄 [PAPER] Real depth unavailable for {}. Using estimated premium: ₹{} (2.5% of spot ₹{})",
+                        tradingSymbol, paperPremium, initialLtp);
+            } else {
+                log.info("📄 [PAPER] Fetched real market premium for {}: ₹{}", tradingSymbol, paperPremium);
+            }
+
+            log.info("📄 [PAPER] Order registered for {} {} @ ₹{} (Option Premium) | Spot: ₹{}",
+                    strategyName, tradingSymbol, paperPremium, initialLtp);
+            finalizeOrderInDb(legOrder, paperPremium, PAPER_ORDER_ID_MARKER);
             return;
         }
 
@@ -141,7 +171,8 @@ public class FnoOrderService {
             }
 
             String orderId = placedOrder.orderId;
-            log.info("🎯 Initial Pure Limit Order placed for {} @ ₹{} | OrderID: {}", tradingSymbol, limitPrice, orderId);
+            log.info("🎯 Initial Pure Limit Order placed for {} @ ₹{} | OrderID: {}",
+                    tradingSymbol, limitPrice, orderId);
 
             // Start Pure Limit Order Chaser
             chaseLimitOrderByDepth(smartConnect, legOrder, orderParams, orderId, limitPrice);
@@ -150,6 +181,7 @@ public class FnoOrderService {
             log.error("💥 General error placing order for {}: {}", tradingSymbol, e.getMessage(), e);
         }
     }
+
 
     /**
      * Pure Limit Chaser:

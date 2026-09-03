@@ -66,32 +66,29 @@ public class OptionIndicatorService {
         }
 
         String normalizedInterval = interval != null ? interval.trim().toUpperCase() : "ONE_HOUR";
-        LocalDateTime[] window = resolveNseWindow(normalizedInterval);
 
-        // 5 concurrent threads (Angel One Historical API throttles around 3 req/sec)
         ExecutorService executor = Executors.newFixedThreadPool(5);
 
         try {
             List<CompletableFuture<Void>> futures = contracts.stream().map(dto ->
                     CompletableFuture.runAsync(() -> {
                         try {
-                            // 1. Tag timeframe so downstream DB upsert and alerts know the exact timeframe
                             dto.setTimeFrame(normalizedInterval);
+
+                            // ✅ ADD IT HERE INSIDE THE LOOP:
+                            // Calculate the window dynamically based on THIS contract's exchange
+                            LocalDateTime[] window = resolveMarketWindow(normalizedInterval, dto.getExchange());
 
                             // 2. Fetch Candle Close Prices
                             List<Double> closes = fetchHistoricalClosePrices(smartConnect, dto, window, normalizedInterval);
 
                             if (closes != null) {
-                                // We need at least 15 candles to calculate a 14-period RSI
                                 if (closes.size() >= RSI_PERIOD + 1) {
-
                                     Double currentRsi = RsiCalculation.calculate(closes, RSI_PERIOD);
                                     if (currentRsi != null) {
                                         updateRSIState(dto, currentRsi);
                                     }
-
                                 } else {
-                                    // 👇 Catch contracts that returned data, but not enough to do math
                                     logger.debug("📉 Insufficient data for {}: Got {} candles, but need {}. Skipping RSI.",
                                             dto.getSymbol(), closes.size(), RSI_PERIOD + 1);
                                 }
@@ -102,7 +99,6 @@ public class OptionIndicatorService {
                     }, executor)
             ).toList();
 
-            // Wait for all worker threads to complete
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         } finally {
@@ -258,9 +254,15 @@ public class OptionIndicatorService {
      * Calculates an optimal historical lookback window tailored to the specific timeframe
      * so that TradingView's Wilder RMA smoothing receives sufficient warmup candles.
      */
-    private LocalDateTime[] resolveNseWindow(String interval) {
+    private LocalDateTime[] resolveMarketWindow(String interval, String exchange) {
         ZoneId ist = ZoneId.of("Asia/Kolkata");
         LocalDate today = LocalDate.now(ist);
+        LocalTime now = LocalTime.now(ist);
+
+        // 👇 Determine Market Timings based on the exchange
+        boolean isMcx = "MCX".equalsIgnoreCase(exchange);
+        LocalTime marketOpen = isMcx ? LocalTime.of(9, 0) : LocalTime.of(9, 15);
+        LocalTime marketClose = isMcx ? LocalTime.of(23, 30) : LocalTime.of(15, 30);
 
         LocalDate currentTradingDay = NSEWorkingDays.isNSEWorkingDay(today) ? today : NSEWorkingDays.getLastWorkingDay(today);
 
@@ -275,8 +277,15 @@ public class OptionIndicatorService {
         LocalDate prevDay = currentTradingDay.minusDays(calendarDaysBack);
         LocalDate previousTradingDay = NSEWorkingDays.isNSEWorkingDay(prevDay) ? prevDay : NSEWorkingDays.getLastWorkingDay(prevDay);
 
-        LocalDateTime from = LocalDateTime.of(previousTradingDay, LocalTime.of(9, 15));
-        LocalDateTime to   = LocalDateTime.of(currentTradingDay,  LocalTime.of(15, 30));
+        LocalDateTime from = LocalDateTime.of(previousTradingDay, marketOpen);
+
+        LocalDateTime to;
+        // Cap the time at the specific market's close
+        if (currentTradingDay.isEqual(today) && now.isBefore(marketClose)) {
+            to = LocalDateTime.of(today, now);
+        } else {
+            to = LocalDateTime.of(currentTradingDay, marketClose);
+        }
 
         return new LocalDateTime[]{from, to};
     }

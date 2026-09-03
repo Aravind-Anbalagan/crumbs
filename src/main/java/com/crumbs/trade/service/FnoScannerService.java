@@ -537,6 +537,7 @@ public class FnoScannerService {
 
     /**
      * Resolves ATM/OTM options and triggers asynchronous limit-sniper order execution in FnoOrderService.
+     * FIX: Added expiry format validation to prevent RBLBANK29SEP2026410CE malformation
      */
     private void dispatchOrderExecution(Nifty stock, BigDecimal spotLtp, String strategyType, boolean isLiveTrading) {
         if (strategyType == null || TokenService.TYPE_ERROR.equalsIgnoreCase(strategyType)) {
@@ -544,7 +545,6 @@ public class FnoScannerService {
             return;
         }
 
-        // ✅ ADD THESE 4 LINES:
         if (hasActiveTradeTodayForStock(stock.getName())) {
             logger.info("🔐 [DAILY LOCK] Skipping {} - already has active trade today.", stock.getName());
             return;
@@ -559,6 +559,25 @@ public class FnoScannerService {
 
             TokenService.AtmContracts atm = atmOpt.get();
 
+            // 🔧 FIX #1: VALIDATE EXPIRY FORMAT BEFORE SYMBOL CONSTRUCTION
+            // Expected format: DDMMMYY (e.g., "29SEP26" = 7 chars)
+            // Bug was producing: "29SEP2026" → resulting in "RBLBANK29SEP2026410CE" (wrong!)
+            String expiryFromAtm = atm.expiry();
+            if (expiryFromAtm == null || expiryFromAtm.trim().isEmpty()) {
+                logger.error("❌ ATM expiry is null/empty for {}. Aborting order dispatch.", stock.getName());
+                return;
+            }
+
+            // Trim and validate length
+            String expiry = expiryFromAtm.trim();
+            if (expiry.length() > 7) {  // DDMMMYY = 7 chars max
+                logger.error("❌ [MALFORMED EXPIRY] {} returned expiry '{}' (length: {}, expected ≤7). " +
+                                "Symbol would be: {}{}{}CE (WRONG!). Aborting order dispatch.",
+                        stock.getName(), expiry, expiry.length(),
+                        stock.getName(), expiry, atm.strike().intValue());
+                return;
+            }
+
             // Fetch lotsize from Indexes metadata (defaults to 1 if not present)
             int quantity = 1;
             Indexes meta = indexesRepo.findByNameAndExchange(stock.getName(), EXCHANGE);
@@ -567,8 +586,13 @@ public class FnoScannerService {
             }
 
             // Standardize format: "RELIANCE28AUG242900CE"
-            String ceTradingSymbol = stock.getName() + atm.expiry() + atm.strike().intValue() + "CE";
-            String peTradingSymbol = stock.getName() + atm.expiry() + atm.strike().intValue() + "PE";
+            String ceTradingSymbol = stock.getName() + expiry + atm.strike().intValue() + "CE";
+            String peTradingSymbol = stock.getName() + expiry + atm.strike().intValue() + "PE";
+
+            // 🔧 LOG THE BUILT SYMBOLS (CRITICAL for debugging)
+            logger.info("✅ [SYMBOL BUILD] {} | Expiry: {} ({}ch) | Strike: {} | CE: {} | PE: {}",
+                    stock.getName(), expiry, expiry.length(), atm.strike().intValue(),
+                    ceTradingSymbol, peTradingSymbol);
 
             String strategyKey = "FNO_SCANNER_" + stock.getName();
 
@@ -593,7 +617,7 @@ public class FnoScannerService {
             );
 
         } catch (Exception e) {
-            logger.error("❌ Failed to dispatch order for {}: {}", stock.getName(), e.getMessage());
+            logger.error("❌ Failed to dispatch order for {}: {}", stock.getName(), e.getMessage(), e);
         }
     }
 

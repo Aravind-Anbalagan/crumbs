@@ -252,13 +252,15 @@ public class OptionChainScannerService {
 
         // 2. Commodities (MCX)
         if (symbol.startsWith("CRUDEOIL") || symbol.startsWith("GOLD")) {
-            Strategy strategy = strategyRepo.findByName(symbol);
-            if (strategy != null) {
-                return samco.getLtp(
-                        session,
-                        strategy.getExchange(),
-                        tokenService.getSymbolByName(symbol)
-                );
+            // Bypass the Strategy DB check and assume MCX directly
+            String futSymbol = tokenService.getSymbolByName(symbol);
+
+            if (futSymbol != null) {
+                return samco.getLtp(session, "MCX", futSymbol);
+            } else {
+                logger.error("❌ Could not resolve Futures symbol for Commodity: {}", symbol);
+                // Return null immediately so it DOES NOT fall through to the NSE check!
+                return null;
             }
         }
 
@@ -294,8 +296,14 @@ public class OptionChainScannerService {
         }
 
         return dailyRawContractsCache.computeIfAbsent(underlyingName, key -> {
-            logger.info("💾 Caching raw NFO contracts from DB for {}...", key);
-            return indexesRepo.findNfoContractsByName(key);
+            String exchange = (key.toUpperCase().contains("GOLD") || key.toUpperCase().contains("CRUDE"))
+                    ? "MCX"
+                    : "NFO";
+
+            logger.info("💾 Caching raw {} contracts from DB for {}...", exchange, key);
+
+            // 👈 Call the new list-based option query
+            return indexesRepo.findOptionContractsByNameAndExchange(key, exchange);
         });
     }
 

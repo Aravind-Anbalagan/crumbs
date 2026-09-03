@@ -138,5 +138,6 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
             "AND i.strike IS NOT NULL")
     List<Indexes> findNfoContractsByName(@Param("name") String name);
 
-
+    @Query("SELECT i FROM Indexes i WHERE i.name = :name AND i.exchange = :exchange AND (i.symbol LIKE '%CE' OR i.symbol LIKE '%PE')")
+    List<Indexes> findOptionContractsByNameAndExchange(@Param("name") String name, @Param("exchange") String exchange);
 }
