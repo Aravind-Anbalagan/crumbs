@@ -92,15 +92,25 @@ public class OptionChainScannerController {
                             content = @Content(schema = @Schema(implementation = OptionPrice.class)))
             }
     )
-    @GetMapping("/tracked")
-    public ResponseEntity<List<OptionPrice>> getTrackedData(
-            @Parameter(
-                    description = "Filter by timeframe (e.g., ONE_HOUR, FIFTEEN_MINUTE). Use 'ALL' for no filter.",
-                    example = "FIFTEEN_MINUTE"
-            )
+    @GetMapping("/tracked/live")
+    public ResponseEntity<List<OptionPrice>> getLiveDashboard(
+            @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "FIFTEEN_MINUTE")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
-        List<OptionPrice> trackedHistory = optionPriceService.getTrackedHistory(timeFrame);
-        return ResponseEntity.ok(trackedHistory);
+        // Returns only the most recent status of each tracked symbol for the main UI table
+        List<OptionPrice> liveData = optionPriceService.getLiveTrackedData(timeFrame);
+        return ResponseEntity.ok(liveData);
+    }
+
+    @GetMapping("/tracked/audit")
+    public ResponseEntity<List<OptionPrice>> getLifecycleAudit(
+            @Parameter(description = "The exact symbol token to audit", example = "CRUDEOILM17SEP268250CE")
+            @RequestParam String symbol,
+            @Parameter(description = "Filter by timeframe", example = "FIFTEEN_MINUTE")
+            @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
+
+        // Returns the step-by-step history of a specific symbol, ordered chronologically
+        List<OptionPrice> auditHistory = optionPriceService.getSymbolLifecycleHistory(symbol, timeFrame);
+        return ResponseEntity.ok(auditHistory);
     }
 }

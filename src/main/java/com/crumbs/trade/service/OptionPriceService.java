@@ -141,4 +141,29 @@ public class OptionPriceService {
                 .evaluatedAt(dto.getLastEvaluatedAt())
                 .build();
     }
+
+    // ==========================================
+    // UI DATA RETRIEVAL (DASHBOARD & AUDIT)
+    // ==========================================
+
+    /**
+     * Gets the current live status for the main UI dashboard.
+     */
+    public List<OptionPrice> getLiveTrackedData(String timeFrame) {
+        if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
+            return optionPriceRepo.findLatestLiveTrackedDataAllTimeFrames();
+        }
+        return optionPriceRepo.findLatestLiveTrackedDataByTimeFrame(timeFrame.toUpperCase());
+    }
+
+    /**
+     * Gets the chronological lifecycle history for a single symbol.
+     */
+    public List<OptionPrice> getSymbolLifecycleHistory(String symbol, String timeFrame) {
+        if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
+            // Ordered ASCENDING so the UI sees the start of the cycle first, ending with the hook
+            return optionPriceRepo.findAllBySymbolOrderByEvaluatedAtAsc(symbol);
+        }
+        return optionPriceRepo.findAllBySymbolAndTimeFrameOrderByEvaluatedAtAsc(symbol, timeFrame.toUpperCase());
+    }
 }
