@@ -34,7 +34,7 @@ public class OptionIndicatorService {
     private static final DateTimeFormatter ANGEL_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     // Standard RSI thresholds
-    private static final double OVERBOUGHT_LEVEL = 70.0;
+    private static final double OVERBOUGHT_LEVEL = 80.0;
     private static final double OVERSOLD_LEVEL = 20.0;
     // Angel One allows ~3 requests per second. 350ms ensures we stay safely under the limit.
     private static final long MIN_API_DELAY_MS = 500;
