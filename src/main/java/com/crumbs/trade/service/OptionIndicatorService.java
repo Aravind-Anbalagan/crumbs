@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -30,21 +31,32 @@ public class OptionIndicatorService {
 
     private static final int RSI_PERIOD = 14;
     private static final int RATE_LIMIT_SLEEP_MS = 6000;
+    private static final DateTimeFormatter ANGEL_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     // Standard RSI thresholds
     private static final double OVERBOUGHT_LEVEL = 70.0;
     private static final double OVERSOLD_LEVEL = 20.0;
-
+    // Angel One allows ~3 requests per second. 350ms ensures we stay safely under the limit.
+    private static final long MIN_API_DELAY_MS = 500;
+    private long lastApiCallTime = 0;
     private final AngelOne angelOne;
 
     /**
-     * Orchestrates fetching generic candles and applying RSI calculation.
+     * Backward-compatible overload defaulting to ONE_HOUR.
+     */
+    public List<ScannedContractDto> evaluateIndicatorsForContracts(List<ScannedContractDto> contracts) {
+        return evaluateIndicatorsForContracts(contracts, "ONE_HOUR");
+    }
+
+    /**
+     * Orchestrates fetching generic candles and applying RSI calculation for any timeframe.
      * Uses multi-threading to fetch candles rapidly while respecting rate limits.
      *
      * @param contracts List of recently scanned contracts
+     * @param interval  Angel One interval (e.g., ONE_MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE, ONE_HOUR, ONE_DAY)
      * @return Updated list of contracts
      */
-    public List<ScannedContractDto> evaluateIndicatorsForContracts(List<ScannedContractDto> contracts) {
+    public List<ScannedContractDto> evaluateIndicatorsForContracts(List<ScannedContractDto> contracts, String interval) {
         if (contracts == null || contracts.isEmpty()) return contracts;
 
         SmartConnect smartConnect = angelOne.signIn();
@@ -53,25 +65,35 @@ public class OptionIndicatorService {
             return contracts;
         }
 
-        LocalDateTime[] window = resolveNseOneHourWindow();
-        ExecutorService executor = Executors.newFixedThreadPool(5); // 5 concurrent API calls
+        String normalizedInterval = interval != null ? interval.trim().toUpperCase() : "ONE_HOUR";
+        LocalDateTime[] window = resolveNseWindow(normalizedInterval);
+
+        // 5 concurrent threads (Angel One Historical API throttles around 3 req/sec)
+        ExecutorService executor = Executors.newFixedThreadPool(5);
 
         try {
             List<CompletableFuture<Void>> futures = contracts.stream().map(dto ->
                     CompletableFuture.runAsync(() -> {
                         try {
-                            // 1. GENERIC FETCH: Get 1H Candle Close Prices
-                            List<Double> closes = fetchHistoricalClosePrices(smartConnect, dto, window, "ONE_HOUR");
+                            // 1. Tag timeframe so downstream DB upsert and alerts know the exact timeframe
+                            dto.setTimeFrame(normalizedInterval);
 
-                            // Need at least (RSI_PERIOD + 1) candles to calculate RSI
-                            if (closes != null && closes.size() >= RSI_PERIOD + 1) {
+                            // 2. Fetch Candle Close Prices
+                            List<Double> closes = fetchHistoricalClosePrices(smartConnect, dto, window, normalizedInterval);
 
-                                // 2. CALCULATE RSI: Using the dedicated RsiCalculation utility
-                                Double currentRsi = RsiCalculation.calculate(closes, RSI_PERIOD);
+                            if (closes != null) {
+                                // We need at least 15 candles to calculate a 14-period RSI
+                                if (closes.size() >= RSI_PERIOD + 1) {
 
-                                if (currentRsi != null) {
-                                    // 3. Update Stateful DTO with RSI Hooks
-                                    updateRSIState(dto, currentRsi);
+                                    Double currentRsi = RsiCalculation.calculate(closes, RSI_PERIOD);
+                                    if (currentRsi != null) {
+                                        updateRSIState(dto, currentRsi);
+                                    }
+
+                                } else {
+                                    // 👇 Catch contracts that returned data, but not enough to do math
+                                    logger.debug("📉 Insufficient data for {}: Got {} candles, but need {}. Skipping RSI.",
+                                            dto.getSymbol(), closes.size(), RSI_PERIOD + 1);
                                 }
                             }
                         } catch (Exception e) {
@@ -80,7 +102,7 @@ public class OptionIndicatorService {
                     }, executor)
             ).toList();
 
-            // Wait for all threads to finish
+            // Wait for all worker threads to complete
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         } finally {
@@ -96,13 +118,13 @@ public class OptionIndicatorService {
     private void updateRSIState(ScannedContractDto dto, double currentRsi) {
         LocalDateTime now = LocalDateTime.now();
 
-        // Push current to previous for the next cycle comparison
+        // Push current to previous for cycle comparison
         dto.setPreviousRsi(dto.getCurrentRsi());
         dto.setCurrentRsi(currentRsi);
         dto.setLastEvaluatedAt(now);
 
         // ==========================================
-        // OVERBOUGHT LOGIC (>= 80)
+        // OVERBOUGHT LOGIC (>= 70)
         // ==========================================
         if (currentRsi >= OVERBOUGHT_LEVEL) {
             if (!dto.isRSIAbove80()) {
@@ -114,10 +136,10 @@ public class OptionIndicatorService {
             dto.setExtremePeakRsi(Math.max(dto.getExtremePeakRsi() == null ? 0 : dto.getExtremePeakRsi(), currentRsi));
             dto.setSignalAction(ScannedContractDto.SignalAction.TRACKING_OVERBOUGHT);
         }
-        // Hook Down: Was above 80, now crossed below
+        // Hook Down: Was overbought, now crossed below
         else if (dto.isRSIAbove80() && currentRsi < OVERBOUGHT_LEVEL) {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK);
-            logger.info("📉 HOOK DOWN TRIGGERED for {}: TV RSI dropped from overbought to {}", dto.getSymbol(), currentRsi);
+            logger.info("📉 HOOK DOWN TRIGGERED for {}: RSI dropped from overbought to {}", dto.getSymbol(), currentRsi);
             resetOverboughtState(dto);
         }
         else {
@@ -137,17 +159,17 @@ public class OptionIndicatorService {
             dto.setExtremeTroughRsi(Math.min(dto.getExtremeTroughRsi() == null ? 100 : dto.getExtremeTroughRsi(), currentRsi));
             dto.setSignalAction(ScannedContractDto.SignalAction.TRACKING_OVERSOLD);
         }
-        // Hook Up: Was below 20, now crossed above
+        // Hook Up: Was oversold, now crossed above
         else if (dto.isRSIBelow20() && currentRsi > OVERSOLD_LEVEL) {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK);
-            logger.info("📈 HOOK UP TRIGGERED for {}: TV RSI popped from oversold to {}", dto.getSymbol(), currentRsi);
+            logger.info("📈 HOOK UP TRIGGERED for {}: RSI popped from oversold to {}", dto.getSymbol(), currentRsi);
             resetOversoldState(dto);
         }
         else {
             resetOversoldState(dto);
         }
 
-        // If neither tracking nor hooking, set to NONE
+        // Neutral state
         if (currentRsi > OVERSOLD_LEVEL && currentRsi < OVERBOUGHT_LEVEL
                 && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                 && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK) {
@@ -164,31 +186,40 @@ public class OptionIndicatorService {
         dto.setRSIBelow20(false);
         dto.setBelowRSI20Count(0);
     }
-
+    private synchronized void throttleApi() {
+        long timeSinceLastCall = System.currentTimeMillis() - lastApiCallTime;
+        if (timeSinceLastCall < MIN_API_DELAY_MS) {
+            sleepQuietly(MIN_API_DELAY_MS - timeSinceLastCall);
+        }
+        lastApiCallTime = System.currentTimeMillis();
+    }
     // =========================================================
-    // 🌐 GENERIC BROKER CANDLE FETCHER
+    // 🌐 BROKER HISTORICAL CANDLE FETCHER
     // =========================================================
 
     private List<Double> fetchHistoricalClosePrices(SmartConnect smartConnect, ScannedContractDto dto, LocalDateTime[] window, String interval) {
-        int maxRetries = 3;
-        long delay = 1000;
+        int maxRetries = 5;
+        long delay = 2000; // Start with a 2-second delay between standard retries
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 if (attempt > 1) {
+                    logger.warn("⏳ Retrying fetch for {} (Attempt {}/{})... Sleeping {}ms",
+                            dto.getSymbol(), attempt, maxRetries, delay);
                     sleepQuietly(delay);
-                    delay *= 2;
+                    delay *= 2; // Exponential backoff for subsequent retries
                 }
 
                 JSONObject req = new JSONObject();
                 req.put("exchange", dto.getExchange());
                 req.put("symboltoken", dto.getToken());
                 req.put("interval", interval);
-                req.put("fromdate", window[0].toString().replace("T", " "));
-                req.put("todate", window[1].toString().replace("T", " "));
-
+                req.put("fromdate", window[0].format(ANGEL_DATE_FMT));
+                req.put("todate", window[1].format(ANGEL_DATE_FMT));
+                throttleApi();
                 JSONArray candles = smartConnect.candleData(req);
 
+                // Check if we actually got valid candle data back
                 if (candles != null && !candles.isEmpty()) {
                     List<Double> closePrices = new ArrayList<>();
                     for (int i = 0; i < candles.length(); i++) {
@@ -196,31 +227,56 @@ public class OptionIndicatorService {
                         closePrices.add(c.getDouble(4)); // Index 4 is the Close price
                     }
                     return closePrices;
+                } else {
+                    // 👈 Log the empty response so we know it failed to return candles
+                    logger.warn("⚠️ API returned empty candle data for {} (Token: {}).",
+                            dto.getSymbol(), dto.getToken());
                 }
 
             } catch (Exception e) {
-                boolean is503 = e.getMessage() != null &&
+                boolean isRateLimit = e.getMessage() != null &&
                         (e.getMessage().contains("503") || e.getMessage().contains("Too Many Requests"));
-                if (is503) {
-                    logger.warn("⚠️ Rate Limit hit for {} (attempt {}/{}). Backing off...", dto.getSymbol(), attempt, maxRetries);
+
+                if (isRateLimit) {
+                    logger.warn("🚦 Rate Limit hit for {} (attempt {}/{}). Backing off for {}ms...",
+                            dto.getSymbol(), attempt, maxRetries, RATE_LIMIT_SLEEP_MS);
                     sleepQuietly(RATE_LIMIT_SLEEP_MS);
+                } else {
+                    // Downgrade to debug so it doesn't spam your console
+                    logger.debug("⚠️ API fetch issue for {}: {}", dto.getSymbol(), e.getMessage());
                 }
             }
         }
+
+        // 👇 DOWNGRADE this from ERROR to INFO or DEBUG
+        logger.info("⏭️ Skipping {}: Exhausted 5 API attempts. Historical data unavailable (Likely sparse volume).",
+                dto.getSymbol());
         return null;
     }
 
-    private LocalDateTime[] resolveNseOneHourWindow() {
-        ZoneId IST = ZoneId.of("Asia/Kolkata");
-        LocalDate today = LocalDate.now(IST);
+    /**
+     * Calculates an optimal historical lookback window tailored to the specific timeframe
+     * so that TradingView's Wilder RMA smoothing receives sufficient warmup candles.
+     */
+    private LocalDateTime[] resolveNseWindow(String interval) {
+        ZoneId ist = ZoneId.of("Asia/Kolkata");
+        LocalDate today = LocalDate.now(ist);
 
-        // Fetch ~20 days back to guarantee > 100 hourly candles to let TradingView RMA smooth out perfectly
         LocalDate currentTradingDay = NSEWorkingDays.isNSEWorkingDay(today) ? today : NSEWorkingDays.getLastWorkingDay(today);
-        LocalDate prevDay = currentTradingDay.minusDays(20);
+
+        int calendarDaysBack = switch (interval) {
+            case "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE" -> 3;
+            case "FIFTEEN_MINUTE", "THIRTY_MINUTE" -> 8;
+            case "ONE_HOUR" -> 22;
+            case "ONE_DAY" -> 90;
+            default -> 15;
+        };
+
+        LocalDate prevDay = currentTradingDay.minusDays(calendarDaysBack);
         LocalDate previousTradingDay = NSEWorkingDays.isNSEWorkingDay(prevDay) ? prevDay : NSEWorkingDays.getLastWorkingDay(prevDay);
 
         LocalDateTime from = LocalDateTime.of(previousTradingDay, LocalTime.of(9, 15));
-        LocalDateTime to   = LocalDateTime.of(currentTradingDay,  LocalTime.of(15, 15));
+        LocalDateTime to   = LocalDateTime.of(currentTradingDay,  LocalTime.of(15, 30));
 
         return new LocalDateTime[]{from, to};
     }

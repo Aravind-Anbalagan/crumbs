@@ -43,7 +43,8 @@ public class OptionPriceService {
             }
 
             // 2. Upsert Database Record
-            Optional<OptionPrice> existingOpt = optionPriceRepo.findByTokenAndEvaluatedDate(dto.getToken(), today);
+            Optional<OptionPrice> existingOpt = optionPriceRepo.findByTokenAndEvaluatedDateAndTimeFrame(
+                    dto.getToken(), today, dto.getTimeFrame());
 
             if (existingOpt.isPresent()) {
                 OptionPrice existing = existingOpt.get();
@@ -112,9 +113,9 @@ public class OptionPriceService {
 
         hooksByIndex.forEach((symbol, hooks) -> {
             logger.info("🔔 Found {} hooks for {}. Sending Telegram alert...", hooks.size(), symbol);
-
+            String tf = hooks.get(0).getTimeFrame();
             StringBuilder msg = new StringBuilder();
-            msg.append("🚨 *OPTIONS RSI HOOK ALERT - ").append(symbol).append("*\n\n");
+            msg.append("🚨 *OPTIONS RSI HOOK (").append(tf).append(") - ").append(symbol).append("*\n\n");
             msg.append("```\n");
             msg.append(String.format("%-4s | %-9s | %-6s | %-4s | %s%n", "DIR", "STRIKE", "EXPIRY", "RSI", "LTP"));
             msg.append("------------------------------------------\n");
@@ -148,8 +149,11 @@ public class OptionPriceService {
         });
     }
 
-    public List<OptionPrice> getTrackedHistory() {
-        return optionPriceRepo.findAllByOrderByEvaluatedAtDesc();
+    public List<OptionPrice> getTrackedHistory(String timeFrame) {
+        if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
+            return optionPriceRepo.findAllByOrderByEvaluatedAtDesc();
+        }
+        return optionPriceRepo.findAllByTimeFrameOrderByEvaluatedAtDesc(timeFrame.toUpperCase());
     }
 
     private OptionPrice mapToEntity(ScannedContractDto dto) {
@@ -159,6 +163,7 @@ public class OptionPriceService {
                 .token(dto.getToken())
                 .exchange(dto.getExchange())
                 .strike(dto.getStrike())
+                .timeFrame(dto.getTimeFrame())
                 .optionType(dto.getOptionType())
                 .expiryDate(dto.getExpiryDate())
                 .moneyness(dto.getMoneyness() != null ? dto.getMoneyness().name() : "UNKNOWN")

@@ -54,6 +54,9 @@ public class OptionPrice {
     private LocalDateTime belowRSI20At;
     @Column(name = "previous_rsi")
     private Double previousRsi;
+    // Add this inside OptionPrice.java
+    @Column(name = "time_frame")
+    private String timeFrame;
     private Double extremePeakRsi;
     private Double extremeTroughRsi;
     private String signalAction;

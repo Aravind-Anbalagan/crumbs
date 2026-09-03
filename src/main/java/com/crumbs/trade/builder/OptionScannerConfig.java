@@ -30,7 +30,8 @@ public class OptionScannerConfig {
      */
     @Builder.Default
     private boolean scanMonthly = true;
-
+    @Builder.Default
+    private String interval = "ONE_HOUR"; // 👈 Added the interval field
     /**
      * Number of strikes above and below ATM to include (e.g., 10 strikes up & down).
      */

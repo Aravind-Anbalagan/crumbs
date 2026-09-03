@@ -56,7 +56,8 @@ public class ScannedContractDto {
     private Double extremeTroughRsi;                // Lowest StochRSI reached while below 20 (e.g. 4.2)
     private LocalDateTime lastEvaluatedAt;          // Last cycle timestamp
     private SignalAction signalAction;              // REVERSAL_SELL_HOOK, REVERSAL_BUY_HOOK, TRACKING, NONE
-
+    // Add this to your ScannedContractDto
+    private String timeFrame;
     public enum SignalAction {
         NONE,
         TRACKING_OVERBOUGHT,

@@ -12,8 +12,8 @@ import java.util.Optional;
 public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
 
     // 👈 Add this line to fix the error
-    Optional<OptionPrice> findByTokenAndEvaluatedDate(String token, LocalDate evaluatedDate);
-
+    Optional<OptionPrice> findByTokenAndEvaluatedDateAndTimeFrame(String token, LocalDate evaluatedDate, String timeFrame);
+    List<OptionPrice> findAllByTimeFrameOrderByEvaluatedAtDesc(String timeFrame);
     // This fetches data ordered by the most recent evaluations for your API
     List<OptionPrice> findAllByOrderByEvaluatedAtDesc();
 }
