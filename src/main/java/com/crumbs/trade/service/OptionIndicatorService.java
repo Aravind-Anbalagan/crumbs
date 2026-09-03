@@ -12,6 +12,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -82,7 +83,11 @@ public class OptionIndicatorService {
                             // 2. Fetch Candle Close Prices
                             List<Double> closes = fetchHistoricalClosePrices(smartConnect, dto, window, normalizedInterval);
 
-                            if (closes != null) {
+                            if (closes != null && !closes.isEmpty()) {
+                                // 👈 Set the latest candle's close as the option's actual LTP
+                                Double latestClose = closes.get(closes.size() - 1);
+                                dto.setCurrentLtp(BigDecimal.valueOf(latestClose));
+
                                 if (closes.size() >= RSI_PERIOD + 1) {
                                     Double currentRsi = RsiCalculation.calculate(closes, RSI_PERIOD);
                                     if (currentRsi != null) {
@@ -136,9 +141,12 @@ public class OptionIndicatorService {
         else if (dto.isRSIAbove80() && currentRsi < OVERBOUGHT_LEVEL) {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK);
             logger.info("📉 HOOK DOWN TRIGGERED for {}: RSI dropped from overbought to {}", dto.getSymbol(), currentRsi);
-            resetOverboughtState(dto);
+
+            // 👇 FIX: Only turn off the flag to prevent double-alerts, but KEEP the count for the DB!
+            dto.setRSIAbove80(false);
         }
         else {
+            // Neutral territory: Now it is safe to completely reset the count
             resetOverboughtState(dto);
         }
 
@@ -159,9 +167,12 @@ public class OptionIndicatorService {
         else if (dto.isRSIBelow20() && currentRsi > OVERSOLD_LEVEL) {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK);
             logger.info("📈 HOOK UP TRIGGERED for {}: RSI popped from oversold to {}", dto.getSymbol(), currentRsi);
-            resetOversoldState(dto);
+
+            // 👇 FIX: Only turn off the flag to prevent double-alerts, but KEEP the count for the DB!
+            dto.setRSIBelow20(false);
         }
         else {
+            // Neutral territory: Now it is safe to completely reset the count
             resetOversoldState(dto);
         }
 
@@ -176,11 +187,17 @@ public class OptionIndicatorService {
     private void resetOverboughtState(ScannedContractDto dto) {
         dto.setRSIAbove80(false);
         dto.setAboveRSI80Count(0);
+        dto.setAboveRSI80At(null);           // Clear cycle timestamp for the next run
+        dto.setExtremePeakRsi(null);         // Clear peak RSI
+        dto.setSignalAction(ScannedContractDto.SignalAction.NONE); // Prevent duplicate alerts
     }
 
     private void resetOversoldState(ScannedContractDto dto) {
         dto.setRSIBelow20(false);
         dto.setBelowRSI20Count(0);
+        dto.setBelowRSI20At(null);           // Clear cycle timestamp for the next run
+        dto.setExtremeTroughRsi(null);       // Clear trough RSI
+        dto.setSignalAction(ScannedContractDto.SignalAction.NONE); // Prevent duplicate alerts
     }
     private synchronized void throttleApi() {
         long timeSinceLastCall = System.currentTimeMillis() - lastApiCallTime;

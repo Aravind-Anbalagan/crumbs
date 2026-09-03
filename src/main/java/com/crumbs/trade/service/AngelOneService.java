@@ -123,6 +123,7 @@ public class AngelOneService {
 	@Autowired OptionsGreeksRepo optionsGreeksRepo;
 	@Autowired
     RiskConfigurationRepository riskConfigurationRepository;
+    @Autowired OptionPriceRepo optionPriceRepo;
 	/*
 	 * Get current price
 	 */
@@ -226,6 +227,7 @@ public class AngelOneService {
 		levelRepository.deleteAll();
 		optionsGreeksRepo.deleteAll();
         riskConfigurationRepository.resetAllTrailingData();
+        optionPriceRepo.deleteAll();
 		}
 	/*
 	 * Get current price (Dynamic Keyword) - Simple rate limit handling with exponential backoff.

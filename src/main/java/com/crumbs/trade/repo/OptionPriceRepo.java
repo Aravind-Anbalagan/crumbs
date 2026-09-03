@@ -2,6 +2,8 @@ package com.crumbs.trade.repo;
 
 import com.crumbs.trade.entity.OptionPrice;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -16,4 +18,8 @@ public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
     List<OptionPrice> findAllByTimeFrameOrderByEvaluatedAtDesc(String timeFrame);
     // This fetches data ordered by the most recent evaluations for your API
     List<OptionPrice> findAllByOrderByEvaluatedAtDesc();
+
+    @Modifying
+    @Query("delete from OptionPrice p" )
+    void deleteAll();
 }

@@ -57,6 +57,8 @@ public class OptionPrice {
     // Add this inside OptionPrice.java
     @Column(name = "time_frame")
     private String timeFrame;
+    @Column(name = "ltp")
+    private BigDecimal ltp;       // Option contract premium (e.g., 142.50)
     private Double extremePeakRsi;
     private Double extremeTroughRsi;
     private String signalAction;

@@ -9,11 +9,12 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,86 +22,39 @@ import java.util.stream.Collectors;
 public class OptionPriceService {
 
     private static final Logger logger = LogManager.getLogger(OptionPriceService.class);
+    private static final DateTimeFormatter TIME_ONLY_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final OptionPriceRepo optionPriceRepo;
-    private final TelegramService telegramService; // 👈 Injected Telegram Service
+    private final TelegramService telegramService;
 
-    /**
-     * Filters the scanned contracts, saves extremes/hooks, and fires alerts.
-     */
     @Transactional
     public void saveExtremeContracts(List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
 
         LocalDate today = LocalDate.now();
+        List<OptionPrice> newRecords = new ArrayList<>();
 
         for (ScannedContractDto dto : contracts) {
-            // 1. Skip boring contracts
             if (!dto.isRSIAbove80() && !dto.isRSIBelow20()
                     && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                     && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK) {
                 continue;
             }
 
-            // 2. Upsert Database Record
-            Optional<OptionPrice> existingOpt = optionPriceRepo.findByTokenAndEvaluatedDateAndTimeFrame(
-                    dto.getToken(), today, dto.getTimeFrame());
-
-            if (existingOpt.isPresent()) {
-                OptionPrice existing = existingOpt.get();
-
-                existing.setCurrentRsi(dto.getCurrentRsi());
-                existing.setSpotPrice(dto.getSpotPrice());
-                existing.setEvaluatedAt(dto.getLastEvaluatedAt());
-                existing.setRsiAbove80(dto.isRSIAbove80());
-                existing.setRsiBelow20(dto.isRSIBelow20());
-
-                existing.setAboveRSI80Count(dto.getAboveRSI80Count());
-                existing.setBelowRSI20Count(dto.getBelowRSI20Count());
-                existing.setSignalAction(dto.getSignalAction() != null ? dto.getSignalAction().name() : "NONE");
-
-                // Track previous RSI for audit proof
-                existing.setPreviousRsi(dto.getPreviousRsi());
-
-                if (existing.getAboveRSI80At() == null && dto.getAboveRSI80At() != null) {
-                    existing.setAboveRSI80At(dto.getAboveRSI80At());
-                }
-                if (existing.getBelowRSI20At() == null && dto.getBelowRSI20At() != null) {
-                    existing.setBelowRSI20At(dto.getBelowRSI20At());
-                }
-
-                if (dto.getExtremePeakRsi() != null) {
-                    existing.setExtremePeakRsi(existing.getExtremePeakRsi() != null
-                            ? Math.max(existing.getExtremePeakRsi(), dto.getExtremePeakRsi())
-                            : dto.getExtremePeakRsi());
-                }
-
-                if (dto.getExtremeTroughRsi() != null) {
-                    existing.setExtremeTroughRsi(existing.getExtremeTroughRsi() != null
-                            ? Math.min(existing.getExtremeTroughRsi(), dto.getExtremeTroughRsi())
-                            : dto.getExtremeTroughRsi());
-                }
-
-                optionPriceRepo.save(existing);
-                logger.debug("🔄 Updated existing tracked option: {}", dto.getSymbol());
-
-            } else {
-                OptionPrice newRecord = mapToEntity(dto);
-                newRecord.setEvaluatedDate(today);
-                optionPriceRepo.save(newRecord);
-                logger.info("🆕 Inserted new extreme RSI contract: {}", dto.getSymbol());
-            }
+            OptionPrice newRecord = mapToEntity(dto);
+            newRecord.setEvaluatedDate(today);
+            newRecords.add(newRecord);
         }
 
-        // 3. Trigger Alerts for Hooks 👈
+        if (!newRecords.isEmpty()) {
+            optionPriceRepo.saveAll(newRecords);
+            logger.info("💾 Appended {} records into option_prices timeseries.", newRecords.size());
+        }
+
         sendHookNotifications(contracts);
     }
 
-    // ==========================================
-    // NOTIFICATION HELPER
-    // ==========================================
     private void sendHookNotifications(List<ScannedContractDto> contracts) {
-        // Group triggered hooks by Index Name (e.g., NIFTY, BANKNIFTY)
         Map<String, List<ScannedContractDto>> hooksByIndex = contracts.stream()
                 .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                         || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK)
@@ -108,35 +62,46 @@ public class OptionPriceService {
 
         if (hooksByIndex.isEmpty()) return;
 
-        // Formatter for short expiry like "10SEP"
-        DateTimeFormatter expFmt = DateTimeFormatter.ofPattern("ddMMM");
-
         hooksByIndex.forEach((symbol, hooks) -> {
             logger.info("🔔 Found {} hooks for {}. Sending Telegram alert...", hooks.size(), symbol);
             String tf = hooks.get(0).getTimeFrame();
+            BigDecimal spot = hooks.get(0).getSpotPrice();
+
             StringBuilder msg = new StringBuilder();
-            msg.append("🚨 *OPTIONS RSI HOOK (").append(tf).append(") - ").append(symbol).append("*\n\n");
+            msg.append("🚨 *OPTIONS RSI HOOK (").append(tf).append(") — ").append(symbol).append("*\n");
+            if (spot != null) {
+                msg.append("📍 Spot: `").append(String.format("%.2f", spot.doubleValue())).append("`\n\n");
+            } else {
+                msg.append("\n");
+            }
+
             msg.append("```\n");
-            msg.append(String.format("%-4s | %-9s | %-6s | %-4s | %s%n", "DIR", "STRIKE", "EXPIRY", "RSI", "LTP"));
-            msg.append("------------------------------------------\n");
+            // Mobile-optimized table header: 46 characters wide
+            msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %-4s | %s%n",
+                    "TIME", "DIR", "STRIKE", "LTP", "RSI", "CNT"));
+            msg.append("----------------------------------------------\n");
 
             for (ScannedContractDto hook : hooks) {
                 boolean isOverbought = hook.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK;
                 String direction = isOverbought ? "SELL" : "BUY ";
 
-                // Formats as "24350 PE"
-                String formattedStrike = (int) hook.getStrike() + " " + hook.getOptionType();
+                // Intraday Time (HH:mm)
+                String timeStr = hook.getLastEvaluatedAt() != null
+                        ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT)
+                        : "--:--";
 
-                // Formats expiry to "10SEP"
-                String expiryStr = hook.getExpiryDate() != null
-                        ? hook.getExpiryDate().format(expFmt).toUpperCase()
-                        : "N/A";
+                // Compact strike: "8250CE"
+                String strikeStr = (int) hook.getStrike() + hook.getOptionType();
 
-                double currentRsi = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
-                double ltp = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+                // Option contract LTP
+                double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+                double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
 
-                msg.append(String.format("%-4s | %-9s | %-6s | %-4.1f | %.2f%n",
-                        direction, formattedStrike, expiryStr, currentRsi, ltp));
+                // Most recent sustained count before hook
+                int count = isOverbought ? hook.getAboveRSI80Count() : hook.getBelowRSI20Count();
+
+                msg.append(String.format("%-5s | %-4s | %-8s | %-7.2f | %-4.1f | %-3d%n",
+                        timeStr, direction, strikeStr, ltpVal, rsiVal, count));
             }
 
             msg.append("```");
@@ -147,13 +112,6 @@ public class OptionPriceService {
                 logger.error("Failed to send Telegram alert for hooks: {}", e.getMessage());
             }
         });
-    }
-
-    public List<OptionPrice> getTrackedHistory(String timeFrame) {
-        if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
-            return optionPriceRepo.findAllByOrderByEvaluatedAtDesc();
-        }
-        return optionPriceRepo.findAllByTimeFrameOrderByEvaluatedAtDesc(timeFrame.toUpperCase());
     }
 
     private OptionPrice mapToEntity(ScannedContractDto dto) {
@@ -168,8 +126,9 @@ public class OptionPriceService {
                 .expiryDate(dto.getExpiryDate())
                 .moneyness(dto.getMoneyness() != null ? dto.getMoneyness().name() : "UNKNOWN")
                 .spotPrice(dto.getSpotPrice())
+                .ltp(dto.getCurrentLtp()) // 👈 Persist actual contract LTP to DB
                 .currentRsi(dto.getCurrentRsi())
-                .previousRsi(dto.getPreviousRsi()) // Ensures previous RSI is saved initially
+                .previousRsi(dto.getPreviousRsi())
                 .isRsiAbove80(dto.isRSIAbove80())
                 .isRsiBelow20(dto.isRSIBelow20())
                 .aboveRSI80Count(dto.getAboveRSI80Count())
