@@ -23,7 +23,7 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/options/scanner")
 @RequiredArgsConstructor
-@Tag(name = "Option Chain Scanner", description = "APIs for scanning NSE options, calculating RSI hooks, and tracking extremes.")
+@Tag(name = "Option Chain Scanner", description = "APIs for scanning NSE/MCX options, calculating RSI & MA indicators, and tracking lifecycle extremes.")
 public class OptionChainScannerController {
 
     private final OptionChainScannerService scannerService;
@@ -32,7 +32,7 @@ public class OptionChainScannerController {
 
     @Operation(
             summary = "Scan Option Chain & Evaluate Indicators",
-            description = "Scans the option chain for the requested symbols, calculates the RSI based on historical data, saves extremes/hooks to the database, and fires Telegram alerts.",
+            description = "Scans the option chain for the requested symbols, calculates the RSI and MA based on historical data, saves extremes/hooks to the database, and fires Telegram alerts.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "Successfully scanned and processed contracts",
                             content = @Content(schema = @Schema(implementation = ScannedContractDto.class)))
@@ -56,7 +56,7 @@ public class OptionChainScannerController {
             @RequestParam(defaultValue = "10") int distance,
 
             @Parameter(
-                    description = "The historical candle timeframe interval for RSI calculation. Allowed values: ONE_MINUTE, THREE_MINUTE, FIVE_MINUTE, TEN_MINUTE, FIFTEEN_MINUTE, THIRTY_MINUTE, ONE_HOUR, ONE_DAY",
+                    description = "The historical candle timeframe interval for indicator calculation. Allowed values: ONE_MINUTE, THREE_MINUTE, FIVE_MINUTE, TEN_MINUTE, FIFTEEN_MINUTE, THIRTY_MINUTE, ONE_HOUR, ONE_DAY",
                     example = "FIFTEEN_MINUTE"
             )
             @RequestParam(defaultValue = "ONE_HOUR") String interval) {
@@ -84,24 +84,56 @@ public class OptionChainScannerController {
         return ResponseEntity.ok(masterContractList);
     }
 
+    // ==========================================
+    // SEPARATED LIVE DASHBOARD ENDPOINTS
+    // ==========================================
+
     @Operation(
-            summary = "Retrieve Tracked Option Records",
-            description = "Fetches the historical records of options that hit RSI extremes (>=70 or <=20) or triggered hooks. Can be filtered by timeframe.",
+            summary = "Retrieve Live RSI Signals",
+            description = "Fetches the most recent live contracts that are currently in an RSI Extreme zone (>=80 or <=20) or actively triggering a hook.",
             responses = {
-                    @ApiResponse(responseCode = "200", description = "List of tracked extreme options",
+                    @ApiResponse(responseCode = "200", description = "List of active RSI extreme/hook contracts",
                             content = @Content(schema = @Schema(implementation = OptionPrice.class)))
             }
     )
-    @GetMapping("/tracked/live")
-    public ResponseEntity<List<OptionPrice>> getLiveDashboard(
+    @GetMapping("/tracked/live/rsi")
+    public ResponseEntity<List<OptionPrice>> getLiveRsiSignals(
             @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "FIFTEEN_MINUTE")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
-        // Returns only the most recent status of each tracked symbol for the main UI table
-        List<OptionPrice> liveData = optionPriceService.getLiveTrackedData(timeFrame);
-        return ResponseEntity.ok(liveData);
+        List<OptionPrice> rsiData = optionPriceService.getLiveRsiSignals(timeFrame);
+        return ResponseEntity.ok(rsiData);
     }
 
+    @Operation(
+            summary = "Retrieve Live MA Breakouts",
+            description = "Fetches the most recent live contracts that have just broken out above the Moving Average (within the proximity threshold).",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "List of active MA breakout contracts",
+                            content = @Content(schema = @Schema(implementation = OptionPrice.class)))
+            }
+    )
+    @GetMapping("/tracked/live/ma")
+    public ResponseEntity<List<OptionPrice>> getLiveMaBreakouts(
+            @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "FIFTEEN_MINUTE")
+            @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
+
+        List<OptionPrice> maData = optionPriceService.getLiveMaBreakouts(timeFrame);
+        return ResponseEntity.ok(maData);
+    }
+
+    // ==========================================
+    // LIFECYCLE AUDIT ENDPOINT
+    // ==========================================
+
+    @Operation(
+            summary = "Retrieve Lifecycle Audit History",
+            description = "Fetches the step-by-step chronological history of a specific contract symbol for the day, allowing the UI to draw an audit trail.",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Chronological list of option state changes",
+                            content = @Content(schema = @Schema(implementation = OptionPrice.class)))
+            }
+    )
     @GetMapping("/tracked/audit")
     public ResponseEntity<List<OptionPrice>> getLifecycleAudit(
             @Parameter(description = "The exact symbol token to audit", example = "CRUDEOILM17SEP268250CE")
@@ -109,7 +141,6 @@ public class OptionChainScannerController {
             @Parameter(description = "Filter by timeframe", example = "FIFTEEN_MINUTE")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
-        // Returns the step-by-step history of a specific symbol, ordered chronologically
         List<OptionPrice> auditHistory = optionPriceService.getSymbolLifecycleHistory(symbol, timeFrame);
         return ResponseEntity.ok(auditHistory);
     }

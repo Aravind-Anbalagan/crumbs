@@ -85,6 +85,11 @@ const MENU = [
       />
     ),
     items: [
+        {
+                to: '/dashboard/option-price', // 👈 Added here
+                label: 'Live Scanner',
+                desc: 'Real-time RSI & MA triggers',
+              },
       {
         to: '/dashboard/intraday',
         label: 'Intraday',

@@ -8,6 +8,7 @@ import StrategySetup from './pages/StrategySetup';
 import OrderHistory from './pages/OrderHistory';
 import OITracker from './pages/OITracker';
 import AdvisoryDashboard from './pages/AdvisoryDashboard';
+import OptionPrice from './pages/OptionPrice';
 const ProtectedRoute = ({ children }) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
   return isLoggedIn ? children : <Navigate to="/signin" replace />;
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="dashboard/:pageName" element={<Dashboard />} />
           <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
           <Route path="dashboard/advisory" element={<AdvisoryDashboard />} />
+          <Route path="dashboard/option-price" element={<OptionPrice />} />
           {/* Direct access redirects */}
           <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
           <Route path="result" element={<Navigate to="/dashboard/result" replace />} />
