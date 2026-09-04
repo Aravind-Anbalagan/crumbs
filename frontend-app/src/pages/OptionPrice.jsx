@@ -27,7 +27,7 @@ const OptionPrice = () => {
         ? '/api/options/scanner/tracked/live/rsi'
         : '/api/options/scanner/tracked/live/ma';
 
-      const res = await fetch(`http://localhost:8080${endpoint}?timeFrame=${timeFrame}`, {
+      const res = await fetch(`${endpoint}?timeFrame=${timeFrame}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -70,9 +70,7 @@ const OptionPrice = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          `http://localhost:8080/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}`
-        );
+        const res = await fetch(`/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}`);
         if (!res.ok) throw new Error(`API Error: ${res.status}`);
         const data = await res.json();
         setAuditData(Array.isArray(data) ? data : []);
