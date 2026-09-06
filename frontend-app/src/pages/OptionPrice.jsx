@@ -54,6 +54,12 @@ const OptionPrice = () => {
     }
   }, [selectedSymbol]);
 
+  // Clear selected symbol and audit data when tab changes
+  useEffect(() => {
+    setSelectedSymbol(null);
+    setAuditData([]);
+  }, [activeTab]);
+
   const fetchLive = useCallback(async (retries = 0) => {
     setIsRefreshing(true);
     setError(null);
@@ -120,7 +126,7 @@ const OptionPrice = () => {
       setLoading(true);
       setError(null);
       try {
-        const url = `/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}`;
+        const url = `/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}&tab=${activeTab}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`API Error: ${res.status}`);
         const data = await res.json();
@@ -133,7 +139,7 @@ const OptionPrice = () => {
     };
 
     fetchAudit();
-  }, [selectedSymbol, timeFrame]);
+  }, [selectedSymbol, timeFrame, activeTab]);
 
   useEffect(() => {
     const handleKeyPress = (e) => {

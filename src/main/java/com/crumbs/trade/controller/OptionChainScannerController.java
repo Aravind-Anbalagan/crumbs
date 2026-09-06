@@ -7,6 +7,7 @@ import com.crumbs.trade.entity.OptionPrice;
 import com.crumbs.trade.service.OptionChainScannerService;
 import com.crumbs.trade.service.OptionIndicatorService;
 import com.crumbs.trade.service.OptionPriceService;
+import com.crumbs.trade.service.StrategyConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -30,7 +31,7 @@ public class OptionChainScannerController {
     private final OptionChainScannerService scannerService;
     private final OptionIndicatorService indicatorService;
     private final OptionPriceService optionPriceService;
-
+    private final StrategyConfigService configService;
     @Operation(
             summary = "Scan Option Chain & Evaluate Indicators",
             description = "Scans the option chain for the requested symbols, calculates the RSI and MA based on historical data, saves extremes/hooks to the database, and fires Telegram alerts.",
@@ -62,13 +63,17 @@ public class OptionChainScannerController {
             )
             @RequestParam(defaultValue = "ONE_HOUR") String interval) {
 
+        // Use DB configuration if no interval is explicitly passed
+        String actualInterval = (interval != null && !interval.isEmpty())
+                ? interval
+                : configService.getActiveConfig().getDefaultInterval();
         OptionScannerConfig config = OptionScannerConfig.builder()
                 .monthsToScan(months)
                 .scanWeekly(weekly)
                 .scanMonthly(monthly)
                 .strikeDistance(distance)
                 .allowedMoneyness(Set.of(OptionScannerConfig.Moneyness.ATM, OptionScannerConfig.Moneyness.ITM))
-                .interval(interval)
+                .interval(actualInterval)
                 .build();
 
         List<ScannedContractDto> masterContractList = new ArrayList<>();

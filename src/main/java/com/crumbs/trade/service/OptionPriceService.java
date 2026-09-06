@@ -31,7 +31,7 @@ public class OptionPriceService {
 
     private final OptionPriceRepo optionPriceRepo;
     private final TelegramService telegramService;
-
+    private final StrategyConfigService configService;
     @Transactional
     public void saveExtremeContracts(List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
@@ -186,8 +186,9 @@ public class OptionPriceService {
         if (!entity.isPriceAboveMa() || entity.getLtp() == null || entity.getCurrentMa() == null) {
             return false;
         }
+        double threshold = configService.getActiveConfig().getMaProximity();
         double difference = entity.getLtp().doubleValue() - entity.getCurrentMa();
-        return difference >= 0 && difference <= MA_PROXIMITY_THRESHOLD;
+        return difference >= 0 && difference <= threshold;
     }
 
     // ==========================================
@@ -198,8 +199,9 @@ public class OptionPriceService {
         if (!dto.isPriceAboveMa() || dto.getCurrentLtp() == null || dto.getCurrentMa() == null) {
             return false;
         }
+        double threshold = configService.getActiveConfig().getMaProximity();
         double difference = dto.getCurrentLtp().doubleValue() - dto.getCurrentMa();
-        return difference >= 0 && difference <= MA_PROXIMITY_THRESHOLD;
+        return difference >= 0 && difference <= threshold;
     }
 
     private OptionPrice mapToEntity(ScannedContractDto dto) {

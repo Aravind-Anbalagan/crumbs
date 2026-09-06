@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.ScannedContractDto;
+import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.utility.MaCalculation;
 import com.crumbs.trade.utility.NSEWorkingDays;
 import com.crumbs.trade.utility.RsiCalculation;
@@ -43,7 +44,7 @@ public class OptionIndicatorService {
     private static final int MA_PERIOD = 20;
     private long lastApiCallTime = 0;
     private final AngelOne angelOne;
-
+    private final StrategyConfigService configService;
     /**
      * Backward-compatible overload defaulting to ONE_HOUR.
      */
@@ -63,12 +64,14 @@ public class OptionIndicatorService {
         if (contracts == null || contracts.isEmpty()) return contracts;
 
         SmartConnect smartConnect = angelOne.signIn();
-        if (smartConnect == null) {
-            logger.error("❌ Failed to sign in to Angel One. Aborting indicator evaluation.");
-            return contracts;
-        }
+        if (smartConnect == null) return contracts;
 
-        String normalizedInterval = interval != null ? interval.trim().toUpperCase() : "ONE_HOUR";
+        // Fetch dynamic config ONCE before the parallel stream starts
+        StrategyConfig config = configService.getActiveConfig();
+        int dynamicMaPeriod = config.getMaPeriod();
+        int dynamicRsiPeriod = config.getRsiPeriod();
+
+        String normalizedInterval = interval != null ? interval.trim().toUpperCase() : config.getDefaultInterval();
 
         ExecutorService executor = Executors.newFixedThreadPool(5);
 
@@ -77,51 +80,40 @@ public class OptionIndicatorService {
                     CompletableFuture.runAsync(() -> {
                         try {
                             dto.setTimeFrame(normalizedInterval);
-
-                            // ✅ ADD IT HERE INSIDE THE LOOP:
-                            // Calculate the window dynamically based on THIS contract's exchange
                             LocalDateTime[] window = resolveMarketWindow(normalizedInterval, dto.getExchange());
-
-                            // 2. Fetch Candle Close Prices
                             List<Double> closes = fetchHistoricalClosePrices(smartConnect, dto, window, normalizedInterval);
 
                             if (closes != null && !closes.isEmpty()) {
-                                // 👈 Set the latest candle's close as the option's actual LTP
                                 Double latestClose = closes.get(closes.size() - 1);
                                 dto.setCurrentLtp(BigDecimal.valueOf(latestClose));
 
-
-                                // MOVING AVERAGE LOGIC
-                                if (closes.size() >= MA_PERIOD) {
-                                    Double currentMa = MaCalculation.calculateSMA(closes, MA_PERIOD);
+                                // Use dynamic MA Period
+                                if (closes.size() >= dynamicMaPeriod) {
+                                    Double currentMa = MaCalculation.calculateSMA(closes, dynamicMaPeriod);
                                     if (currentMa != null) {
                                         dto.setCurrentMa(currentMa);
                                         dto.setPriceAboveMa(latestClose > currentMa);
                                     }
                                 }
-                                // RSI
-                                if (closes.size() >= RSI_PERIOD + 1) {
-                                    Double currentRsi = RsiCalculation.calculate(closes, RSI_PERIOD);
+
+                                // Use dynamic RSI Period
+                                if (closes.size() >= dynamicRsiPeriod + 1) {
+                                    Double currentRsi = RsiCalculation.calculate(closes, dynamicRsiPeriod);
                                     if (currentRsi != null) {
                                         updateRSIState(dto, currentRsi);
                                     }
-                                } else {
-                                    logger.debug("📉 Insufficient data for {}: Got {} candles, but need {}. Skipping RSI.",
-                                            dto.getSymbol(), closes.size(), RSI_PERIOD + 1);
                                 }
                             }
                         } catch (Exception e) {
-                            logger.error("🛑 Error processing indicators for {}: {}", dto.getSymbol(), e.getMessage());
+                            logger.error("🛑 Error processing indicators...", e);
                         }
                     }, executor)
             ).toList();
 
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
         } finally {
             executor.shutdown();
         }
-
         return contracts;
     }
 
