@@ -1,5 +1,6 @@
 package com.crumbs.trade.service;
 
+import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
 import com.crumbs.trade.repo.OptionPriceRepo;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -227,6 +229,47 @@ public class OptionPriceService {
                 .isPriceAboveMa(dto.isPriceAboveMa())
                 .signalAction(dto.getSignalAction() != null ? dto.getSignalAction().name() : "NONE")
                 .evaluatedAt(dto.getLastEvaluatedAt())
+                .build();
+    }
+    public DominanceSummaryDto getDominanceSummary(String symbol) {
+        // Fetch all tracked data for today
+        List<OptionPrice> liveData = getLiveTrackedData("ALL");
+
+        // Filter for the requested symbol (e.g., NIFTY)
+        List<OptionPrice> symbolData = liveData.stream()
+                .filter(r -> r.getName() != null && r.getName().equalsIgnoreCase(symbol))
+                .toList();
+
+        // Tally active CE vs PE strikes
+        long ceCount = symbolData.stream()
+                .filter(r -> "CE".equalsIgnoreCase(r.getOptionType()))
+                .filter(r -> r.isRsiAbove80() || r.isRsiBelow20() || isNearMaBreakoutEntity(r))
+                .map(OptionPrice::getStrike)
+                .distinct()
+                .count();
+
+        long peCount = symbolData.stream()
+                .filter(r -> "PE".equalsIgnoreCase(r.getOptionType()))
+                .filter(r -> r.isRsiAbove80() || r.isRsiBelow20() || isNearMaBreakoutEntity(r))
+                .map(OptionPrice::getStrike)
+                .distinct()
+                .count();
+
+        int total = (int) (ceCount + peCount);
+        double cePercent = total > 0 ? Math.round(((double) ceCount / total) * 100.0) : 50.0;
+        double pePercent = total > 0 ? Math.round(((double) peCount / total) * 100.0) : 50.0;
+
+        String dominance = (ceCount > peCount) ? "CE_STRONG" : (peCount > ceCount) ? "PE_STRONG" : "NEUTRAL";
+
+        return DominanceSummaryDto.builder()
+                .symbol(symbol)
+                .ceCount((int) ceCount)
+                .peCount((int) peCount)
+                .totalCount(total)
+                .cePercentage(cePercent)
+                .pePercentage(pePercent)
+                .dominance(dominance)
+                .evaluatedAt(LocalDateTime.now())
                 .build();
     }
 }

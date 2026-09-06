@@ -1,6 +1,7 @@
 package com.crumbs.trade.controller;
 
 import com.crumbs.trade.builder.OptionScannerConfig;
+import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
 import com.crumbs.trade.service.OptionChainScannerService;
@@ -87,6 +88,23 @@ public class OptionChainScannerController {
     // ==========================================
     // SEPARATED LIVE DASHBOARD ENDPOINTS
     // ==========================================
+
+    @Operation(
+            summary = "Retrieve Intraday CE/PE Dominance",
+            description = "Calculates active CE vs PE strike breadth to power the live Tug-of-War UI bar.",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Dominance summary calculated successfully",
+                            content = @Content(schema = @Schema(implementation = DominanceSummaryDto.class)))
+            }
+    )
+    @GetMapping("/tracked/live/dominance")
+    public ResponseEntity<DominanceSummaryDto> getLiveDominance(
+            @Parameter(description = "Underlying symbol (e.g. NIFTY)", example = "NIFTY")
+            @RequestParam(defaultValue = "NIFTY") String symbol) {
+
+        DominanceSummaryDto summary = optionPriceService.getDominanceSummary(symbol.trim().toUpperCase());
+        return ResponseEntity.ok(summary);
+    }
 
     @Operation(
             summary = "Retrieve Live RSI Signals",
