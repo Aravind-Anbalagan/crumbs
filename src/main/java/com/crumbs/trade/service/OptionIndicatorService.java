@@ -288,11 +288,11 @@ public class OptionIndicatorService {
         LocalDate currentTradingDay = NSEWorkingDays.isNSEWorkingDay(today) ? today : NSEWorkingDays.getLastWorkingDay(today);
 
         int calendarDaysBack = switch (interval) {
-            case "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE" -> 3;
-            case "FIFTEEN_MINUTE", "THIRTY_MINUTE" -> 8;
-            case "ONE_HOUR" -> 22;
-            case "ONE_DAY" -> 90;
-            default -> 15;
+            case "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE" -> 5;   // ~375 candles per day
+            case "FIFTEEN_MINUTE", "THIRTY_MINUTE" -> 15;            // ~25 candles per day
+            case "ONE_HOUR" -> 45;                                   // ~6 candles per day
+            case "ONE_DAY" -> 250;                                   // 1 candle per day
+            default -> 30;
         };
 
         LocalDate prevDay = currentTradingDay.minusDays(calendarDaysBack);
