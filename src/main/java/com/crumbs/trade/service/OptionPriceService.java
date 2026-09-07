@@ -169,15 +169,25 @@ public class OptionPriceService {
     // ==========================================
 
     public List<OptionPrice> getLiveRsiSignals(String timeFrame) {
-        List<OptionPrice> allLive = getLiveTrackedData(timeFrame);
-        return allLive.stream()
-                .filter(row -> row.getSignalAction() != null && !row.getSignalAction().equals("NONE"))
-                .collect(Collectors.toList());
+        // Fetch ONLY the latest rows that actually have an RSI signal
+        if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
+            return optionPriceRepo.findLatestRsiSignalsAllTimeFrames();
+        }
+        return optionPriceRepo.findLatestRsiSignalsByTimeFrame(timeFrame.toUpperCase());
     }
 
     public List<OptionPrice> getLiveMaBreakouts(String timeFrame) {
-        List<OptionPrice> allLive = getLiveTrackedData(timeFrame);
-        return allLive.stream()
+        List<OptionPrice> maLiveList;
+
+        // Fetch ONLY the latest rows that broke above the MA
+        if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
+            maLiveList = optionPriceRepo.findLatestMaSignalsAllTimeFrames();
+        } else {
+            maLiveList = optionPriceRepo.findLatestMaSignalsByTimeFrame(timeFrame.toUpperCase());
+        }
+
+        // Apply your dynamic proximity threshold from the config
+        return maLiveList.stream()
                 .filter(this::isNearMaBreakoutEntity)
                 .collect(Collectors.toList());
     }
