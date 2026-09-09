@@ -4,9 +4,11 @@ import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Orders;
+import com.crumbs.trade.entity.RiskConfiguration;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.StraddleIntraday;
 import com.crumbs.trade.repo.OrderRepository;
+import com.crumbs.trade.repo.RiskConfigurationRepository;
 import com.crumbs.trade.repo.ShortStraddleRepository;
 import com.crumbs.trade.repo.StrategyRepo;
 import lombok.RequiredArgsConstructor;
@@ -69,7 +71,7 @@ public class ShortStraddleService {
     private final TelegramService telegramService;
     private final AngelWebSocketService angelWebSocketService;
     private final MonitorOrderService monitorOrderService; // ✅ EXITS FUNNELED HERE
-
+    private final RiskConfigurationRepository riskConfigRepository;
     private final ConcurrentHashMap<String, Integer> hitCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BigDecimal> lastSeenStrikes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> lastHitTimestamps = new ConcurrentHashMap<>();
@@ -342,14 +344,27 @@ public class ShortStraddleService {
         }
         log.info("🚀 [{}][EXECUTE] Opening positions for Strike: {}", tradeName, tick.getStrike());
         String cycleId = UUID.randomUUID().toString();
-        BigDecimal userTarget = sourceConfig.getTargetPoints();
-        BigDecimal finalTarget = (userTarget == null || userTarget.compareTo(BigDecimal.ZERO) <= 0)
-                ? new BigDecimal("50.00")
-                : userTarget;
 
-        log.info("🎯 [{}][TARGET] Setting target to {} pts (User input: {})", tradeName, finalTarget, userTarget);
+        // ✅ FETCH MASTER RISK CONFIGURATION
+        RiskConfiguration riskConfig = riskConfigRepository.findById(tradeName).orElse(null);
+        boolean isSmartRiskActive = riskConfig != null && "Y".equalsIgnoreCase(riskConfig.getSmartRiskFlag());
 
-        BigDecimal targetValue = entryGap.add(finalTarget);
+        BigDecimal targetValue = null;
+        String targetDisplay;
+
+        if (isSmartRiskActive) {
+            log.info("🎯 [{}][TARGET] SMART_RISK is active. Leg-level points target disabled.", tradeName);
+            targetDisplay = "SMART_RISK MASTER PNL";
+        } else {
+            // Legacy Fallback for strategies not using Smart Risk
+            BigDecimal userTarget = sourceConfig.getTargetPoints();
+            BigDecimal finalTarget = (userTarget == null || userTarget.compareTo(BigDecimal.ZERO) <= 0)
+                    ? new BigDecimal("50.00")
+                    : userTarget;
+            targetValue = entryGap.add(finalTarget);
+            targetDisplay = "+" + finalTarget + " pts";
+            log.info("🎯 [{}][TARGET] Setting legacy target to {} pts (User input: {})", tradeName, finalTarget, userTarget);
+        }
 
         Orders ceOrder = processLeg(tick.getCeToken(), tick.getCeSymbol(), strategyConfig, sourceConfig, tick.getCePrice(),
                 tick.getStrike(), tradeName, "CE", cycleId, entryGap, targetValue);
@@ -377,8 +392,8 @@ public class ShortStraddleService {
 
         } else if (ceSuccess) {
             String mode = "Y".equalsIgnoreCase(strategyConfig.getLive()) ? "LIVE" : "PAPER";
-            telegramService.sendMessage(String.format("🚀 **ENTRY [%s]: %s**\nStrike: %s\nGap: %.2f\nTarget: +%.2f",
-                    mode, tradeName, tick.getStrike(), entryGap, sourceConfig.getTargetPoints()));
+            telegramService.sendMessage(String.format("🚀 **ENTRY [%s]: %s**\nStrike: %s\nGap: %.2f\nTarget: %s",
+                    mode, tradeName, tick.getStrike(), entryGap, targetDisplay));
         } else {
             log.error("❌ [{}][EXECUTION] Both legs failed to execute. No positions opened.", tradeName);
         }
