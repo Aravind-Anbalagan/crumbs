@@ -84,10 +84,14 @@ public class GlobalOrderService {
         
         // 4. Calculate Strike
         BigDecimal ltp = fetchLtp(base);
-        int strikeStep = (instrument.contains("BANKNIFTY") ||
-                instrument.contains("SENSEX") ||
-                instrument.contains("CRUDE") ||
-                instrument.contains("GOLD")) ? 100 : 50;
+        int strikeStep;
+        if (instrument.contains("GOLD")) {
+            strikeStep = 500;
+        } else if (instrument.contains("CRUDE") || instrument.contains("BANKNIFTY") || instrument.contains("SENSEX")) {
+            strikeStep = 100;
+        } else {
+            strikeStep = 50; // Default step size
+        }
         int strike = chartService.findNearestMultiple(ltp.intValue(), strikeStep);
         String cycleId = UUID.randomUUID().toString();
 
