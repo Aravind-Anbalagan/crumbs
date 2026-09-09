@@ -561,6 +561,8 @@ public class AngelOneService {
 			}
 			
 			if (smartConnect != null ) {
+                logger.info("Order Param : " +orderParams);
+                logger.info("token.getVariety :" +  token.getVariety());
 				Order order = smartConnect.placeOrder(orderParams, token.getVariety());
 				
 				
