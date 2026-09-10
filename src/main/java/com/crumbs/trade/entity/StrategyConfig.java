@@ -23,4 +23,6 @@ public class StrategyConfig {
     private int maPeriod;           // e.g., 20
     private int rsiPeriod;          // e.g., 14
     private double maProximity;     // e.g., 50.0
+    private Double rsiOverbought;
+    private Double rsiOversold;
 }

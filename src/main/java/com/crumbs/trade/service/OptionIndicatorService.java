@@ -36,9 +36,6 @@ public class OptionIndicatorService {
     private static final int RATE_LIMIT_SLEEP_MS = 6000;
     private static final DateTimeFormatter ANGEL_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    // Standard RSI thresholds
-    private static final double OVERBOUGHT_LEVEL = 80.0;
-    private static final double OVERSOLD_LEVEL = 20.0;
     // Angel One allows ~3 requests per second. 350ms ensures we stay safely under the limit.
     private static final long MIN_API_DELAY_MS = 500;
     private static final int MA_PERIOD = 20;
@@ -100,7 +97,7 @@ public class OptionIndicatorService {
                                 if (closes.size() >= dynamicRsiPeriod + 1) {
                                     Double currentRsi = RsiCalculation.calculate(closes, dynamicRsiPeriod);
                                     if (currentRsi != null) {
-                                        updateRSIState(dto, currentRsi);
+                                        updateRSIState(dto, currentRsi, config);
                                     }
                                 }
                             }
@@ -120,8 +117,12 @@ public class OptionIndicatorService {
     /**
      * Tracks extreme thresholds and triggers Reversal Hooks.
      */
-    private void updateRSIState(ScannedContractDto dto, double currentRsi) {
+    private void updateRSIState(ScannedContractDto dto, double currentRsi, StrategyConfig config) {
         LocalDateTime now = LocalDateTime.now();
+
+        // 1. Fetch dynamic thresholds from DB (fallback to 80/20 if null)
+        double overboughtLevel = config.getRsiOverbought() != null ? config.getRsiOverbought() : 80.0;
+        double oversoldLevel = config.getRsiOversold() != null ? config.getRsiOversold() : 20.0;
 
         // Push current to previous for cycle comparison
         dto.setPreviousRsi(dto.getCurrentRsi());
@@ -129,9 +130,9 @@ public class OptionIndicatorService {
         dto.setLastEvaluatedAt(now);
 
         // ==========================================
-        // OVERBOUGHT LOGIC (>= 70)
+        // OVERBOUGHT LOGIC (e.g., >= 80)
         // ==========================================
-        if (currentRsi >= OVERBOUGHT_LEVEL) {
+        if (currentRsi >= overboughtLevel) {
             if (!dto.isRSIAbove80()) {
                 dto.setRSIAbove80(true);
                 dto.setAboveRSI80At(now);
@@ -142,22 +143,19 @@ public class OptionIndicatorService {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRACKING_OVERBOUGHT);
         }
         // Hook Down: Was overbought, now crossed below
-        else if (dto.isRSIAbove80() && currentRsi < OVERBOUGHT_LEVEL) {
+        else if (dto.isRSIAbove80() && currentRsi < overboughtLevel) {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK);
             logger.info("📉 HOOK DOWN TRIGGERED for {}: RSI dropped from overbought to {}", dto.getSymbol(), currentRsi);
-
-            // 👇 FIX: Only turn off the flag to prevent double-alerts, but KEEP the count for the DB!
             dto.setRSIAbove80(false);
         }
         else {
-            // Neutral territory: Now it is safe to completely reset the count
             resetOverboughtState(dto);
         }
 
         // ==========================================
-        // OVERSOLD LOGIC (<= 20)
+        // OVERSOLD LOGIC (e.g., <= 20)
         // ==========================================
-        if (currentRsi <= OVERSOLD_LEVEL) {
+        if (currentRsi <= oversoldLevel) {
             if (!dto.isRSIBelow20()) {
                 dto.setRSIBelow20(true);
                 dto.setBelowRSI20At(now);
@@ -168,20 +166,17 @@ public class OptionIndicatorService {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRACKING_OVERSOLD);
         }
         // Hook Up: Was oversold, now crossed above
-        else if (dto.isRSIBelow20() && currentRsi > OVERSOLD_LEVEL) {
+        else if (dto.isRSIBelow20() && currentRsi > oversoldLevel) {
             dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK);
             logger.info("📈 HOOK UP TRIGGERED for {}: RSI popped from oversold to {}", dto.getSymbol(), currentRsi);
-
-            // 👇 FIX: Only turn off the flag to prevent double-alerts, but KEEP the count for the DB!
             dto.setRSIBelow20(false);
         }
         else {
-            // Neutral territory: Now it is safe to completely reset the count
             resetOversoldState(dto);
         }
 
-        // Neutral state
-        if (currentRsi > OVERSOLD_LEVEL && currentRsi < OVERBOUGHT_LEVEL
+        // Neutral state (Inside the bounds)
+        if (currentRsi > oversoldLevel && currentRsi < overboughtLevel
                 && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                 && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK) {
             dto.setSignalAction(ScannedContractDto.SignalAction.NONE);

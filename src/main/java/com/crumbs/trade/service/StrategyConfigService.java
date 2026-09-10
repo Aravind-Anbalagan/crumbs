@@ -3,11 +3,15 @@ package com.crumbs.trade.service;
 import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.StrategyConfigRepo;
 import lombok.RequiredArgsConstructor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class StrategyConfigService {
+
+    private static final Logger logger = LogManager.getLogger(StrategyConfigService.class);
 
     private final StrategyConfigRepo configRepo;
 
@@ -20,6 +24,15 @@ public class StrategyConfigService {
         if (cachedConfig == null || (now - lastFetchTime) > CACHE_TTL_MS) {
             cachedConfig = configRepo.findById(1L).orElseGet(this::getFallbackConfig);
             lastFetchTime = now;
+
+            // Log the newly fetched/refreshed config values
+            logger.info("⚙️ Strategy Config Loaded: Interval={}, MA_Period={}, MA_Proximity={}, RSI_Period={}, RSI_Oversold={}, RSI_Overbought={}",
+                    cachedConfig.getDefaultInterval(),
+                    cachedConfig.getMaPeriod(),
+                    cachedConfig.getMaProximity(),
+                    cachedConfig.getRsiPeriod(),
+                    cachedConfig.getRsiOversold(),
+                    cachedConfig.getRsiOverbought());
         }
         return cachedConfig;
     }
@@ -28,15 +41,18 @@ public class StrategyConfigService {
     private StrategyConfig getFallbackConfig() {
         return StrategyConfig.builder()
                 .id(1L)
-                .defaultInterval("FIFTEEN_MINUTE")
+                .defaultInterval("ONE_HOUR")
                 .maPeriod(20)
                 .rsiPeriod(14)
                 .maProximity(50.0)
+                .rsiOverbought(80.0)
+                .rsiOversold(20.0)
                 .build();
     }
 
     // Optional: Call this from a Controller to force an immediate refresh when you update the DB
     public void invalidateCache() {
         this.cachedConfig = null;
+        logger.info("🔄 Strategy Config cache invalidated manually.");
     }
 }
