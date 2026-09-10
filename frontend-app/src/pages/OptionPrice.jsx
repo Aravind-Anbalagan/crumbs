@@ -11,13 +11,15 @@ const extractBaseName = (sym) => {
 
 const OptionPrice = () => {
   const [activeTab, setActiveTab] = useState('RSI');
+  const [subTab, setSubTab] = useState('ALL'); // NEW: Sub-tab state (ALL, OVERSOLD, OVERBOUGHT, BREAKOUT, BREAKDOWN)
+
   const [liveData, setLiveData] = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
   const [auditData, setAuditData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [timeFrame, setTimeFrame] = useState('FIFTEEN_MINUTE');
+  const [timeFrame, setTimeFrame] = useState('ONE_HOUR'); // Defaulted to ONE_HOUR per your backend
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('time');
   const [error, setError] = useState(null);
@@ -54,10 +56,11 @@ const OptionPrice = () => {
     }
   }, [selectedSymbol]);
 
-  // Clear selected symbol and audit data when tab changes
+  // Clear selected symbol, audit data, and RESET sub-tab when main tab changes
   useEffect(() => {
     setSelectedSymbol(null);
     setAuditData([]);
+    setSubTab('ALL'); // Reset flip toggle
   }, [activeTab]);
 
   const fetchLive = useCallback(async (retries = 0) => {
@@ -126,7 +129,7 @@ const OptionPrice = () => {
       setLoading(true);
       setError(null);
       try {
-        const url = `/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}&tab=${activeTab}`;
+        const url = `/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`API Error: ${res.status}`);
         const data = await res.json();
@@ -139,7 +142,7 @@ const OptionPrice = () => {
     };
 
     fetchAudit();
-  }, [selectedSymbol, timeFrame, activeTab]);
+  }, [selectedSymbol, timeFrame]);
 
   useEffect(() => {
     const handleKeyPress = (e) => {
@@ -154,11 +157,13 @@ const OptionPrice = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [fetchLive, fetchDominance]);
 
+  // UPDATED: Distinct styles for MA Breakout vs Breakdown
   const getStyleClass = (action) => {
-    if (!action || action === 'NONE') return 'op-type-ma';
+    if (!action || action === 'NONE') return 'op-type-ma-up';
     if (action.includes('OVERSOLD') || action === 'buy') return 'op-type-buy';
     if (action.includes('OVERBOUGHT') || action === 'sell') return 'op-type-sell';
-    if (action.includes('MA') || action === 'ma') return 'op-type-ma';
+    if (action === 'MA_BREAKDOWN') return 'op-type-ma-down';
+    if (action === 'MA_BREAKOUT' || action.includes('MA')) return 'op-type-ma-up';
     return 'op-type-info';
   };
 
@@ -178,31 +183,49 @@ const OptionPrice = () => {
   const formatRsi = (value) => value == null ? '--' : parseFloat(value).toFixed(1);
   const formatTime = (dateString) => dateString ? new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
+  // UPDATED: Now filters by subTab flip
   const filteredLiveData = useMemo(() => {
     return liveData.filter(row => {
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return ((row?.symbol && row.symbol.toLowerCase().includes(term)) || (row?.ltp && row.ltp.toString().includes(term)));
+      // 1. Text Search Filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const matchesSearch = ((row?.symbol && row.symbol.toLowerCase().includes(term)) || (row?.ltp && row.ltp.toString().includes(term)));
+        if (!matchesSearch) return false;
+      }
+
+      // 2. Sub-Tab Filter
+      if (subTab !== 'ALL') {
+        const action = row?.signalAction || 'NONE';
+        if (activeTab === 'RSI') {
+          if (subTab === 'OVERSOLD' && !action.includes('OVERSOLD')) return false;
+          if (subTab === 'OVERBOUGHT' && !action.includes('OVERBOUGHT')) return false;
+        } else if (activeTab === 'MA') {
+          if (subTab === 'BREAKOUT' && action !== 'MA_BREAKOUT' && action !== 'NONE') return false;
+          if (subTab === 'BREAKDOWN' && action !== 'MA_BREAKDOWN') return false;
+        }
+      }
+      return true;
     });
-  }, [liveData, searchTerm]);
+  }, [liveData, searchTerm, subTab, activeTab]);
 
   const sortedData = useMemo(() => {
     const sorted = [...filteredLiveData];
     switch (sortBy) {
       case 'price': return sorted.sort((a, b) => (b?.ltp || 0) - (a?.ltp || 0));
       case 'signal':
-        const order = { 'op-type-buy': 0, 'op-type-sell': 1, 'op-type-ma': 2, 'op-type-info': 3 };
+        const order = { 'op-type-buy': 0, 'op-type-sell': 1, 'op-type-ma-up': 2, 'op-type-ma-down': 3, 'op-type-info': 4 };
         return sorted.sort((a, b) => (order[getStyleClass(a?.signalAction)] || 999) - (order[getStyleClass(b?.signalAction)] || 999));
       case 'time': default:
         return sorted.sort((a, b) => new Date(b?.evaluatedAt || 0) - new Date(a?.evaluatedAt || 0));
     }
   }, [filteredLiveData, sortBy]);
 
+  // UPDATED: Count handles both MA Breakouts & Breakdowns
   const signalStats = useMemo(() => {
     return {
       buy: sortedData.filter(r => r?.signalAction && r.signalAction.includes('OVERSOLD')).length,
       sell: sortedData.filter(r => r?.signalAction && r.signalAction.includes('OVERBOUGHT')).length,
-      ma: sortedData.filter(r => !r?.signalAction || r.signalAction === 'NONE').length,
+      ma: sortedData.filter(r => !r?.signalAction || r.signalAction === 'NONE' || r.signalAction.includes('MA')).length,
     };
   }, [sortedData]);
 
@@ -213,13 +236,9 @@ const OptionPrice = () => {
     <div className="op-container">
       {/* HEADER - TITLE + FULL WIDTH DOMINANCE BAR */}
       <div className="op-header">
-
-
-        {/* Full Width Dominance Meter */}
         <div className="op-header-dominance">
           <div className="op-header-dominance-labels">
             <span className="op-text-green">CE ({dominance?.ceCount || 0})</span>
-
             <select
               className="op-dominance-select"
               value={dominanceSymbol || ''}
@@ -232,10 +251,8 @@ const OptionPrice = () => {
                 availableSymbols.map(sym => <option key={sym} value={sym}>{sym}</option>)
               )}
             </select>
-
             <span className="op-text-red">PE ({dominance?.peCount || 0})</span>
           </div>
-
           <div className="op-header-dominance-bar">
             <div className="op-header-ce-fill" style={{ width: `${cePercent}%` }}>
               {cePercent > 10 && dominance && `${cePercent}%`}
@@ -259,15 +276,42 @@ const OptionPrice = () => {
         </div>
       )}
 
-      {/* TWO-COLUMN DASHBOARD - RESPONSIVE */}
+      {/* TWO-COLUMN DASHBOARD */}
       <div className="op-layout">
 
         {/* LEFT PANEL */}
         <div className="op-left-panel">
-          {/* TABS */}
+
+          {/* MAIN TABS */}
           <div className="op-tabs">
-            <button onClick={() => setActiveTab('RSI')} className={`op-tab-btn ${activeTab === 'RSI' ? 'active' : ''}`}><Activity size={16} /> RSI</button>
-            <button onClick={() => setActiveTab('MA')} className={`op-tab-btn ${activeTab === 'MA' ? 'active' : ''}`}><TrendingUp size={16} /> MA</button>
+            <button onClick={() => setActiveTab('RSI')} className={`op-tab-btn ${activeTab === 'RSI' ? 'active' : ''}`}><Activity size={16} /> RSI Signals</button>
+            <button onClick={() => setActiveTab('MA')} className={`op-tab-btn ${activeTab === 'MA' ? 'active' : ''}`}><TrendingUp size={16} /> MA Signals</button>
+          </div>
+
+          {/* NEW: SUB-TAB FLIP SEGREGATION */}
+          <div className="op-sub-tabs">
+            <button onClick={() => setSubTab('ALL')} className={`op-sub-tab-btn ${subTab === 'ALL' ? 'active' : ''}`}>
+              All
+            </button>
+            {activeTab === 'RSI' ? (
+              <>
+                <button onClick={() => setSubTab('OVERSOLD')} className={`op-sub-tab-btn buy ${subTab === 'OVERSOLD' ? 'active' : ''}`}>
+                  Oversold
+                </button>
+                <button onClick={() => setSubTab('OVERBOUGHT')} className={`op-sub-tab-btn sell ${subTab === 'OVERBOUGHT' ? 'active' : ''}`}>
+                  Overbought
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setSubTab('BREAKOUT')} className={`op-sub-tab-btn up ${subTab === 'BREAKOUT' ? 'active' : ''}`}>
+                  Breakout
+                </button>
+                <button onClick={() => setSubTab('BREAKDOWN')} className={`op-sub-tab-btn down ${subTab === 'BREAKDOWN' ? 'active' : ''}`}>
+                  Breakdown
+                </button>
+              </>
+            )}
           </div>
 
           {/* ACTION BAR - Search & Sort */}
@@ -292,7 +336,7 @@ const OptionPrice = () => {
             <div className="op-stat-pills-inline">
               <span title="Buy signals">🟢 {signalStats.buy}</span>
               <span title="Sell signals">🔴 {signalStats.sell}</span>
-              <span title="MA breakouts">🔷 {signalStats.ma}</span>
+              <span title="MA signals">🔷 {signalStats.ma}</span>
             </div>
             <button
               onClick={() => { fetchLive(); fetchDominance(); }}
@@ -357,7 +401,7 @@ const OptionPrice = () => {
           </div>
         </div>
 
-        {/* RIGHT PANEL - AUDIT (Hidden on mobile, shown on desktop) */}
+        {/* RIGHT PANEL - AUDIT */}
         <div className="op-right-panel">
           {!selectedSymbol ? (
             <div className="op-empty-state">
@@ -382,7 +426,7 @@ const OptionPrice = () => {
                     [...auditData].reverse().map((event, idx) => {
                       const isLatest = idx === 0;
                       const styleClass = getStyleClass(event?.signalAction);
-                      const isMaBreakout = !event?.signalAction || event.signalAction === 'NONE';
+                      const isMaBreakout = !event?.signalAction || event.signalAction === 'NONE' || event.signalAction.includes('MA');
                       const count = getExtremeCount(event);
 
                       return (

@@ -32,6 +32,7 @@ public class OptionChainScannerController {
     private final OptionIndicatorService indicatorService;
     private final OptionPriceService optionPriceService;
     private final StrategyConfigService configService;
+
     @Operation(
             summary = "Scan Option Chain & Evaluate Indicators",
             description = "Scans the option chain for the requested symbols, calculates the RSI and MA based on historical data, saves extremes/hooks to the database, and fires Telegram alerts.",
@@ -58,15 +59,16 @@ public class OptionChainScannerController {
             @RequestParam(defaultValue = "10") int distance,
 
             @Parameter(
-                    description = "The historical candle timeframe interval for indicator calculation. Allowed values: ONE_MINUTE, THREE_MINUTE, FIVE_MINUTE, TEN_MINUTE, FIFTEEN_MINUTE, THIRTY_MINUTE, ONE_HOUR, ONE_DAY",
-                    example = "FIFTEEN_MINUTE"
+                    description = "The historical candle timeframe interval. If left blank, defaults to DB StrategyConfig.",
+                    example = "ONE_HOUR"
             )
-            @RequestParam(defaultValue = "ONE_HOUR") String interval) {
+            @RequestParam(required = false) String interval) { // <--- Removed defaultValue to allow DB fallback
 
         // Use DB configuration if no interval is explicitly passed
-        String actualInterval = (interval != null && !interval.isEmpty())
+        String actualInterval = (interval != null && !interval.isBlank())
                 ? interval
                 : configService.getActiveConfig().getDefaultInterval();
+
         OptionScannerConfig config = OptionScannerConfig.builder()
                 .monthsToScan(months)
                 .scanWeekly(weekly)
@@ -113,7 +115,7 @@ public class OptionChainScannerController {
 
     @Operation(
             summary = "Retrieve Live RSI Signals",
-            description = "Fetches the most recent live contracts that are currently in an RSI Extreme zone (>=80 or <=20) or actively triggering a hook.",
+            description = "Fetches the most recent live contracts that are currently in an RSI Extreme zone (>= Overbought or <= Oversold) or actively triggering a hook.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "List of active RSI extreme/hook contracts",
                             content = @Content(schema = @Schema(implementation = OptionPrice.class)))
@@ -121,7 +123,7 @@ public class OptionChainScannerController {
     )
     @GetMapping("/tracked/live/rsi")
     public ResponseEntity<List<OptionPrice>> getLiveRsiSignals(
-            @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "FIFTEEN_MINUTE")
+            @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "ONE_HOUR")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
         List<OptionPrice> rsiData = optionPriceService.getLiveRsiSignals(timeFrame);
@@ -129,18 +131,19 @@ public class OptionChainScannerController {
     }
 
     @Operation(
-            summary = "Retrieve Live MA Breakouts",
-            description = "Fetches the most recent live contracts that have just broken out above the Moving Average (within the proximity threshold).",
+            summary = "Retrieve Live MA Signals (Breakouts & Breakdowns)", // <--- Updated Summary
+            description = "Fetches the most recent live contracts that have just broken out above OR broken down below the Moving Average (within the proximity threshold).", // <--- Updated Description
             responses = {
-                    @ApiResponse(responseCode = "200", description = "List of active MA breakout contracts",
+                    @ApiResponse(responseCode = "200", description = "List of active MA signal contracts",
                             content = @Content(schema = @Schema(implementation = OptionPrice.class)))
             }
     )
     @GetMapping("/tracked/live/ma")
     public ResponseEntity<List<OptionPrice>> getLiveMaBreakouts(
-            @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "FIFTEEN_MINUTE")
+            @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "ONE_HOUR")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
+        // Service already returns both Breakouts and Breakdowns
         List<OptionPrice> maData = optionPriceService.getLiveMaBreakouts(timeFrame);
         return ResponseEntity.ok(maData);
     }
@@ -161,7 +164,7 @@ public class OptionChainScannerController {
     public ResponseEntity<List<OptionPrice>> getLifecycleAudit(
             @Parameter(description = "The exact symbol token to audit", example = "CRUDEOILM17SEP268250CE")
             @RequestParam String symbol,
-            @Parameter(description = "Filter by timeframe", example = "FIFTEEN_MINUTE")
+            @Parameter(description = "Filter by timeframe", example = "ONE_HOUR")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
         List<OptionPrice> auditHistory = optionPriceService.getSymbolLifecycleHistory(symbol, timeFrame);
