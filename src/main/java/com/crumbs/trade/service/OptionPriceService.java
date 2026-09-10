@@ -17,7 +17,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -27,13 +26,7 @@ public class OptionPriceService {
 
     private static final Logger logger = LogManager.getLogger(OptionPriceService.class);
     private static final DateTimeFormatter TIME_ONLY_FMT = DateTimeFormatter.ofPattern("HH:mm");
-    private static final DateTimeFormatter EXP_DISPLAY_FMT = DateTimeFormatter.ofPattern("ddMMM", Locale.ENGLISH);
-
-    // Comparator: Expiry Date -> Strike -> Option Type (CE then PE)
-    private static final Comparator<ScannedContractDto> CONTRACT_ALERT_COMPARATOR = Comparator
-            .comparing(ScannedContractDto::getExpiryDate, Comparator.nullsLast(Comparator.naturalOrder()))
-            .thenComparingDouble(ScannedContractDto::getStrike)
-            .thenComparing(ScannedContractDto::getOptionType, Comparator.nullsLast(Comparator.naturalOrder()));
+    private static final DateTimeFormatter EXPIRY_DISPLAY_FMT = DateTimeFormatter.ofPattern("ddMMM");
 
     private final OptionPriceRepo optionPriceRepo;
     private final TelegramService telegramService;
@@ -47,7 +40,7 @@ public class OptionPriceService {
         List<OptionPrice> newRecords = new ArrayList<>();
 
         for (ScannedContractDto dto : contracts) {
-            // 1. DB FILTER: Save if RSI Extreme OR if it's an active MA breakout/breakdown
+            // 1. DB FILTER: Save if RSI Extreme OR if it's a fresh MA breakout/breakdown
             if (!dto.isRSIAbove80() && !dto.isRSIBelow20()
                     && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                     && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK
@@ -69,7 +62,7 @@ public class OptionPriceService {
     }
 
     private void sendHookNotifications(List<ScannedContractDto> contracts) {
-        // 2. ALERT FILTER: Alert on RSI Hooks OR MA Breakout/Breakdowns
+        // 2. ALERT FILTER: Alert on RSI Hooks OR fresh MA breakouts/breakdowns
         Map<String, List<ScannedContractDto>> hooksByIndex = contracts.stream()
                 .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                         || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK
@@ -77,6 +70,11 @@ public class OptionPriceService {
                 .collect(Collectors.groupingBy(ScannedContractDto::getName));
 
         if (hooksByIndex.isEmpty()) return;
+
+        // Comparator: Sort primarily by Expiry Date, secondarily by Strike Price
+        Comparator<ScannedContractDto> expiryAndStrikeComparator = Comparator
+                .comparing(ScannedContractDto::getExpiryDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparingDouble(ScannedContractDto::getStrike);
 
         hooksByIndex.forEach((symbol, hooks) -> {
             logger.info("🔔 Found {} triggers for {}. Sending Telegram alert...", hooks.size(), symbol);
@@ -90,62 +88,115 @@ public class OptionPriceService {
                 msg.append("📍 Spot: `").append(String.format("%.2f", spot.doubleValue())).append("`\n");
             }
 
-            // Separate & sort triggers based on Expiry Date -> Strike -> Option Type
-            List<ScannedContractDto> rsiTriggers = hooks.stream()
-                    .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
-                            || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK)
-                    .sorted(CONTRACT_ALERT_COMPARATOR)
+            // Separate & sort triggers into 4 categories
+            List<ScannedContractDto> rsiOversold = hooks.stream()
+                    .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK)
+                    .sorted(expiryAndStrikeComparator)
                     .collect(Collectors.toList());
 
-            List<ScannedContractDto> maTriggers = hooks.stream()
-                    .filter(this::isNearMaTrigger)
-                    .sorted(CONTRACT_ALERT_COMPARATOR)
+            List<ScannedContractDto> rsiOverbought = hooks.stream()
+                    .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK)
+                    .sorted(expiryAndStrikeComparator)
+                    .collect(Collectors.toList());
+
+            List<ScannedContractDto> maBreakouts = hooks.stream()
+                    .filter(this::isNearMaBreakout)
+                    .sorted(expiryAndStrikeComparator)
+                    .collect(Collectors.toList());
+
+            List<ScannedContractDto> maBreakdowns = hooks.stream()
+                    .filter(this::isNearMaBreakdown)
+                    .sorted(expiryAndStrikeComparator)
                     .collect(Collectors.toList());
 
             // ==========================================
-            // TABLE 1: RSI HOOKS
+            // TABLE 1: RSI OVERSOLD (Crossed above 20)
             // ==========================================
-            if (!rsiTriggers.isEmpty()) {
-                msg.append("\n⚡ *RSI Hooks*\n```\n");
-                msg.append(String.format("%-5s | %-5s | %-4s | %-8s | %-7s | %-4s | %s%n",
-                        "TIME", "EXP", "DIR", "STRIKE", "LTP", "RSI", "CNT"));
-                msg.append("----------------------------------------------------\n");
+            if (!rsiOversold.isEmpty()) {
+                msg.append("\n⚡ *RSI Signals - OVERSOLD*\n```\n");
+                msg.append("EXP  |TIME |STRIKE |LTP    |RSI |CNT\n");
+                msg.append("------------------------------------\n");
 
-                for (ScannedContractDto hook : rsiTriggers) {
-                    String direction = hook.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK ? "SELL" : "BUY ";
-                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+                for (ScannedContractDto hook : rsiOversold) {
                     String expStr = formatExpiry(hook);
+                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
                     String strikeStr = (int) hook.getStrike() + hook.getOptionType();
                     double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
                     double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
-                    int count = direction.equals("SELL") ? hook.getAboveRSI80Count() : hook.getBelowRSI20Count();
+                    int count = hook.getBelowRSI20Count();
 
-                    msg.append(String.format("%-5s | %-5s | %-4s | %-8s | %-7.2f | %-4.1f | %-3d%n",
-                            timeStr, expStr, direction, strikeStr, ltpVal, rsiVal, count));
+                    // Mobile optimized format (36 chars total)
+                    msg.append(String.format("%-5s|%-5s|%-7s|%-7.2f|%-4.1f|%-3d%n",
+                            expStr, timeStr, strikeStr, ltpVal, rsiVal, count));
                 }
                 msg.append("```\n");
             }
 
             // ==========================================
-            // TABLE 2: MA BREAKOUTS & BREAKDOWNS
+            // TABLE 2: RSI OVERBOUGHT (Crossed below 80)
             // ==========================================
-            if (!maTriggers.isEmpty()) {
-                msg.append("\n📈 *MA Signals*\n```\n");
-                msg.append(String.format("%-5s | %-5s | %-4s | %-8s | %-7s | %-7s | %s%n",
-                        "TIME", "EXP", "DIR", "STRIKE", "LTP", "MA 20", "RSI"));
-                msg.append("----------------------------------------------------------\n");
+            if (!rsiOverbought.isEmpty()) {
+                msg.append("\n⚡ *RSI Signals - OVERBOUGHT*\n```\n");
+                msg.append("EXP  |TIME |STRIKE |LTP    |RSI |CNT\n");
+                msg.append("------------------------------------\n");
 
-                for (ScannedContractDto hook : maTriggers) {
-                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+                for (ScannedContractDto hook : rsiOverbought) {
                     String expStr = formatExpiry(hook);
-                    String direction = isNearMaBreakout(hook) ? "MA↑ " : "MA↓ ";
+                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+                    String strikeStr = (int) hook.getStrike() + hook.getOptionType();
+                    double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+                    double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
+                    int count = hook.getAboveRSI80Count();
+
+                    // Mobile optimized format (36 chars total)
+                    msg.append(String.format("%-5s|%-5s|%-7s|%-7.2f|%-4.1f|%-3d%n",
+                            expStr, timeStr, strikeStr, ltpVal, rsiVal, count));
+                }
+                msg.append("```\n");
+            }
+
+            // ==========================================
+            // TABLE 3: MA BREAKOUTS
+            // ==========================================
+            if (!maBreakouts.isEmpty()) {
+                msg.append("\n📈 *MA Signals - BREAKOUT*\n```\n");
+                msg.append("EXP  |TIME |STRIKE |LTP    |MA     |RSI\n");
+                msg.append("---------------------------------------\n");
+
+                for (ScannedContractDto hook : maBreakouts) {
+                    String expStr = formatExpiry(hook);
+                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
                     String strikeStr = (int) hook.getStrike() + hook.getOptionType();
                     double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
                     double maVal = hook.getCurrentMa() != null ? hook.getCurrentMa() : 0.0;
                     double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
 
-                    msg.append(String.format("%-5s | %-5s | %-4s | %-8s | %-7.2f | %-7.2f | %-4.1f%n",
-                            timeStr, expStr, direction, strikeStr, ltpVal, maVal, rsiVal));
+                    // Mobile optimized format (39 chars total)
+                    msg.append(String.format("%-5s|%-5s|%-7s|%-7.2f|%-7.2f|%-4.1f%n",
+                            expStr, timeStr, strikeStr, ltpVal, maVal, rsiVal));
+                }
+                msg.append("```\n");
+            }
+
+            // ==========================================
+            // TABLE 4: MA BREAKDOWNS
+            // ==========================================
+            if (!maBreakdowns.isEmpty()) {
+                msg.append("\n📉 *MA Signals - BREAKDOWN*\n```\n");
+                msg.append("EXP  |TIME |STRIKE |LTP    |MA     |RSI\n");
+                msg.append("---------------------------------------\n");
+
+                for (ScannedContractDto hook : maBreakdowns) {
+                    String expStr = formatExpiry(hook);
+                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+                    String strikeStr = (int) hook.getStrike() + hook.getOptionType();
+                    double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+                    double maVal = hook.getCurrentMa() != null ? hook.getCurrentMa() : 0.0;
+                    double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
+
+                    // Mobile optimized format (39 chars total)
+                    msg.append(String.format("%-5s|%-5s|%-7s|%-7.2f|%-7.2f|%-4.1f%n",
+                            expStr, timeStr, strikeStr, ltpVal, maVal, rsiVal));
                 }
                 msg.append("```");
             }
@@ -158,8 +209,17 @@ public class OptionPriceService {
         });
     }
 
+    private String formatExpiry(ScannedContractDto dto) {
+        if (dto.getExpiryDate() != null) {
+            String exp = dto.getExpiryDate().format(EXPIRY_DISPLAY_FMT).toUpperCase();
+            // Ensure exact 5 characters for strict alignment (e.g. 24SEP)
+            return exp.length() > 5 ? exp.substring(0, 5) : String.format("%-5s", exp);
+        }
+        return "-----";
+    }
+
     // ==========================================
-    // LOGIC HELPERS
+    // MA TRIGGER DETECTION (BREAKOUT & BREAKDOWN)
     // ==========================================
 
     private boolean isNearMaTrigger(ScannedContractDto dto) {
@@ -167,31 +227,21 @@ public class OptionPriceService {
     }
 
     private boolean isNearMaBreakout(ScannedContractDto dto) {
-        if (dto.getCurrentLtp() == null || dto.getCurrentMa() == null) {
+        if (!dto.isPriceAboveMa() || dto.getCurrentLtp() == null || dto.getCurrentMa() == null) {
             return false;
         }
         double threshold = configService.getActiveConfig().getMaProximity();
-        double difference = dto.getCurrentLtp().doubleValue() - dto.getCurrentMa();
-        return difference >= 0 && difference <= threshold;
+        double diff = dto.getCurrentLtp().doubleValue() - dto.getCurrentMa();
+        return diff >= 0 && diff <= threshold;
     }
 
     private boolean isNearMaBreakdown(ScannedContractDto dto) {
-        if (dto.getCurrentLtp() == null || dto.getCurrentMa() == null) {
+        if (dto.isPriceAboveMa() || dto.getCurrentLtp() == null || dto.getCurrentMa() == null) {
             return false;
         }
         double threshold = configService.getActiveConfig().getMaProximity();
-        double difference = dto.getCurrentMa() - dto.getCurrentLtp().doubleValue();
-        return difference > 0 && difference <= threshold;
-    }
-
-    private String formatExpiry(ScannedContractDto dto) {
-        if (dto.getExpiryDate() != null) {
-            return dto.getExpiryDate().format(EXP_DISPLAY_FMT).toUpperCase();
-        }
-        if (dto.getRawExpiry() != null && !dto.getRawExpiry().isBlank()) {
-            return dto.getRawExpiry().length() > 5 ? dto.getRawExpiry().substring(0, 5) : dto.getRawExpiry();
-        }
-        return "--";
+        double diff = dto.getCurrentMa() - dto.getCurrentLtp().doubleValue();
+        return diff >= 0 && diff <= threshold;
     }
 
     // ==========================================
@@ -228,8 +278,12 @@ public class OptionPriceService {
         }
 
         return maLiveList.stream()
-                .filter(this::isNearMaBreakoutEntity)
+                .filter(this::isNearMaTriggerEntity)
                 .collect(Collectors.toList());
+    }
+
+    private boolean isNearMaTriggerEntity(OptionPrice entity) {
+        return isNearMaBreakoutEntity(entity) || isNearMaBreakdownEntity(entity);
     }
 
     private boolean isNearMaBreakoutEntity(OptionPrice entity) {
@@ -237,8 +291,17 @@ public class OptionPriceService {
             return false;
         }
         double threshold = configService.getActiveConfig().getMaProximity();
-        double difference = entity.getLtp().doubleValue() - entity.getCurrentMa();
-        return difference >= 0 && difference <= threshold;
+        double diff = entity.getLtp().doubleValue() - entity.getCurrentMa();
+        return diff >= 0 && diff <= threshold;
+    }
+
+    private boolean isNearMaBreakdownEntity(OptionPrice entity) {
+        if (entity.isPriceAboveMa() || entity.getLtp() == null || entity.getCurrentMa() == null) {
+            return false;
+        }
+        double threshold = configService.getActiveConfig().getMaProximity();
+        double diff = entity.getCurrentMa() - entity.getLtp().doubleValue();
+        return diff >= 0 && diff <= threshold;
     }
 
     private OptionPrice mapToEntity(ScannedContractDto dto) {
@@ -280,14 +343,14 @@ public class OptionPriceService {
 
         long ceCount = symbolData.stream()
                 .filter(r -> "CE".equalsIgnoreCase(r.getOptionType()))
-                .filter(r -> r.isRsiAbove80() || r.isRsiBelow20() || isNearMaBreakoutEntity(r))
+                .filter(r -> r.isRsiAbove80() || r.isRsiBelow20() || isNearMaTriggerEntity(r))
                 .map(OptionPrice::getStrike)
                 .distinct()
                 .count();
 
         long peCount = symbolData.stream()
                 .filter(r -> "PE".equalsIgnoreCase(r.getOptionType()))
-                .filter(r -> r.isRsiAbove80() || r.isRsiBelow20() || isNearMaBreakoutEntity(r))
+                .filter(r -> r.isRsiAbove80() || r.isRsiBelow20() || isNearMaTriggerEntity(r))
                 .map(OptionPrice::getStrike)
                 .distinct()
                 .count();
