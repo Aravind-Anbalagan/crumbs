@@ -33,15 +33,15 @@ public class OptionPriceScannerScheduler {
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM");
 
     // ==========================================
-    // 1. NSE SCHEDULER (9:00 AM to 3:59 PM)
+    // 1. NSE 1-HOUR SCHEDULER (Runs every hour at xx:15)
     // ==========================================
-    @Scheduled(cron = "0 0/15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
-    public void runNseAutomatedScan() {
+    @Scheduled(cron = "0 15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
+    public void runNseHourlyScan() {
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
         LocalDate today = LocalDate.now(istZone);
 
-        // NSE Guard Clauses
+        // NSE Guard Clauses (9:15 AM to 3:30 PM)
         if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) {
             return;
         }
@@ -49,28 +49,25 @@ public class OptionPriceScannerScheduler {
             return;
         }
 
-        logger.info("🚀 [NSE] Starting 15-min Option Scanner...");
-        executeScanWorkflow(NSE_SYMBOLS, "FIFTEEN_MINUTE");
+        logger.info("🚀 [NSE] Starting 1-Hour Option Scanner...");
+        executeScanWorkflow(NSE_SYMBOLS, "ONE_HOUR");
     }
 
     // ==========================================
-    // 2. MCX SCHEDULER (9:00 AM to 11:59 PM)
+    // 2. MCX 1-HOUR SCHEDULER (Runs every hour at xx:00)
     // ==========================================
-    @Scheduled(cron = "0 0/15 9-23 * * MON-FRI", zone = "Asia/Kolkata")
-    public void runMcxAutomatedScan() {
+    @Scheduled(cron = "0 0 9-23 * * MON-FRI", zone = "Asia/Kolkata")
+    public void runMcxHourlyScan() {
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
 
-        // MCX Guard Clauses (Usually 9:00 AM to 11:30 PM or 11:55 PM)
+        // MCX Guard Clauses (9:00 AM to 11:30 PM)
         if (now.isBefore(LocalTime.of(9, 0)) || now.isAfter(LocalTime.of(23, 30))) {
             return;
         }
 
-        // Note: We deliberately SKIP the NSE holiday check here because
-        // MCX is often open for the evening session on NSE holidays!
-
-        logger.info("🛢️ [MCX] Starting 15-min Option Scanner...");
-        executeScanWorkflow(MCX_SYMBOLS, "FIFTEEN_MINUTE");
+        logger.info("🛢️ [MCX] Starting 1-Hour Option Scanner...");
+        executeScanWorkflow(MCX_SYMBOLS, "ONE_HOUR");
     }
 
     // ==========================================
@@ -88,7 +85,7 @@ public class OptionPriceScannerScheduler {
 
         for (String symbol : symbols) {
             try {
-                logger.debug("📊 Scanning {} options...", symbol);
+                logger.debug("📊 Scanning {} options on {} timeframe...", symbol, interval);
 
                 // 1. Scan Chain
                 List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(symbol, config);
@@ -100,7 +97,7 @@ public class OptionPriceScannerScheduler {
                 optionPriceService.saveExtremeContracts(contracts);
 
             } catch (Exception e) {
-                logger.error("🛑 Scheduled scan failed for symbol {}: {}", symbol, e.getMessage());
+                logger.error("🛑 Scheduled scan failed for symbol {} on {}: {}", symbol, interval, e.getMessage());
             }
         }
     }
