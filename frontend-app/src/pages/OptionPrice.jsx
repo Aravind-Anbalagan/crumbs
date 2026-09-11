@@ -11,7 +11,7 @@ const extractBaseName = (sym) => {
 
 const OptionPrice = () => {
   const [activeTab, setActiveTab] = useState('RSI');
-  const [subTab, setSubTab] = useState('ALL'); // NEW: Sub-tab state (ALL, OVERSOLD, OVERBOUGHT, BREAKOUT, BREAKDOWN)
+  const [subTab, setSubTab] = useState('ALL');
 
   const [liveData, setLiveData] = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
@@ -19,7 +19,7 @@ const OptionPrice = () => {
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [timeFrame, setTimeFrame] = useState('ONE_HOUR'); // Defaulted to ONE_HOUR per your backend
+  const [timeFrame, setTimeFrame] = useState('ONE_HOUR');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('time');
   const [error, setError] = useState(null);
@@ -33,9 +33,6 @@ const OptionPrice = () => {
   const dominanceIntervalRef = useRef(null);
   const lastFetchTimeRef = useRef(null);
 
-  // ========================================
-  // EXTRACT STRICT UNIQUE BASE SYMBOLS
-  // ========================================
   const availableSymbols = useMemo(() => {
     const rawNames = liveData.map(r => extractBaseName(r?.symbol)).filter(Boolean);
     const uniqueNames = [...new Set(rawNames)];
@@ -48,7 +45,6 @@ const OptionPrice = () => {
     }
   }, [availableSymbols, dominanceSymbol]);
 
-  // Sync audit click to Dominance Bar Base Asset
   useEffect(() => {
     if (selectedSymbol) {
       const baseName = extractBaseName(selectedSymbol);
@@ -56,11 +52,10 @@ const OptionPrice = () => {
     }
   }, [selectedSymbol]);
 
-  // Clear selected symbol, audit data, and RESET sub-tab when main tab changes
   useEffect(() => {
     setSelectedSymbol(null);
     setAuditData([]);
-    setSubTab('ALL'); // Reset flip toggle
+    setSubTab('ALL');
   }, [activeTab]);
 
   const fetchLive = useCallback(async (retries = 0) => {
@@ -157,19 +152,41 @@ const OptionPrice = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [fetchLive, fetchDominance]);
 
-  // UPDATED: Distinct styles for MA Breakout vs Breakdown
-  const getStyleClass = (action) => {
-    if (!action || action === 'NONE') return 'op-type-ma-up';
+  // FIXED: Now uses row.priceAboveMa to strictly determine Breakout vs Breakdown
+  const getStyleClass = (row, currentTab) => {
+    if (!row) return 'op-type-info';
+
+    // If looking at the MA tab, strictly style by MA position
+    if (currentTab === 'MA') {
+      return row.priceAboveMa ? 'op-type-ma-up' : 'op-type-ma-down';
+    }
+
+    // For RSI, prioritize signal string
+    const action = row.signalAction || 'NONE';
     if (action.includes('OVERSOLD') || action === 'buy') return 'op-type-buy';
     if (action.includes('OVERBOUGHT') || action === 'sell') return 'op-type-sell';
-    if (action === 'MA_BREAKDOWN') return 'op-type-ma-down';
-    if (action === 'MA_BREAKOUT' || action.includes('MA')) return 'op-type-ma-up';
-    return 'op-type-info';
+
+    // Fallback logic
+    return row.priceAboveMa ? 'op-type-ma-up' : 'op-type-ma-down';
   };
 
-  const getPillText = (action) => {
-    if (!action || action === 'NONE') return 'MA BREAKOUT';
-    return action.replace('TRIGGER_', '').replace('_HOOK', ' HOOK').replace(/_/g, ' ');
+  // FIXED: Now maps DB priceAboveMa boolean directly to correct pill text
+  const getPillText = (row, currentTab) => {
+    if (!row) return 'UNKNOWN';
+
+    // Force MA labels if on MA tab
+    if (currentTab === 'MA') {
+       return row.priceAboveMa ? 'MA BREAKOUT' : 'MA BREAKDOWN';
+    }
+
+    // Force RSI labels if available
+    const action = row.signalAction || 'NONE';
+    if (action !== 'NONE') {
+       return action.replace('TRIGGER_', '').replace('_HOOK', ' HOOK').replace(/_/g, ' ');
+    }
+
+    // Fallback logic
+    return row.priceAboveMa ? 'MA BREAKOUT' : 'MA BREAKDOWN';
   };
 
   const getExtremeCount = (row) => {
@@ -183,25 +200,24 @@ const OptionPrice = () => {
   const formatRsi = (value) => value == null ? '--' : parseFloat(value).toFixed(1);
   const formatTime = (dateString) => dateString ? new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
-  // UPDATED: Now filters by subTab flip
+  // FIXED: Breakdown filter logic uses priceAboveMa
   const filteredLiveData = useMemo(() => {
     return liveData.filter(row => {
-      // 1. Text Search Filter
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         const matchesSearch = ((row?.symbol && row.symbol.toLowerCase().includes(term)) || (row?.ltp && row.ltp.toString().includes(term)));
         if (!matchesSearch) return false;
       }
 
-      // 2. Sub-Tab Filter
       if (subTab !== 'ALL') {
         const action = row?.signalAction || 'NONE';
         if (activeTab === 'RSI') {
           if (subTab === 'OVERSOLD' && !action.includes('OVERSOLD')) return false;
           if (subTab === 'OVERBOUGHT' && !action.includes('OVERBOUGHT')) return false;
         } else if (activeTab === 'MA') {
-          if (subTab === 'BREAKOUT' && action !== 'MA_BREAKOUT' && action !== 'NONE') return false;
-          if (subTab === 'BREAKDOWN' && action !== 'MA_BREAKDOWN') return false;
+          // DB uses the priceAboveMa flag for Breakouts vs Breakdowns
+          if (subTab === 'BREAKOUT' && row?.priceAboveMa !== true) return false;
+          if (subTab === 'BREAKDOWN' && row?.priceAboveMa !== false) return false;
         }
       }
       return true;
@@ -214,18 +230,19 @@ const OptionPrice = () => {
       case 'price': return sorted.sort((a, b) => (b?.ltp || 0) - (a?.ltp || 0));
       case 'signal':
         const order = { 'op-type-buy': 0, 'op-type-sell': 1, 'op-type-ma-up': 2, 'op-type-ma-down': 3, 'op-type-info': 4 };
-        return sorted.sort((a, b) => (order[getStyleClass(a?.signalAction)] || 999) - (order[getStyleClass(b?.signalAction)] || 999));
+        return sorted.sort((a, b) => (order[getStyleClass(a, activeTab)] || 999) - (order[getStyleClass(b, activeTab)] || 999));
       case 'time': default:
         return sorted.sort((a, b) => new Date(b?.evaluatedAt || 0) - new Date(a?.evaluatedAt || 0));
     }
-  }, [filteredLiveData, sortBy]);
+  }, [filteredLiveData, sortBy, activeTab]);
 
-  // UPDATED: Count handles both MA Breakouts & Breakdowns
+  // FIXED: Separated Breakout and Breakdown stats for the top bar
   const signalStats = useMemo(() => {
     return {
       buy: sortedData.filter(r => r?.signalAction && r.signalAction.includes('OVERSOLD')).length,
       sell: sortedData.filter(r => r?.signalAction && r.signalAction.includes('OVERBOUGHT')).length,
-      ma: sortedData.filter(r => !r?.signalAction || r.signalAction === 'NONE' || r.signalAction.includes('MA')).length,
+      maBreakout: sortedData.filter(r => r?.priceAboveMa === true).length,
+      maBreakdown: sortedData.filter(r => r?.priceAboveMa === false).length,
     };
   }, [sortedData]);
 
@@ -234,7 +251,6 @@ const OptionPrice = () => {
 
   return (
     <div className="op-container">
-      {/* HEADER - TITLE + FULL WIDTH DOMINANCE BAR */}
       <div className="op-header">
         <div className="op-header-dominance">
           <div className="op-header-dominance-labels">
@@ -264,7 +280,6 @@ const OptionPrice = () => {
         </div>
       </div>
 
-      {/* ERROR BANNER */}
       {error && (
         <div className="op-error-banner">
           <AlertCircle size={16} />
@@ -276,19 +291,13 @@ const OptionPrice = () => {
         </div>
       )}
 
-      {/* TWO-COLUMN DASHBOARD */}
       <div className="op-layout">
-
-        {/* LEFT PANEL */}
         <div className="op-left-panel">
-
-          {/* MAIN TABS */}
           <div className="op-tabs">
             <button onClick={() => setActiveTab('RSI')} className={`op-tab-btn ${activeTab === 'RSI' ? 'active' : ''}`}><Activity size={16} /> RSI Signals</button>
             <button onClick={() => setActiveTab('MA')} className={`op-tab-btn ${activeTab === 'MA' ? 'active' : ''}`}><TrendingUp size={16} /> MA Signals</button>
           </div>
 
-          {/* NEW: SUB-TAB FLIP SEGREGATION */}
           <div className="op-sub-tabs">
             <button onClick={() => setSubTab('ALL')} className={`op-sub-tab-btn ${subTab === 'ALL' ? 'active' : ''}`}>
               All
@@ -314,7 +323,6 @@ const OptionPrice = () => {
             )}
           </div>
 
-          {/* ACTION BAR - Search & Sort */}
           <div className="op-action-bar">
             <div className="op-search-controls">
               <div className="op-search-bar">
@@ -331,12 +339,19 @@ const OptionPrice = () => {
             </div>
           </div>
 
-          {/* STATS & REFRESH ROW */}
           <div className="op-controls-row">
             <div className="op-stat-pills-inline">
-              <span title="Buy signals">🟢 {signalStats.buy}</span>
-              <span title="Sell signals">🔴 {signalStats.sell}</span>
-              <span title="MA signals">🔷 {signalStats.ma}</span>
+              {activeTab === 'RSI' ? (
+                <>
+                  <span title="Buy signals">🟢 {signalStats.buy}</span>
+                  <span title="Sell signals">🔴 {signalStats.sell}</span>
+                </>
+              ) : (
+                <>
+                  <span title="Breakouts">📈 {signalStats.maBreakout}</span>
+                  <span title="Breakdowns">📉 {signalStats.maBreakdown}</span>
+                </>
+              )}
             </div>
             <button
               onClick={() => { fetchLive(); fetchDominance(); }}
@@ -349,7 +364,6 @@ const OptionPrice = () => {
             </button>
           </div>
 
-          {/* RADAR LIST */}
           <div className="op-radar-list op-scrollbar">
             {initialLoading && sortedData.length === 0 ? (
               <div className="op-loader-container">
@@ -376,8 +390,8 @@ const OptionPrice = () => {
                   >
                     <div className="op-radar-card-top">
                       <h3>{row?.symbol || 'UNKNOWN'}</h3>
-                      <span className={`op-pill ${getStyleClass(row?.signalAction)}`}>
-                        {getPillText(row?.signalAction)}
+                      <span className={`op-pill ${getStyleClass(row, activeTab)}`}>
+                        {getPillText(row, activeTab)}
                       </span>
                     </div>
                     <div className="op-radar-card-bottom">
@@ -401,7 +415,6 @@ const OptionPrice = () => {
           </div>
         </div>
 
-        {/* RIGHT PANEL - AUDIT */}
         <div className="op-right-panel">
           {!selectedSymbol ? (
             <div className="op-empty-state">
@@ -425,9 +438,10 @@ const OptionPrice = () => {
                   ) : (
                     [...auditData].reverse().map((event, idx) => {
                       const isLatest = idx === 0;
-                      const styleClass = getStyleClass(event?.signalAction);
-                      const isMaBreakout = !event?.signalAction || event.signalAction === 'NONE' || event.signalAction.includes('MA');
+                      // Determine context dynamically for audit log (since it holds both MA and RSI)
+                      const isMaSignal = event?.signalAction === 'NONE' || !event?.signalAction;
                       const count = getExtremeCount(event);
+                      const styleClass = getStyleClass(event, isMaSignal ? 'MA' : 'RSI');
 
                       return (
                         <div key={`audit-${idx}`} className="op-timeline-item">
@@ -435,12 +449,12 @@ const OptionPrice = () => {
                           <div className={`op-timeline-card ${isLatest ? `latest-record ${styleClass}-border` : ''}`}>
                             {isLatest && <div className="op-latest-badge"><Zap size={10} /> LATEST</div>}
                             <div className="op-timeline-card-top">
-                              <h4 style={{ color: `var(--${styleClass}-color, inherit)` }}>{getPillText(event?.signalAction)}</h4>
+                              <h4 style={{ color: `var(--${styleClass}-color, inherit)` }}>{getPillText(event, isMaSignal ? 'MA' : 'RSI')}</h4>
                               <span className="op-timeline-time">{new Date(event?.evaluatedAt).toLocaleTimeString()}</span>
                             </div>
                             <div className="op-timeline-data">
                               <span>LTP: <span className="op-text-white">{formatPrice(event?.ltp)}</span></span>
-                              {isMaBreakout ? (
+                              {isMaSignal ? (
                                 <span>MA: <span className="op-text-cyan">{formatPrice(event?.currentMa)}</span></span>
                               ) : (
                                 <>
