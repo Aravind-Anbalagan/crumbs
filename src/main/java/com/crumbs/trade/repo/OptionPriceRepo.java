@@ -27,8 +27,6 @@ public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
     // ==========================================
     // 1. LIFECYCLE AUDIT (CHART HISTORY)
     // ==========================================
-    // These must NOT have @Query annotations. Spring generates them automatically.
-
     List<OptionPrice> findAllBySymbolOrderByEvaluatedAtAsc(String symbol);
 
     List<OptionPrice> findAllBySymbolAndTimeFrameOrderByEvaluatedAtAsc(String symbol, String timeFrame);
@@ -49,16 +47,17 @@ public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
     List<OptionPrice> findLatestRsiSignalsByTimeFrame(@Param("timeFrame") String timeFrame);
 
     // ==========================================
-    // 3. LIVE DASHBOARD: MA BREAKOUTS ONLY
+    // 3. LIVE DASHBOARD: MA SIGNALS (Breakouts & Breakdowns)
     // ==========================================
+    // FIXED: Removed 'AND is_price_above_ma = true' so Breakdowns can finally be queried.
     @Query(value = "SELECT DISTINCT ON (symbol) * FROM option_prices " +
-            "WHERE evaluated_date = CURRENT_DATE AND is_price_above_ma = true " +
+            "WHERE evaluated_date = CURRENT_DATE " +
             "ORDER BY symbol, evaluated_at DESC",
             nativeQuery = true)
     List<OptionPrice> findLatestMaSignalsAllTimeFrames();
 
     @Query(value = "SELECT DISTINCT ON (symbol) * FROM option_prices " +
-            "WHERE time_frame = :timeFrame AND evaluated_date = CURRENT_DATE AND is_price_above_ma = true " +
+            "WHERE time_frame = :timeFrame AND evaluated_date = CURRENT_DATE " +
             "ORDER BY symbol, evaluated_at DESC",
             nativeQuery = true)
     List<OptionPrice> findLatestMaSignalsByTimeFrame(@Param("timeFrame") String timeFrame);
