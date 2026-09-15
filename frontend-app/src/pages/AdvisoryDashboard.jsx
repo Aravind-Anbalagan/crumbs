@@ -102,7 +102,7 @@ export default function AdvisoryDashboard() {
             .finally(() => setScanningAll(false));
     };
 
-    // 🚀 Dynamic Expiry Cycle Calculator (RESTORED: Last TUESDAY of month)
+    // 🚀 Dynamic Expiry Cycle Calculator
     const { startDate, endDate, daysArray, cycleRangeText, expiryDateText, isNewCycle } = useMemo(() => {
         const getLastTuesday = (year, month) => {
             let d = new Date(year, month + 1, 0);
@@ -134,7 +134,6 @@ export default function AdvisoryDashboard() {
         const days = [];
         let curr = new Date(start);
 
-        // This loop strictly caps the visual grid from Start Date to End Date
         while (curr <= end) {
             const dateString = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
             const dow = curr.getDay();
@@ -161,7 +160,7 @@ export default function AdvisoryDashboard() {
         };
     }, []);
 
-    // 🧠 DYNAMIC MATRIX LOGIC — Hardened against timezone shifts & string casing
+    // 🧠 DYNAMIC MATRIX LOGIC
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
@@ -170,7 +169,6 @@ export default function AdvisoryDashboard() {
             const recordDate = new Date(record.timestamp);
             if (isNaN(recordDate.getTime())) return false;
             recordDate.setHours(0, 0, 0, 0);
-            // Strictly bound the timeline processing to the active cycle dates
             return recordDate >= startDate && recordDate <= endDate;
         });
 
@@ -255,21 +253,35 @@ export default function AdvisoryDashboard() {
         return formattedMatrix;
     }, [timelineData, startDate, endDate, daysArray, today]);
 
+    // 🚀 Filter Counters
     const filterCounts = useMemo(() => {
-        const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0, NO_TRADE: 0 };
+        const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0, NO_TRADE: 0, CYCLE_SL: 0 };
         symbolMatrix.forEach(row => {
+            // Count for Today
             const cat = getFilterCategory(row.todayCell);
             if (cat === 'EXIT_SL' || cat === 'EXIT_TARGET') {
                 counts['EXIT'] += 1;
             } else if (counts[cat] !== undefined) {
                 counts[cat] += 1;
             }
+
+            // Count for Entire Cycle (has any SL happened this month?)
+            const hitSlInCycle = Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL');
+            if (hitSlInCycle) {
+                counts['CYCLE_SL'] += 1;
+            }
         });
         return counts;
     }, [symbolMatrix]);
 
+    // 🚀 Matrix Filtering logic
     const filteredMatrix = useMemo(() => {
         if (filterType === 'ALL') return symbolMatrix;
+        if (filterType === 'CYCLE_SL') {
+            return symbolMatrix.filter(row =>
+                Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL')
+            );
+        }
         if (filterType === 'EXIT') {
             return symbolMatrix.filter(row => {
                 const cat = getFilterCategory(row.todayCell);
@@ -326,9 +338,10 @@ export default function AdvisoryDashboard() {
                 </div>
             )}
 
-            <div className="filter-bar glass-panel">
+            {/* 🚀 Updated Single Row Filter Bar with Visual Divider */}
+            <div className="filter-bar glass-panel" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
                 <div className="filter-inline-group">
-                    <span className="filter-label">Today</span>
+                    <span className="filter-label">Today:</span>
                     {[
                         { key: 'ALL', label: 'All', count: filterCounts.ALL },
                         { key: 'NEW_ENTRY', label: 'New Entry', count: filterCounts.NEW_ENTRY },
@@ -344,6 +357,24 @@ export default function AdvisoryDashboard() {
                         </button>
                     ))}
                 </div>
+
+                {/* Subtle vertical divider between the groups */}
+                <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--glass-border)' }}></div>
+
+                <div className="filter-inline-group">
+                    <span className="filter-label" style={{ color: '#00a8ff' }}>Whole Cycle:</span>
+                    {[
+                        { key: 'CYCLE_SL', label: 'Hit Stop Loss', count: filterCounts.CYCLE_SL, isWarning: true }
+                    ].map(f => (
+                        <button
+                            key={f.key}
+                            className={`filter-chip ${f.isWarning ? 'chip-warning' : ''} ${filterType === f.key ? 'active' : ''}`}
+                            onClick={() => setFilterType(f.key)}
+                        >
+                            {f.label} ({f.count})
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="timeline-wrapper glass-panel">
@@ -352,7 +383,7 @@ export default function AdvisoryDashboard() {
                 ) : symbolMatrix.length === 0 ? (
                     <div className="empty-state">No trades found in dataset.</div>
                 ) : filteredMatrix.length === 0 ? (
-                    <div className="empty-state">No instruments match this filter today.</div>
+                    <div className="empty-state">No instruments match this filter.</div>
                 ) : (
                     <>
                         <div className="timeline-scroll-area">

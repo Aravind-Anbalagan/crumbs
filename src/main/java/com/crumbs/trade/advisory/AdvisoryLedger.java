@@ -132,4 +132,8 @@ public class AdvisoryLedger {
     @Builder.Default
     @Column(name = "is_new_day", columnDefinition = "boolean default true")
     private Boolean isNewDay = true;
+
+    // Add this with your other technical state columns
+    @Column(name = "lot_size")
+    private Integer lotSize;
 }

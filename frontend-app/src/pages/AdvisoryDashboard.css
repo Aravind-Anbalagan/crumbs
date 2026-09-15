@@ -15,7 +15,17 @@
     --glass-bg: rgba(15, 23, 42, 0.7);
     --glass-border: rgba(148, 163, 184, 0.2);
 }
+/* 🚀 Stop Loss Warning Filter Chip styling */
+.filter-chip.chip-warning:hover {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
 
+.filter-chip.chip-warning.active {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+    color: #ef4444;
+}
 .advisory-container {
     padding: 20px;
     color: var(--text-main);

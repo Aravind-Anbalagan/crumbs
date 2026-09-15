@@ -13,8 +13,8 @@ import com.crumbs.trade.entity.Nifty;
 @Repository
 public interface NiftyRepo extends JpaRepository<Nifty, Long> {
 
-	@Query(value = "select name from Nifty ")
-	List<String> getAllNames();
-	
-	List<Nifty> findByIsActiveTrueAndTokenIsNotNull();
+    @Query(value = "select name from Nifty ")
+    List<String> getAllNames();
+
+    List<Nifty> findByIsActiveTrueAndTokenIsNotNull();
 }
