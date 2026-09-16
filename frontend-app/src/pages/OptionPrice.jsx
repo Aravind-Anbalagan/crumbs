@@ -19,7 +19,11 @@ const OptionPrice = () => {
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+
+  // --- Timeframe State ---
   const [timeFrame, setTimeFrame] = useState('ONE_HOUR');
+  const [availableTimeFrames, setAvailableTimeFrames] = useState(['ONE_HOUR']);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('time');
   const [error, setError] = useState(null);
@@ -32,6 +36,48 @@ const OptionPrice = () => {
   const refreshIntervalRef = useRef(null);
   const dominanceIntervalRef = useRef(null);
   const lastFetchTimeRef = useRef(null);
+
+  // 1. Fetch available timeframes using your original fetch pattern
+  useEffect(() => {
+      const fetchTimeFrames = async () => {
+        try {
+          // FORCE direct connection to Spring Boot, bypassing Vite proxy entirely
+          const API_BASE = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api', '') : 'http://localhost:8080';
+          const url = `${API_BASE}/api/options/scanner/tracked/live/timeframes`;
+
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+
+          const rawText = await res.text();
+
+          try {
+            const data = JSON.parse(rawText);
+
+            if (Array.isArray(data) && data.length > 0) {
+              setAvailableTimeFrames(data);
+              if (!data.includes(timeFrame)) {
+                setTimeFrame(data[0]);
+              }
+            }
+          } catch (parseError) {
+            console.error(`[PROXY ERROR] Server returned HTML instead of JSON. First 50 chars:`, rawText.substring(0, 50));
+          }
+
+        } catch (err) {
+          console.warn('[WARNING] Failed to fetch timeframes:', err.message);
+        }
+      };
+
+      fetchTimeFrames();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
   const availableSymbols = useMemo(() => {
     const rawNames = liveData.map(r => extractBaseName(r?.symbol)).filter(Boolean);
@@ -58,6 +104,7 @@ const OptionPrice = () => {
     setSubTab('ALL');
   }, [activeTab]);
 
+  // 2. Fetch Live Data (Your original pattern)
   const fetchLive = useCallback(async (retries = 0) => {
     setIsRefreshing(true);
     setError(null);
@@ -87,13 +134,14 @@ const OptionPrice = () => {
     }
   }, [activeTab, timeFrame]);
 
+  // 3. Fetch Dominance (Your original pattern)
   const fetchDominance = useCallback(async () => {
     const targetSymbol = dominanceSymbol || (availableSymbols.length > 0 ? availableSymbols[0] : null);
     if (!targetSymbol) return;
 
     try {
       const url = `/api/options/scanner/tracked/live/dominance?symbol=${targetSymbol}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
       if (res.ok) {
         const data = await res.json();
         setDominance(data);
@@ -117,6 +165,7 @@ const OptionPrice = () => {
     return () => { if (dominanceIntervalRef.current) clearInterval(dominanceIntervalRef.current); };
   }, [fetchDominance, availableSymbols]);
 
+  // 4. Fetch Audit (Your original pattern)
   useEffect(() => {
     if (!selectedSymbol) return;
 
@@ -125,7 +174,7 @@ const OptionPrice = () => {
       setError(null);
       try {
         const url = `/api/options/scanner/tracked/audit?symbol=${selectedSymbol}&timeFrame=${timeFrame}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
         if (!res.ok) throw new Error(`API Error: ${res.status}`);
         const data = await res.json();
         setAuditData(Array.isArray(data) ? data : []);
@@ -152,40 +201,26 @@ const OptionPrice = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [fetchLive, fetchDominance]);
 
-  // FIXED: Now uses row.priceAboveMa to strictly determine Breakout vs Breakdown
   const getStyleClass = (row, currentTab) => {
     if (!row) return 'op-type-info';
-
-    // If looking at the MA tab, strictly style by MA position
     if (currentTab === 'MA') {
       return row.priceAboveMa ? 'op-type-ma-up' : 'op-type-ma-down';
     }
-
-    // For RSI, prioritize signal string
     const action = row.signalAction || 'NONE';
     if (action.includes('OVERSOLD') || action === 'buy') return 'op-type-buy';
     if (action.includes('OVERBOUGHT') || action === 'sell') return 'op-type-sell';
-
-    // Fallback logic
     return row.priceAboveMa ? 'op-type-ma-up' : 'op-type-ma-down';
   };
 
-  // FIXED: Now maps DB priceAboveMa boolean directly to correct pill text
   const getPillText = (row, currentTab) => {
     if (!row) return 'UNKNOWN';
-
-    // Force MA labels if on MA tab
     if (currentTab === 'MA') {
        return row.priceAboveMa ? 'MA BREAKOUT' : 'MA BREAKDOWN';
     }
-
-    // Force RSI labels if available
     const action = row.signalAction || 'NONE';
     if (action !== 'NONE') {
        return action.replace('TRIGGER_', '').replace('_HOOK', ' HOOK').replace(/_/g, ' ');
     }
-
-    // Fallback logic
     return row.priceAboveMa ? 'MA BREAKOUT' : 'MA BREAKDOWN';
   };
 
@@ -200,7 +235,6 @@ const OptionPrice = () => {
   const formatRsi = (value) => value == null ? '--' : parseFloat(value).toFixed(1);
   const formatTime = (dateString) => dateString ? new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
-  // FIXED: Breakdown filter logic uses priceAboveMa
   const filteredLiveData = useMemo(() => {
     return liveData.filter(row => {
       if (searchTerm) {
@@ -215,7 +249,6 @@ const OptionPrice = () => {
           if (subTab === 'OVERSOLD' && !action.includes('OVERSOLD')) return false;
           if (subTab === 'OVERBOUGHT' && !action.includes('OVERBOUGHT')) return false;
         } else if (activeTab === 'MA') {
-          // DB uses the priceAboveMa flag for Breakouts vs Breakdowns
           if (subTab === 'BREAKOUT' && row?.priceAboveMa !== true) return false;
           if (subTab === 'BREAKDOWN' && row?.priceAboveMa !== false) return false;
         }
@@ -236,7 +269,6 @@ const OptionPrice = () => {
     }
   }, [filteredLiveData, sortBy, activeTab]);
 
-  // FIXED: Separated Breakout and Breakdown stats for the top bar
   const signalStats = useMemo(() => {
     return {
       buy: sortedData.filter(r => r?.signalAction && r.signalAction.includes('OVERSOLD')).length,
@@ -322,6 +354,28 @@ const OptionPrice = () => {
               </>
             )}
           </div>
+
+          {/* DYNAMIC TIMEFRAME SELECTOR */}
+          {Array.isArray(availableTimeFrames) && availableTimeFrames.length > 0 && (
+            <div className="op-timeframe-selector">
+              {availableTimeFrames.map((tf) => (
+                <label
+                  key={tf}
+                  className={`op-tf-radio ${timeFrame === tf ? 'active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="timeframe"
+                    value={tf}
+                    checked={timeFrame === tf}
+                    onChange={(e) => setTimeFrame(e.target.value)}
+                    style={{ display: 'none' }}
+                  />
+                  {tf.replace(/_/g, ' ')}
+                </label>
+              ))}
+            </div>
+          )}
 
           <div className="op-action-bar">
             <div className="op-search-controls">
@@ -438,7 +492,6 @@ const OptionPrice = () => {
                   ) : (
                     [...auditData].reverse().map((event, idx) => {
                       const isLatest = idx === 0;
-                      // Determine context dynamically for audit log (since it holds both MA and RSI)
                       const isMaSignal = event?.signalAction === 'NONE' || !event?.signalAction;
                       const count = getExtremeCount(event);
                       const styleClass = getStyleClass(event, isMaSignal ? 'MA' : 'RSI');

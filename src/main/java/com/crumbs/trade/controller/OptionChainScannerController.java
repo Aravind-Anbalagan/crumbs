@@ -170,4 +170,18 @@ public class OptionChainScannerController {
         List<OptionPrice> auditHistory = optionPriceService.getSymbolLifecycleHistory(symbol, timeFrame);
         return ResponseEntity.ok(auditHistory);
     }
+    // ==========================================
+    // TIMEFRAME ENDPOINT
+    // ==========================================
+
+    @Operation(
+            summary = "Retrieve Unique Time Frames",
+            description = "Fetches a list of all distinct time frames currently available in the database."
+    )
+    // CHANGED: Moved under /live/ to match existing working APIs
+    @GetMapping("/tracked/live/timeframes")
+    public ResponseEntity<List<String>> getAvailableTimeFrames() {
+        List<String> timeFrames = optionPriceService.getUniqueTimeFrames();
+        return ResponseEntity.ok(timeFrames);
+    }
 }

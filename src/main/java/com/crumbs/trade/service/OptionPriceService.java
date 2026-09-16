@@ -336,4 +336,8 @@ public class OptionPriceService {
                 .evaluatedAt(LocalDateTime.now())
                 .build();
     }
+
+    public List<String> getUniqueTimeFrames() {
+         return optionPriceRepo.findDistinctTimeFrames();
+    }
 }

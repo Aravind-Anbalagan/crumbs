@@ -76,4 +76,7 @@ public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
             "ORDER BY symbol, evaluated_at DESC",
             nativeQuery = true)
     List<OptionPrice> findLatestLiveTrackedDataByTimeFrame(@Param("timeFrame") String timeFrame);
+
+    @Query("SELECT DISTINCT o.timeFrame FROM OptionPrice o WHERE o.timeFrame IS NOT NULL")
+    List<String> findDistinctTimeFrames();
 }
