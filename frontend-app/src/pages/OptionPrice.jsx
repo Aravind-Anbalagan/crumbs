@@ -9,6 +9,9 @@ const extractBaseName = (sym) => {
   return match ? match[0].toUpperCase() : sym;
 };
 
+// Static timeframes matching AngelOne standards
+const AVAILABLE_TIME_FRAMES = ['ONE_MINUTE', 'FIVE_MINUTE', 'FIFTEEN_MINUTE', 'ONE_HOUR'];
+
 const OptionPrice = () => {
   const [activeTab, setActiveTab] = useState('RSI');
   const [subTab, setSubTab] = useState('ALL');
@@ -20,9 +23,8 @@ const OptionPrice = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  // --- Timeframe State ---
+  // --- Timeframe State (Defaults to ONE_HOUR, uses static list) ---
   const [timeFrame, setTimeFrame] = useState('ONE_HOUR');
-  const [availableTimeFrames, setAvailableTimeFrames] = useState(['ONE_HOUR']);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('time');
@@ -36,48 +38,6 @@ const OptionPrice = () => {
   const refreshIntervalRef = useRef(null);
   const dominanceIntervalRef = useRef(null);
   const lastFetchTimeRef = useRef(null);
-
-  // 1. Fetch available timeframes using your original fetch pattern
-  useEffect(() => {
-      const fetchTimeFrames = async () => {
-        try {
-          // FORCE direct connection to Spring Boot, bypassing Vite proxy entirely
-          const API_BASE = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api', '') : 'http://localhost:8080';
-          const url = `${API_BASE}/api/options/scanner/tracked/live/timeframes`;
-
-          const res = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-
-          const rawText = await res.text();
-
-          try {
-            const data = JSON.parse(rawText);
-
-            if (Array.isArray(data) && data.length > 0) {
-              setAvailableTimeFrames(data);
-              if (!data.includes(timeFrame)) {
-                setTimeFrame(data[0]);
-              }
-            }
-          } catch (parseError) {
-            console.error(`[PROXY ERROR] Server returned HTML instead of JSON. First 50 chars:`, rawText.substring(0, 50));
-          }
-
-        } catch (err) {
-          console.warn('[WARNING] Failed to fetch timeframes:', err.message);
-        }
-      };
-
-      fetchTimeFrames();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
   const availableSymbols = useMemo(() => {
     const rawNames = liveData.map(r => extractBaseName(r?.symbol)).filter(Boolean);
@@ -104,7 +64,7 @@ const OptionPrice = () => {
     setSubTab('ALL');
   }, [activeTab]);
 
-  // 2. Fetch Live Data (Your original pattern)
+  // 1. Fetch Live Table Data
   const fetchLive = useCallback(async (retries = 0) => {
     setIsRefreshing(true);
     setError(null);
@@ -134,7 +94,7 @@ const OptionPrice = () => {
     }
   }, [activeTab, timeFrame]);
 
-  // 3. Fetch Dominance (Your original pattern)
+  // 2. Fetch Top Bar Dominance Stats
   const fetchDominance = useCallback(async () => {
     const targetSymbol = dominanceSymbol || (availableSymbols.length > 0 ? availableSymbols[0] : null);
     if (!targetSymbol) return;
@@ -165,7 +125,7 @@ const OptionPrice = () => {
     return () => { if (dominanceIntervalRef.current) clearInterval(dominanceIntervalRef.current); };
   }, [fetchDominance, availableSymbols]);
 
-  // 4. Fetch Audit (Your original pattern)
+  // 3. Fetch Side Panel Audit Timeline
   useEffect(() => {
     if (!selectedSymbol) return;
 
@@ -355,27 +315,25 @@ const OptionPrice = () => {
             )}
           </div>
 
-          {/* DYNAMIC TIMEFRAME SELECTOR */}
-          {Array.isArray(availableTimeFrames) && availableTimeFrames.length > 0 && (
-            <div className="op-timeframe-selector">
-              {availableTimeFrames.map((tf) => (
-                <label
-                  key={tf}
-                  className={`op-tf-radio ${timeFrame === tf ? 'active' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="timeframe"
-                    value={tf}
-                    checked={timeFrame === tf}
-                    onChange={(e) => setTimeFrame(e.target.value)}
-                    style={{ display: 'none' }}
-                  />
-                  {tf.replace(/_/g, ' ')}
-                </label>
-              ))}
-            </div>
-          )}
+          {/* STATIC TIMEFRAME SELECTOR */}
+          <div className="op-timeframe-selector">
+            {AVAILABLE_TIME_FRAMES.map((tf) => (
+              <label
+                key={tf}
+                className={`op-tf-radio ${timeFrame === tf ? 'active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="timeframe"
+                  value={tf}
+                  checked={timeFrame === tf}
+                  onChange={(e) => setTimeFrame(e.target.value)}
+                  style={{ display: 'none' }}
+                />
+                {tf.replace(/_/g, ' ')}
+              </label>
+            ))}
+          </div>
 
           <div className="op-action-bar">
             <div className="op-search-controls">
