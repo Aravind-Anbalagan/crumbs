@@ -1,6 +1,7 @@
 package com.crumbs.trade.repo;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -17,4 +18,5 @@ public interface NiftyRepo extends JpaRepository<Nifty, Long> {
     List<String> getAllNames();
 
     List<Nifty> findByIsActiveTrueAndTokenIsNotNull();
+    Optional<Nifty> findByName(String name);
 }

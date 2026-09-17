@@ -4,6 +4,7 @@ import com.crumbs.trade.builder.OptionScannerConfig;
 import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
+import com.crumbs.trade.repo.NiftyRepo; // <--- Import your NiftyRepo
 import com.crumbs.trade.service.OptionChainScannerService;
 import com.crumbs.trade.service.OptionIndicatorService;
 import com.crumbs.trade.service.OptionPriceService;
@@ -18,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -32,10 +34,12 @@ public class OptionChainScannerController {
     private final OptionIndicatorService indicatorService;
     private final OptionPriceService optionPriceService;
     private final StrategyConfigService configService;
+    private final NiftyRepo niftyRepo; // <--- Injected NiftyRepo
+
 
     @Operation(
-            summary = "Scan Option Chain & Evaluate Indicators",
-            description = "Scans the option chain for the requested symbols, calculates the RSI and MA based on historical data, saves extremes/hooks to the database, and fires Telegram alerts.",
+            summary = "Scan Option Chain & Evaluate Indicators for High Movers",
+            description = "Scans option chains only for symbols that have moved by at least the specified percentage threshold, calculates indicators, saves extremes, and fires alerts.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "Successfully scanned and processed contracts",
                             content = @Content(schema = @Schema(implementation = ScannedContractDto.class)))
@@ -43,8 +47,11 @@ public class OptionChainScannerController {
     )
     @GetMapping("/scan")
     public ResponseEntity<List<ScannedContractDto>> testScan(
-            @Parameter(description = "List of indices or stocks to scan (e.g. NIFTY, BANKNIFTY)", example = "NIFTY,BANKNIFTY")
+            @Parameter(description = "List of indices or stocks to scan (e.g. NIFTY, BANKNIFTY or ALL)", example = "ALL")
             @RequestParam(defaultValue = "NIFTY") List<String> symbols,
+
+            @Parameter(description = "Minimum absolute percentage change required to trigger a scan", example = "5.0")
+            @RequestParam(defaultValue = "5.0") BigDecimal minPercentageChange,
 
             @Parameter(description = "Number of monthly expiries to scan", example = "1")
             @RequestParam(defaultValue = "1") int months,
@@ -62,7 +69,7 @@ public class OptionChainScannerController {
                     description = "The historical candle timeframe interval. If left blank, defaults to DB StrategyConfig.",
                     example = "ONE_HOUR"
             )
-            @RequestParam(required = false) String interval) { // <--- Removed defaultValue to allow DB fallback
+            @RequestParam(required = false) String interval) {
 
         // Use DB configuration if no interval is explicitly passed
         String actualInterval = (interval != null && !interval.isBlank())
@@ -78,11 +85,49 @@ public class OptionChainScannerController {
                 .interval(actualInterval)
                 .build();
 
+        // 1. Resolve symbols (Handles "ALL" or individual names)
+        List<String> rawResolvedSymbols = new ArrayList<>();
+        for (String symbol : symbols) {
+            if ("ALL".equalsIgnoreCase(symbol.trim())) {
+                List<String> allNames = niftyRepo.getAllNames();
+                if (allNames != null && !allNames.isEmpty()) {
+                    rawResolvedSymbols.addAll(allNames);
+                }
+            } else {
+                rawResolvedSymbols.add(symbol);
+            }
+        }
+
+        // 2. Filter symbols based on the percentage change threshold from the database repository/entities
+        List<String> finalSymbolsToScan = new ArrayList<>();
+        for (String symbol : rawResolvedSymbols) {
+            String cleanSymbol = symbol.trim();
+            if (cleanSymbol.isEmpty()) {
+                continue;
+            }
+
+            // If it's a major index like NIFTY or BANKNIFTY passed explicitly, you can choose to bypass or evaluate.
+            // For F&O stocks, fetch the entity to check its latest calculated percentage change.
+            var stockOpt = niftyRepo.findByName(cleanSymbol); // Or use an appropriate query method
+
+            if (stockOpt != null) {
+                BigDecimal currentChange = stockOpt.get().getPercentageChange();
+
+                // Check if the absolute percentage change meets or exceeds the threshold
+                if (currentChange != null && currentChange.abs().compareTo(minPercentageChange) >= 0) {
+                    finalSymbolsToScan.add(cleanSymbol);
+                }
+            } else {
+                // Fallback: If it's a broad index/symbol not tied to the stock table percentage table, allow it through
+                finalSymbolsToScan.add(cleanSymbol);
+            }
+        }
+
         List<ScannedContractDto> masterContractList = new ArrayList<>();
 
-        for (String symbol : symbols) {
-            String cleanSymbol = symbol.trim();
-            List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(cleanSymbol, config);
+        // 3. Scan only the filtered list of high movers
+        for (String symbol : finalSymbolsToScan) {
+            List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(symbol, config);
             contracts = indicatorService.evaluateIndicatorsForContracts(contracts, config.getInterval());
             masterContractList.addAll(contracts);
         }
@@ -98,11 +143,7 @@ public class OptionChainScannerController {
 
     @Operation(
             summary = "Retrieve Intraday CE/PE Dominance",
-            description = "Calculates active CE vs PE strike breadth to power the live Tug-of-War UI bar.",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Dominance summary calculated successfully",
-                            content = @Content(schema = @Schema(implementation = DominanceSummaryDto.class)))
-            }
+            description = "Calculates active CE vs PE strike breadth to power the live Tug-of-War UI bar."
     )
     @GetMapping("/tracked/live/dominance")
     public ResponseEntity<DominanceSummaryDto> getLiveDominance(
@@ -115,11 +156,7 @@ public class OptionChainScannerController {
 
     @Operation(
             summary = "Retrieve Live RSI Signals",
-            description = "Fetches the most recent live contracts that are currently in an RSI Extreme zone (>= Overbought or <= Oversold) or actively triggering a hook.",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "List of active RSI extreme/hook contracts",
-                            content = @Content(schema = @Schema(implementation = OptionPrice.class)))
-            }
+            description = "Fetches the most recent live contracts currently in an RSI Extreme zone."
     )
     @GetMapping("/tracked/live/rsi")
     public ResponseEntity<List<OptionPrice>> getLiveRsiSignals(
@@ -131,34 +168,21 @@ public class OptionChainScannerController {
     }
 
     @Operation(
-            summary = "Retrieve Live MA Signals (Breakouts & Breakdowns)", // <--- Updated Summary
-            description = "Fetches the most recent live contracts that have just broken out above OR broken down below the Moving Average (within the proximity threshold).", // <--- Updated Description
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "List of active MA signal contracts",
-                            content = @Content(schema = @Schema(implementation = OptionPrice.class)))
-            }
+            summary = "Retrieve Live MA Signals (Breakouts & Breakdowns)",
+            description = "Fetches the most recent live contracts that have just broken out above or broken down below the MA."
     )
     @GetMapping("/tracked/live/ma")
     public ResponseEntity<List<OptionPrice>> getLiveMaBreakouts(
             @Parameter(description = "Filter by timeframe. Use 'ALL' for no filter.", example = "ONE_HOUR")
             @RequestParam(required = false, defaultValue = "ALL") String timeFrame) {
 
-        // Service already returns both Breakouts and Breakdowns
         List<OptionPrice> maData = optionPriceService.getLiveMaBreakouts(timeFrame);
         return ResponseEntity.ok(maData);
     }
 
-    // ==========================================
-    // LIFECYCLE AUDIT ENDPOINT
-    // ==========================================
-
     @Operation(
             summary = "Retrieve Lifecycle Audit History",
-            description = "Fetches the step-by-step chronological history of a specific contract symbol for the day, allowing the UI to draw an audit trail.",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Chronological list of option state changes",
-                            content = @Content(schema = @Schema(implementation = OptionPrice.class)))
-            }
+            description = "Fetches the step-by-step chronological history of a specific contract symbol for the day."
     )
     @GetMapping("/tracked/audit")
     public ResponseEntity<List<OptionPrice>> getLifecycleAudit(
@@ -170,15 +194,11 @@ public class OptionChainScannerController {
         List<OptionPrice> auditHistory = optionPriceService.getSymbolLifecycleHistory(symbol, timeFrame);
         return ResponseEntity.ok(auditHistory);
     }
-    // ==========================================
-    // TIMEFRAME ENDPOINT
-    // ==========================================
 
     @Operation(
             summary = "Retrieve Unique Time Frames",
             description = "Fetches a list of all distinct time frames currently available in the database."
     )
-    // CHANGED: Moved under /live/ to match existing working APIs
     @GetMapping("/tracked/live/timeframes")
     public ResponseEntity<List<String>> getAvailableTimeFrames() {
         List<String> timeFrames = optionPriceService.getUniqueTimeFrames();
