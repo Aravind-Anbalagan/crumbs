@@ -47,6 +47,7 @@ export default function AdvisoryDashboard() {
     const [dialogData, setDialogData] = useState(null);
     const [error, setError] = useState(null);
     const [filterType, setFilterType] = useState('ALL');
+    const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
 
     const today = new Date();
@@ -57,7 +58,7 @@ export default function AdvisoryDashboard() {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, timelineData]);
+    }, [filterType, timelineData, searchQuery]);
 
     useEffect(() => {
         if (!dialogData) return;
@@ -100,6 +101,12 @@ export default function AdvisoryDashboard() {
                 setError('Market scan failed to trigger. Please try again.');
             })
             .finally(() => setScanningAll(false));
+    };
+
+    const handleResetFilters = () => {
+        setFilterType('ALL');
+        setSearchQuery('');
+        setCurrentPage(1);
     };
 
     // 🚀 Dynamic Expiry Cycle Calculator
@@ -257,15 +264,12 @@ export default function AdvisoryDashboard() {
     const filterCounts = useMemo(() => {
         const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0, NO_TRADE: 0, CYCLE_SL: 0 };
         symbolMatrix.forEach(row => {
-            // Count for Today
             const cat = getFilterCategory(row.todayCell);
             if (cat === 'EXIT_SL' || cat === 'EXIT_TARGET') {
                 counts['EXIT'] += 1;
             } else if (counts[cat] !== undefined) {
                 counts[cat] += 1;
             }
-
-            // Count for Entire Cycle (has any SL happened this month?)
             const hitSlInCycle = Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL');
             if (hitSlInCycle) {
                 counts['CYCLE_SL'] += 1;
@@ -276,20 +280,29 @@ export default function AdvisoryDashboard() {
 
     // 🚀 Matrix Filtering logic
     const filteredMatrix = useMemo(() => {
-        if (filterType === 'ALL') return symbolMatrix;
+        let activeMatrix = symbolMatrix;
+
+        if (searchQuery.trim() !== '') {
+            const query = searchQuery.toLowerCase();
+            activeMatrix = activeMatrix.filter(row => row.symbol.toLowerCase().includes(query));
+        }
+
+        if (filterType === 'ALL') return activeMatrix;
+
         if (filterType === 'CYCLE_SL') {
-            return symbolMatrix.filter(row =>
+            return activeMatrix.filter(row =>
                 Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL')
             );
         }
         if (filterType === 'EXIT') {
-            return symbolMatrix.filter(row => {
+            return activeMatrix.filter(row => {
                 const cat = getFilterCategory(row.todayCell);
                 return cat === 'EXIT_SL' || cat === 'EXIT_TARGET';
             });
         }
-        return symbolMatrix.filter(row => getFilterCategory(row.todayCell) === filterType);
-    }, [symbolMatrix, filterType]);
+
+        return activeMatrix.filter(row => getFilterCategory(row.todayCell) === filterType);
+    }, [symbolMatrix, filterType, searchQuery]);
 
     const totalPages = Math.max(1, Math.ceil(filteredMatrix.length / PAGE_SIZE));
     const pagedMatrix = useMemo(() => {
@@ -309,7 +322,7 @@ export default function AdvisoryDashboard() {
         <div className="advisory-container">
             <div className="advisory-header glass-panel">
                 <div className="header-title-area">
-                    <h2>Lifecycle Matrix</h2>
+                    <h2>Expiry Matrix</h2>
                     <span className="subtitle">
                         Cycle: <strong>{cycleRangeText}</strong>
                         <span style={{ margin: '0 10px', color: 'var(--glass-border)' }}>|</span>
@@ -338,42 +351,57 @@ export default function AdvisoryDashboard() {
                 </div>
             )}
 
-            {/* 🚀 Updated Single Row Filter Bar with Visual Divider */}
-            <div className="filter-bar glass-panel" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-                <div className="filter-inline-group">
-                    <span className="filter-label">Today:</span>
-                    {[
-                        { key: 'ALL', label: 'All', count: filterCounts.ALL },
-                        { key: 'NEW_ENTRY', label: 'New Entry', count: filterCounts.NEW_ENTRY },
-                        { key: 'EXIT', label: 'Exit Today', count: filterCounts.EXIT },
-                        { key: 'MAINTAIN', label: 'Maintain', count: filterCounts.MAINTAIN },
-                    ].map(f => (
-                        <button
-                            key={f.key}
-                            className={`filter-chip ${filterType === f.key ? 'active' : ''}`}
-                            onClick={() => setFilterType(f.key)}
-                        >
-                            {f.label} ({f.count})
-                        </button>
-                    ))}
+            <div className="filter-bar glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+                    <div className="filter-inline-group">
+                        <span className="filter-label">Today:</span>
+                        {[
+                            { key: 'ALL', label: 'All', count: filterCounts.ALL },
+                            { key: 'NEW_ENTRY', label: 'New Entry', count: filterCounts.NEW_ENTRY },
+                            { key: 'EXIT', label: 'Exit Today', count: filterCounts.EXIT },
+                            { key: 'MAINTAIN', label: 'Maintain', count: filterCounts.MAINTAIN },
+                        ].map(f => (
+                            <button
+                                key={f.key}
+                                className={`filter-chip ${filterType === f.key ? 'active' : ''}`}
+                                onClick={() => setFilterType(f.key)}
+                            >
+                                {f.label} ({f.count})
+                            </button>
+                        ))}
+                    </div>
+
+                    <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--glass-border)' }}></div>
+
+                    <div className="filter-inline-group">
+                        <span className="filter-label" style={{ color: '#00a8ff' }}>Whole Cycle:</span>
+                        {[
+                            { key: 'CYCLE_SL', label: 'Hit Stop Loss', count: filterCounts.CYCLE_SL, isWarning: true }
+                        ].map(f => (
+                            <button
+                                key={f.key}
+                                className={`filter-chip ${f.isWarning ? 'chip-warning' : ''} ${filterType === f.key ? 'active' : ''}`}
+                                onClick={() => setFilterType(f.key)}
+                            >
+                                {f.label} ({f.count})
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                {/* Subtle vertical divider between the groups */}
-                <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--glass-border)' }}></div>
-
-                <div className="filter-inline-group">
-                    <span className="filter-label" style={{ color: '#00a8ff' }}>Whole Cycle:</span>
-                    {[
-                        { key: 'CYCLE_SL', label: 'Hit Stop Loss', count: filterCounts.CYCLE_SL, isWarning: true }
-                    ].map(f => (
-                        <button
-                            key={f.key}
-                            className={`filter-chip ${f.isWarning ? 'chip-warning' : ''} ${filterType === f.key ? 'active' : ''}`}
-                            onClick={() => setFilterType(f.key)}
-                        >
-                            {f.label} ({f.count})
+                <div className="search-container">
+                    <input
+                        type="text"
+                        placeholder="Search instrument..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="search-input"
+                    />
+                    {(searchQuery !== '' || filterType !== 'ALL') && (
+                        <button className="btn-reset" onClick={handleResetFilters} title="Clear Search and Filters">
+                            ✕ Reset
                         </button>
-                    ))}
+                    )}
                 </div>
             </div>
 
@@ -383,7 +411,7 @@ export default function AdvisoryDashboard() {
                 ) : symbolMatrix.length === 0 ? (
                     <div className="empty-state">No trades found in dataset.</div>
                 ) : filteredMatrix.length === 0 ? (
-                    <div className="empty-state">No instruments match this filter.</div>
+                    <div className="empty-state">No instruments match your search or filter criteria.</div>
                 ) : (
                     <>
                         <div className="timeline-scroll-area">

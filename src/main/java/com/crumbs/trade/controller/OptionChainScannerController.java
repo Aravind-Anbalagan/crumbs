@@ -4,7 +4,7 @@ import com.crumbs.trade.builder.OptionScannerConfig;
 import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
-import com.crumbs.trade.repo.NiftyRepo; // <--- Import your NiftyRepo
+import com.crumbs.trade.repo.NiftyRepo;
 import com.crumbs.trade.service.OptionChainScannerService;
 import com.crumbs.trade.service.OptionIndicatorService;
 import com.crumbs.trade.service.OptionPriceService;
@@ -16,14 +16,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j; // 👈 Added for logging
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
+@Slf4j // 👈 Enables log.error, log.warn, etc.
 @RestController
 @RequestMapping("/api/options/scanner")
 @RequiredArgsConstructor
@@ -34,8 +37,7 @@ public class OptionChainScannerController {
     private final OptionIndicatorService indicatorService;
     private final OptionPriceService optionPriceService;
     private final StrategyConfigService configService;
-    private final NiftyRepo niftyRepo; // <--- Injected NiftyRepo
-
+    private final NiftyRepo niftyRepo;
 
     @Operation(
             summary = "Scan Option Chain & Evaluate Indicators for High Movers",
@@ -85,20 +87,24 @@ public class OptionChainScannerController {
                 .interval(actualInterval)
                 .build();
 
-        // 1. Resolve symbols (Handles "ALL" or individual names)
+        // 1. Resolve symbols (Handles "ALL" or individual names) with error safety
         List<String> rawResolvedSymbols = new ArrayList<>();
         for (String symbol : symbols) {
-            if ("ALL".equalsIgnoreCase(symbol.trim())) {
-                List<String> allNames = niftyRepo.getAllNames();
-                if (allNames != null && !allNames.isEmpty()) {
-                    rawResolvedSymbols.addAll(allNames);
+            try {
+                if ("ALL".equalsIgnoreCase(symbol.trim())) {
+                    List<String> allNames = niftyRepo.getAllNames();
+                    if (allNames != null && !allNames.isEmpty()) {
+                        rawResolvedSymbols.addAll(allNames);
+                    }
+                } else {
+                    rawResolvedSymbols.add(symbol);
                 }
-            } else {
-                rawResolvedSymbols.add(symbol);
+            } catch (Exception e) {
+                log.error("⚠️ Error resolving symbol input '{}': {}. Skipping.", symbol, e.getMessage());
             }
         }
 
-        // 2. Filter symbols based on the percentage change threshold from the database repository/entities
+        // 2. Filter symbols based on the percentage change threshold safely
         List<String> finalSymbolsToScan = new ArrayList<>();
         for (String symbol : rawResolvedSymbols) {
             String cleanSymbol = symbol.trim();
@@ -106,33 +112,45 @@ public class OptionChainScannerController {
                 continue;
             }
 
-            // If it's a major index like NIFTY or BANKNIFTY passed explicitly, you can choose to bypass or evaluate.
-            // For F&O stocks, fetch the entity to check its latest calculated percentage change.
-            var stockOpt = niftyRepo.findByName(cleanSymbol); // Or use an appropriate query method
+            try {
+                Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(cleanSymbol);
 
-            if (stockOpt != null) {
-                BigDecimal currentChange = stockOpt.get().getPercentageChange();
+                if (stockOpt != null && stockOpt.isPresent()) {
+                    BigDecimal currentChange = stockOpt.get().getPercentageChange();
 
-                // Check if the absolute percentage change meets or exceeds the threshold
-                if (currentChange != null && currentChange.abs().compareTo(minPercentageChange) >= 0) {
+                    // Check if the absolute percentage change meets or exceeds the threshold
+                    if (currentChange != null && currentChange.abs().compareTo(minPercentageChange) >= 0) {
+                        finalSymbolsToScan.add(cleanSymbol);
+                    }
+                } else {
+                    // Fallback: If it's a broad index/symbol not tied to the stock table, allow it through
                     finalSymbolsToScan.add(cleanSymbol);
                 }
-            } else {
-                // Fallback: If it's a broad index/symbol not tied to the stock table percentage table, allow it through
-                finalSymbolsToScan.add(cleanSymbol);
+            } catch (Exception e) {
+                log.error("⚠️ Error evaluating percentage threshold for symbol '{}': {}. Skipping filter check.", cleanSymbol, e.getMessage());
             }
         }
 
         List<ScannedContractDto> masterContractList = new ArrayList<>();
 
-        // 3. Scan only the filtered list of high movers
+        // 3. Scan only the filtered list of high movers with individual try-catch error insulation
         for (String symbol : finalSymbolsToScan) {
-            List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(symbol, config);
-            contracts = indicatorService.evaluateIndicatorsForContracts(contracts, config.getInterval());
-            masterContractList.addAll(contracts);
+            try {
+                List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(symbol, config);
+                if (contracts != null && !contracts.isEmpty()) {
+                    contracts = indicatorService.evaluateIndicatorsForContracts(contracts, config.getInterval());
+                    masterContractList.addAll(contracts);
+                }
+            } catch (Exception e) {
+                log.error("❌ Failed to scan or evaluate indicators for symbol '{}': {}. Moving to next symbol.", symbol, e.getMessage(), e);
+            }
         }
 
-        optionPriceService.saveExtremeContracts(masterContractList);
+        try {
+            optionPriceService.saveExtremeContracts(masterContractList);
+        } catch (Exception e) {
+            log.error("❌ Failed to save extreme contracts batch to database: {}", e.getMessage(), e);
+        }
 
         return ResponseEntity.ok(masterContractList);
     }
