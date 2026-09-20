@@ -235,7 +235,7 @@ public class OptionChainScannerService {
                 return samco.getIndexPrice(session, symbol);
             }
 
-            if (symbol.startsWith("CRUDEOIL") || symbol.startsWith("GOLD")) {
+            if (symbol.startsWith("CRUDEOIL") || symbol.startsWith("GOLD")|| symbol.startsWith("SILVER")) {
                 String futSymbol = tokenService.getSymbolByName(symbol);
                 if (futSymbol != null) {
                     return samco.getLtp(session, "MCX", futSymbol);
@@ -281,7 +281,7 @@ public class OptionChainScannerService {
                 return cachedContracts;
             }
 
-            String exchange = (underlyingName.toUpperCase().contains("GOLD") || underlyingName.toUpperCase().contains("CRUDE"))
+            String exchange = (underlyingName.toUpperCase().contains("GOLD") || underlyingName.toUpperCase().contains("SILVER") || underlyingName.toUpperCase().contains("CRUDE"))
                     ? "MCX"
                     : "NFO";
 

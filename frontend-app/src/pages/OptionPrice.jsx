@@ -9,8 +9,8 @@ const extractBaseName = (sym) => {
   return match ? match[0].toUpperCase() : sym;
 };
 
-// Static timeframes matching AngelOne standards
-const AVAILABLE_TIME_FRAMES = ['ONE_MINUTE', 'FIVE_MINUTE', 'FIFTEEN_MINUTE', 'ONE_HOUR'];
+// Static timeframes matching AngelOne standards + ALL option
+const AVAILABLE_TIME_FRAMES = ['ALL', 'ONE_MINUTE', 'FIVE_MINUTE', 'FIFTEEN_MINUTE', 'ONE_HOUR'];
 
 const OptionPrice = () => {
   const [activeTab, setActiveTab] = useState('RSI');

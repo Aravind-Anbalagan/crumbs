@@ -633,17 +633,66 @@ public class AdvisoryEngineService {
     }
 
     private BigDecimal calculateATR(List<PricesIndex> candles, int period) {
-        if (candles.size() <= period) return BigDecimal.TEN;
+        if (candles == null || candles.isEmpty()) {
+            log.warn("❌ Empty candle list. Returning default ATR.");
+            return BigDecimal.TEN;
+        }
+
+        if (candles.size() < period) {
+            log.warn("⚠️ Only {} candles available. Need {}. Using range-based estimate.", candles.size(), period);
+            return estimateATRFromRange(candles);
+        }
+
         BigDecimal trSum = BigDecimal.ZERO;
+        int validTRs = 0;
 
         for (int i = candles.size() - period; i < candles.size(); i++) {
-            BigDecimal high = candles.get(i).getHigh();
-            BigDecimal low = candles.get(i).getLow();
-            BigDecimal prevClose = candles.get(i - 1).getClose();
-            BigDecimal tr = high.subtract(low).max(high.subtract(prevClose).abs()).max(low.subtract(prevClose).abs());
+            PricesIndex candle = candles.get(i);
+            PricesIndex prevCandle = candles.get(i - 1);
+
+            // Validate data
+            if (candle.getHigh() == null || candle.getLow() == null ||
+                    prevCandle.getClose() == null) {
+                log.warn("⚠️ Null OHLC at index {}. Skipping.", i);
+                continue;
+            }
+
+            BigDecimal high = candle.getHigh();
+            BigDecimal low = candle.getLow();
+            BigDecimal prevClose = prevCandle.getClose();
+
+            // Sanity check
+            if (high.compareTo(low) < 0) {
+                log.error("❌ Corrupted candle at {}: High={}, Low={}. Skipping.", i, high, low);
+                continue;
+            }
+
+            BigDecimal tr = high.subtract(low)
+                    .max(high.subtract(prevClose).abs())
+                    .max(low.subtract(prevClose).abs());
+
             trSum = trSum.add(tr);
+            validTRs++;
         }
-        return trSum.divide(new BigDecimal(period), 2, RoundingMode.HALF_UP);
+
+        if (validTRs == 0) {
+            log.warn("Using range-based fallback...");
+            return estimateATRFromRange(candles);  // Better than hardcoded ₹10
+        }
+
+        return trSum.divide(new BigDecimal(validTRs), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal estimateATRFromRange(List<PricesIndex> candles) {
+        BigDecimal sumRange = BigDecimal.ZERO;
+        int count = 0;
+        for (PricesIndex c : candles) {
+            if (c.getHigh() != null && c.getLow() != null) {
+                sumRange = sumRange.add(c.getHigh().subtract(c.getLow()));
+                count++;
+            }
+        }
+        return count > 0 ? sumRange.divide(new BigDecimal(count), 2, RoundingMode.HALF_UP) : BigDecimal.TEN;
     }
 
     // =========================================================================

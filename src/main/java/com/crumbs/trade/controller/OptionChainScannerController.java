@@ -16,7 +16,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j; // 👈 Added for logging
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-@Slf4j // 👈 Enables log.error, log.warn, etc.
+@Slf4j
 @RestController
 @RequestMapping("/api/options/scanner")
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class OptionChainScannerController {
 
     @Operation(
             summary = "Scan Option Chain & Evaluate Indicators for High Movers",
-            description = "Scans option chains only for symbols that have moved by at least the specified percentage threshold, calculates indicators, saves extremes, and fires alerts.",
+            description = "Scans option chains for specified symbols. Supports 'ALL' (for NSE) and 'ALL_MCX' (for MCX). NSE symbols are filtered by percentage change, while MCX bypasses the filter.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "Successfully scanned and processed contracts",
                             content = @Content(schema = @Schema(implementation = ScannedContractDto.class)))
@@ -49,10 +49,10 @@ public class OptionChainScannerController {
     )
     @GetMapping("/scan")
     public ResponseEntity<List<ScannedContractDto>> testScan(
-            @Parameter(description = "List of indices or stocks to scan (e.g. NIFTY, BANKNIFTY or ALL)", example = "ALL")
+            @Parameter(description = "List of indices or stocks to scan (e.g. NIFTY, ALL, ALL_MCX)", example = "ALL")
             @RequestParam(defaultValue = "NIFTY") List<String> symbols,
 
-            @Parameter(description = "Minimum absolute percentage change required to trigger a scan", example = "5.0")
+            @Parameter(description = "Minimum absolute percentage change required to trigger a scan (Applies to NSE only)", example = "5.0")
             @RequestParam(defaultValue = "5.0") BigDecimal minPercentageChange,
 
             @Parameter(description = "Number of monthly expiries to scan", example = "1")
@@ -87,15 +87,19 @@ public class OptionChainScannerController {
                 .interval(actualInterval)
                 .build();
 
-        // 1. Resolve symbols (Handles "ALL" or individual names) with error safety
+        // 1. Resolve symbols (Handles "ALL" for NSE, "ALL_MCX" for MCX, or individual names)
         List<String> rawResolvedSymbols = new ArrayList<>();
         for (String symbol : symbols) {
             try {
-                if ("ALL".equalsIgnoreCase(symbol.trim())) {
+                String trimmedSymbol = symbol.trim().toUpperCase();
+                if ("ALL".equals(trimmedSymbol) || "ALL_NSE".equals(trimmedSymbol)) {
                     List<String> allNames = niftyRepo.getAllNames();
                     if (allNames != null && !allNames.isEmpty()) {
                         rawResolvedSymbols.addAll(allNames);
                     }
+                } else if ("ALL_MCX".equals(trimmedSymbol)) {
+                    // 👈 Added MCX resolution block matching your scheduler
+                    rawResolvedSymbols.addAll(List.of("SILVERM"));
                 } else {
                     rawResolvedSymbols.add(symbol);
                 }
@@ -118,12 +122,12 @@ public class OptionChainScannerController {
                 if (stockOpt != null && stockOpt.isPresent()) {
                     BigDecimal currentChange = stockOpt.get().getPercentageChange();
 
-                    // Check if the absolute percentage change meets or exceeds the threshold
+                    // Check if the absolute percentage change meets or exceeds the threshold (NSE)
                     if (currentChange != null && currentChange.abs().compareTo(minPercentageChange) >= 0) {
                         finalSymbolsToScan.add(cleanSymbol);
                     }
                 } else {
-                    // Fallback: If it's a broad index/symbol not tied to the stock table, allow it through
+                    // Fallback: If it's a broad index/symbol not tied to the stock table (like MCX), allow it through
                     finalSymbolsToScan.add(cleanSymbol);
                 }
             } catch (Exception e) {

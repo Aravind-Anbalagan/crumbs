@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "strategy_config")
 @Data
@@ -25,4 +27,5 @@ public class StrategyConfig {
     private double maProximity;     // e.g., 50.0
     private Double rsiOverbought;
     private Double rsiOversold;
+    private BigDecimal minPercentageChange;
 }

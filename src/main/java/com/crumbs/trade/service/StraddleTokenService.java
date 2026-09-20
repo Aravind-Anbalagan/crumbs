@@ -53,7 +53,7 @@ public class StraddleTokenService {
             return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol();
         } else if ("CRUDEOIL".equalsIgnoreCase(name) || "CRUDEOILM".equalsIgnoreCase(name)) {
             return strategyRepo.findByName("STRADDLE_PREMIUM").getSymbol1();
-        } else if ("GOLDM".equalsIgnoreCase(name)) {
+        } else if ("GOLDM".equalsIgnoreCase(name) || "SILVERM".equalsIgnoreCase(name)) {
             Strategy strategy = strategyRepo.findByName(name);
             return strategy != null ? strategy.getSymbol() : "NATURALGAS";
         }
@@ -70,6 +70,8 @@ public class StraddleTokenService {
                 stepInterval = 100;
             } else if (upperName.contains("GOLDM")) {
                 stepInterval = 500;
+            } else if (upperName.contains("SILVERM")) {
+                stepInterval = 1000;
             }
         }
         int nearest = chartService.findNearestMultiple(price.intValue(), stepInterval);
