@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -36,8 +37,9 @@ public class OptionPriceScannerScheduler {
     private final StrategyConfigService configService;
     private final NiftyRepo niftyRepo;
 
-    // MCX target list remains hardcoded as NiftyRepo typically handles NSE
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM","SILVERM");
+    // 1. Define the static NSE indices
+    private static final List<String> NSE_SYMBOLS = List.of("NIFTY", "BANKNIFTY");
 
     // ==========================================
     // 1. NSE 1-HOUR SCHEDULER (Runs every hour at xx:15 from 9:15 AM to 3:15 PM)
@@ -58,14 +60,15 @@ public class OptionPriceScannerScheduler {
 
         logger.info("🚀 [NSE] Starting 1-Hour Option Scanner...");
 
-        // Fetch configuration and dynamically filter "ALL" symbols
         StrategyConfig activeConfig = configService.getActiveConfig();
         BigDecimal threshold = activeConfig.getMinPercentageChange() != null
                 ? activeConfig.getMinPercentageChange()
                 : BigDecimal.valueOf(5.0);
 
         List<String> allNames = niftyRepo.getAllNames();
-        List<String> symbolsToScan = new ArrayList<>();
+
+        // 2. Initialize a Set with the static symbols to prevent duplicates if they also exist in DB
+        Set<String> uniqueSymbolsToScan = new HashSet<>(NSE_SYMBOLS);
 
         if (allNames != null) {
             for (String symbol : allNames) {
@@ -74,7 +77,7 @@ public class OptionPriceScannerScheduler {
                     if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
                         BigDecimal currentChange = stockOpt.get().getPercentageChange();
                         if (currentChange.abs().compareTo(threshold) >= 0) {
-                            symbolsToScan.add(symbol);
+                            uniqueSymbolsToScan.add(symbol);
                         }
                     }
                 } catch (Exception e) {
@@ -83,12 +86,12 @@ public class OptionPriceScannerScheduler {
             }
         }
 
-        if (symbolsToScan.isEmpty()) {
-            logger.info("ℹ️ [NSE] No symbols met the {}% threshold. Skipping scan.", threshold);
-            return;
-        }
+        // 3. Convert back to List for the workflow engine
+        List<String> symbolsToScan = new ArrayList<>(uniqueSymbolsToScan);
 
-        logger.info("✅ [NSE] Found {} symbols exceeding {}% threshold.", symbolsToScan.size(), threshold);
+        // Note: The empty check is removed because the list will ALWAYS contain NIFTY and BANKNIFTY.
+        logger.info("✅ [NSE] Scanning {} symbols (Default indices + stocks exceeding {}% threshold).",
+                symbolsToScan.size(), threshold);
 
         String interval = activeConfig.getDefaultInterval() != null
                 ? activeConfig.getDefaultInterval()
@@ -98,14 +101,14 @@ public class OptionPriceScannerScheduler {
     }
 
     // ==========================================
-    // 2. MCX 1-HOUR SCHEDULER (Runs every hour at xx:00 from 4:00 PM to 11:00 PM)
+    // 2. MCX 1-HOUR SCHEDULER
     // ==========================================
     @Scheduled(cron = "0 0 16-23 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMcxHourlyScan() {
+        // ... (Unchanged)
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
 
-        // MCX Guard Clauses (4:00 PM to 11:30 PM)
         if (now.isBefore(LocalTime.of(16, 0)) || now.isAfter(LocalTime.of(23, 30))) {
             return;
         }
@@ -118,6 +121,7 @@ public class OptionPriceScannerScheduler {
     // SHARED WORKFLOW ENGINE
     // ==========================================
     private void executeScanWorkflow(List<String> symbols, String interval) {
+        // ... (Unchanged)
         OptionScannerConfig config = OptionScannerConfig.builder()
                 .monthsToScan(1)
                 .scanWeekly(true)
@@ -131,14 +135,10 @@ public class OptionPriceScannerScheduler {
             try {
                 logger.debug("📊 Scanning {} options on {} timeframe...", symbol, interval);
 
-                // 1. Scan Chain
                 List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(symbol, config);
 
-                // 2. Evaluate Indicators
                 if (contracts != null && !contracts.isEmpty()) {
                     contracts = indicatorService.evaluateIndicatorsForContracts(contracts, config.getInterval());
-
-                    // 3. Save to DB & Notify Telegram
                     optionPriceService.saveExtremeContracts(contracts);
                 }
 
