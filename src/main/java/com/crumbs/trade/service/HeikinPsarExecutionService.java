@@ -50,7 +50,7 @@ public class HeikinPsarExecutionService {
     private static final BigDecimal NIFTY_BIG_CANDLE_THRESHOLD = new BigDecimal("25.00");
     private static final BigDecimal CRUDE_BIG_CANDLE_THRESHOLD = new BigDecimal("35.00");
 
-    private static final BigDecimal NIFTY_RETRACEMENT_PERCENT = new BigDecimal("0.50");
+    private static final BigDecimal NIFTY_RETRACEMENT_PERCENT = new BigDecimal("1.00");
     private static final BigDecimal CRUDE_RETRACEMENT_PERCENT = new BigDecimal("1.00");
 
     // =========================================================
