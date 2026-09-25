@@ -83,7 +83,7 @@ public class SmartOrderScheduler {
                 token.setTransactionType("B");
 
                 // 🌟 NEW: Maps to "productType": "M"
-                token.setProductType("M");
+                token.setProductType("C");
 
                 // Note: "orderType": "LMT" and "price" are automatically set inside
                 // the executeSmartOrder() method after it fetches the live quotes.
