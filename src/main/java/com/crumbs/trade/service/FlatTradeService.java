@@ -474,7 +474,7 @@ public class FlatTradeService {
 
             // Lock in the DB quantity for this execution
             token.setQuantity(strategy.getQuantity());
-
+            token.setToken(strategy.getToken());
             logger.info("[SMART-ORDER] Starting execution for {} (DB Total Qty: {})", token.getSymbol(), token.getQuantity());
 
             // 2. Fetch initial market depth
