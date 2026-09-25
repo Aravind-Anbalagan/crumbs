@@ -140,4 +140,10 @@ public interface IndexesRepo extends JpaRepository<Indexes, Long> {
 
     @Query("SELECT i FROM Indexes i WHERE i.name = :name AND i.exchange = :exchange AND (i.symbol LIKE '%CE' OR i.symbol LIKE '%PE')")
     List<Indexes> findOptionContractsByNameAndExchange(@Param("name") String name, @Param("exchange") String exchange);
+
+    @Query("SELECT i.token FROM Indexes i WHERE i.name = :name AND i.expiry = :expiry AND i.symbol LIKE :suffix AND i.exchange = 'NFO'")
+    String findNfoTokenByNameAndExpiryAndSymbolLike(
+            @Param("name") String name,
+            @Param("expiry") String expiry,
+            @Param("suffix") String suffix);
 }

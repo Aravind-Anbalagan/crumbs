@@ -386,27 +386,28 @@
 
 /* 4. EXIT - STOP LOSS (Black with Skull) */
 .day-cell.color-exit-sl {
-    background: var(--color-exit-sl) !important;
+    background: #0b0d11 !important;
     color: #ef4444 !important;
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(239, 68, 68, 0.4) !important;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.7) !important;
     font-size: 0.85rem;
 }
 
 /* 5. EXIT - TARGET (Orange with Tick) */
 .day-cell.color-exit-target {
-    background: var(--color-exit-target) !important;
+    background: #f97316 !important;
     color: #ffffff !important;
-    box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+    border: 1px solid rgba(249, 115, 22, 0.4) !important;
+    box-shadow: 0 0 10px rgba(249, 115, 22, 0.4) !important;
     font-weight: 900;
     font-size: 0.85rem;
 }
 
 /* 6. NO_TRADE / EMPTY / ERR / OTHER (Grey) */
 .day-cell.color-no_trade {
-    background: var(--color-no-trade) !important;
-    border: 1px solid rgba(255,255,255,0.1);
-    color: #475569;
+    background: #94a3b8 !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: #475569 !important;
     cursor: not-allowed;
 }
 

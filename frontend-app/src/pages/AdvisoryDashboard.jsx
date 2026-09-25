@@ -183,9 +183,20 @@ export default function AdvisoryDashboard() {
             if (!record.timestamp) return;
             const date = new Date(record.timestamp);
             if (isNaN(date.getTime())) return;
-            const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const dateString = `${year}-${month}-${day}`;
+
             if (!matrix[record.symbol]) matrix[record.symbol] = { records: {} };
-            matrix[record.symbol].records[dateString] = record;
+
+            const existing = matrix[record.symbol].records[dateString];
+
+            // Keep the latest timestamp for that calendar day
+            if (!existing || new Date(record.timestamp) > new Date(existing.timestamp)) {
+                matrix[record.symbol].records[dateString] = record;
+            }
         });
 
         const formattedMatrix = [];

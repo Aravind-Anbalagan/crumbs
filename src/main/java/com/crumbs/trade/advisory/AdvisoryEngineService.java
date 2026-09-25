@@ -16,6 +16,8 @@ import com.crumbs.trade.service.SmcLiteService;
 import com.crumbs.trade.utility.CycleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,7 +46,9 @@ public class AdvisoryEngineService {
     private final AngelOneService angelOneService;
     private final AngelOne angelOne;
     private static final Map<String, Lock> SYMBOL_LOCKS = new ConcurrentHashMap<>();
-
+    @Autowired
+    @Lazy
+    private AdvisoryEngineService self; // 🚀 Inject the proxy
     public record MultiTimeframeTrend(String dailyTrend, String weeklyTrend, boolean isAligned) {}
 
     public OptionRecommendation processAdvisory(String name, String token) {
@@ -65,7 +69,7 @@ public class AdvisoryEngineService {
         }
 
         try {
-            return processAdvisoryInternal(name, token);
+            return self.processAdvisoryInternal(name, token);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
             log.error("🛡️ DB constraint blocked duplicate ACTIVE row for {}", name, e);
             return null;
@@ -75,7 +79,7 @@ public class AdvisoryEngineService {
     }
 
     @Transactional
-    protected OptionRecommendation processAdvisoryInternal(String name, String token) {
+    public OptionRecommendation processAdvisoryInternal(String name, String token) {
         log.info("🧠 Running Stateful EOD Advisory Engine for: {} (Token: {})", name, token);
 
         Indexes indexes = indexesRepo.findByToken(token);
@@ -788,7 +792,6 @@ public class AdvisoryEngineService {
             return null;
         }
         try {
-            // 1. Normalize expiry format if it's in ISO format (e.g., "2026-09-29" -> "29SEP2026")
             String rawExpiry = record.getExpiryDate().trim();
             String formattedExpiry = rawExpiry;
 
@@ -800,9 +803,8 @@ public class AdvisoryEngineService {
             String strikeStr = record.getRecommendedStrike().stripTrailingZeros().toPlainString();
             String suffix = "%" + strikeStr + record.getOptionType();
 
-            log.info("🔍 Searching token for Name: {}, Expiry: {}, Suffix: {}", record.getSymbol(), formattedExpiry, suffix);
-
-            String optionToken = indexesRepo.findTokenByNameAndExpiryAndSymbolLike(
+            // 🚀 Enforce NFO exchange only
+            String optionToken = indexesRepo.findNfoTokenByNameAndExpiryAndSymbolLike(
                     record.getSymbol(), formattedExpiry, suffix);
 
             if (optionToken != null) {
