@@ -15,17 +15,7 @@
     --glass-bg: rgba(15, 23, 42, 0.7);
     --glass-border: rgba(148, 163, 184, 0.2);
 }
-/* 🚀 Stop Loss Warning Filter Chip styling */
-.filter-chip.chip-warning:hover {
-    border-color: rgba(239, 68, 68, 0.4);
-    color: #ef4444;
-}
 
-.filter-chip.chip-warning.active {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: #ef4444;
-    color: #ef4444;
-}
 .advisory-container {
     padding: 20px;
     color: var(--text-main);
@@ -216,6 +206,65 @@
     color: #00a8ff;
 }
 
+/* Stop Loss Warning Filter Chip styling */
+.filter-chip.chip-warning:hover {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.filter-chip.chip-warning.active {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+/* --- SEARCH BAR --- */
+.search-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.search-input {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    outline: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 220px;
+}
+
+.search-input:focus {
+    border-color: #00a8ff;
+    box-shadow: 0 0 5px rgba(0, 168, 255, 0.3);
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.btn-reset {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-reset:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.6);
+}
+
 /* --- TIMELINE BOARD --- */
 .timeline-wrapper {
     flex: 1;
@@ -362,21 +411,18 @@
     transform: scale(1.05);
 }
 
-/* 1. PE NEW ENTRY (Dark Green) */
 .day-cell.color-new_entry-pe {
     background: var(--color-entry-pe) !important;
     color: #ffffff !important;
     box-shadow: 0 0 10px rgba(4, 120, 87, 0.4);
 }
 
-/* 2. CE NEW ENTRY (Dark Red) */
 .day-cell.color-new_entry-ce {
     background: var(--color-entry-ce) !important;
     color: #ffffff !important;
     box-shadow: 0 0 10px rgba(185, 28, 28, 0.4);
 }
 
-/* 3. MAINTAIN / HOLDING (Yellow for both CE/PE) */
 .day-cell.color-maintain {
     background: var(--color-maintain) !important;
     color: #1f2937 !important;
@@ -384,18 +430,16 @@
     font-weight: 800;
 }
 
-/* 4. EXIT - STOP LOSS (Black with Skull) */
 .day-cell.color-exit-sl {
-    background: #0b0d11 !important;
+    background: var(--color-exit-sl) !important;
     color: #ef4444 !important;
     border: 1px solid rgba(239, 68, 68, 0.4) !important;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.7) !important;
     font-size: 0.85rem;
 }
 
-/* 5. EXIT - TARGET (Orange with Tick) */
 .day-cell.color-exit-target {
-    background: #f97316 !important;
+    background: var(--color-exit-target) !important;
     color: #ffffff !important;
     border: 1px solid rgba(249, 115, 22, 0.4) !important;
     box-shadow: 0 0 10px rgba(249, 115, 22, 0.4) !important;
@@ -403,9 +447,8 @@
     font-size: 0.85rem;
 }
 
-/* 6. NO_TRADE / EMPTY / ERR / OTHER (Grey) */
 .day-cell.color-no_trade {
-    background: #94a3b8 !important;
+    background: var(--color-no-trade) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     color: #475569 !important;
     cursor: not-allowed;
@@ -455,21 +498,26 @@
     gap: 4px;
 }
 
-/* --- DIALOG OVERLAY & MODAL --- */
+/* =========================================================
+   ENLARGED HIGH-CONTRAST DIALOG OVERLAY & MODAL
+   ========================================================= */
+
 .dialog-overlay {
     position: fixed;
     top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 9999;
 }
 
+/* 🚀 ENLARGED: Dialog Box Width and Padding Increased */
 .dialog-box {
-    width: 450px;
-    max-width: 90%;
+    width: 750px;
+    max-width: 95%;
+    padding: 1.5rem;
     animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -478,20 +526,20 @@
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid var(--glass-border);
-    padding-bottom: 12px;
-    margin-bottom: 15px;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
 }
 
 .dialog-header h3 {
     margin: 0;
-    font-size: 1.2rem;
+    font-size: 1.6rem; /* 🚀 Enlarged Header */
 }
 
 .btn-close {
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 1.2rem;
+    font-size: 1.6rem;
     cursor: pointer;
 }
 
@@ -500,8 +548,8 @@
 }
 
 .dialog-content {
-    max-height: 60vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .dialog-status-row {
@@ -513,32 +561,45 @@
 
 .dialog-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px; /* Roomy Gap */
     margin-bottom: 20px;
 }
 
 .d-box {
     display: flex;
     flex-direction: column;
-    background: rgba(0,0,0,0.2);
-    padding: 10px;
+    background: rgba(0,0,0,0.15);
+    padding: 16px 18px; /* 🚀 Thicker Padding */
     border-radius: 8px;
     border: 1px solid var(--glass-border);
 }
 
+/* 🚀 HIGH-CONTRAST B&W LABELS AND VALUES */
 .d-box label {
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     font-weight: 700;
 }
 
 .d-box span {
-    font-size: 0.95rem;
-    font-weight: bold;
-    color: var(--text-main);
+    font-size: 1.4rem; /* 🚀 Enlarged Core Value Text */
+    font-weight: 800;
+    color: var(--text-main); /* Flips naturally between black and white based on theme */
+}
+
+.d-box .pnl-text span {
+    font-size: 1.4rem;
+}
+
+.d-box .d-subtext {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 6px;
+    color: var(--text-muted); /* Distinct from main text but high contrast */
+    font-family: 'Courier New', Courier, monospace;
 }
 
 .highlight-box {
@@ -548,41 +609,41 @@
 
 .highlight-box label {
     color: #00a8ff;
-    font-weight: 800;
 }
 
 .dialog-reasoning {
     background: rgba(0, 168, 255, 0.05);
     border-left: 3px solid #00a8ff;
-    padding: 12px;
+    padding: 16px;
     border-radius: 4px;
+    margin-bottom: 0;
 }
 
 .dialog-reasoning label {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     color: #00a8ff;
     text-transform: uppercase;
     font-weight: bold;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 
 .dialog-reasoning p {
     margin: 0;
-    font-size: 0.85rem;
-    line-height: 1.4;
+    font-size: 1rem; /* 🚀 Readability boost */
+    line-height: 1.5;
     color: var(--text-main);
 }
 
 /* --- UTILITIES --- */
-.text-green { color: #2ed573; }
+.text-green { color: #10b981; }
 .text-red { color: #ef4444; }
 .text-muted { color: var(--text-muted); }
 
 .status-badge {
-    padding: 4px 10px;
+    padding: 6px 12px;
     border-radius: 20px;
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     font-weight: 700;
     text-transform: uppercase;
 }
@@ -611,78 +672,4 @@
 @keyframes popIn {
     from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
-}
-/* --- SEARCH BAR --- */
-.search-container {
-    display: flex;
-    align-items: center;
-}
-
-.search-input {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--glass-border);
-    color: var(--text-main);
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    outline: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 220px;
-}
-
-.search-input:focus {
-    border-color: #00a8ff;
-    box-shadow: 0 0 5px rgba(0, 168, 255, 0.3);
-    background: rgba(0, 0, 0, 0.3);
-}
-
-.search-input::placeholder {
-    color: var(--text-muted);
-}
-/* Add these new styles to your AdvisoryDashboard.css */
-
-.search-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.search-input {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--glass-border);
-    color: var(--text-main);
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    outline: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 220px;
-}
-
-.search-input:focus {
-    border-color: #00a8ff;
-    box-shadow: 0 0 5px rgba(0, 168, 255, 0.3);
-    background: rgba(0, 0, 0, 0.3);
-}
-
-.search-input::placeholder {
-    color: var(--text-muted);
-}
-
-.btn-reset {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #ef4444;
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-}
-
-.btn-reset:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.6);
 }

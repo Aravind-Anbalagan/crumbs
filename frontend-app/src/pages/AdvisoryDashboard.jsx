@@ -40,6 +40,13 @@ function getColorFromCellType(type) {
     return 'color-no_trade';
 }
 
+// 🕒 Compact Date & Time Formatter for the Modal
+const formatDateTime = (isoString) => {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    return isNaN(d.getTime()) ? '-' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 export default function AdvisoryDashboard() {
     const [timelineData, setTimelineData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -109,7 +116,7 @@ export default function AdvisoryDashboard() {
         setCurrentPage(1);
     };
 
-    // 🚀 Dynamic Expiry Cycle Calculator
+    // 🚀 Dynamic Expiry Cycle Calculator (Last TUESDAY of month)
     const { startDate, endDate, daysArray, cycleRangeText, expiryDateText, isNewCycle } = useMemo(() => {
         const getLastTuesday = (year, month) => {
             let d = new Date(year, month + 1, 0);
@@ -167,7 +174,7 @@ export default function AdvisoryDashboard() {
         };
     }, []);
 
-    // 🧠 DYNAMIC MATRIX LOGIC
+    // 🧠 DYNAMIC MATRIX LOGIC — Timezone & Deduplication Hardened
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
@@ -184,6 +191,7 @@ export default function AdvisoryDashboard() {
             const date = new Date(record.timestamp);
             if (isNaN(date.getTime())) return;
 
+            // Safe local extraction
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
@@ -191,9 +199,8 @@ export default function AdvisoryDashboard() {
 
             if (!matrix[record.symbol]) matrix[record.symbol] = { records: {} };
 
+            // 🚀 Deduplication Guard: Keep the latest record for that specific calendar day
             const existing = matrix[record.symbol].records[dateString];
-
-            // Keep the latest timestamp for that calendar day
             if (!existing || new Date(record.timestamp) > new Date(existing.timestamp)) {
                 matrix[record.symbol].records[dateString] = record;
             }
@@ -227,6 +234,7 @@ export default function AdvisoryDashboard() {
                         typeForDay = `ENTRY_${currentTrend}`;
                     }
                     else if (actionCategory === 'MAINTAIN') {
+                        // 🚀 SELF-HEALING FIX
                         isHolding = true;
                         if (record.optionType) {
                             currentTrend = record.optionType.toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
@@ -271,7 +279,6 @@ export default function AdvisoryDashboard() {
         return formattedMatrix;
     }, [timelineData, startDate, endDate, daysArray, today]);
 
-    // 🚀 Filter Counters
     const filterCounts = useMemo(() => {
         const counts = { ALL: symbolMatrix.length, NEW_ENTRY: 0, EXIT: 0, MAINTAIN: 0, NO_TRADE: 0, CYCLE_SL: 0 };
         symbolMatrix.forEach(row => {
@@ -289,7 +296,6 @@ export default function AdvisoryDashboard() {
         return counts;
     }, [symbolMatrix]);
 
-    // 🚀 Matrix Filtering logic
     const filteredMatrix = useMemo(() => {
         let activeMatrix = symbolMatrix;
 
@@ -324,8 +330,9 @@ export default function AdvisoryDashboard() {
     const formatPnL = (pnl) => {
         if (pnl === null || pnl === undefined) return '-';
         const val = parseFloat(pnl);
-        if (val > 0) return <span className="text-green">+₹{val.toFixed(2)}</span>;
-        if (val < 0) return <span className="text-red">-₹{Math.abs(val).toFixed(2)}</span>;
+        // Using standard +/- signs but removing specific colors for pure B&W support
+        if (val > 0) return <span>+₹{val.toFixed(2)}</span>;
+        if (val < 0) return <span>-₹{Math.abs(val).toFixed(2)}</span>;
         return '₹0.00';
     };
 
@@ -493,58 +500,64 @@ export default function AdvisoryDashboard() {
                 )}
             </div>
 
+            {/* 🚀 ENLARGED, HIGH-CONTRAST MONOCHROME DIALOG MODAL */}
             {dialogData && (
                 <div className="dialog-overlay" onClick={() => setDialogData(null)}>
                     <div className="dialog-box glass-panel" onClick={(e) => e.stopPropagation()}>
+
                         <div className="dialog-header">
                             <h3>{dialogData.symbol} <span className="text-muted">| {dialogData.formattedDate}</span></h3>
                             <button className="btn-close" onClick={() => setDialogData(null)}>✖</button>
                         </div>
+
                         <div className="dialog-content">
                             <div className="dialog-status-row">
                                 <span className={`status-badge ${dialogData.status?.toLowerCase()}`}>{dialogData.status}</span>
                                 <strong>{dialogData.actionTaken}</strong>
                             </div>
+
                             <div className="dialog-grid">
                                 <div className="d-box">
-                                    <label>Strike</label>
+                                    <label>Strike & Expiry</label>
                                     <span>{dialogData.recommendedStrike ? `${dialogData.recommendedStrike} ${dialogData.optionType}` : 'N/A'}</span>
+                                    <span className="d-subtext">{dialogData.expiryDate || '-'}</span>
                                 </div>
+
                                 <div className="d-box">
-                                    <label>Expiry Date</label>
-                                    <span>{dialogData.expiryDate || '-'}</span>
-                                </div>
-                                <div className="d-box">
-                                    <label>Spot Price</label>
+                                    <label>Spot & Trend</label>
                                     <span>₹{dialogData.spotPrice}</span>
+                                    <span className="d-subtext">{dialogData.dailyTrend || '-'}</span>
                                 </div>
-                                <div className="d-box">
-                                    <label>Daily Trend</label>
-                                    <span>{dialogData.dailyTrend || '-'}</span>
-                                </div>
-                                <div className="d-box">
-                                    <label>Entry Premium</label>
-                                    <span>₹{dialogData.entryPremium || '-'}</span>
-                                </div>
-                                <div className="d-box">
-                                    <label>Live/Current Premium</label>
-                                    <span>{dialogData.status === 'ACTIVE' && dialogData.currentPremium ? `₹${dialogData.currentPremium}` : '-'}</span>
-                                </div>
-                                <div className="d-box">
-                                    <label>Exit Premium</label>
-                                    <span>{dialogData.exitPremium ? `₹${dialogData.exitPremium}` : (dialogData.status === 'ACTIVE' ? 'LIVE' : '-')}</span>
-                                </div>
+
                                 <div className="d-box">
                                     <label>Realized PnL</label>
-                                    <span>{dialogData.status === 'HISTORY' ? formatPnL(dialogData.realizedPnl) : '-'}</span>
+                                    <span className="pnl-text">{dialogData.status === 'HISTORY' ? formatPnL(dialogData.realizedPnl) : '-'}</span>
+                                </div>
+
+                                <div className="d-box">
+                                    <label>Entry Point</label>
+                                    <span>₹{dialogData.entryPremium || '-'}</span>
+                                    <span className="d-subtext">
+                                        {formatDateTime(dialogData.entryDate)}
+                                    </span>
+                                </div>
+
+                                <div className="d-box">
+                                    <label>Exit / Live</label>
+                                    <span>
+                                        {dialogData.exitPremium ? `₹${dialogData.exitPremium}` : (dialogData.status === 'ACTIVE' && dialogData.currentPremium ? `₹${dialogData.currentPremium}` : 'LIVE')}
+                                    </span>
+                                    <span className="d-subtext">
+                                        {dialogData.status === 'HISTORY' ? formatDateTime(dialogData.timestamp) : (dialogData.status === 'ACTIVE' ? 'Active Now' : '')}
+                                    </span>
+                                </div>
+
+                                <div className="d-box highlight-box">
+                                    <label>Unrealized (MTM)</label>
+                                    <span className="pnl-text">{dialogData.status === 'ACTIVE' ? formatPnL(dialogData.unrealizedPnl) : 'N/A (Closed)'}</span>
                                 </div>
                             </div>
-                            <div className="d-box highlight-box" style={{ marginBottom: '20px' }}>
-                                <label>Unrealized (MTM) PnL</label>
-                                <span style={{ fontSize: '1.2rem' }}>
-                                    {dialogData.status === 'ACTIVE' ? formatPnL(dialogData.unrealizedPnl) : 'N/A (Trade Closed)'}
-                                </span>
-                            </div>
+
                             <div className="dialog-reasoning">
                                 <label>AI Reasoning & Logic</label>
                                 <p>{dialogData.reasoning || 'No specific reasoning provided by the engine.'}</p>
