@@ -20,6 +20,7 @@ import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.client.RestTemplate;
 
@@ -30,6 +31,7 @@ import com.crumbs.trade.broker.AngelOne;
 @EntityScan(basePackages = {"com.crumbs.trade.entity", "com.crumbs.trade.advisory"})
 @SpringBootApplication(exclude = { SpringApplicationAdminJmxAutoConfiguration.class })
 @EnableJpaRepositories(basePackages = {"com.crumbs.trade.repo", "com.crumbs.trade.advisory"})
+@EnableAsync
 public class CrumbsNewApplication {
 
     private static final Logger log = LoggerFactory.getLogger(CrumbsNewApplication.class);

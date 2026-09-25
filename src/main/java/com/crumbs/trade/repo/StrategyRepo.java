@@ -53,4 +53,13 @@ public interface StrategyRepo extends JpaRepository<Strategy, Long> {
     // Combined filter
     List<Strategy> findByActiveAndNameContainingIgnoreCase(String active, String name);
 
+    Optional<Strategy> findBySymbol(String symbol);
+
+    // Optional: in case you need to look up by tradingsymbol (e.g., "ACC-EQ")
+    Optional<Strategy> findByTradingsymbol(String tradingsymbol);
+
+    List<Strategy> findByActiveAndExecute(String active, String execute);
+
+    // Added to filter by name = 'UPPER_CIRCUIT'
+    List<Strategy> findByActiveAndName(String active, String name);
 }

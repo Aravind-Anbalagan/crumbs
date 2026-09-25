@@ -71,4 +71,29 @@ public class FlatTradeLoginController {
                     .body("Order Exception: " + e.getMessage());
         }
     }
+
+    /**
+     * STEP 4: Smart Execution Engine
+     * Instantly checks depth, fires a limit order, and chases the top bid/ask
+     * asynchronously until the configured quantity is filled.
+     */
+    @PostMapping("/smart-order")
+    public ResponseEntity<String> placeSmartOrder(
+            @RequestBody Token token,
+            @RequestParam("instrumentToken") String instrumentToken) {
+
+        try {
+            if (instrumentToken == null || instrumentToken.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("instrumentToken is required to fetch market depth.");
+            }
+
+            // Handoff to @Async background execution (non-blocking)
+            flatTradeService.executeSmartOrder(token, instrumentToken);
+
+            return ResponseEntity.ok("Smart execution initiated for " + token.getSymbol() + ". Monitoring in background.");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Smart Order Exception: " + e.getMessage());
+        }
+    }
 }

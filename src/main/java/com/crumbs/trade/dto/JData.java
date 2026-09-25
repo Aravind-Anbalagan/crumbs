@@ -21,4 +21,5 @@ public class JData {
     private String ret;
     private String ordersource;
     private String stext;
+    private String norenordno;
 }
