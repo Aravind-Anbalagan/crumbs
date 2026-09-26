@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
+import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.OptionPriceRepo;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
@@ -62,21 +63,45 @@ public class OptionPriceService {
     }
 
     private void sendHookNotifications(List<ScannedContractDto> contracts) {
-        // 2. ALERT FILTER: Alert on RSI Hooks OR fresh MA breakouts/breakdowns
+        // 1. Fetch the active configuration to check the flags
+        StrategyConfig activeConfig = configService.getActiveConfig();
+        boolean isRsiEnabled = "Y".equalsIgnoreCase(activeConfig.getRsiAlert());
+        boolean isMaEnabled = "Y".equalsIgnoreCase(activeConfig.getMaAlert());
+
+        // 2. Group triggers by symbol
         Map<String, List<ScannedContractDto>> hooksByIndex = contracts.stream()
                 .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                         || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK
-                        || isNearMaTrigger(c))
+                        || isNearMaBreakout(c))
                 .collect(Collectors.groupingBy(ScannedContractDto::getName));
 
         if (hooksByIndex.isEmpty()) return;
 
-        Comparator<ScannedContractDto> expiryAndStrikeComparator = Comparator
-                .comparing(ScannedContractDto::getExpiryDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparingDouble(ScannedContractDto::getStrike);
-
         hooksByIndex.forEach((symbol, hooks) -> {
-            logger.info("🔔 Found {} triggers for {}. Sending Telegram alert...", hooks.size(), symbol);
+
+            // 3. Filter triggers based on DB flags
+            List<ScannedContractDto> rsiTriggers = new ArrayList<>();
+            if (isRsiEnabled) {
+                rsiTriggers = hooks.stream()
+                        .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
+                                || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK)
+                        .collect(Collectors.toList());
+            }
+
+            List<ScannedContractDto> maTriggers = new ArrayList<>();
+            if (isMaEnabled) {
+                maTriggers = hooks.stream()
+                        .filter(this::isNearMaBreakout)
+                        .collect(Collectors.toList());
+            }
+
+            // 4. Abort if both lists are empty (meaning alerts are turned off or no valid triggers remain)
+            if (rsiTriggers.isEmpty() && maTriggers.isEmpty()) {
+                return;
+            }
+
+            logger.info("🔔 Alert dispatching for {}. RSI Enabled: {}, MA Enabled: {}", symbol, isRsiEnabled, isMaEnabled);
+
             String tf = hooks.get(0).getTimeFrame();
             BigDecimal spot = hooks.get(0).getSpotPrice();
 
@@ -87,62 +112,46 @@ public class OptionPriceService {
                 msg.append("📍 Spot: `").append(String.format("%.2f", spot.doubleValue())).append("`\n");
             }
 
-            List<ScannedContractDto> rsiOversold = hooks.stream()
-                    .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK)
-                    .sorted(expiryAndStrikeComparator)
-                    .collect(Collectors.toList());
+            // ==========================================
+            // TABLE 1: RSI HOOKS
+            // ==========================================
+            if (!rsiTriggers.isEmpty()) {
+                msg.append("\n⚡ *RSI Hooks*\n```\n");
+                msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %-4s | %s%n",
+                        "TIME", "DIR", "STRIKE", "LTP", "RSI", "CNT"));
+                msg.append("----------------------------------------------\n");
 
-            List<ScannedContractDto> rsiOverbought = hooks.stream()
-                    .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK)
-                    .sorted(expiryAndStrikeComparator)
-                    .collect(Collectors.toList());
+                for (ScannedContractDto hook : rsiTriggers) {
+                    String direction = hook.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK ? "SELL" : "BUY ";
+                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+                    String strikeStr = (int) hook.getStrike() + hook.getOptionType();
+                    double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+                    double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
+                    int count = direction.equals("SELL") ? hook.getAboveRSI80Count() : hook.getBelowRSI20Count();
 
-            List<ScannedContractDto> maBreakouts = hooks.stream()
-                    .filter(this::isNearMaBreakout)
-                    .sorted(expiryAndStrikeComparator)
-                    .collect(Collectors.toList());
-
-            List<ScannedContractDto> maBreakdowns = hooks.stream()
-                    .filter(this::isNearMaBreakdown)
-                    .sorted(expiryAndStrikeComparator)
-                    .collect(Collectors.toList());
-
-            if (!rsiOversold.isEmpty()) {
-                msg.append("\n⚡ *RSI Signals - OVERSOLD*\n```\n");
-                msg.append("EXP  |TIME |STRIKE |LTP    |RSI |CNT\n");
-                msg.append("------------------------------------\n");
-                for (ScannedContractDto hook : rsiOversold) {
-                    msg.append(formatTableRow(hook, true));
+                    msg.append(String.format("%-5s | %-4s | %-8s | %-7.2f | %-4.1f | %-3d%n",
+                            timeStr, direction, strikeStr, ltpVal, rsiVal, count));
                 }
                 msg.append("```\n");
             }
 
-            if (!rsiOverbought.isEmpty()) {
-                msg.append("\n⚡ *RSI Signals - OVERBOUGHT*\n```\n");
-                msg.append("EXP  |TIME |STRIKE |LTP    |RSI |CNT\n");
-                msg.append("------------------------------------\n");
-                for (ScannedContractDto hook : rsiOverbought) {
-                    msg.append(formatTableRow(hook, true));
-                }
-                msg.append("```\n");
-            }
+            // ==========================================
+            // TABLE 2: MA BREAKOUTS
+            // ==========================================
+            if (!maTriggers.isEmpty()) {
+                msg.append("\n📈 *MA Breakouts*\n```\n");
+                msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %s%n",
+                        "TIME", "DIR", "STRIKE", "LTP", "MA 20"));
+                msg.append("------------------------------------------\n");
 
-            if (!maBreakouts.isEmpty()) {
-                msg.append("\n📈 *MA Signals - BREAKOUT*\n```\n");
-                msg.append("EXP  |TIME |STRIKE |LTP    |MA     |RSI\n");
-                msg.append("---------------------------------------\n");
-                for (ScannedContractDto hook : maBreakouts) {
-                    msg.append(formatTableRow(hook, false));
-                }
-                msg.append("```\n");
-            }
+                for (ScannedContractDto hook : maTriggers) {
+                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+                    String strikeStr = (int) hook.getStrike() + hook.getOptionType();
+                    double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+                    double maVal = hook.getCurrentMa() != null ? hook.getCurrentMa() : 0.0;
 
-            if (!maBreakdowns.isEmpty()) {
-                msg.append("\n📉 *MA Signals - BREAKDOWN*\n```\n");
-                msg.append("EXP  |TIME |STRIKE |LTP    |MA     |RSI\n");
-                msg.append("---------------------------------------\n");
-                for (ScannedContractDto hook : maBreakdowns) {
-                    msg.append(formatTableRow(hook, false));
+                    msg.append(String.format("%-5s | %-4s | %-8s | %-7.2f | %-7.2f%n",
+                            timeStr, "MA↑ ", strikeStr, ltpVal, maVal));
                 }
                 msg.append("```");
             }

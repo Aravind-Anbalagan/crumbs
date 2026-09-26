@@ -47,6 +47,8 @@ public class StrategyConfigService {
                 .maProximity(50.0)
                 .rsiOverbought(80.0)
                 .rsiOversold(20.0)
+                .rsiAlert("Y") // Default to Y
+                .maAlert("Y")  // Default to Y
                 .build();
     }
 

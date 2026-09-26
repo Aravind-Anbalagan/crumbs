@@ -28,4 +28,6 @@ public class StrategyConfig {
     private Double rsiOverbought;
     private Double rsiOversold;
     private BigDecimal minPercentageChange;
+    private String rsiAlert;
+    private String maAlert;
 }
