@@ -1,87 +1,88 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import api from '../services/api'; // Reuses your configured Vite proxy / Axios setup
+import api from '../services/api';
 import './OITracker.css';
 
-// Tunable constants — calibrate against your own backtest data.
-const MIN_DELTA_FOR_PCR = 5000;      // ΔCE OI below this = too noisy to trust as a divisor
-const CONVICTION_THRESHOLD = 20000;  // |ΔCombined OI (smoothed)| above this = "active" session
-
-// Measures a container's pixel size and keeps it in sync on resize,
-// so the SVG viewBox matches the real rendered area 1:1 (needed for accurate hover mapping
-// and, critically, so the chart isn't drawn taller than the space actually visible to it).
+// Custom hook to measure the chart container size so the SVG scales perfectly.
+// Uses a callback ref (not a plain ref + one-time effect) so the observer
+// re-attaches whenever the underlying DOM node changes — including the case
+// where the measured element wasn't mounted yet on first render.
 function useElementSize() {
-  const ref = useRef(null);
-  const [size, setSize] = useState({ width: 900, height: 380 });
-  useEffect(() => {
-    if (!ref.current) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) setSize({ width, height });
-      }
-    });
-    ro.observe(ref.current);
-    return () => ro.disconnect();
+  const [node, setNode] = useState(null);
+  const [size, setSize] = useState({ width: 800, height: 400 });
+
+  const setRef = useCallback((el) => {
+    setNode(el);
   }, []);
-  return [ref, size];
+
+  useEffect(() => {
+    if (!node) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setSize({ width, height });
+    });
+    ro.observe(node);
+    // Capture the size immediately too, in case layout is already settled
+    const rect = node.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) setSize({ width: rect.width, height: rect.height });
+    return () => ro.disconnect();
+  }, [node]);
+
+  return [setRef, size];
+}
+
+// Catmull-Rom -> cubic Bezier conversion for a genuinely smooth, natural curve
+// (replaces the old per-point quadratic "T" patch, which kinked at every vertex)
+function smoothPath(points) {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
 }
 
 export default function OITracker() {
+  const INSTRUMENTS = ['NIFTY', 'BANKNIFTY', 'CRUDEOIL', 'SENSEX', 'FINNIFTY'];
   const [instrument, setInstrument] = useState('NIFTY');
   const [strikes, setStrikes] = useState([]);
-  const [selectedStrike, setSelectedStrike] = useState(null);
-  const [activeTab, setActiveTab] = useState('OI'); // 'OI' | 'PCR'
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [smoothWindow, setSmoothWindow] = useState(3);
-  const [hoverIndex, setHoverIndex] = useState(null);
-
-  // latestChain is fetched only to auto-detect the ATM strike and populate the strike list.
-  // It is not rendered — a full option-chain view doesn't help an intraday decision.
-  const [latestChain, setLatestChain] = useState([]);
+  const [selectedStrike, setSelectedStrike] = useState('');
   const [timeSeries, setTimeSeries] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // IMPORTANT: this ref/size measures ONLY the plot area (the div that holds the <svg>),
-  // not the outer panel that also contains the legend. Measuring the outer panel and then
-  // drawing the SVG at that same height is what caused the bottom of the chart to be cut off —
-  // the legend was eating into space the SVG thought it owned.
   const [plotRef, plotSize] = useElementSize();
+  const [hoverIndex, setHoverIndex] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
-    const fetchInitialData = async () => {
-      setLoading(true);
+    const fetchStrikes = async () => {
       try {
-        const [strikesRes, chainRes] = await Promise.all([
-          api.get(`/api/oi/strikes/${instrument}`),
-          api.get(`/api/oi/latest/${instrument}?_t=${Date.now()}`)
-        ]);
+        const res = await api.get(`/api/oi/strikes/${instrument}`);
         if (!isMounted) return;
 
-        const strikeList = Array.isArray(strikesRes.data) ? strikesRes.data : [];
-        let chainData = [];
-        if (Array.isArray(chainRes.data)) {
-          chainData = chainRes.data;
-        } else if (chainRes.data && typeof chainRes.data === 'object') {
-          chainData = chainRes.data.content || chainRes.data.list || [];
-        }
-
+        const strikeList = Array.isArray(res.data) ? res.data : [];
         setStrikes(strikeList);
-        setLatestChain(chainData);
 
-        const atmRecord = chainData.find(item => item.isATM === true);
-        if (atmRecord && atmRecord.strike) {
-          setSelectedStrike(atmRecord.strike);
-        } else if (strikeList.length > 0) {
+        if (strikeList.length > 0) {
           setSelectedStrike(strikeList[Math.floor(strikeList.length / 2)]);
+        } else {
+          setSelectedStrike('');
         }
       } catch (error) {
-        console.error("Failed to fetch initial OI data:", error);
-      } finally {
-        if (isMounted) setLoading(false);
+        console.error("Failed to fetch strikes:", error);
       }
     };
-    fetchInitialData();
+    fetchStrikes();
     return () => { isMounted = false; };
   }, [instrument]);
 
@@ -89,358 +90,218 @@ export default function OITracker() {
     if (!selectedStrike) return;
     let isMounted = true;
 
-    const fetchStrikeSeries = async () => {
+    const fetchStrikeData = async () => {
       try {
         const res = await api.get(`/api/oi/strike/${instrument}/${selectedStrike}?_t=${Date.now()}`);
         if (!isMounted) return;
-        let seriesData = [];
-        if (Array.isArray(res.data)) {
-          seriesData = res.data;
-        } else if (res.data && typeof res.data === 'object') {
-          seriesData = res.data.content || res.data.data || res.data.list || [];
-        }
-        setTimeSeries(seriesData);
+        setTimeSeries(Array.isArray(res.data) ? res.data : []);
+        setLastUpdated(new Date());
       } catch (error) {
-        console.error(`Failed to fetch strike data for ${selectedStrike}:`, error);
-        if (isMounted) setTimeSeries([]);
+        console.error(`Failed to fetch data for ${selectedStrike}:`, error);
       }
     };
 
-    fetchStrikeSeries();
-    let intervalId = null;
-    if (autoRefresh) {
-      intervalId = setInterval(() => {
-        fetchStrikeSeries();
-        api.get(`/api/oi/latest/${instrument}`).then(r => {
-          const latestData = Array.isArray(r.data) ? r.data : (r.data?.content || r.data?.list || []);
-          setLatestChain(latestData);
-        });
-      }, 30000);
-    }
+    fetchStrikeData();
+    const intervalId = setInterval(fetchStrikeData, 30000);
+
     return () => {
       isMounted = false;
-      if (intervalId) clearInterval(intervalId);
+      clearInterval(intervalId);
     };
-  }, [instrument, selectedStrike, autoRefresh]);
+  }, [instrument, selectedStrike]);
 
-  // Dedupe repeated timestamps (the feed sometimes returns the same tick 2-10x in a row)
-  // and sort ascending, so rolling-window math isn't diluted by duplicates.
-  const dedupedSeries = useMemo(() => {
-    if (!timeSeries || timeSeries.length === 0) return [];
+  const chartData = useMemo(() => {
     const map = new Map();
-    timeSeries.forEach(row => { map.set(row.timestamp, row); });
+    timeSeries.forEach(row => map.set(row.timestamp, row));
     return Array.from(map.values()).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   }, [timeSeries]);
 
-  // Raw ΔOI, smoothed ΔOI (rolling sum over smoothWindow points), absolute PCR, and delta-PCR.
-  const derivedSeries = useMemo(() => {
-    return dedupedSeries.map((row, i) => {
-      const ceChange = Number(row.ceOiChange || 0);
-      const peChange = Number(row.peOiChange || 0);
-      const combinedChange = ceChange + peChange;
+  const handleHover = useCallback((clientX, currentTarget, paddingX, plotWidth) => {
+    const rect = currentTarget.getBoundingClientRect();
+    const x = Math.max(0, clientX - rect.left - paddingX);
+    const ratio = Math.min(1, x / plotWidth);
+    const idx = Math.round(ratio * (chartData.length - 1));
+    setHoverIndex(Math.max(0, Math.min(chartData.length - 1, idx)));
+  }, [chartData.length]);
 
-      const start = Math.max(0, i - smoothWindow + 1);
-      let ceSmooth = 0, peSmooth = 0;
-      for (let j = start; j <= i; j++) {
-        ceSmooth += Number(dedupedSeries[j].ceOiChange || 0);
-        peSmooth += Number(dedupedSeries[j].peOiChange || 0);
-      }
-      const combinedSmooth = ceSmooth + peSmooth;
+  const clearHover = () => setHoverIndex(null);
 
-      const ceOi = Number(row.ceOi || 0);
-      const peOi = Number(row.peOi || 0);
-      const absolutePcr = ceOi > 0 ? peOi / ceOi : null;
-      const deltaPcr = Math.abs(ceSmooth) >= MIN_DELTA_FOR_PCR ? peSmooth / ceSmooth : null;
-
-      return { ...row, ceChange, peChange, combinedChange, ceSmooth, peSmooth, combinedSmooth, absolutePcr, deltaPcr };
-    });
-  }, [dedupedSeries, smoothWindow]);
-
-  const latestDerived = derivedSeries.length > 0 ? derivedSeries[derivedSeries.length - 1] : null;
-
-  const chainPcr = useMemo(() => {
-    if (!latestChain || latestChain.length === 0) return { pcr: '0.00', sentiment: 'NEUTRAL' };
-    let totalCe = 0, totalPe = 0;
-    latestChain.forEach(row => {
-      totalCe += Number(row.ceOi || 0);
-      totalPe += Number(row.peOi || 0);
-    });
-    const pcr = totalCe > 0 ? (totalPe / totalCe) : 0;
-    let sentiment = 'NEUTRAL';
-    if (pcr > 1.1) sentiment = 'BULLISH';
-    else if (pcr < 0.9) sentiment = 'BEARISH';
-    return { pcr: pcr.toFixed(2), sentiment };
-  }, [latestChain]);
-
-  const freshFlow = useMemo(() => {
-    if (!latestDerived) return { deltaPcr: null, conviction: 'NEUTRAL', skew: '—' };
-    const conviction = Math.abs(latestDerived.combinedSmooth) >= CONVICTION_THRESHOLD ? 'ACTIVE' : 'QUIET';
-    let skew = 'BALANCED';
-    if (latestDerived.deltaPcr === null) skew = 'LOW DATA';
-    else if (latestDerived.deltaPcr > 1.15) skew = 'PUT-HEAVY';
-    else if (latestDerived.deltaPcr < 0.85) skew = 'CALL-HEAVY';
-    return { deltaPcr: latestDerived.deltaPcr, conviction, skew };
-  }, [latestDerived]);
-
-  // Map a mouse event's X position (relative to the plot area) to the nearest data index.
-  const handleHover = useCallback((e, padding, plotWidth) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const ratio = (x - padding) / plotWidth;
-    const idx = Math.round(ratio * (derivedSeries.length - 1));
-    setHoverIndex(Math.max(0, Math.min(derivedSeries.length - 1, idx)));
-  }, [derivedSeries.length]);
-
-  const clearHover = useCallback(() => setHoverIndex(null), []);
-
-  const formatTime = (ts) => {
-    if (!ts) return '';
-    const t = ts.includes('T') ? ts.split('T')[1] : ts;
-    return t.substring(0, 8);
+  const formatTime = (ts) => ts ? ts.split('T')[1]?.substring(0, 5) : '';
+  const formatCompact = (val) => Intl.NumberFormat('en-IN', { notation: "compact", maximumFractionDigits: 1 }).format(val);
+  const formatAgo = (date) => {
+    if (!date) return '';
+    const secs = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+    if (secs < 5) return 'just now';
+    if (secs < 60) return `${secs}s ago`;
+    return `${Math.floor(secs / 60)}m ago`;
   };
 
-  const fmtK = (v) => {
-    const sign = v > 0 ? '+' : '';
-    return `${sign}${Math.round(v / 1000)}k`;
-  };
-
-  // --- CHART: ΔCE OI / ΔPE OI / ΔCombined OI ---
-  const renderOiChart = () => {
-    if (!derivedSeries || derivedSeries.length < 2) {
-      return <div className="no-data">Not enough data yet for {selectedStrike}.</div>;
+  const renderChart = () => {
+    if (chartData.length < 2) {
+      return (
+        <div className="oi-empty-state">
+          <span className="oi-empty-pulse" />
+          Waiting for live data…
+        </div>
+      );
     }
+
     const { width, height } = plotSize;
-    const padding = 46;
-    const plotWidth = width - padding * 2;
+    const paddingX = 68;
+    const paddingRight = 84;
+    const paddingY = 36;
+    const plotWidth = width - paddingX - paddingRight;
+    const plotHeight = height - paddingY * 2;
 
-    const ceChanges = derivedSeries.map(d => d.ceChange);
-    const peChanges = derivedSeries.map(d => d.peChange);
-    const combinedChanges = derivedSeries.map(d => d.combinedChange);
-    const allValues = [...ceChanges, ...peChanges, ...combinedChanges];
-    const maxVal = Math.max(...allValues, 1000);
-    const minVal = Math.min(...allValues, -1000);
-    const range = maxVal - minVal || 1;
+    const allValues = chartData.flatMap(d => [d.ceOi, d.peOi]);
+    const rawMax = Math.max(...allValues);
+    const rawMin = Math.min(...allValues);
+    // Pad the domain around the actual data range (don't force a 0 floor —
+    // OI values rarely sit near zero, and flooring there squashed all the
+    // real movement into the top slice of the chart, leaving the bottom empty).
+    const pad = (rawMax - rawMin) * 0.18 || rawMax * 0.1 || 1000;
+    const maxVal = rawMax + pad;
+    const minVal = Math.max(0, rawMin - pad);
+    const range = (maxVal - minVal) || 1;
 
-    const getX = (i) => padding + (i / (derivedSeries.length - 1)) * plotWidth;
-    const getY = (v) => height - padding - ((v - minVal) / range) * (height - padding * 2);
-    const zeroY = getY(0);
-    const buildPath = (arr) => arr.map((v, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(v)}`).join(' ');
+    const getX = (i) => paddingX + (i / (chartData.length - 1)) * plotWidth;
+    const getY = (v) => height - paddingY - ((v - minVal) / range) * plotHeight;
 
-    const hovered = hoverIndex !== null ? derivedSeries[hoverIndex] : null;
-    const tooltipLeft = hoverIndex !== null ? getX(hoverIndex) : 0;
-    const flipTooltip = tooltipLeft > width - 190;
+    const cePoints = chartData.map((d, i) => ({ x: getX(i), y: getY(d.ceOi) }));
+    const pePoints = chartData.map((d, i) => ({ x: getX(i), y: getY(d.peOi) }));
+    const ceLine = smoothPath(cePoints);
+    const peLine = smoothPath(pePoints);
+    const floorY = height - paddingY;
+    const ceArea = `${ceLine} L ${cePoints[cePoints.length - 1].x} ${floorY} L ${cePoints[0].x} ${floorY} Z`;
+    const peArea = `${peLine} L ${pePoints[pePoints.length - 1].x} ${floorY} L ${pePoints[0].x} ${floorY} Z`;
+
+    const gridCount = 3;
+    const gridLines = Array.from({ length: gridCount }, (_, i) => {
+      const t = i / (gridCount - 1);
+      return { y: paddingY + t * plotHeight, val: maxVal - t * (maxVal - minVal) };
+    });
+
+    const hovered = hoverIndex !== null ? chartData[hoverIndex] : null;
+    const tooltipW = 176;
+    let tooltipLeft = hovered ? getX(hoverIndex) + 16 : 0;
+    if (hovered && tooltipLeft + tooltipW > width) tooltipLeft = getX(hoverIndex) - tooltipW - 16;
+
+    const lastCe = chartData[chartData.length - 1].ceOi;
+    const lastPe = chartData[chartData.length - 1].peOi;
 
     return (
-      <>
-        <div
-          className="plot-area"
-          ref={plotRef}
-          onMouseMove={(e) => handleHover(e, padding, plotWidth)}
-          onMouseLeave={clearHover}
-        >
-          <svg width={width} height={height} className="svg-canvas">
-            <line x1={padding} y1={zeroY} x2={width - padding} y2={zeroY} className="axis-zero" />
-            <line x1={padding} y1={padding} x2={padding} y2={height - padding} className="axis-line" />
+      <div
+        className="oi-chart-svg-wrapper"
+        onMouseMove={(e) => handleHover(e.clientX, e.currentTarget, paddingX, plotWidth)}
+        onMouseLeave={clearHover}
+        onTouchMove={(e) => e.touches[0] && handleHover(e.touches[0].clientX, e.currentTarget, paddingX, plotWidth)}
+        onTouchEnd={clearHover}
+      >
+        <svg width={width} height={height} className="oi-chart-svg">
+          <defs>
+            <linearGradient id="oiFillCe" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#f87171" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#f87171" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="oiFillPe" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34d399" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="oiFadeLeft" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="var(--panel-bg, #0b0f14)" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="var(--panel-bg, #0b0f14)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-            <text x={padding - 8} y={getY(maxVal)} className="axis-label" textAnchor="end">{fmtK(maxVal)}</text>
-            <text x={padding - 8} y={zeroY} className="axis-label" textAnchor="end">0</text>
-            <text x={padding - 8} y={getY(minVal)} className="axis-label" textAnchor="end">{fmtK(minVal)}</text>
+          {/* Grid */}
+          {gridLines.map((g, i) => (
+            <line key={i} x1={paddingX} y1={g.y} x2={width - paddingRight} y2={g.y} className="oi-grid-line" />
+          ))}
 
-            <path d={buildPath(combinedChanges)} className="line-combined" />
-            <path d={buildPath(ceChanges)} className="line-ce" />
-            <path d={buildPath(peChanges)} className="line-pe" />
-
-            <text x={getX(0)} y={height - 10} className="axis-label" textAnchor="start">
-              {formatTime(derivedSeries[0]?.timestamp)}
+          {/* Y-Axis Labels */}
+          {gridLines.map((g, i) => (
+            <text key={i} x={paddingX - 12} y={g.y + 4} className="oi-axis-label" textAnchor="end">
+              {formatCompact(g.val)}
             </text>
-            <text x={getX(derivedSeries.length - 1)} y={height - 10} className="axis-label" textAnchor="end">
-              {formatTime(derivedSeries[derivedSeries.length - 1]?.timestamp)}
-            </text>
+          ))}
 
-            {hoverIndex !== null && (
-              <>
-                <line x1={getX(hoverIndex)} y1={padding} x2={getX(hoverIndex)} y2={height - padding} className="crosshair" />
-                <circle cx={getX(hoverIndex)} cy={getY(hovered.ceChange)} r="4" className="dot-ce" />
-                <circle cx={getX(hoverIndex)} cy={getY(hovered.peChange)} r="4" className="dot-pe" />
-                <circle cx={getX(hoverIndex)} cy={getY(hovered.combinedChange)} r="3.5" className="dot-combined" />
-              </>
-            )}
-          </svg>
+          {/* X-Axis Labels */}
+          <text x={getX(0)} y={height - paddingY + 22} className="oi-axis-label" textAnchor="start">{formatTime(chartData[0]?.timestamp)}</text>
+          <text x={getX(chartData.length - 1)} y={height - paddingY + 22} className="oi-axis-label" textAnchor="end">{formatTime(chartData[chartData.length - 1]?.timestamp)}</text>
 
+          {/* Area fills */}
+          <path d={ceArea} className="oi-area-ce" />
+          <path d={peArea} className="oi-area-pe" />
+
+          {/* Smooth trend lines */}
+          <path d={ceLine} className="oi-line-ce" />
+          <path d={peLine} className="oi-line-pe" />
+
+          {/* End-of-line markers */}
+          <circle cx={cePoints[cePoints.length - 1].x} cy={cePoints[cePoints.length - 1].y} r="4" className="oi-dot-ce oi-dot-end" />
+          <circle cx={pePoints[pePoints.length - 1].x} cy={pePoints[pePoints.length - 1].y} r="4" className="oi-dot-pe oi-dot-end" />
+
+          {/* Value badges at line ends */}
+          <text x={width - paddingRight + 10} y={cePoints[cePoints.length - 1].y + 4} className="oi-end-label oi-end-label-ce">
+            {formatCompact(lastCe)}
+          </text>
+          <text x={width - paddingRight + 10} y={pePoints[pePoints.length - 1].y + 4} className="oi-end-label oi-end-label-pe">
+            {formatCompact(lastPe)}
+          </text>
+
+          {/* Hover overlays */}
           {hovered && (
-            <div className={`chart-tooltip ${flipTooltip ? 'flip' : ''}`} style={{ left: tooltipLeft, top: 10 }}>
-              <div className="tooltip-time">{formatTime(hovered.timestamp)}</div>
-              <div className="tooltip-row"><span className="sw ce" />ΔCE OI<b>{fmtK(hovered.ceChange)}</b></div>
-              <div className="tooltip-row"><span className="sw pe" />ΔPE OI<b>{fmtK(hovered.peChange)}</b></div>
-              <div className="tooltip-row"><span className="sw combined" />ΔCombined<b>{fmtK(hovered.combinedChange)}</b></div>
-            </div>
+            <>
+              <line x1={getX(hoverIndex)} y1={paddingY} x2={getX(hoverIndex)} y2={floorY} className="oi-crosshair" />
+              <circle cx={getX(hoverIndex)} cy={getY(hovered.ceOi)} r="5" className="oi-dot-ce" />
+              <circle cx={getX(hoverIndex)} cy={getY(hovered.peOi)} r="5" className="oi-dot-pe" />
+            </>
           )}
-        </div>
+        </svg>
 
-        <div className="chart-legend">
-          <span className="legend-item"><i className="swatch line-ce" />Red = ΔCE OI (calls)</span>
-          <span className="legend-item"><i className="swatch line-pe" />Green = ΔPE OI (puts)</span>
-          <span className="legend-item"><i className="swatch line-combined dashed" />Amber dashed = ΔCombined OI</span>
-        </div>
-      </>
-    );
-  };
-
-  // --- CHART: Absolute PCR vs Delta PCR ---
-  const renderPcrChart = () => {
-    if (!derivedSeries || derivedSeries.length < 2) {
-      return <div className="no-data">Not enough data yet for {selectedStrike}.</div>;
-    }
-    const { width, height } = plotSize;
-    const padding = 46;
-    const plotWidth = width - padding * 2;
-
-    const absValues = derivedSeries.map(d => d.absolutePcr).filter(v => v !== null && isFinite(v));
-    const deltaValues = derivedSeries.map(d => d.deltaPcr).filter(v => v !== null && isFinite(v));
-    const allValues = [...absValues, ...deltaValues, 1];
-    const maxVal = Math.max(...allValues) * 1.1;
-    const minVal = Math.min(...allValues) * 0.9;
-    const range = maxVal - minVal || 1;
-
-    const getX = (i) => padding + (i / (derivedSeries.length - 1)) * plotWidth;
-    const getY = (v) => height - padding - ((v - minVal) / range) * (height - padding * 2);
-    const neutralY = getY(1);
-
-    const buildPathWithGaps = (values) => {
-      let d = '', penDown = false;
-      values.forEach((v, i) => {
-        if (v === null || !isFinite(v)) { penDown = false; return; }
-        d += `${!penDown ? 'M' : 'L'} ${getX(i)} ${getY(v)} `;
-        penDown = true;
-      });
-      return d.trim();
-    };
-    const absPath = buildPathWithGaps(derivedSeries.map(d => d.absolutePcr));
-    const deltaPath = buildPathWithGaps(derivedSeries.map(d => d.deltaPcr));
-
-    const hovered = hoverIndex !== null ? derivedSeries[hoverIndex] : null;
-    const tooltipLeft = hoverIndex !== null ? getX(hoverIndex) : 0;
-    const flipTooltip = tooltipLeft > width - 190;
-
-    return (
-      <>
-        <div
-          className="plot-area"
-          ref={plotRef}
-          onMouseMove={(e) => handleHover(e, padding, plotWidth)}
-          onMouseLeave={clearHover}
-        >
-          <svg width={width} height={height} className="svg-canvas">
-            <line x1={padding} y1={neutralY} x2={width - padding} y2={neutralY} className="axis-zero" />
-            <line x1={padding} y1={padding} x2={padding} y2={height - padding} className="axis-line" />
-
-            <text x={padding - 8} y={getY(maxVal)} className="axis-label" textAnchor="end">{maxVal.toFixed(2)}</text>
-            <text x={padding - 8} y={neutralY} className="axis-label" textAnchor="end">1.00</text>
-            <text x={padding - 8} y={getY(minVal)} className="axis-label" textAnchor="end">{minVal.toFixed(2)}</text>
-
-            <path d={absPath} className="line-abs-pcr" />
-            <path d={deltaPath} className="line-delta-pcr" />
-
-            <text x={getX(0)} y={height - 10} className="axis-label" textAnchor="start">
-              {formatTime(derivedSeries[0]?.timestamp)}
-            </text>
-            <text x={getX(derivedSeries.length - 1)} y={height - 10} className="axis-label" textAnchor="end">
-              {formatTime(derivedSeries[derivedSeries.length - 1]?.timestamp)}
-            </text>
-
-            {hoverIndex !== null && (
-              <>
-                <line x1={getX(hoverIndex)} y1={padding} x2={getX(hoverIndex)} y2={height - padding} className="crosshair" />
-                {hovered.absolutePcr !== null && <circle cx={getX(hoverIndex)} cy={getY(hovered.absolutePcr)} r="4" className="dot-abs-pcr" />}
-                {hovered.deltaPcr !== null && <circle cx={getX(hoverIndex)} cy={getY(hovered.deltaPcr)} r="4" className="dot-delta-pcr" />}
-              </>
-            )}
-          </svg>
-
-          {hovered && (
-            <div className={`chart-tooltip ${flipTooltip ? 'flip' : ''}`} style={{ left: tooltipLeft, top: 10 }}>
-              <div className="tooltip-time">{formatTime(hovered.timestamp)}</div>
-              <div className="tooltip-row"><span className="sw abs" />Absolute PCR<b>{hovered.absolutePcr !== null ? hovered.absolutePcr.toFixed(2) : '—'}</b></div>
-              <div className="tooltip-row"><span className="sw delta" />Delta PCR<b>{hovered.deltaPcr !== null ? hovered.deltaPcr.toFixed(2) : 'low data'}</b></div>
-            </div>
-          )}
-        </div>
-
-        <div className="chart-legend">
-          <span className="legend-item"><i className="swatch line-abs-pcr" />amber solid = Absolute PCR</span>
-          <span className="legend-item"><i className="swatch line-delta-pcr dashed" />violet dashed = Delta PCR (gap = below trust threshold)</span>
-        </div>
-      </>
+        {hovered && (
+          <div className="oi-chart-tooltip" style={{ left: tooltipLeft, top: 36 }}>
+            <div className="oi-tooltip-time">{formatTime(hovered.timestamp)}</div>
+            <div className="oi-tooltip-row"><span><span className="oi-dot ce" /> CE OI</span><b>{hovered.ceOi.toLocaleString('en-IN')}</b></div>
+            <div className="oi-tooltip-row"><span><span className="oi-dot pe" /> PE OI</span><b>{hovered.peOi.toLocaleString('en-IN')}</b></div>
+          </div>
+        )}
+      </div>
     );
   };
 
   return (
     <div className="oi-tracker-container">
-      {/* Toolbar — single compact row, wraps on narrow screens */}
-      <div className="toolbar">
-        <div className="instrument-toggle">
-          <button className={`toggle-btn ${instrument === 'NIFTY' ? 'active' : ''}`} onClick={() => setInstrument('NIFTY')}>NIFTY</button>
-          <button className={`toggle-btn ${instrument === 'CRUDEOIL' ? 'active' : ''}`} onClick={() => setInstrument('CRUDEOIL')}>CRUDE OIL</button>
+
+      {/* Glassy Toolbar */}
+      <div className="oi-toolbar">
+        <div className="oi-header-left">
+          <h2 className="oi-title">
+            <span className="oi-live-dot" aria-hidden="true" />
+            OI Momentum
+          </h2>
+
+          <select value={instrument} onChange={(e) => setInstrument(e.target.value)} className="oi-dropdown">
+            {INSTRUMENTS.map(inst => <option key={inst} value={inst}>{inst}</option>)}
+          </select>
+
+          <select value={selectedStrike} onChange={(e) => setSelectedStrike(Number(e.target.value))} className="oi-dropdown">
+            {strikes.map(stk => <option key={stk} value={stk}>{stk}</option>)}
+          </select>
+
+          {lastUpdated && <span className="oi-updated">Updated {formatAgo(lastUpdated)}</span>}
         </div>
 
-        <select
-          className="control-select"
-          value={selectedStrike || ''}
-          onChange={(e) => setSelectedStrike(Number(e.target.value))}
-        >
-          {strikes.map((stk) => (
-            <option key={stk} value={stk}>
-              {stk}{latestChain.find(c => Number(c.strike) === Number(stk) && (c.isATM || c.isAtm)) ? ' · ATM' : ''}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className="control-select"
-          value={smoothWindow}
-          onChange={(e) => setSmoothWindow(Number(e.target.value))}
-          title="OI smoothing window"
-        >
-          <option value={1}>1 min</option>
-          <option value={3}>3 min</option>
-          <option value={5}>5 min</option>
-        </select>
-
-        <label className="refresh-toggle">
-          <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-          <span className={`live-dot ${loading ? 'syncing' : ''}`} />
-          Live
-        </label>
-      </div>
-
-      {/* Status row — compact KPI chips + chart switch, single line */}
-      <div className="status-row">
-        <div className="kpi-chips">
-          <div className="chip">
-            <span className="chip-label">Chain PCR</span>
-            <span className={`chip-value ${chainPcr.sentiment.toLowerCase()}`}>{chainPcr.pcr}</span>
-          </div>
-          <div className="chip">
-            <span className="chip-label">Δ-PCR ({selectedStrike})</span>
-            <span className="chip-value">{freshFlow.deltaPcr !== null ? freshFlow.deltaPcr.toFixed(2) : '—'}</span>
-            <span className={`chip-tag ${freshFlow.conviction === 'ACTIVE' ? 'active' : 'quiet'}`}>{freshFlow.conviction}</span>
-          </div>
-          <div className="chip">
-            <span className="chip-label">Skew</span>
-            <span className="chip-value skew">{freshFlow.skew}</span>
-          </div>
-        </div>
-
-        <div className="tab-switch">
-          <button className={`tab-btn ${activeTab === 'OI' ? 'active' : ''}`} onClick={() => { setActiveTab('OI'); setHoverIndex(null); }}>OI Momentum</button>
-          <button className={`tab-btn ${activeTab === 'PCR' ? 'active' : ''}`} onClick={() => { setActiveTab('PCR'); setHoverIndex(null); }}>PCR Skew</button>
+        <div className="oi-legend">
+          <div className="oi-legend-item"><span className="oi-dot ce"/> CE OI · Resistance</div>
+          <div className="oi-legend-item"><span className="oi-dot pe"/> PE OI · Support</div>
         </div>
       </div>
 
-      {/* Chart panel — plot area fills remaining space, legend sits below it with its own fixed space */}
-      <div className="chart-container">
-        <div className="chart-surface">
-          {activeTab === 'OI' ? renderOiChart() : renderPcrChart()}
+      {/* Glassy Chart Panel */}
+      <div className="oi-chart-panel">
+        <div className="oi-chart-surface" ref={plotRef}>
+          {renderChart()}
         </div>
       </div>
     </div>

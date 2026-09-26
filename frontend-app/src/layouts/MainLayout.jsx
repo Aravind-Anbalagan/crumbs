@@ -68,6 +68,11 @@ const MENU = [
         label: 'Short Straddle',
         desc: 'Premium-collecting neutral setup',
       },
+       {
+          to: '/dashboard/oi-tracker',
+          label: '⚡ OI Tracker',
+          desc: 'Live OI momentum & PCR skew',
+        }
     ],
   },
   {

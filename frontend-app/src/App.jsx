@@ -37,6 +37,7 @@ export default function App() {
           {/* Dynamic dashboard route for legacy iframes */}
           <Route path="dashboard/:pageName" element={<Dashboard />} />
           <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
+          <Route path="dashboard/oi-tracker" element={<OITracker />} />
           <Route path="dashboard/advisory" element={<AdvisoryDashboard />} />
           <Route path="dashboard/option-price" element={<OptionPrice />} />
           {/* Direct access redirects */}
