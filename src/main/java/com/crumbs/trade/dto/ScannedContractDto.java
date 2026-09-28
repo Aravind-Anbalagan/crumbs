@@ -60,6 +60,7 @@ public class ScannedContractDto {
     private SignalAction signalAction;              // REVERSAL_SELL_HOOK, REVERSAL_BUY_HOOK, TRACKING, NONE
     // Add this to your ScannedContractDto
     private String timeFrame;
+    private String aiBias;
     public enum SignalAction {
         NONE,
         TRACKING_OVERBOUGHT,

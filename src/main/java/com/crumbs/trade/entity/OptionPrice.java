@@ -69,4 +69,6 @@ public class OptionPrice {
 
     private Double currentMa;
     private boolean isPriceAboveMa;
+    @Column(name = "ai_bias")
+    private String aiBias;
 }
