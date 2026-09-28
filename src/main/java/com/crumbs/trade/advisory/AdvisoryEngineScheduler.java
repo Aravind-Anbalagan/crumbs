@@ -28,7 +28,7 @@ public class AdvisoryEngineScheduler {
     // PHASE 1: MORNING SCAN (9:00 AM)
     // Evaluates overnight gaps, early morning trend flips, and wall migrations.
     // =========================================================================
-    @Scheduled(cron = "0 0 9 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 20 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMorningScan() {
         log.info("🌅 PHASE 1: Starting 9:00 AM Morning Advisory Scan...");
         executeScanTask("ADVISORY_SCAN");

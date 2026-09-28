@@ -106,7 +106,9 @@ public class AdvisoryEngineService {
 
         AdvisoryOiService.AdvisoryOiData oiData;
         try {
-            oiData = oiService.fetchLiveOiAndGreeks(name, exchange, indexes.getExpiry());
+            // 🚀 ENFORCE DERIVATIVE EXCHANGE FOR SAMCO OI FETCH
+            String fnoExchange = exchange.contains("MCX") ? "MCX" : "NFO";
+            oiData = oiService.fetchLiveOiAndGreeks(name, fnoExchange, indexes.getExpiry());
         } catch (Exception e) {
             log.warn("⚠️ Skipping Advisory for {}: Failed to fetch live OI & Greeks - {}", name, e.getMessage());
             return null;

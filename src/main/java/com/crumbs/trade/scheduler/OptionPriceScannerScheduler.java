@@ -44,7 +44,7 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     // 1. NSE 1-HOUR SCHEDULER (Runs every hour at xx:15 from 9:15 AM to 3:15 PM)
     // ==========================================
-    @Scheduled(cron = "0 15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 20 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void runNseHourlyScan() {
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);

@@ -222,7 +222,7 @@ public class AngelOneService {
 		predictionHistoryRepo.deleteAll();
 		//preMarketAnalysisRepo.deleteAll();
 		alertRepo.deleteAll();
-		oiResultRepo.deleteAll();
+		//oiResultRepo.deleteAll();
 		intradayTradeRepo.deleteAll();
 		levelRepository.deleteAll();
 		optionsGreeksRepo.deleteAll();
