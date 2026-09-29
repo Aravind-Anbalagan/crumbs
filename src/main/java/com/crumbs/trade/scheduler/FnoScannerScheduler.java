@@ -2,16 +2,17 @@ package com.crumbs.trade.scheduler;
 
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.service.FnoScannerService;
+import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.crumbs.trade.service.FnoScannerService;
-import lombok.RequiredArgsConstructor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Scheduler with distributed lock to prevent concurrent execution.
+ * Scheduler with state lock to prevent concurrent execution.
  * Includes database-driven master switch (executeIfActive) to toggle scanning.
  */
 @Component
@@ -25,9 +26,8 @@ public class FnoScannerScheduler {
     private final FnoScannerService fnoScannerService;
     private final StrategyRepo strategyRepo;
 
-    // In-memory lock for single-instance deployments
-    private volatile long lastCalculationTimestamp = 0;
-    private static final long CALCULATION_LOCK_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+    // Atomic flag to track active execution state
+    private final AtomicBoolean isCalculating = new AtomicBoolean(false);
 
     /**
      * Step 1: Pre-caches yesterday's closing prices.
@@ -75,25 +75,23 @@ public class FnoScannerScheduler {
     }
 
     /**
-     * Execute percentage calculation with lock to prevent overlaps.
+     * Execute percentage calculation with state lock to prevent overlaps.
      */
-    private synchronized void executePercentageCalculationWithLock() {
-        long now = System.currentTimeMillis();
-
-        // Check if previous calculation is still running (within last 15 minutes)
-        if (now - lastCalculationTimestamp < CALCULATION_LOCK_TIMEOUT_MS) {
-            logger.warn("⏭️  Skipping percentage calculation: Previous execution still within {}ms window",
-                    CALCULATION_LOCK_TIMEOUT_MS);
+    private void executePercentageCalculationWithLock() {
+        // Atomic check-and-set: returns false if already calculating
+        if (!isCalculating.compareAndSet(false, true)) {
+            logger.warn("⏭️  Skipping percentage calculation: Previous execution is still running");
             return;
         }
-
-        lastCalculationTimestamp = now;
 
         try {
             fnoScannerService.calculateFnoPercentageChange();
             logger.info("✅ Percentage calculation completed successfully");
         } catch (Exception e) {
             logger.error("❌ Percentage calculation failed: {}", e.getMessage(), e);
+        } finally {
+            // Always reset lock back to false when execution finishes
+            isCalculating.set(false);
         }
     }
 
@@ -108,11 +106,6 @@ public class FnoScannerScheduler {
         }
     }
 
-    /**
-     * Optimized: Queries the database only once per pulse to determine active status.
-     * Note: The "live" flag can also be extracted from this strategy object if needed
-     * in the FnoScannerService downstream.
-     */
     private boolean isActive(String strategyName) {
         Strategy strategy = strategyRepo.findByName(strategyName);
         return strategy != null && "Y".equalsIgnoreCase(strategy.getActive());

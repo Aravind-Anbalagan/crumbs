@@ -152,14 +152,30 @@
   width: 100%;
 }
 
+/* --- SCROLLING WRAPPERS --- */
+.oi-chart-scroll-container {
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Smooth scrolling for touch devices */
+  -webkit-overflow-scrolling: touch;
+  /* Hides scrollbar on Firefox */
+  scrollbar-width: none;
+}
+
+/* Hides scrollbar on Chrome/Safari/Edge */
+.oi-chart-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
 .oi-chart-svg-wrapper {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
   cursor: crosshair;
-  touch-action: pan-y;
+  /* Allows horizontal panning over the SVG wrapper */
+  touch-action: pan-x pan-y;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -291,4 +307,96 @@
 @keyframes oi-pulse-fade {
   0%, 100% { opacity: 0.25; }
   50% { opacity: 0.9; }
+}
+/* --- Chart surface: fixed Y-axis + scrollable plot --- */
+.oi-chart-surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  overflow: hidden;
+}
+
+.oi-y-axis {
+  flex-shrink: 0;
+  display: block;
+  border-right: 1px solid var(--glass-border);
+}
+
+/* --- Pannable area --- */
+.oi-chart-scroll-container {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: grab;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;           /* swipe to pan on touch */
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-faint) transparent;
+}
+.oi-chart-scroll-container.is-dragging { cursor: grabbing; }
+
+.oi-chart-scroll-container::-webkit-scrollbar { height: 8px; }
+.oi-chart-scroll-container::-webkit-scrollbar-track { background: transparent; }
+.oi-chart-scroll-container::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 4px;
+}
+.oi-chart-scroll-container::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+.oi-chart-svg-wrapper {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.oi-tick { stroke: var(--glass-border); stroke-width: 1; }
+
+/* --- Toolbar controls --- */
+.oi-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.oi-controls { display: flex; gap: 0.35rem; }
+
+.oi-btn {
+  min-width: 34px;
+  height: 32px;
+  padding: 0 0.7rem;
+  background: var(--glass-bg);
+  color: var(--text-main);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.oi-btn:hover { border-color: var(--nav-active); background: var(--panel-item-hover); }
+.oi-btn:active { transform: translateY(1px); }
+
+.oi-btn-live { color: var(--text-faint); }
+.oi-btn-live.active { color: #34d399; border-color: rgba(52, 211, 153, 0.5); }
+
+/* --- Responsive --- */
+@media (max-width: 900px) {
+  .oi-tracker-container { padding: 0.75rem; gap: 0.75rem; }
+  .oi-toolbar { flex-direction: column; align-items: stretch; gap: 0.75rem; padding: 0.75rem; }
+  .oi-title { border-right: none; padding-right: 0; }
+  .oi-toolbar-right { justify-content: space-between; }
+}
+
+@media (max-width: 520px) {
+  .oi-header-left { gap: 0.6rem; }
+  .oi-dropdown { padding: 0.4rem 0.6rem; flex: 1; min-width: 0; }
+  .oi-legend { gap: 0.75rem; font-size: 0.72rem; }
 }
