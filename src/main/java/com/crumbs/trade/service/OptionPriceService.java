@@ -71,8 +71,12 @@ public class OptionPriceService {
                 biasLabel = "BEARISH STRADDLE (" + bullishScore + ":" + bearishScore + ")";
             }
             // 🚀 DISPATCH TRADE DIRECTLY FROM AI CONSENSUS
-            if (!biasLabel.startsWith("NEUTRAL")) {
-                optionPriceOrderService.processAiSignalOrder(symbol, biasLabel, symbolContracts);
+            try {
+                if (!biasLabel.startsWith("NEUTRAL")) {
+                    optionPriceOrderService.processAiSignalOrder(symbol, biasLabel, symbolContracts);
+                }
+            } catch (Exception e) {
+                logger.error("🛑 Order execution firewall caught exception for {}: {}. Scanner continuing safely.", symbol, e.getMessage());
             }
             // Consolidate into a single DB-friendly string
             String fullAiBias = String.format("%s | Breakouts(CE:%d PE:%d) Breakdowns(CE:%d PE:%d)",
