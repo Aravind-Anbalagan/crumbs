@@ -99,7 +99,7 @@ public class OptionChainScannerController {
                     }
                 } else if ("ALL_MCX".equals(trimmedSymbol)) {
                     // 👈 Added MCX resolution block matching your scheduler
-                    rawResolvedSymbols.addAll(List.of("SILVERM"));
+                    rawResolvedSymbols.addAll(List.of("CRUDEOILM", "GOLDM","SILVERM"));
                 } else {
                     rawResolvedSymbols.add(symbol);
                 }
