@@ -32,7 +32,7 @@ public class OptionPriceService {
     private final OptionPriceRepo optionPriceRepo;
     private final TelegramService telegramService;
     private final StrategyConfigService configService;
-
+    private final OptionPriceOrderService optionPriceOrderService;
     @Transactional
     public void saveExtremeContracts(List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
@@ -70,7 +70,10 @@ public class OptionPriceService {
             } else {
                 biasLabel = "BEARISH STRADDLE (" + bullishScore + ":" + bearishScore + ")";
             }
-
+            // 🚀 DISPATCH TRADE DIRECTLY FROM AI CONSENSUS
+            if (!biasLabel.startsWith("NEUTRAL")) {
+                optionPriceOrderService.processAiSignalOrder(symbol, biasLabel, symbolContracts);
+            }
             // Consolidate into a single DB-friendly string
             String fullAiBias = String.format("%s | Breakouts(CE:%d PE:%d) Breakdowns(CE:%d PE:%d)",
                     biasLabel, ceBreakouts, peBreakouts, ceBreakdowns, peBreakdowns);
