@@ -20,7 +20,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -42,19 +41,14 @@ public class OptionPriceOrderService {
     private final OrderRepository orderRepository;
     private final StrategyRepo strategyRepo;
 
-    /**
-     * Entry point: Evaluates the AI Bias, selects optimal strikes, and triggers execution.
-     */
     public void processAiSignalOrder(String symbol, String biasLabel, List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
 
-        // 1. Prevent duplicate entries for the symbol on the same day
         if (hasActiveTradeTodayForSymbol(symbol)) {
             log.info("🔐 [DAILY LOCK] Trade already active today for {}. Skipping AI order.", symbol);
             return;
         }
 
-        // 2. Resolve live trading flag from strategy table
         boolean isLive = false;
         try {
             Strategy strat = strategyRepo.findByName("OPTION_PRICE_SCANNER");
@@ -65,7 +59,6 @@ public class OptionPriceOrderService {
             log.warn("⚠️ Could not fetch strategy config for OPTION_PRICE_SCANNER: {}", e.getMessage());
         }
 
-        // 3. Extract unique sorted strikes & locate ATM
         List<Double> sortedStrikes = contracts.stream()
                 .map(ScannedContractDto::getStrike)
                 .filter(s -> s > 0)
@@ -87,44 +80,36 @@ public class OptionPriceOrderService {
         String tradeCycleId = UUID.randomUUID().toString();
         String strategyName = "AI_BIAS_" + symbol;
 
-        // 4. Strike Selection based purely on AI Bias
         if (biasLabel.contains("PURE STRADDLE/STRANGLE")) {
-            // ATM CE + ATM PE
             ScannedContractDto ce = findContract(contracts, atmStrike, "CE");
             ScannedContractDto pe = findContract(contracts, atmStrike, "PE");
             log.info("🎯 [PURE STRADDLE] {} -> ATM Strike: {}", symbol, atmStrike);
             dispatchLegs(strategyName, symbol, tradeCycleId, ce, pe, isLive);
 
         } else if (biasLabel.contains("BULLISH STRADDLE")) {
-            // Upside Room: Call = ATM + 1 strike | Put = ATM
             int ceIdx = Math.min(atmIndex + 1, sortedStrikes.size() - 1);
             double ceStrike = sortedStrikes.get(ceIdx);
             double peStrike = atmStrike;
-
             ScannedContractDto ce = findContract(contracts, ceStrike, "CE");
             ScannedContractDto pe = findContract(contracts, peStrike, "PE");
             log.info("🎯 [BULLISH STRADDLE] {} -> CE: {} (OTM) | PE: {} (ATM)", symbol, ceStrike, peStrike);
             dispatchLegs(strategyName, symbol, tradeCycleId, ce, pe, isLive);
 
         } else if (biasLabel.contains("BEARISH STRADDLE")) {
-            // Downside Room: Call = ATM | Put = ATM - 1 strike
             int peIdx = Math.max(atmIndex - 1, 0);
             double ceStrike = atmStrike;
             double peStrike = sortedStrikes.get(peIdx);
-
             ScannedContractDto ce = findContract(contracts, ceStrike, "CE");
             ScannedContractDto pe = findContract(contracts, peStrike, "PE");
             log.info("🎯 [BEARISH STRADDLE] {} -> CE: {} (ATM) | PE: {} (OTM)", symbol, ceStrike, peStrike);
             dispatchLegs(strategyName, symbol, tradeCycleId, ce, pe, isLive);
 
         } else if (biasLabel.startsWith("BULLISH")) {
-            // Pure Directional Bullish: Write Put option
             ScannedContractDto pe = findContract(contracts, atmStrike, "PE");
             log.info("🎯 [PURE BULLISH] {} -> Selling PE: {}", symbol, atmStrike);
             dispatchSingleLeg(strategyName, symbol, tradeCycleId, pe, "SELL", isLive);
 
         } else if (biasLabel.startsWith("BEARISH")) {
-            // Pure Directional Bearish: Write Call option
             ScannedContractDto ce = findContract(contracts, atmStrike, "CE");
             log.info("🎯 [PURE BEARISH] {} -> Selling CE: {}", symbol, atmStrike);
             dispatchSingleLeg(strategyName, symbol, tradeCycleId, ce, "SELL", isLive);
@@ -145,6 +130,9 @@ public class OptionPriceOrderService {
             return;
         }
 
+        // ✅ Guarantee NFO/MCX options routing
+        String safeExchange = "MCX".equalsIgnoreCase(dto.getExchange()) ? "MCX" : "NFO";
+
         int quantity = dto.getLotsize() > 0 ? dto.getLotsize() : 1;
         String tradingSymbol = dto.getSymbol() != null ? dto.getSymbol()
                 : dto.getName() + dto.getRawExpiry() + (int) dto.getStrike() + dto.getOptionType();
@@ -157,14 +145,11 @@ public class OptionPriceOrderService {
         legOrder.setOptionType(dto.getOptionType());
         legOrder.setSide(dto.getOptionType());
         legOrder.setQuantity(quantity);
-        legOrder.setExchange(dto.getExchange());
+        legOrder.setExchange(safeExchange);
         legOrder.setSignal(strategyName);
         legOrder.setType(transactionType);
         legOrder.setTradeCycleId(cycleId);
 
-        // ==========================================
-        // 1. PAPER TRADING
-        // ==========================================
         if (!isLive) {
             BigDecimal paperPrice = dto.getCurrentLtp() != null ? dto.getCurrentLtp() : BigDecimal.TEN;
             log.info("📄 [PAPER] Order saved for {} {} @ ₹{}", strategyName, tradingSymbol, paperPrice);
@@ -172,9 +157,6 @@ public class OptionPriceOrderService {
             return;
         }
 
-        // ==========================================
-        // 2. LIVE LIMIT DEPTH SNIPER
-        // ==========================================
         SmartConnect smartConnect;
         try {
             smartConnect = angelOne.signIn();
@@ -186,13 +168,13 @@ public class OptionPriceOrderService {
         if (smartConnect == null) return;
 
         try {
-            BigDecimal limitPrice = getBestDepthPrice(smartConnect, dto.getExchange(), dto.getToken(), dto.getCurrentLtp(), transactionType);
+            BigDecimal limitPrice = getBestDepthPrice(smartConnect, safeExchange, dto.getToken(), dto.getCurrentLtp(), transactionType);
 
             OrderParams orderParams = new OrderParams();
             orderParams.variety = Constants.VARIETY_NORMAL;
             orderParams.quantity = quantity;
             orderParams.symboltoken = dto.getToken();
-            orderParams.exchange = dto.getExchange();
+            orderParams.exchange = safeExchange;
             orderParams.ordertype = Constants.ORDER_TYPE_LIMIT;
             orderParams.tradingsymbol = tradingSymbol;
             orderParams.producttype = Constants.PRODUCT_CARRYFORWARD;
@@ -254,11 +236,14 @@ public class OptionPriceOrderService {
     }
 
     private BigDecimal getBestDepthPrice(SmartConnect smartConnect, String exchange, String token, BigDecimal fallbackLtp, String side) {
+        // ✅ Guarantee option market depths hit NFO
+        String safeExchange = "MCX".equalsIgnoreCase(exchange) ? "MCX" : "NFO";
+
         try {
             JSONObject payload = new JSONObject();
             payload.put("mode", "FULL");
             JSONObject exchangeTokens = new JSONObject();
-            exchangeTokens.put(exchange, new JSONArray(List.of(token)));
+            exchangeTokens.put(safeExchange, new JSONArray(List.of(token)));
             payload.put("exchangeTokens", exchangeTokens);
 
             JSONObject response = smartConnect.marketData(payload);
@@ -321,6 +306,90 @@ public class OptionPriceOrderService {
         leg.setActive(1);
         leg.setCreatedOn(LocalDateTime.now(ZoneId.of(ZONE)));
         orderRepository.save(leg);
+    }
+
+    // ==========================================
+    // 3:15 PM AUTO SQUARE OFF LOGIC
+    // ==========================================
+    @Transactional
+    public void closeAllOpenTrades() {
+        // ✅ Strict Filter: Only close "AI_BIAS_" prefixed trades generated by this scanner
+        List<Orders> openOrders = orderRepository.findAll().stream()
+                .filter(o -> o.getActive() == 1 && "OPEN".equalsIgnoreCase(o.getStatus()))
+                .filter(o -> o.getName() != null && o.getName().startsWith("AI_BIAS_"))
+                .collect(Collectors.toList());
+
+        if (openOrders.isEmpty()) {
+            log.info("✅ No open AI_BIAS trades found to square off at 3:15 PM.");
+            return;
+        }
+
+        boolean isLive = false;
+        try {
+            Strategy strat = strategyRepo.findByName("OPTION_PRICE_SCANNER");
+            if (strat != null && "Y".equalsIgnoreCase(strat.getLive())) {
+                isLive = true;
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Could not fetch strategy config: {}", e.getMessage());
+        }
+
+        SmartConnect smartConnect = null;
+        if (isLive) {
+            try {
+                smartConnect = angelOne.signIn();
+            } catch (Exception e) {
+                log.error("❌ Broker auth failed for auto square-off: {}", e.getMessage());
+            }
+        }
+
+        for (Orders order : openOrders) {
+            log.info("🔄 Auto Squaring off AI_BIAS trade: {}", order.getSymbol());
+            // Inverse the direction for exit
+            String exitSide = "BUY".equalsIgnoreCase(order.getType()) ? "SELL" : "BUY";
+
+            // ✅ Enforce NFO mapping for the exit leg as well
+            String optionExchange = "MCX".equalsIgnoreCase(order.getExchange()) ? "MCX" : "NFO";
+
+            if (!isLive) {
+                order.setStatus("CLOSED");
+                order.setActive(0);
+                order.setTradePhase("EXIT");
+                orderRepository.save(order);
+                log.info("📄 [PAPER] Successfully closed AI_BIAS trade for {}", order.getSymbol());
+                continue;
+            }
+
+            if (smartConnect != null) {
+                try {
+                    OrderParams exitParams = new OrderParams();
+                    exitParams.variety = Constants.VARIETY_NORMAL;
+                    exitParams.quantity = order.getQuantity();
+                    exitParams.symboltoken = order.getToken();
+                    exitParams.exchange = optionExchange;
+                    exitParams.ordertype = Constants.ORDER_TYPE_MARKET;
+                    exitParams.tradingsymbol = order.getSymbol();
+                    exitParams.producttype = Constants.PRODUCT_CARRYFORWARD;
+                    exitParams.duration = Constants.DURATION_DAY;
+                    exitParams.transactiontype = exitSide;
+                    exitParams.squareoff = "0";
+                    exitParams.stoploss = "0";
+
+                    Order placedOrder = smartConnect.placeOrder(exitParams, Constants.VARIETY_NORMAL);
+                    if (placedOrder != null && placedOrder.orderId != null && !placedOrder.orderId.isBlank()) {
+                        log.info("✅ [LIVE] Market Exit Order placed for AI_BIAS {} | OrderID: {}", order.getSymbol(), placedOrder.orderId);
+                        order.setStatus("CLOSED");
+                        order.setActive(0);
+                        order.setTradePhase("EXIT");
+                        orderRepository.save(order);
+                    } else {
+                        log.error("❌ Failed to square off {} live.", order.getSymbol());
+                    }
+                } catch (Exception e) {
+                    log.error("❌ Exception during auto square-off for {}: {}", order.getSymbol(), e.getMessage());
+                }
+            }
+        }
     }
 
     private void sleepQuietly(long ms) {

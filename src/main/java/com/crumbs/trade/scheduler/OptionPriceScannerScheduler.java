@@ -6,6 +6,7 @@ import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.NiftyRepo;
 import com.crumbs.trade.service.OptionChainScannerService;
 import com.crumbs.trade.service.OptionIndicatorService;
+import com.crumbs.trade.service.OptionPriceOrderService;
 import com.crumbs.trade.service.OptionPriceService;
 import com.crumbs.trade.service.StrategyConfigService;
 import com.crumbs.trade.utility.NSEWorkingDays;
@@ -37,12 +38,14 @@ public class OptionPriceScannerScheduler {
     private final StrategyConfigService configService;
     private final NiftyRepo niftyRepo;
 
+    // ✅ Injected order service to trigger auto square-off
+    private final OptionPriceOrderService optionPriceOrderService;
+
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM","SILVERM");
-    // 1. Define the static NSE indices
     private static final List<String> NSE_SYMBOLS = List.of("NIFTY", "BANKNIFTY");
 
     // ==========================================
-    // 1. NSE 1-HOUR SCHEDULER (Runs every hour at xx:15 from 9:15 AM to 3:15 PM)
+    // 1. NSE 1-HOUR SCHEDULER
     // ==========================================
     @Scheduled(cron = "0 20 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void runNseHourlyScan() {
@@ -50,7 +53,6 @@ public class OptionPriceScannerScheduler {
         LocalTime now = LocalTime.now(istZone);
         LocalDate today = LocalDate.now(istZone);
 
-        // NSE Guard Clauses (9:15 AM to 3:30 PM)
         if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) {
             return;
         }
@@ -66,8 +68,6 @@ public class OptionPriceScannerScheduler {
                 : BigDecimal.valueOf(5.0);
 
         List<String> allNames = niftyRepo.getAllNames();
-
-        // 2. Initialize a Set with the static symbols to prevent duplicates if they also exist in DB
         Set<String> uniqueSymbolsToScan = new HashSet<>(NSE_SYMBOLS);
 
         if (allNames != null) {
@@ -86,10 +86,7 @@ public class OptionPriceScannerScheduler {
             }
         }
 
-        // 3. Convert back to List for the workflow engine
         List<String> symbolsToScan = new ArrayList<>(uniqueSymbolsToScan);
-
-        // Note: The empty check is removed because the list will ALWAYS contain NIFTY and BANKNIFTY.
         logger.info("✅ [NSE] Scanning {} symbols (Default indices + stocks exceeding {}% threshold).",
                 symbolsToScan.size(), threshold);
 
@@ -105,7 +102,6 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(cron = "0 0 16-23 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMcxHourlyScan() {
-        // ... (Unchanged)
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
 
@@ -118,10 +114,23 @@ public class OptionPriceScannerScheduler {
     }
 
     // ==========================================
+    // 3. AUTO SQUARE OFF AT 3:15 PM
+    // ==========================================
+    @Scheduled(cron = "0 15 15 * * MON-FRI", zone = "Asia/Kolkata")
+    public void squareOffAllTrades315PM() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        if (!NSEWorkingDays.isNSEWorkingDay(today)) {
+            return;
+        }
+
+        logger.info("⏰ [SQUARE-OFF] 3:15 PM Reached. Initiating forced market exit for all open AI_BIAS trades...");
+        optionPriceOrderService.closeAllOpenTrades();
+    }
+
+    // ==========================================
     // SHARED WORKFLOW ENGINE
     // ==========================================
     private void executeScanWorkflow(List<String> symbols, String interval) {
-        // ... (Unchanged)
         OptionScannerConfig config = OptionScannerConfig.builder()
                 .monthsToScan(1)
                 .scanWeekly(true)

@@ -188,12 +188,15 @@ public class OptionChainScannerService {
                     boolean isMonthly = monthlyOpt != null && monthlyOpt.equals(expDate);
                     int lotsize = c.getLotsize() > 0 ? c.getLotsize() : 1;
 
+                    // ✅ Enforce option exchange mapping (MCX or NFO, never NSE)
+                    String optionExchange = "MCX".equalsIgnoreCase(c.getExchange()) ? "MCX" : "NFO";
+
                     return ScannedContractDto.builder()
                             .name(c.getName())
                             .symbol(c.getSymbol())
                             .token(c.getToken())
                             .strike(strike)
-                            .exchange(c.getExchange())
+                            .exchange(optionExchange)
                             .optionType(optType)
                             .expiryDate(expDate)
                             .rawExpiry(rawExp)
@@ -245,6 +248,7 @@ public class OptionChainScannerService {
                 }
             }
 
+            // Spot relies on NSE
             BigDecimal stockSpot = samco.getLtp(session, "NSE", symbol);
             if (stockSpot != null && stockSpot.compareTo(BigDecimal.ZERO) > 0) {
                 return stockSpot;
@@ -269,7 +273,6 @@ public class OptionChainScannerService {
             }
         }
 
-        // Safe manual check instead of relying purely on computeIfAbsent to avoid thread blocks or locking issues
         List<Indexes> cachedContracts = dailyRawContractsCache.get(underlyingName);
         if (cachedContracts != null) {
             return cachedContracts;
