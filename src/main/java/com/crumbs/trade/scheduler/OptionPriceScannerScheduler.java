@@ -37,8 +37,6 @@ public class OptionPriceScannerScheduler {
     private final OptionPriceService optionPriceService;
     private final StrategyConfigService configService;
     private final NiftyRepo niftyRepo;
-
-    // ✅ Injected order service to trigger auto square-off
     private final OptionPriceOrderService optionPriceOrderService;
 
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM","SILVERM");
@@ -125,6 +123,15 @@ public class OptionPriceScannerScheduler {
 
         logger.info("⏰ [SQUARE-OFF] 3:15 PM Reached. Initiating forced market exit for all open AI_BIAS trades...");
         optionPriceOrderService.closeAllOpenTrades();
+    }
+
+    // ==========================================
+    // 4. FAST-LOOP RISK MONITOR (NEW)
+    // ==========================================
+    @Scheduled(fixedDelay = 5000)
+    public void runAiTradeRiskMonitor() {
+        // Continuously invokes the driver to evaluate active trades and pass them to MonitorOrderService
+        optionPriceService.monitorActiveAiTrades(null);
     }
 
     // ==========================================

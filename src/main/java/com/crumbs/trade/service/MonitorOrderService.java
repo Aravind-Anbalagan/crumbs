@@ -76,7 +76,7 @@ public class MonitorOrderService {
         BigDecimal groupPnL = BigDecimal.ZERO;
 
         for (Orders leg : groupLegs) {
-            // ✅ FIX: If the cache is empty (fast-loop triggered exit), force fetch the live price!
+            // If the cache is empty (fast-loop triggered exit), force fetch the live price
             if (!liveUiCachePnL.containsKey(leg.getId()) && leg.getAskPrice() != null) {
                 try {
                     ExchangeType exType = mapExchangeToType(leg.getExchange());
@@ -86,7 +86,7 @@ public class MonitorOrderService {
                         BigDecimal pointsDiff = isShort
                                 ? leg.getAskPrice().subtract(ltp)
                                 : ltp.subtract(leg.getAskPrice());
-                        liveUiCachePnL.put(leg.getId(), pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity())));
+                        liveUiCachePnL.put(leg.getId(), pointsDiff.multiply(BigDecimal.valueOf(getEffectiveQuantity(leg))));
                     }
                 } catch (Exception e) {
                     log.error("⚠️ Failed to instantly fetch LTP for fast-exit paper trade: {}", e.getMessage());
@@ -175,11 +175,11 @@ public class MonitorOrderService {
                         && entryPrice != null && entryPrice.compareTo(BigDecimal.ZERO) > 0) {
                     boolean isShort = isShortPosition(leg, config);
 
-                    // ✅ DYNAMIC PNL MATHEMATICS FOR BUYERS AND SELLERS
+                    // DYNAMIC PNL MATHEMATICS FOR BUYERS AND SELLERS
                     BigDecimal pointsDiff = isShort
                             ? entryPrice.subtract(currentLtp)   // SHORT PNL: Entry - Current
                             : currentLtp.subtract(entryPrice);  // LONG PNL: Current - Entry
-                    legPnL = pointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
+                    legPnL = pointsDiff.multiply(BigDecimal.valueOf(getEffectiveQuantity(leg)));
                 } else {
                     allLegsPriced = false;
                 }
@@ -192,14 +192,14 @@ public class MonitorOrderService {
             liveUiCachePnL.put(leg.getId(), legPnL);
         }
 
-        // 🛑 MASTER TOGGLE: IF FLAG IS 'N', TURN OFF ALL RISK FUNCTIONS
+        // MASTER TOGGLE: IF FLAG IS 'N', TURN OFF ALL RISK FUNCTIONS
         if (config == null || !SMART_RISK_ACTIVE.equalsIgnoreCase(config.getSmartRiskFlag())) {
             return false;
         }
 
         Orders primaryLeg = groupLegs.get(0);
         BigDecimal totalQuantity = groupLegs.stream()
-                .map(Orders::getQuantity).filter(Objects::nonNull).map(BigDecimal::valueOf)
+                .map(this::getEffectiveQuantity).map(BigDecimal::valueOf)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal maxLossThreshold = config.getMaxLossLimit();
@@ -321,7 +321,6 @@ public class MonitorOrderService {
 
                 for (int i = 0; i < trades.length(); i++) {
                     JSONObject trade = trades.getJSONObject(i);
-                    // ✅ ISOLATES BY UNIQUE ORDER ID - NO MULTI-STRATEGY COLLISIONS
                     String tOrderId = trade.optString("orderid", trade.optString("order_id"));
 
                     if (leg.getOrderid().equals(tOrderId)) {
@@ -390,13 +389,14 @@ public class MonitorOrderService {
                 exitToken.setSymbol(leg.getSymbol());
                 exitToken.setToken(leg.getToken());
                 exitToken.setExch_seg(leg.getExchange());
+                // ✅ USES ACTUAL ORDER QUANTITY AS IS
                 exitToken.setQuantity(leg.getQuantity());
                 exitToken.setOrderType(Constants.ORDER_TYPE_MARKET);
                 exitToken.setProductType(Constants.PRODUCT_CARRYFORWARD);
                 exitToken.setVariety(Constants.VARIETY_NORMAL);
 
                 boolean isShort = isShortPosition(leg, config);
-                // ✅ DYNAMIC REVERSE EXECUTION: Short -> BUY, Long -> SELL
+                // DYNAMIC REVERSE EXECUTION: Short -> BUY, Long -> SELL
                 exitToken.setTransactionType(isShort ? Constants.TRANSACTION_TYPE_BUY : Constants.TRANSACTION_TYPE_SELL);
 
                 int attempt = 0;
@@ -429,10 +429,11 @@ public class MonitorOrderService {
             BigDecimal finalLegPnL = liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO);
             BigDecimal calculatedExitPrice = leg.getAskPrice() != null ? leg.getAskPrice() : BigDecimal.ZERO;
             if (leg.getAskPrice() != null && leg.getQuantity() > 0) {
-                BigDecimal qty = BigDecimal.valueOf(leg.getQuantity());
+                // ✅ UPDATED: Uses effective quantity (10 instead of 100) for PnL per unit calculation
+                BigDecimal qty = BigDecimal.valueOf(getEffectiveQuantity(leg));
                 BigDecimal pnlPerUnit = finalLegPnL.divide(qty, 4, RoundingMode.HALF_UP);
 
-                // ✅ MATHEMATICAL FALLBACK PERFECTED FOR BUYERS/SELLERS
+                // MATHEMATICAL FALLBACK PERFECTED FOR BUYERS/SELLERS
                 calculatedExitPrice = isShortPosition(leg, config)
                         ? leg.getAskPrice().subtract(pnlPerUnit) // Short: Entry - Profit = Lower Exit Price
                         : leg.getAskPrice().add(pnlPerUnit);     // Long: Entry + Profit = Higher Exit Price
@@ -490,12 +491,12 @@ public class MonitorOrderService {
 
                                 boolean isShort = isShortPosition(leg, config);
 
-                                // ✅ TRUE TRADEBOOK PNL MATHEMATICS FOR BUYERS/SELLERS
                                 BigDecimal realPointsDiff = isShort
                                         ? leg.getAskPrice().subtract(brokerExit)
                                         : brokerExit.subtract(leg.getAskPrice());
 
-                                BigDecimal realPnL = realPointsDiff.multiply(BigDecimal.valueOf(leg.getQuantity()));
+                                // ✅ UPDATED: Uses effective quantity (10) for PnL calculation instead of actual quantity (100)
+                                BigDecimal realPnL = realPointsDiff.multiply(BigDecimal.valueOf(getEffectiveQuantity(leg)));
 
                                 leg.setPl(realPnL);
                                 log.info("🎯 [REAL-EXIT] Leg {} synced to broker exit: {} | True PnL: {}",
@@ -526,7 +527,7 @@ public class MonitorOrderService {
         lastPnlSnapshot.remove(strategyKey);
         panicStreak.remove(strategyKey);
 
-        // ✅ ADD THIS: Wipe the Risk Config in the database so the next trade starts fresh!
+        // Wipe the Risk Config in the database so the next trade starts fresh
         if (config != null) {
             config.setCurrentPeakPnl(null);
             config.setCurrentTrailingFloor(null);
@@ -551,14 +552,10 @@ public class MonitorOrderService {
 
     /**
      * Safely identifies if an order is a Long (Buyer) or Short (Seller) position.
-     * Prioritizes the exact execution logic saved to the DB by the strategy.
-     */
-    /**
-     * Safely identifies if an order is a Long (Buyer) or Short (Seller) position.
      * Prioritizes the Master Risk Configuration over everything else.
      */
     private boolean isShortPosition(Orders leg, RiskConfiguration config) {
-        // ✅ PRIORITY 1: The Master Risk Configuration is the absolute truth!
+        // Priority 1: The Master Risk Configuration is the absolute truth!
         if (config != null && config.getStrategyType() != null && !config.getStrategyType().isBlank()) {
             return "OPTION_SELL".equalsIgnoreCase(config.getStrategyType());
         }
@@ -586,5 +583,20 @@ public class MonitorOrderService {
             case "BFO": return ExchangeType.BSE_FO;
             default: return null;
         }
+    }
+
+    /**
+     * Resolves the effective quantity for instruments with lot size discrepancies.
+     * Automatically scales GOLDM down from 100 to 10 (or proportionally).
+     */
+    private int getEffectiveQuantity(Orders leg) {
+        if (leg.getSymbol() != null && leg.getSymbol().toUpperCase().contains("GOLDM")) {
+            if (leg.getQuantity() == 100) {
+                return 10;
+            } else if (leg.getQuantity() > 0 && leg.getQuantity() % 10 == 0) {
+                return leg.getQuantity() / 10; // Proportional handling
+            }
+        }
+        return leg.getQuantity();
     }
 }

@@ -1,10 +1,13 @@
 package com.crumbs.trade.service;
 
+import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
+import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.OptionPriceRepo;
+import com.crumbs.trade.repo.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,7 +19,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -27,12 +29,48 @@ public class OptionPriceService {
 
     private static final Logger logger = LogManager.getLogger(OptionPriceService.class);
     private static final DateTimeFormatter TIME_ONLY_FMT = DateTimeFormatter.ofPattern("HH:mm");
-    private static final DateTimeFormatter EXPIRY_DISPLAY_FMT = DateTimeFormatter.ofPattern("ddMMM");
 
     private final OptionPriceRepo optionPriceRepo;
+    private final OrderRepository ordersRepository;
     private final TelegramService telegramService;
     private final StrategyConfigService configService;
     private final OptionPriceOrderService optionPriceOrderService;
+    private final MonitorOrderService monitorOrderService;
+
+    // ==========================================
+    // FAST-LOOP PNL & RISK MONITORING
+    // ==========================================
+
+    /**
+     * Called by a fast-loop scheduler to track PnL and enforce risk thresholds
+     * for active AI Bias trades by consuming the existing MonitorOrderService.
+     */
+
+    public void monitorActiveAiTrades(SmartConnect connection) {
+        List<Orders> allActiveOrders = ordersRepository.findByStatusAndActive("OPEN", 1);
+        if (allActiveOrders == null || allActiveOrders.isEmpty()) return;
+
+        // Isolate only trades originating from the AI Bias scanner
+        List<Orders> aiTrades = allActiveOrders.stream()
+                .filter(o -> o.getName() != null && o.getName().startsWith("AI_BIAS"))
+                .collect(Collectors.toList());
+
+        if (aiTrades.isEmpty()) return;
+
+        // Group by exact strategy name (e.g., "AI_BIAS_NIFTY", "AI_BIAS_CRUDEOIL")
+        Map<String, List<Orders>> tradesByStrategy = aiTrades.stream()
+                .collect(Collectors.groupingBy(Orders::getName));
+
+        // Feed each strategy group into the Master Risk Engine
+        for (Map.Entry<String, List<Orders>> entry : tradesByStrategy.entrySet()) {
+            monitorOrderService.evaluateAndClose(entry.getValue(), entry.getKey(), connection);
+        }
+    }
+
+    // ==========================================
+    // CORE AI SCANNER & EXECUTION LOGIC
+    // ==========================================
+
     @Transactional
     public void saveExtremeContracts(List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
@@ -40,13 +78,11 @@ public class OptionPriceService {
         LocalDate today = LocalDate.now();
         List<OptionPrice> newRecords = new ArrayList<>();
 
-        // 1. Group by symbol to calculate AI Bias consensus BEFORE saving
         Map<String, List<ScannedContractDto>> groupedBySymbol = contracts.stream()
                 .collect(Collectors.groupingBy(ScannedContractDto::getName));
 
         groupedBySymbol.forEach((symbol, symbolContracts) -> {
 
-            // Tally the 4 directional buckets
             long ceBreakouts = symbolContracts.stream().filter(c -> "CE".equals(c.getOptionType()) && isNearMaBreakout(c)).count();
             long ceBreakdowns = symbolContracts.stream().filter(c -> "CE".equals(c.getOptionType()) && isNearMaBreakdown(c)).count();
             long peBreakouts = symbolContracts.stream().filter(c -> "PE".equals(c.getOptionType()) && isNearMaBreakout(c)).count();
@@ -55,7 +91,6 @@ public class OptionPriceService {
             long bullishScore = ceBreakouts + peBreakdowns;
             long bearishScore = peBreakouts + ceBreakdowns;
 
-            // Determine Bias string
             String biasLabel;
             if (bullishScore > 0 && bearishScore == 0) {
                 biasLabel = "BULLISH (" + bullishScore + ":0)";
@@ -70,7 +105,13 @@ public class OptionPriceService {
             } else {
                 biasLabel = "BEARISH STRADDLE (" + bullishScore + ":" + bearishScore + ")";
             }
-            // 🚀 DISPATCH TRADE DIRECTLY FROM AI CONSENSUS
+
+            String strategyKey = "AI_BIAS_" + symbol;
+
+            if (!biasLabel.startsWith("NEUTRAL")) {
+                evaluateTrendReversalExits(strategyKey, biasLabel);
+            }
+
             try {
                 if (!biasLabel.startsWith("NEUTRAL")) {
                     optionPriceOrderService.processAiSignalOrder(symbol, biasLabel, symbolContracts);
@@ -78,14 +119,13 @@ public class OptionPriceService {
             } catch (Exception e) {
                 logger.error("🛑 Order execution firewall caught exception for {}: {}. Scanner continuing safely.", symbol, e.getMessage());
             }
-            // Consolidate into a single DB-friendly string
+
             String fullAiBias = String.format("%s | Breakouts(CE:%d PE:%d) Breakdowns(CE:%d PE:%d)",
                     biasLabel, ceBreakouts, peBreakouts, ceBreakdowns, peBreakdowns);
 
             for (ScannedContractDto dto : symbolContracts) {
-                dto.setAiBias(fullAiBias); // Stamp onto DTO
+                dto.setAiBias(fullAiBias);
 
-                // 2. DB FILTER: Save only if RSI Extreme OR MA trigger
                 if (!dto.isRSIAbove80() && !dto.isRSIBelow20()
                         && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
                         && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK
@@ -106,6 +146,39 @@ public class OptionPriceService {
 
         sendHookNotifications(contracts);
     }
+
+    /**
+     * Checks if the newly generated AI bias conflicts with any existing open trade for this symbol.
+     * If a reversal is detected, triggers a force exit via the MonitorOrderService.
+     */
+    private void evaluateTrendReversalExits(String strategyKey, String newBiasLabel) {
+        List<Orders> openTrades = ordersRepository.findByStatusAndActive("OPEN", 1).stream()
+                .filter(o -> strategyKey.equalsIgnoreCase(o.getName()))
+                .collect(Collectors.toList());
+
+        if (openTrades.isEmpty()) return;
+
+        boolean isNowBullish = newBiasLabel.contains("BULLISH");
+        boolean isNowBearish = newBiasLabel.contains("BEARISH");
+
+        for (Orders trade : openTrades) {
+            boolean holdingLongExposure = ("BUY".equalsIgnoreCase(trade.getType()) && "CE".equalsIgnoreCase(trade.getOptionType())) ||
+                    ("SELL".equalsIgnoreCase(trade.getType()) && "PE".equalsIgnoreCase(trade.getOptionType()));
+
+            boolean holdingShortExposure = ("SELL".equalsIgnoreCase(trade.getType()) && "CE".equalsIgnoreCase(trade.getOptionType())) ||
+                    ("BUY".equalsIgnoreCase(trade.getType()) && "PE".equalsIgnoreCase(trade.getOptionType()));
+
+            if ((holdingLongExposure && isNowBearish) || (holdingShortExposure && isNowBullish)) {
+                logger.warn("🔄 [AI BIAS REVERSAL] Trend flipped to {}. Liquidating strategy: {}", newBiasLabel, strategyKey);
+                monitorOrderService.forceExit(openTrades, strategyKey, "AI_BIAS_TREND_REVERSAL");
+                break;
+            }
+        }
+    }
+
+    // ==========================================
+    // NOTIFICATIONS & UTILITY LOGIC
+    // ==========================================
 
     private void sendHookNotifications(List<ScannedContractDto> contracts) {
         StrategyConfig activeConfig = configService.getActiveConfig();
@@ -147,7 +220,6 @@ public class OptionPriceService {
             BigDecimal spot = hooks.get(0).getSpotPrice();
             String fullBias = hooks.get(0).getAiBias() != null ? hooks.get(0).getAiBias() : "NEUTRAL | Stats(0)";
 
-            // Split the single string for clean Telegram formatting
             String[] biasParts = fullBias.split("\\|");
             String primaryBias = biasParts[0].trim();
             String statsBlock = biasParts.length > 1 ? biasParts[1].trim() : "";
@@ -159,13 +231,9 @@ public class OptionPriceService {
                 msg.append("📍 Spot: `").append(String.format("%.2f", spot.doubleValue())).append("`\n");
             }
 
-            // Inject Consensus Header
             msg.append("🧠 *AI BIAS: ").append(primaryBias).append("*\n");
             msg.append("📊 `").append(statsBlock).append("`\n");
 
-            // ==========================================
-            // TABLE 1: RSI HOOKS
-            // ==========================================
             if (!rsiTriggers.isEmpty()) {
                 msg.append("\n⚡ *RSI Hooks*\n```\n");
                 msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %-4s | %s%n",
@@ -186,9 +254,6 @@ public class OptionPriceService {
                 msg.append("```\n");
             }
 
-            // ==========================================
-            // TABLE 2: MA BREAKOUTS
-            // ==========================================
             if (!maBreakouts.isEmpty()) {
                 msg.append("\n📈 *MA Breakouts*\n```\n");
                 msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %s%n",
@@ -201,9 +266,6 @@ public class OptionPriceService {
                 msg.append("```\n");
             }
 
-            // ==========================================
-            // TABLE 3: MA BREAKDOWNS
-            // ==========================================
             if (!maBreakdowns.isEmpty()) {
                 msg.append("\n📉 *MA Breakdowns*\n```\n");
                 msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %s%n",
@@ -232,10 +294,6 @@ public class OptionPriceService {
         return String.format("%-5s | %-4s | %-8s | %-7.2f | %-7.2f%n", timeStr, dir, strikeStr, ltpVal, maVal);
     }
 
-    // ==========================================
-    // MA TRIGGER DETECTION
-    // ==========================================
-
     private boolean isNearMaTrigger(ScannedContractDto dto) {
         return isNearMaBreakout(dto) || isNearMaBreakdown(dto);
     }
@@ -257,10 +315,6 @@ public class OptionPriceService {
         double diff = dto.getCurrentMa() - dto.getCurrentLtp().doubleValue();
         return diff >= 0 && diff <= threshold;
     }
-
-    // ==========================================
-    // UI DATA RETRIEVAL (DASHBOARD & AUDIT)
-    // ==========================================
 
     public List<OptionPrice> getLiveTrackedData(String timeFrame) {
         if (timeFrame == null || timeFrame.equalsIgnoreCase("ALL")) {
@@ -345,7 +399,7 @@ public class OptionPriceService {
                 .isPriceAboveMa(dto.isPriceAboveMa())
                 .signalAction(dto.getSignalAction() != null ? dto.getSignalAction().name() : "NONE")
                 .evaluatedAt(dto.getLastEvaluatedAt())
-                .aiBias(dto.getAiBias()) // ✅ Map the new AI Bias field
+                .aiBias(dto.getAiBias())
                 .build();
     }
 
