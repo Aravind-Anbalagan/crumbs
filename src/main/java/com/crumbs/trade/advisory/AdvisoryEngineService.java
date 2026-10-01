@@ -45,10 +45,13 @@ public class AdvisoryEngineService {
     private final AngelWebSocketService webSocketService;
     private final AngelOneService angelOneService;
     private final AngelOne angelOne;
+
     private static final Map<String, Lock> SYMBOL_LOCKS = new ConcurrentHashMap<>();
+
     @Autowired
     @Lazy
-    private AdvisoryEngineService self; // 🚀 Inject the proxy
+    private AdvisoryEngineService self; // 🚀 Inject the proxy for transactional boundaries
+
     public record MultiTimeframeTrend(String dailyTrend, String weeklyTrend, boolean isAligned) {}
 
     public OptionRecommendation processAdvisory(String name, String token) {
@@ -59,19 +62,19 @@ public class AdvisoryEngineService {
             acquired = lock.tryLock(30, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("❌ Interrupted while waiting for lock on {}. Skipping this run.", name);
+            log.error("❌ [LOCK TIMEOUT] Interrupted while waiting for lock on {}. Skipping run.", name);
             return null;
         }
 
         if (!acquired) {
-            log.error("⚠️ Could not acquire lock for {} within 30s. Skipping to avoid race.", name);
+            log.warn("⚠️ [RACE AVOIDED] Could not acquire lock for {} within 30s. Skipping to prevent duplicate processing.", name);
             return null;
         }
 
         try {
             return self.processAdvisoryInternal(name, token);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            log.error("🛡️ DB constraint blocked duplicate ACTIVE row for {}", name, e);
+            log.warn("🛡️ [DB GUARD] Database constraint blocked duplicate ACTIVE row for {}", name);
             return null;
         } finally {
             lock.unlock();
@@ -80,11 +83,12 @@ public class AdvisoryEngineService {
 
     @Transactional
     public OptionRecommendation processAdvisoryInternal(String name, String token) {
-        log.info("🧠 Running Stateful EOD Advisory Engine for: {} (Token: {})", name, token);
+        log.info("🧠 ========================================================");
+        log.info("🧠 [ENGINE START] Analyzing Stateful Advisory for: {} (Token: {})", name, token);
 
         Indexes indexes = indexesRepo.findByToken(token);
         if (indexes == null) {
-            log.warn("Skipping {}: No Index metadata found for token {}", name, token);
+            log.warn("⏭️ [SKIP] No Index metadata found for token {}", token);
             return null;
         }
 
@@ -94,7 +98,7 @@ public class AdvisoryEngineService {
         List<PricesIndex> dailyCandles = srService.getCandleData(dailyReq, name, indexes.getSymbol());
 
         if (dailyCandles == null || dailyCandles.size() < 50) {
-            log.warn("[{}] Insufficient daily candles. Skipping.", name);
+            log.warn("⏭️ [SKIP] Insufficient daily candles for {} (Found: {}).", name, dailyCandles != null ? dailyCandles.size() : 0);
             return null;
         }
 
@@ -102,27 +106,28 @@ public class AdvisoryEngineService {
         MultiTimeframeTrend mtfTrend = analyzeMultiTimeframeTrend(dailyCandles, spotPrice);
         BigDecimal atr14 = calculateATR(dailyCandles, 14);
 
+        log.info("📊 [MARKET CONTEXT] Spot: ₹{} | Daily Trend: {} | Weekly Trend: {} | ATR: {}",
+                spotPrice, mtfTrend.dailyTrend(), mtfTrend.weeklyTrend(), atr14);
+
         Optional<FuturesBreakEvent> smcSignalOpt = evaluateSmcOracle(name, exchange, indexes.getSymbol(), spotPrice);
 
         AdvisoryOiService.AdvisoryOiData oiData;
         try {
-            // 🚀 ENFORCE DERIVATIVE EXCHANGE FOR SAMCO OI FETCH
             String fnoExchange = exchange.contains("MCX") ? "MCX" : "NFO";
             oiData = oiService.fetchLiveOiAndGreeks(name, fnoExchange, indexes.getExpiry());
         } catch (Exception e) {
-            log.warn("⚠️ Skipping Advisory for {}: Failed to fetch live OI & Greeks - {}", name, e.getMessage());
+            log.error("⚠️ [API FAIL] Failed to fetch Live OI for {}. Error: {}", name, e.getMessage());
             return null;
         }
 
-        // Safely resolve expiry, falling back to the master index if API failed
         String resolvedExpiry = (oiData != null && oiData.expiry() != null && !oiData.expiry().trim().isEmpty())
                 ? oiData.expiry() : (indexes.getExpiry() != null ? indexes.getExpiry() : "");
 
-        Optional<AdvisoryLedger> previousRecordOpt = ledgerRepository
-                .findTopBySymbolOrderByTimestampDesc(name);
+        Optional<AdvisoryLedger> previousRecordOpt = ledgerRepository.findTopBySymbolOrderByTimestampDesc(name);
 
         LocalDateTime now = LocalDateTime.now();
         CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
+
         AdvisoryLedger newRecord = AdvisoryLedger.builder()
                 .symbol(name)
                 .expiryDate(resolvedExpiry)
@@ -134,7 +139,6 @@ public class AdvisoryEngineService {
                 .dailyTrend(mtfTrend.dailyTrend())
                 .atr14(atr14)
                 .isNewDay(true)
-                // ❌ Removed the Equity Lot Size injection here!
                 .build();
 
         if (previousRecordOpt.isPresent()) {
@@ -153,60 +157,45 @@ public class AdvisoryEngineService {
             newRecord.setCallWallOi(BigDecimal.valueOf(oiData.callWall().openInterest()));
         }
 
-        smcSignalOpt.ifPresent(bos -> newRecord.setSmcSignal(bos.getBreakType()));
+        smcSignalOpt.ifPresent(bos -> {
+            newRecord.setSmcSignal(bos.getBreakType());
+            log.info("🧭 [SMC ORACLE] {} detected for {}", bos.getBreakType(), name);
+        });
 
         // =====================================================================
-        // 🚀 ROUTING LOGIC (Fixed for Database constraints & API glitches)
+        // ROUTING LOGIC
         // =====================================================================
-        // DECIDE: New position or hold/exit existing?
         AdvisoryLedger prevRecord = previousRecordOpt.orElse(null);
 
-        // 🎯 SAFEGUARD: Only consider expiry changed if the API actually gave us a valid new expiry
-        boolean expiryChanged = prevRecord != null &&
-                !resolvedExpiry.isEmpty() &&
-                !prevRecord.getExpiryDate().equals(resolvedExpiry);
-
+        boolean expiryChanged = prevRecord != null && !resolvedExpiry.isEmpty() && !prevRecord.getExpiryDate().equals(resolvedExpiry);
         boolean prevPositionClosed = prevRecord != null && "HISTORY".equals(prevRecord.getStatus());
-
-        // 🎯 CRITICAL FIX: A strict check to see if we are CURRENTLY holding an open trade
         boolean isHoldingActiveTrade = prevRecord != null && "ACTIVE".equals(prevRecord.getStatus()) &&
                 ("NEW_ENTRY".equals(prevRecord.getActionTaken()) || "MAINTAIN".equals(prevRecord.getActionTaken()));
 
         if (isHoldingActiveTrade) {
-            // PATH 2: We have an open position. We MUST route to Hold/Exit to manage it.
-            // (Even if the API glitches, we must safely monitor the existing trade)
-            log.info("🔄 HOLD/EXIT PATH for {}: Previous action={}", name, prevRecord.getActionTaken());
+            log.info("🔄 [PATH 2: HOLD/EXIT] Evaluating existing position for {}. Previous action: {}", name, prevRecord.getActionTaken());
             evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
         } else if (previousRecordOpt.isEmpty() || expiryChanged || prevPositionClosed || "NO_TRADE".equals(prevRecord.getActionTaken())) {
-            // PATH 1: No open position. Look for a fresh entry.
-            log.info("🔄 FRESH ENTRY PATH for {}: ", name);
-            if (previousRecordOpt.isEmpty()) log.info("  └─ No previous record");
-            else if (expiryChanged) log.info("  └─ Expiry changed from {} to {}", prevRecord.getExpiryDate(), resolvedExpiry);
-            else if (prevPositionClosed) log.info("  └─ Previous position closed (Status: HISTORY)");
-            else if ("NO_TRADE".equals(prevRecord.getActionTaken())) log.info("  └─ Previous was NO_TRADE");
-
+            log.info("✨ [PATH 1: NEW ENTRY] Scanning for fresh setup on {}...", name);
             evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice);
         } else {
-            // Fallback (Safe catch-all)
+            log.warn("⚠️ [FALLBACK PATH] Unhandled state for {}. Forcing hold/exit evaluation.", name);
             evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
         }
 
-        // 🚀 MTM PnL & Saving Logic
+        // =====================================================================
+        // PNL CALCULATION & SAVING
+        // =====================================================================
         boolean shouldSave = false;
         String saveReason = "";
 
         if ("ACTIVE".equals(newRecord.getStatus())) {
-            if ("NEW_ENTRY".equals(newRecord.getActionTaken()) ||
-                    "MAINTAIN".equals(newRecord.getActionTaken()) ||
-                    "NO_TRADE".equals(newRecord.getActionTaken())) {
+            if ("NEW_ENTRY".equals(newRecord.getActionTaken()) || "MAINTAIN".equals(newRecord.getActionTaken()) || "NO_TRADE".equals(newRecord.getActionTaken())) {
                 shouldSave = true;
                 saveReason = newRecord.getActionTaken();
 
-                // Calculate MTM (Absolute ₹) for active trades
-                if (newRecord.getEntryPremium() != null &&
-                        (newRecord.getActionTaken().equals("NEW_ENTRY") ||
-                                newRecord.getActionTaken().equals("MAINTAIN"))) {
-
+                // Calculate MTM for active trades
+                if (newRecord.getEntryPremium() != null && !newRecord.getActionTaken().equals("NO_TRADE")) {
                     BigDecimal liveLtp = safelyFetchExitPremium(newRecord, exchange);
                     if (liveLtp != null) {
                         BigDecimal pointsPnl = newRecord.getEntryPremium().subtract(liveLtp);
@@ -215,9 +204,7 @@ public class AdvisoryEngineService {
 
                         newRecord.setCurrentPremium(liveLtp);
                         newRecord.setUnrealizedPnl(absolutePnl);
-
-                        log.info("📈 Daily MTM for {}: Entry ₹{} | Current ₹{} | Unrealized PnL: ₹{}",
-                                newRecord.getSymbol(), newRecord.getEntryPremium(), liveLtp, absolutePnl);
+                        log.info("📈 [MTM PNL] {}: Entry ₹{} | Current ₹{} | Unrealized PnL: ₹{}", newRecord.getSymbol(), newRecord.getEntryPremium(), liveLtp, absolutePnl);
                     }
                 }
             }
@@ -228,10 +215,12 @@ public class AdvisoryEngineService {
 
         if (shouldSave) {
             ledgerRepository.save(newRecord);
-            log.info("✅ SAVED RECORD ({}): {} - {}", saveReason, newRecord.getSymbol(), newRecord.getActionTaken());
+            log.info("💾 [DB SAVE] Record saved for {}: Action [{}]", newRecord.getSymbol(), saveReason);
         } else {
-            log.warn("⊘ SKIPPED SAVE: {} - {} (no valid action)", newRecord.getSymbol(), newRecord.getActionTaken());
+            log.warn("⊘ [SKIP SAVE] No valid action generated for {}. Action: {}", newRecord.getSymbol(), newRecord.getActionTaken());
         }
+
+        log.info("🏁 [ENGINE STOP] Completed scan for {}\n", name);
 
         return OptionRecommendation.builder()
                 .symbol(name)
@@ -264,27 +253,24 @@ public class AdvisoryEngineService {
         Optional<AdvisoryLedger> lastClosedOpt = ledgerRepository
                 .findTopBySymbolAndStatusOrderByTimestampDesc(newRecord.getSymbol(), "HISTORY");
 
-        if (lastClosedOpt.isPresent()) {
-            LocalDate lastCloseDate = lastClosedOpt.get().getTimestamp().toLocalDate();
-            if (lastCloseDate.equals(now.toLocalDate())) {
-                String closureReason = lastClosedOpt.get().getActionTaken(); // SL or TARGET
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("Position closed today (%s). Re-entry deferred to next session.", closureReason));
-                newRecord.setStatus("ACTIVE");
-                log.info("🛑 Same-day re-entry blocked for {} (Previous {})", newRecord.getSymbol(), closureReason);
-                return;
-            }
-        }
-
-        if (!mtfTrend.isAligned()) {
+        // Same Day Re-entry Block
+        if (lastClosedOpt.isPresent() && lastClosedOpt.get().getTimestamp().toLocalDate().equals(now.toLocalDate())) {
             newRecord.setActionTaken("NO_TRADE");
-            newRecord.setReasoning(String.format("Timeframe misalignment: Daily %s, Weekly %s",
-                    mtfTrend.dailyTrend(), mtfTrend.weeklyTrend()));
+            newRecord.setReasoning("Position closed today. Re-entry deferred to next session.");
             newRecord.setStatus("ACTIVE");
+            log.info("🛑 [BLOCKED] Same-day re-entry blocked for {}", newRecord.getSymbol());
             return;
         }
 
-        // === BULLISH: Sell Puts (PE) ===
+        // Trend Alignment Check
+        if (!mtfTrend.isAligned()) {
+            newRecord.setActionTaken("NO_TRADE");
+            newRecord.setReasoning(String.format("Timeframe misalignment: Daily %s, Weekly %s", mtfTrend.dailyTrend(), mtfTrend.weeklyTrend()));
+            newRecord.setStatus("ACTIVE");
+            log.info("🛑 [BLOCKED] MTF Misalignment on {}", newRecord.getSymbol());
+            return;
+        }
+
         if ("BULLISH".equals(mtfTrend.dailyTrend())) {
             if (oiData == null || oiData.putWall() == null) {
                 newRecord.setActionTaken("NO_TRADE");
@@ -295,45 +281,27 @@ public class AdvisoryEngineService {
 
             BigDecimal putStrike = oiData.putWall().strike();
 
-            if (putStrike.compareTo(spotPrice) > 0) {
+            if (putStrike.compareTo(spotPrice) > 0 || isRecentlyBreached(lastClosedOpt, now) || oiData.putWall().ltp().compareTo(minPremium) < 0) {
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("Spot (₹%s) below Put Wall (₹%s). ITM risk too high.", spotPrice, putStrike));
+                newRecord.setReasoning("Put Wall violates entry conditions (ITM, Illiquid, or Cooling down).");
                 newRecord.setStatus("ACTIVE");
                 return;
             }
 
-            if (isRecentlyBreached(lastClosedOpt, putStrike, now)) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Cooling down. This strike was recently breached.");
-                newRecord.setStatus("ACTIVE");
-                return;
-            }
-
-            if (oiData.putWall().ltp().compareTo(minPremium) < 0) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("Put premium (₹%s) too low. Illiquid.", oiData.putWall().ltp()));
-                newRecord.setStatus("ACTIVE");
-                return;
-            }
-
-            // ✅ ENTER: Sell Put
             newRecord.setActionTaken("NEW_ENTRY");
             newRecord.setOptionType("PE");
             newRecord.setRecommendedStrike(putStrike);
-
-            // 🚀 Fetch correct F&O Lot Size immediately
             Indexes optIndex = getOptionIndexMetadata(newRecord);
             newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
-
             newRecord.setEntryPremium(oiData.putWall().ltp());
             newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
             newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
             newRecord.setEntryDate(now);
             newRecord.setDaysInPosition(1);
             newRecord.setStatus("ACTIVE");
-            newRecord.setReasoning(String.format("BULLISH: Selling PE at ₹%s (Premium: ₹%s)", putStrike, oiData.putWall().ltp()));
+            newRecord.setReasoning(String.format("BULLISH: Selling PE at ₹%s | Entry Put OI: %s", putStrike, oiData.putWall().openInterest()));
+            log.info("✅ [ENTRY OPENED] Bulls activated on {}. Selling {} PE at ₹{}", newRecord.getSymbol(), putStrike, oiData.putWall().ltp());
         }
-        // === BEARISH: Sell Calls (CE) ===
         else if ("BEARISH".equals(mtfTrend.dailyTrend())) {
             if (oiData == null || oiData.callWall() == null) {
                 newRecord.setActionTaken("NO_TRADE");
@@ -344,53 +312,31 @@ public class AdvisoryEngineService {
 
             BigDecimal callStrike = oiData.callWall().strike();
 
-            if (callStrike.compareTo(spotPrice) < 0) {
+            if (callStrike.compareTo(spotPrice) < 0 || isRecentlyBreached(lastClosedOpt, now) || oiData.callWall().ltp().compareTo(minPremium) < 0) {
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("Spot (₹%s) above Call Wall (₹%s). ITM risk too high.", spotPrice, callStrike));
+                newRecord.setReasoning("Call Wall violates entry conditions (ITM, Illiquid, or Cooling down).");
                 newRecord.setStatus("ACTIVE");
                 return;
             }
 
-            if (isRecentlyBreached(lastClosedOpt, callStrike, now)) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Cooling down. This strike was recently breached.");
-                newRecord.setStatus("ACTIVE");
-                return;
-            }
-
-            if (oiData.callWall().ltp().compareTo(minPremium) < 0) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("Call premium (₹%s) too low. Illiquid.", oiData.callWall().ltp()));
-                newRecord.setStatus("ACTIVE");
-                return;
-            }
-
-            // ✅ ENTER: Sell Call
             newRecord.setActionTaken("NEW_ENTRY");
             newRecord.setOptionType("CE");
             newRecord.setRecommendedStrike(callStrike);
-
-            // 🚀 Fetch correct F&O Lot Size immediately
             Indexes optIndex = getOptionIndexMetadata(newRecord);
             newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
-
             newRecord.setEntryPremium(oiData.callWall().ltp());
             newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
             newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
             newRecord.setEntryDate(now);
             newRecord.setDaysInPosition(1);
             newRecord.setStatus("ACTIVE");
-            newRecord.setReasoning(String.format("BEARISH: Selling CE at ₹%s (Premium: ₹%s)", callStrike, oiData.callWall().ltp()));
-        }
-        else {
-            newRecord.setActionTaken("NO_TRADE");
-            newRecord.setReasoning("Trend undefined. Waiting for clarity.");
-            newRecord.setStatus("ACTIVE");
+            newRecord.setReasoning(String.format("BEARISH: Selling CE at ₹%s | Entry Call OI: %s", callStrike, oiData.callWall().openInterest()));
+            log.info("✅ [ENTRY OPENED] Bears activated on {}. Selling {} CE at ₹{}", newRecord.getSymbol(), callStrike, oiData.callWall().ltp());
         }
     }
 
     // =========================================================================
-    // PATH 2: HOLD OR EXIT EXISTING POSITION
+    // PATH 2: HOLD OR EXIT EXISTING POSITION (MONTHLY CYCLE GOD-MODE)
     // =========================================================================
     private void evaluateHoldOrExit(AdvisoryLedger prev, AdvisoryLedger current, BigDecimal spotPrice,
                                     MultiTimeframeTrend mtfTrend, BigDecimal atr14,
@@ -399,10 +345,10 @@ public class AdvisoryEngineService {
                                     LocalDateTime now, String exchange) {
 
         if (prev.getEntryPremium() == null || prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
-            log.warn("⚠️ Invalid position state for {}. Entry details missing. Treating as NO_TRADE.", prev.getSymbol());
             current.setActionTaken("NO_TRADE");
             current.setStatus("ACTIVE");
-            current.setReasoning("Previous position has no valid entry details. Cannot evaluate hold/exit.");
+            current.setReasoning("Invalid previous state details.");
+            log.warn("⚠️ [INVALID STATE] Previous active trade for {} has null fields.", prev.getSymbol());
             return;
         }
 
@@ -417,103 +363,91 @@ public class AdvisoryEngineService {
         current.setCurrentPremium(prev.getCurrentPremium());
         current.setLotSize(prev.getLotSize());
 
-        int daysHeld = (int) java.time.temporal.ChronoUnit.DAYS.between(
-                current.getEntryDate().toLocalDate(),
-                now.toLocalDate()
-        ) + 1;
+        int daysHeld = (int) java.time.temporal.ChronoUnit.DAYS.between(current.getEntryDate().toLocalDate(), now.toLocalDate()) + 1;
         current.setDaysInPosition(daysHeld);
 
-        // ===================================================================
-        // GUARD 1: Proximity Stop Loss
-        // ===================================================================
-        BigDecimal safeBuffer = atr14.multiply(new BigDecimal("1.25"));
-        boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) &&
-                spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
-        boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) &&
-                spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
+        List<String> warnings = new ArrayList<>();
 
+        // 🚀 GUARD 1: Proximity Alert (Now a Warning)
+        BigDecimal safeBuffer = atr14.multiply(new BigDecimal("1.25"));
+        boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
+        boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
         if (ceBreached || peBreached) {
-            executeExit(current, exchange, "SL", "Proximity stop loss hit!");
-            return;
+            warnings.add("🚨 Proximity breach");
+            log.warn("🚨 [WARNING] Proximity buffer breached on {}!", prev.getSymbol());
         }
 
-        // ===================================================================
-        // GUARD 2: SMC Structural Reversal
-        // ===================================================================
+        // 🚀 GUARD 2: SMC Structural Reversal (Now a Warning)
         if (smcSignalOpt.isPresent()) {
             FuturesBreakEvent bos = smcSignalOpt.get();
             boolean reversal = ("PE".equalsIgnoreCase(prev.getOptionType()) && "BREAKDOWN".equalsIgnoreCase(bos.getBreakType())) ||
                     ("CE".equalsIgnoreCase(prev.getOptionType()) && "BREAKOUT".equalsIgnoreCase(bos.getBreakType()));
-
             if (reversal) {
-                executeExit(current, exchange, "SL", "SMC reversal signal!");
-                return;
+                warnings.add("🚨 SMC Reversal");
+                log.warn("🚨 [WARNING] SMC Structural Reversal detected on {}!", prev.getSymbol());
             }
         }
 
-        // ===================================================================
-        // GUARD 3: Daily Trend Flip
-        // ===================================================================
+        // 🚀 GUARD 3: Daily Trend Flip (Now a Warning)
         if (prev.getDailyTrend() != null && !prev.getDailyTrend().equals(mtfTrend.dailyTrend())) {
-            executeExit(current, exchange, "SL", "Trend flipped!");
-            return;
+            warnings.add("🚨 Trend flipped");
+            log.warn("🚨 [WARNING] MTF Trend flipped on {} from {} to {}!", prev.getSymbol(), prev.getDailyTrend(), mtfTrend.dailyTrend());
         }
 
-        // ===================================================================
-        // GUARD 4: Wall Migration (Smart SL vs TARGET)
-        // ===================================================================
+        // 🚀 GUARD 4: Wall Migration (THE ONLY STRICT EXIT TRIGGER)
         boolean wallMigrated = false;
         String wallExitReason = "";
+        String oiContext = "";
 
         if ("PE".equalsIgnoreCase(prev.getOptionType()) && oiData != null && oiData.putWall() != null) {
-            if (prev.getPutWallStrike() != null &&
-                    prev.getPutWallStrike().compareTo(oiData.putWall().strike()) != 0) {
+            if (prev.getPutWallStrike() != null && prev.getPutWallStrike().compareTo(oiData.putWall().strike()) != 0) {
                 wallMigrated = true;
-
+                oiContext = String.format("Entry Put OI: %s -> Exit Put OI: %s", prev.getPutWallOi(), oiData.putWall().openInterest());
                 if (oiData.putWall().strike().compareTo(prev.getPutWallStrike()) > 0) {
-                    wallExitReason = "TARGET";
-                    log.info("🎯 TARGET HIT on {}: Put Wall moved UP from ₹{} to ₹{}",
-                            prev.getSymbol(), prev.getPutWallStrike(), oiData.putWall().strike());
+                    wallExitReason = "TARGET"; // Wall shifted UP (Favorable)
+                    log.info("🎯 [TARGET HIT] Put Wall migrated UP on {}. Executing exit.", prev.getSymbol());
                 } else {
-                    wallExitReason = "SL";
-                    log.info("🛑 SL on {}: Put Wall moved DOWN from ₹{} to ₹{}",
-                            prev.getSymbol(), prev.getPutWallStrike(), oiData.putWall().strike());
+                    wallExitReason = "SL"; // Wall shifted DOWN (Unfavorable / Retreat)
+                    log.info("🛑 [STOP LOSS] Put Wall migrated DOWN on {}. Executing exit.", prev.getSymbol());
                 }
             }
         } else if ("CE".equalsIgnoreCase(prev.getOptionType()) && oiData != null && oiData.callWall() != null) {
-            if (prev.getCallWallStrike() != null &&
-                    prev.getCallWallStrike().compareTo(oiData.callWall().strike()) != 0) {
+            if (prev.getCallWallStrike() != null && prev.getCallWallStrike().compareTo(oiData.callWall().strike()) != 0) {
                 wallMigrated = true;
-
+                oiContext = String.format("Entry Call OI: %s -> Exit Call OI: %s", prev.getCallWallOi(), oiData.callWall().openInterest());
                 if (oiData.callWall().strike().compareTo(prev.getCallWallStrike()) < 0) {
-                    wallExitReason = "TARGET";
-                    log.info("🎯 TARGET HIT on {}: Call Wall moved DOWN from ₹{} to ₹{}",
-                            prev.getSymbol(), prev.getCallWallStrike(), oiData.callWall().strike());
+                    wallExitReason = "TARGET"; // Wall shifted DOWN (Favorable)
+                    log.info("🎯 [TARGET HIT] Call Wall migrated DOWN on {}. Executing exit.", prev.getSymbol());
                 } else {
-                    wallExitReason = "SL";
-                    log.info("🛑 SL on {}: Call Wall moved UP from ₹{} to ₹{}",
-                            prev.getSymbol(), prev.getCallWallStrike(), oiData.callWall().strike());
+                    wallExitReason = "SL"; // Wall shifted UP (Unfavorable / Retreat)
+                    log.info("🛑 [STOP LOSS] Call Wall migrated UP on {}. Executing exit.", prev.getSymbol());
                 }
             }
         }
 
         if (wallMigrated) {
-            String reason = String.format("Wall migrated - %s", wallExitReason);
-            executeExit(current, exchange, wallExitReason, reason);
+            executeExit(current, exchange, wallExitReason, String.format("Wall migrated. %s. %s", wallExitReason, oiContext));
             return;
         }
 
         // ===================================================================
-        // ALL GUARDS PASSED: MAINTAIN POSITION
+        // ALL WALLS INTACT: MAINTAIN POSITION & LOG WARNINGS
         // ===================================================================
         current.setActionTaken("MAINTAIN");
         current.setStatus("ACTIVE");
-        current.setReasoning(String.format("Holding %s %s (Day %d). Premium decay progressing safely.",
-                prev.getRecommendedStrike(), prev.getOptionType(), daysHeld));
+
+        String reasoning = String.format("Holding %s %s (Day %d).", prev.getRecommendedStrike(), prev.getOptionType(), daysHeld);
+        if (!warnings.isEmpty()) {
+            reasoning += " [WARNINGS: " + String.join(", ", warnings) + "] Wall remains intact.";
+        } else {
+            reasoning += " Premium decay progressing safely.";
+        }
+        current.setReasoning(reasoning);
+        log.info("⏳ [MAINTAIN] Position held for {} (Day {}). Warnings: {}", current.getSymbol(), daysHeld, warnings.isEmpty() ? "None" : String.join(", ", warnings));
     }
 
     // =========================================================================
-    // EXIT HANDLER (SL or TARGET)
+    // EXIT HANDLER
     // =========================================================================
     private void executeExit(AdvisoryLedger current, String exchange, String action, String reason) {
         current.setActionTaken(action);
@@ -523,88 +457,69 @@ public class AdvisoryEngineService {
         BigDecimal exitPremium = safelyFetchExitPremium(current, exchange);
 
         if (exitPremium == null) {
-            BigDecimal fallbackPrice = current.getCurrentPremium() != null
-                    ? current.getCurrentPremium()
-                    : current.getEntryPremium();
-
-            log.warn("⚠️ Real-time LTP failed. Using fallback price: ₹{}", fallbackPrice);
+            BigDecimal fallbackPrice = current.getCurrentPremium() != null ? current.getCurrentPremium() : current.getEntryPremium();
+            log.warn("⚠️ [FALLBACK PRICE] Real-time exit premium failed for {}. Using fallback: ₹{}", current.getSymbol(), fallbackPrice);
             exitPremium = fallbackPrice;
         }
 
         if (exitPremium != null && current.getEntryPremium() != null) {
             current.setExitPremium(exitPremium);
-
             BigDecimal pointsPnl = current.getEntryPremium().subtract(exitPremium);
             int safeLotSize = current.getLotSize() != null ? current.getLotSize() : 1;
             BigDecimal absolutePnl = pointsPnl.multiply(BigDecimal.valueOf(safeLotSize));
-
             current.setRealizedPnl(absolutePnl);
-            log.info("💰 {} on {}: Entry ₹{} | Exit ₹{} | PnL ₹{} (Points: {})",
-                    action, current.getSymbol(), current.getEntryPremium(), exitPremium, absolutePnl, pointsPnl);
+
+            log.info("💰 [TRADE CLOSED] {}: Action [{}] | PnL: ₹{} (Points: {})",
+                    current.getSymbol(), action, absolutePnl, pointsPnl);
         }
+    }
+
+    // =========================================================================
+    // HELPER: PREVENT SL CHURNING
+    // =========================================================================
+    private boolean isRecentlyBreached(Optional<AdvisoryLedger> lastClosedOpt, LocalDateTime now) {
+        if (lastClosedOpt.isPresent()) {
+            AdvisoryLedger lastTrade = lastClosedOpt.get();
+            // 🚀 The strike check is removed. If ANY wall collapses and triggers an SL,
+            // we pause the entire symbol for 2 days to avoid chasing a falling knife.
+            boolean isBreachExit = "SL".equals(lastTrade.getActionTaken());
+            boolean isRecent = lastTrade.getTimestamp().isAfter(now.minusDays(2));
+
+            if (isBreachExit && isRecent) {
+                log.warn("⏳ [COOLDOWN ACTIVE] Blocked entry for {}. Last SL hit on {}.", lastTrade.getSymbol(), lastTrade.getTimestamp());
+                return true;
+            }
+        }
+        return false;
     }
 
     // =========================================================================
     // HELPERS
     // =========================================================================
 
-    private boolean isRecentlyBreached(Optional<AdvisoryLedger> lastClosedOpt, BigDecimal proposedStrike, LocalDateTime now) {
-        if (lastClosedOpt.isPresent()) {
-            AdvisoryLedger lastTrade = lastClosedOpt.get();
-            boolean isSameStrike = proposedStrike.compareTo(lastTrade.getRecommendedStrike()) == 0;
-            boolean isBreachExit = lastTrade.getActionTaken() != null && lastTrade.getActionTaken().equals("SL");
-            boolean isRecent = lastTrade.getTimestamp().isAfter(now.minusDays(2));
-            return isSameStrike && isBreachExit && isRecent;
-        }
-        return false;
-    }
-
     private BigDecimal safelyFetchExitPremium(AdvisoryLedger prev, String exchange) {
-        if (prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
-            return null;
-        }
+        if (prev.getRecommendedStrike() == null || prev.getOptionType() == null) return null;
 
         try {
             Indexes optionIndex = getOptionIndexMetadata(prev);
-
-            if (optionIndex == null || optionIndex.getToken() == null) {
-                log.warn("⚠️ Token/Metadata not found for {}", prev.getSymbol());
-                return null;
-            }
+            if (optionIndex == null || optionIndex.getToken() == null) return null;
 
             String optionToken = optionIndex.getToken();
             String tradingSymbol = optionIndex.getSymbol();
-
             String angelExchange = exchange.contains("MCX") ? "MCX" : "NFO";
             ExchangeType exType = exchange.contains("MCX") ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
 
             BigDecimal exitLtp = webSocketService.getLatestLTP(exType, optionToken);
+            if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) return exitLtp;
 
-            if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) {
-                log.info("✅ Exit LTP fetched via WebSocket for {}: ₹{}", tradingSymbol, exitLtp);
-                return exitLtp;
-            }
-
-            log.warn("⏳ WebSocket LTP missing for {}. Forcing REST API fetch...", tradingSymbol);
-            try {
-                SmartConnect smartConnect = angelOne.signIn();
-                BigDecimal restLtp = angelOneService.getcurrentPrice(smartConnect, angelExchange, tradingSymbol, optionToken);
-
-                if (restLtp != null && restLtp.compareTo(BigDecimal.ZERO) > 0) {
-                    log.info("✅ REST API successfully retrieved LTP for {}: ₹{}", tradingSymbol, restLtp);
-                    return restLtp;
-                }
-            } catch (Exception restEx) {
-                log.error("❌ REST API LTP fetch failed for {}: {}", tradingSymbol, restEx.getMessage());
-            }
-
-            log.warn("⚠️ Invalid LTP from both WebSocket and REST API for {}.", tradingSymbol);
-            return null;
+            SmartConnect smartConnect = angelOne.signIn();
+            BigDecimal restLtp = angelOneService.getcurrentPrice(smartConnect, angelExchange, tradingSymbol, optionToken);
+            if (restLtp != null && restLtp.compareTo(BigDecimal.ZERO) > 0) return restLtp;
 
         } catch (Exception e) {
-            log.error("❌ Exception fetching exit LTP for {}: {}", prev.getSymbol(), e.getMessage(), e);
-            return null;
+            log.error("❌ Exception fetching exit LTP for {}: {}", prev.getSymbol(), e.getMessage());
         }
+        return null;
     }
 
     private Optional<FuturesBreakEvent> evaluateSmcOracle(String name, String exchange, String symbol, BigDecimal spotPrice) {
@@ -639,54 +554,24 @@ public class AdvisoryEngineService {
     }
 
     private BigDecimal calculateATR(List<PricesIndex> candles, int period) {
-        if (candles == null || candles.isEmpty()) {
-            log.warn("❌ Empty candle list. Returning default ATR.");
-            return BigDecimal.TEN;
-        }
-
-        if (candles.size() < period) {
-            log.warn("⚠️ Only {} candles available. Need {}. Using range-based estimate.", candles.size(), period);
-            return estimateATRFromRange(candles);
-        }
+        if (candles == null || candles.size() < period) return estimateATRFromRange(candles);
 
         BigDecimal trSum = BigDecimal.ZERO;
         int validTRs = 0;
-
         for (int i = candles.size() - period; i < candles.size(); i++) {
             PricesIndex candle = candles.get(i);
             PricesIndex prevCandle = candles.get(i - 1);
-
-            // Validate data
-            if (candle.getHigh() == null || candle.getLow() == null ||
-                    prevCandle.getClose() == null) {
-                log.warn("⚠️ Null OHLC at index {}. Skipping.", i);
-                continue;
-            }
+            if (candle.getHigh() == null || candle.getLow() == null || prevCandle.getClose() == null) continue;
 
             BigDecimal high = candle.getHigh();
             BigDecimal low = candle.getLow();
             BigDecimal prevClose = prevCandle.getClose();
 
-            // Sanity check
-            if (high.compareTo(low) < 0) {
-                log.error("❌ Corrupted candle at {}: High={}, Low={}. Skipping.", i, high, low);
-                continue;
-            }
-
-            BigDecimal tr = high.subtract(low)
-                    .max(high.subtract(prevClose).abs())
-                    .max(low.subtract(prevClose).abs());
-
+            BigDecimal tr = high.subtract(low).max(high.subtract(prevClose).abs()).max(low.subtract(prevClose).abs());
             trSum = trSum.add(tr);
             validTRs++;
         }
-
-        if (validTRs == 0) {
-            log.warn("Using range-based fallback...");
-            return estimateATRFromRange(candles);  // Better than hardcoded ₹10
-        }
-
-        return trSum.divide(new BigDecimal(validTRs), 2, RoundingMode.HALF_UP);
+        return validTRs > 0 ? trSum.divide(new BigDecimal(validTRs), 2, RoundingMode.HALF_UP) : estimateATRFromRange(candles);
     }
 
     private BigDecimal estimateATRFromRange(List<PricesIndex> candles) {
@@ -701,117 +586,61 @@ public class AdvisoryEngineService {
         return count > 0 ? sumRange.divide(new BigDecimal(count), 2, RoundingMode.HALF_UP) : BigDecimal.TEN;
     }
 
-    // =========================================================================
-    // END OF DAY (EOD) PNL SETTLEMENT (Optimized Lazy Loading & Auto-Repair)
-    // =========================================================================
     @Transactional
     public void processEodPnl(String name, String token) {
-
         Optional<AdvisoryLedger> latestRecordOpt = ledgerRepository.findTopBySymbolOrderByTimestampDesc(name);
-        if (latestRecordOpt.isEmpty()) {
-            return;
-        }
-
+        if (latestRecordOpt.isEmpty()) return;
         AdvisoryLedger record = latestRecordOpt.get();
+        if (record.getEntryPremium() == null) return;
 
-        if (record.getEntryPremium() == null) {
-            return;
-        }
-
-        boolean needsApiFetch = "ACTIVE".equals(record.getStatus()) ||
-                ("HISTORY".equals(record.getStatus()) && record.getExitPremium() == null);
-
+        boolean needsApiFetch = "ACTIVE".equals(record.getStatus()) || ("HISTORY".equals(record.getStatus()) && record.getExitPremium() == null);
         String exchange = "NFO";
-
         Indexes optionIndex = getOptionIndexMetadata(record);
 
         if (optionIndex != null) {
             exchange = optionIndex.getExchange();
-
             if (record.getLotSize() == null || record.getLotSize() <= 1) {
                 try {
                     record.setLotSize(Integer.valueOf(optionIndex.getLotsize()));
-                    log.info("🔧 Auto-repaired F&O Lot Size for {} -> {}", name, record.getLotSize());
                 } catch (Exception e) {
                     record.setLotSize(1);
                 }
             }
-        } else if (needsApiFetch) {
-            log.warn("⚠️ Cannot fetch EOD API price for {}: Option Index not found.", name);
-            return;
-        }
+        } else if (needsApiFetch) return;
 
         if ("ACTIVE".equals(record.getStatus())) {
             BigDecimal closingLtp = safelyFetchExitPremium(record, exchange);
-
             if (closingLtp != null) {
                 BigDecimal pointsPnl = record.getEntryPremium().subtract(closingLtp);
-                BigDecimal absolutePnl = pointsPnl.multiply(BigDecimal.valueOf(record.getLotSize()));
-
                 record.setCurrentPremium(closingLtp);
-                record.setUnrealizedPnl(absolutePnl);
-
+                record.setUnrealizedPnl(pointsPnl.multiply(BigDecimal.valueOf(record.getLotSize())));
                 ledgerRepository.save(record);
-                log.info("📊 EOD MTM Updated for {}: Close ₹{} | Unrealized PnL: ₹{}",
-                        record.getSymbol(), closingLtp, absolutePnl);
             }
-        }
-        else if ("HISTORY".equals(record.getStatus())) {
+        } else if ("HISTORY".equals(record.getStatus())) {
             if (record.getExitPremium() == null) {
                 BigDecimal closingLtp = safelyFetchExitPremium(record, exchange);
-
                 if (closingLtp != null) {
                     record.setExitPremium(closingLtp);
-
                     BigDecimal pointsPnl = record.getEntryPremium().subtract(closingLtp);
-                    BigDecimal absolutePnl = pointsPnl.multiply(BigDecimal.valueOf(record.getLotSize()));
-
-                    record.setRealizedPnl(absolutePnl);
-
+                    record.setRealizedPnl(pointsPnl.multiply(BigDecimal.valueOf(record.getLotSize())));
                     ledgerRepository.save(record);
-                    log.info("📊 EOD Fallback Settlement for closed trade {} ({}): Exit ₹{} | Realized PnL: ₹{}",
-                            record.getSymbol(), record.getActionTaken(), closingLtp, absolutePnl);
                 }
-            }
-            else if (record.getRealizedPnl() == null || record.getRealizedPnl().abs().compareTo(new BigDecimal("200")) < 0) {
-                BigDecimal pointsPnl = record.getEntryPremium().subtract(record.getExitPremium());
-                BigDecimal absolutePnl = pointsPnl.multiply(BigDecimal.valueOf(record.getLotSize()));
-
-                record.setRealizedPnl(absolutePnl);
-                ledgerRepository.save(record);
-
-                log.info("🔧 Auto-repaired missing/points Realized PnL for {} ({}): ₹{}",
-                        record.getSymbol(), record.getActionTaken(), absolutePnl);
             }
         }
     }
 
-    // =========================================================================
-    // HELPER: Fetch exact F&O Option Metadata (for actual Lot Size & Exchange)
-    // =========================================================================
     private Indexes getOptionIndexMetadata(AdvisoryLedger record) {
-        if (record.getRecommendedStrike() == null || record.getOptionType() == null || record.getExpiryDate() == null) {
-            return null;
-        }
+        if (record.getRecommendedStrike() == null || record.getOptionType() == null || record.getExpiryDate() == null) return null;
         try {
             String rawExpiry = record.getExpiryDate().trim();
-            String formattedExpiry = rawExpiry;
-
-            if (rawExpiry.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
-                LocalDate parsedDate = LocalDate.parse(rawExpiry);
-                formattedExpiry = parsedDate.format(java.time.format.DateTimeFormatter.ofPattern("ddMMMyyyy", java.util.Locale.ENGLISH)).toUpperCase();
-            }
+            String formattedExpiry = rawExpiry.matches("^\\d{4}-\\d{2}-\\d{2}$") ?
+                    LocalDate.parse(rawExpiry).format(java.time.format.DateTimeFormatter.ofPattern("ddMMMyyyy", java.util.Locale.ENGLISH)).toUpperCase() : rawExpiry;
 
             String strikeStr = record.getRecommendedStrike().stripTrailingZeros().toPlainString();
             String suffix = "%" + strikeStr + record.getOptionType();
+            String optionToken = indexesRepo.findNfoTokenByNameAndExpiryAndSymbolLike(record.getSymbol(), formattedExpiry, suffix);
 
-            // 🚀 Enforce NFO exchange only
-            String optionToken = indexesRepo.findNfoTokenByNameAndExpiryAndSymbolLike(
-                    record.getSymbol(), formattedExpiry, suffix);
-
-            if (optionToken != null) {
-                return indexesRepo.findByToken(optionToken);
-            }
+            if (optionToken != null) return indexesRepo.findByToken(optionToken);
         } catch (Exception e) {
             log.error("❌ Error fetching option index for {}: {}", record.getSymbol(), e.getMessage());
         }
