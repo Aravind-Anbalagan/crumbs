@@ -31,9 +31,9 @@ public class FnoScannerScheduler {
 
     /**
      * Step 1: Pre-caches yesterday's closing prices.
-     * Runs at 9:20 AM IST (Monday–Friday).
+     * Runs at 9:18 AM IST (Monday–Friday).
      */
-    @Scheduled(cron = "0 20 9 * * MON-FRI", zone = ZONE)
+    @Scheduled(cron = "0 18 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMorningSetup() {
         executeIfActive(() -> {
             logger.info("⏰ Triggering Morning F&O Scanner Setup...");

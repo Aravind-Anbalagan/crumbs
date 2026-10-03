@@ -19,8 +19,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import com.crumbs.trade.entity.Orders;
-import com.crumbs.trade.repo.OrderRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.json.JSONArray;
@@ -35,10 +33,8 @@ import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.Nifty;
-import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.repo.NiftyRepo;
-import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
 import lombok.RequiredArgsConstructor;
@@ -71,10 +67,6 @@ public class FnoScannerService {
     private final AngelWebSocketService angelWebSocketService;
     private final TelegramService telegramService;
     private final TokenService tokenService;
-    private final OrderRepository orderRepository;
-    // 🚀 INJECTED EXECUTION ENGINE & STRATEGY REPO
-    private final FnoOrderService fnoOrderService;
-    private final StrategyRepo strategyRepo;
 
     // Track subscribed tokens to prevent duplicate subscriptions
     private final Set<String> subscribedTokens = ConcurrentHashMap.newKeySet();
@@ -83,7 +75,6 @@ public class FnoScannerService {
     //  STEP 1: Pre-Cache for F&O Previous Close (Runs at 9:20 AM)
     // ──────────────────────────────────────────────────────────
 
-    // REMOVED @Transactional here to protect DB connection pool during external HTTP calls
     public void precacheFnoPreviousClose() {
         logger.info("🌅 Starting Multi-Threaded Pre-Cache for F&O Previous Close...");
 
@@ -294,7 +285,7 @@ public class FnoScannerService {
                 try {
                     angelWebSocketService.subscribe(ExchangeType.NSE_CM, token);
                 } catch (Exception e) {
-                    logger.warn("⚠️ Failed to subscribe to token {}: {}", token, e.getMessage());
+                    logger.warn("⚠️️ Failed to subscribe to token {}: {}", token, e.getMessage());
                     subscribedTokens.remove(token); // Remove on failure to retry next time
                 }
             }
@@ -380,7 +371,7 @@ public class FnoScannerService {
         }
 
         if (missingPrevClose > 0) {
-            logger.warn("⚠️ {} stocks missing prevClose. Will skip these in calculation.", missingPrevClose);
+            logger.warn("⚠️️ {} stocks missing prevClose. Will skip these in calculation.", missingPrevClose);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -389,17 +380,6 @@ public class FnoScannerService {
         // Lazy broker session for ATM option-chain lookups with retry logic
         SmartConnect[] optionsConnectHolder = new SmartConnect[1];
         boolean[] optionSignInFailed = {false};
-
-        // 🚀 FETCH LIVE TRADING FLAG FROM STRATEGY TABLE
-        boolean isLiveTrading = false;
-        try {
-            Strategy strategy = strategyRepo.findByName("FNO_SCANNER");
-            if (strategy != null && "Y".equalsIgnoreCase(strategy.getLive())) {
-                isLiveTrading = true;
-            }
-        } catch (Exception e) {
-            logger.warn("⚠️ Could not fetch strategy config for FNO_SCANNER: {}", e.getMessage());
-        }
 
         List<String[]> highMoverRows = new ArrayList<>();
         highMoverRows.add(new String[]{"Stock", "Range", "Interval", "Chg%", "Direction", "Type", "Status"});
@@ -410,8 +390,7 @@ public class FnoScannerService {
             }
 
             try {
-                // Pass isLiveTrading flag down to process method
-                processStockPercentageChange(stock, now, optionsConnectHolder, optionSignInFailed, highMoverRows, isLiveTrading);
+                processStockPercentageChange(stock, now, optionsConnectHolder, optionSignInFailed, highMoverRows);
                 updateCount++;
             } catch (Exception e) {
                 logger.error("Error processing stock {}: {}. Skipping.", stock.getName(), e.getMessage());
@@ -459,7 +438,7 @@ public class FnoScannerService {
     // Extract stock processing logic
     private void processStockPercentageChange(Nifty stock, LocalDateTime now,
                                               SmartConnect[] optionsConnectHolder, boolean[] optionSignInFailed,
-                                              List<String[]> highMoverRows, boolean isLiveTrading) {
+                                              List<String[]> highMoverRows) {
         String token = stock.getToken();
         BigDecimal prevClose = stock.getPrevClose();
 
@@ -530,95 +509,6 @@ public class FnoScannerService {
                 strategyType,
                 statusMessage
         });
-
-        // 🚀 TRIGGER ASYNC ORDER DISPATCH
-        dispatchOrderExecution(stock, ltp, strategyType, isLiveTrading);
-    }
-
-    /**
-     * Resolves ATM/OTM options and triggers asynchronous limit-sniper order execution in FnoOrderService.
-     * FIX: Added expiry format validation to prevent RBLBANK29SEP2026410CE malformation
-     */
-    private void dispatchOrderExecution(Nifty stock, BigDecimal spotLtp, String strategyType, boolean isLiveTrading) {
-        if (strategyType == null || TokenService.TYPE_ERROR.equalsIgnoreCase(strategyType)) {
-            logger.warn("⚠️ Cannot execute order for {}: Strategy determination returned error.", stock.getName());
-            return;
-        }
-
-        if (hasActiveTradeTodayForStock(stock.getName())) {
-            logger.info("🔐 [DAILY LOCK] Skipping {} - already has active trade today.", stock.getName());
-            return;
-        }
-
-        try {
-            Optional<TokenService.AtmContracts> atmOpt = tokenService.resolveAtmContracts(stock.getName(), spotLtp);
-            if (atmOpt.isEmpty()) {
-                logger.warn("⚠️ No ATM contracts found for {}. Order dispatch skipped.", stock.getName());
-                return;
-            }
-
-            TokenService.AtmContracts atm = atmOpt.get();
-
-            // 🔧 FIX #1: VALIDATE EXPIRY FORMAT BEFORE SYMBOL CONSTRUCTION
-            // Expected format: DDMMMYY (e.g., "29SEP26" = 7 chars)
-            // Bug was producing: "29SEP2026" → resulting in "RBLBANK29SEP2026410CE" (wrong!)
-            String expiryFromAtm = atm.expiry();
-            if (expiryFromAtm == null || expiryFromAtm.trim().isEmpty()) {
-                logger.error("❌ ATM expiry is null/empty for {}. Aborting order dispatch.", stock.getName());
-                return;
-            }
-
-            // Trim and validate length
-            String expiry = expiryFromAtm.trim();
-            if (expiry.length() > 7) {  // DDMMMYY = 7 chars max
-                logger.error("❌ [MALFORMED EXPIRY] {} returned expiry '{}' (length: {}, expected ≤7). " +
-                                "Symbol would be: {}{}{}CE (WRONG!). Aborting order dispatch.",
-                        stock.getName(), expiry, expiry.length(),
-                        stock.getName(), expiry, atm.strike().intValue());
-                return;
-            }
-
-            // Fetch lotsize from Indexes metadata (defaults to 1 if not present)
-            int quantity = 1;
-            Indexes meta = indexesRepo.findByNameAndExchange(stock.getName(), EXCHANGE);
-            if (meta != null && meta.getLotsize() > 0) {
-                quantity = meta.getLotsize();
-            }
-
-            // Standardize format: "RELIANCE28AUG242900CE"
-            String ceTradingSymbol = stock.getName() + expiry + atm.strike().intValue() + "CE";
-            String peTradingSymbol = stock.getName() + expiry + atm.strike().intValue() + "PE";
-
-            // 🔧 LOG THE BUILT SYMBOLS (CRITICAL for debugging)
-            logger.info("✅ [SYMBOL BUILD] {} | Expiry: {} ({}ch) | Strike: {} | CE: {} | PE: {}",
-                    stock.getName(), expiry, expiry.length(), atm.strike().intValue(),
-                    ceTradingSymbol, peTradingSymbol);
-
-            String strategyKey = "FNO_SCANNER_" + stock.getName();
-
-            logger.info("🚀 [TRIGGER TRADE] {} | CE: {} | PE: {} | Qty: {} | Live: {}",
-                    strategyKey, ceTradingSymbol, peTradingSymbol, quantity, isLiveTrading);
-
-            // Hand off to FnoOrderService (Runs asynchronous Limit Chaser)
-            fnoOrderService.executeStrategyPair(
-                    strategyKey,
-                    stock.getName(),
-                    atm.ceToken(),
-                    ceTradingSymbol,
-                    atm.strike(),
-                    spotLtp,
-                    atm.peToken(),
-                    peTradingSymbol,
-                    atm.strike(),
-                    spotLtp,
-                    quantity,
-                    "NFO",
-                    isLiveTrading
-            );
-
-        } catch (Exception e) {
-            logger.error("❌ Failed to dispatch order for {}: {}", stock.getName(), e.getMessage(), e);
-        }
     }
 
     // Extract transactional save
@@ -819,25 +709,5 @@ public class FnoScannerService {
             return minutes + " min";
         }
         return String.format("%.1f hours", minutes / 60.0);
-    }
-
-    /**
-     * Checks if any OPEN/ENTRY order exists for this stock from the FNO_SCANNER strategy.
-     * Prevents duplicate order execution.
-     */
-    private boolean hasActiveTradeTodayForStock(String stockName) {
-        try {
-            long activeTradesToday = orderRepository.countActiveTradesToday(stockName);
-
-            if (activeTradesToday > 0) {
-                logger.info("🔐 [DAILY LOCK] {} already has active trade. Skipping.", stockName);
-                return true;
-            }
-            return false;
-        } catch (Exception e) {
-            logger.warn("⚠️ Error checking daily lock for {}: {}. Proceeding with caution.",
-                    stockName, e.getMessage());
-            return false;
-        }
     }
 }

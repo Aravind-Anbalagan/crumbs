@@ -92,22 +92,39 @@ public class OptionPriceService {
             long bearishScore = peBreakouts + ceBreakdowns;
 
             String biasLabel;
-            if (bullishScore > 0 && bearishScore == 0) {
-                biasLabel = "BULLISH (" + bullishScore + ":0)";
-            } else if (bearishScore > 0 && bullishScore == 0) {
-                biasLabel = "BEARISH (0:" + bearishScore + ")";
-            } else if (bullishScore == 0 && bearishScore == 0) {
-                biasLabel = "NEUTRAL (0:0)";
-            } else if (bullishScore == bearishScore || Math.abs(bullishScore - bearishScore) <= 1) {
-                biasLabel = "PURE STRADDLE/STRANGLE (" + bullishScore + ":" + bearishScore + ")";
-            } else if (bullishScore > bearishScore) {
-                biasLabel = "BULLISH STRADDLE (" + bullishScore + ":" + bearishScore + ")";
+
+            // ==========================================
+            // HIGH-CONVICTION AI BIAS LOGIC (Threshold: 3)
+            // ==========================================
+            if (bullishScore < 3 && bearishScore < 3) {
+                // Treats anything below 3 as market noise
+                biasLabel = "NEUTRAL WEAK (" + bullishScore + ":" + bearishScore + ")";
+            }
+            else if (bullishScore >= 3 && bearishScore < 3) {
+                // Bulls have strong momentum, bear noise ignored
+                biasLabel = "BULLISH STRONG (" + bullishScore + ":" + bearishScore + ")";
+            }
+            else if (bearishScore >= 3 && bullishScore < 3) {
+                // Bears have strong momentum, bull noise ignored
+                biasLabel = "BEARISH STRONG (" + bullishScore + ":" + bearishScore + ")";
+            }
+            else if (bullishScore >= 3 && bearishScore >= 3) {
+                // Both sides broke the threshold (High Volatility)
+                if (Math.abs(bullishScore - bearishScore) <= 1) {
+                    biasLabel = "PURE STRADDLE/STRANGLE STRONG (" + bullishScore + ":" + bearishScore + ")";
+                } else if (bullishScore > bearishScore) {
+                    biasLabel = "BULLISH STRADDLE STRONG (" + bullishScore + ":" + bearishScore + ")";
+                } else {
+                    biasLabel = "BEARISH STRADDLE STRONG (" + bullishScore + ":" + bearishScore + ")";
+                }
             } else {
-                biasLabel = "BEARISH STRADDLE (" + bullishScore + ":" + bearishScore + ")";
+                // Safety fallback
+                biasLabel = "NEUTRAL (" + bullishScore + ":" + bearishScore + ")";
             }
 
             String strategyKey = "AI_BIAS_" + symbol;
 
+            // The rest of your code remains untouched...
             if (!biasLabel.startsWith("NEUTRAL")) {
                 evaluateTrendReversalExits(strategyKey, biasLabel);
             }
