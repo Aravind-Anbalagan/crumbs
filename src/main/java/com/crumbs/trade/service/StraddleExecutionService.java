@@ -1,5 +1,6 @@
 package com.crumbs.trade.service;
 
+import com.crumbs.trade.utility.ConditionalLogger;
 import org.slf4j.LoggerFactory;
 import com.crumbs.trade.repo.StrategyRepo;
 import org.springframework.stereotype.Service;
@@ -10,8 +11,10 @@ import org.slf4j.Logger;
 @Service
 @RequiredArgsConstructor
 public class StraddleExecutionService {
-	private static final Logger logger =
-	        LoggerFactory.getLogger(StraddleExecutionService.class);
+	/*private static final Logger logger =
+	        LoggerFactory.getLogger(StraddleExecutionService.class);*/
+    private static final Logger baseLogger = LoggerFactory.getLogger(StraddleExecutionService.class);
+    private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
     private final StraddleIntradayService straddleIntradayService;
     private final PreMarketAnalysisService preMarketAnalysisService;
     private final StrategyRepo strategyRepo;

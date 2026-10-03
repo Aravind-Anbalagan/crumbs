@@ -11,9 +11,12 @@ import com.crumbs.trade.repo.OrderRepository;
 import com.crumbs.trade.repo.RiskConfigurationRepository;
 import com.crumbs.trade.repo.ShortStraddleRepository;
 import com.crumbs.trade.repo.StrategyRepo;
+import com.crumbs.trade.utility.ConditionalLogger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -28,11 +31,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-@Slf4j
+
 @Service
 @RequiredArgsConstructor
 public class ShortStraddleService {
-
+    private static final Logger baseLogger = LoggerFactory.getLogger(ShortStraddleService.class);
+    private final ConditionalLogger log = new ConditionalLogger(baseLogger);
     private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE";
     private static final String NAME_PREFIX = "SHORT_STRADDLE_";
 

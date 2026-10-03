@@ -1,41 +1,47 @@
 package com.crumbs.trade.utility;
 
-
 import org.slf4j.Logger;
 import com.crumbs.trade.entity.Strategy;
 
 /**
  * Smart logger wrapper that conditionally logs based on strategy flag.
- * 
+ * Thread-safe implementation using ThreadLocal for concurrent environments.
+ *
  * Behavior:
  * - ERROR logs are ALWAYS written regardless of flag
- * - DEBUG/INFO/WARN logs are written only when flag is enabled
- * 
+ * - DEBUG/INFO/WARN logs are written only when flag is enabled for the current thread
+ *
  * Usage:
  * <pre>
  * private static final Logger baseLogger = LoggerFactory.getLogger(MyService.class);
  * private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
- * 
+ *
  * public void myMethod(String strategyName) {
- *     Strategy strategy = strategyRepo.findByName(strategyName);
- *     logger.setLoggingEnabled(strategy); // Set flag from strategy
- *     
- *     logger.info("This logs only if strategy.enableLogging = 'Y'");
- *     logger.error("This ALWAYS logs");
+ *     try {
+ *         Strategy strategy = strategyRepo.findByName(strategyName);
+ *         logger.setLoggingEnabled(strategy); // Set flag for current thread
+ *
+ *         logger.info("This logs only if strategy.enableLogging = 'Y'");
+ *         logger.error("This ALWAYS logs");
+ *     } finally {
+ *         logger.clear(); // CRITICAL: Prevent memory leaks in thread pools
+ *     }
  * }
  * </pre>
- * 
+ *
  * @author Crumbs Trade
- * @version 1.0
+ * @version 2.0
  */
 public class ConditionalLogger {
-    
+
     private final Logger logger;
-    private volatile boolean loggingEnabled;
-    
+
+    // ThreadLocal ensures thread safety in singleton/static contexts
+    private final ThreadLocal<Boolean> loggingEnabled = ThreadLocal.withInitial(() -> false);
+
     /**
      * Create a conditional logger wrapper
-     * 
+     *
      * @param logger The underlying SLF4J logger
      */
     public ConditionalLogger(Logger logger) {
@@ -43,259 +49,183 @@ public class ConditionalLogger {
             throw new IllegalArgumentException("Logger cannot be null");
         }
         this.logger = logger;
-        this.loggingEnabled = false; // Default disabled
     }
-    
+
     /**
-     * Update logging state based on boolean flag
-     * 
+     * Update logging state based on boolean flag for the current thread
+     *
      * @param enabled true to enable INFO/DEBUG/WARN logs, false to disable
      */
     public void setLoggingEnabled(boolean enabled) {
-        this.loggingEnabled = enabled;
+        this.loggingEnabled.set(enabled);
     }
-    
+
     /**
-     * Update logging state from strategy entity
+     * Update logging state from strategy entity for the current thread
      * Checks strategy.getEnableLogging() field (Y/N)
-     * 
+     *
      * @param strategy The strategy entity containing logging flag
      */
     public void setLoggingEnabled(Strategy strategy) {
         if (strategy != null && strategy.getEnableLogging() != null) {
-            this.loggingEnabled = "Y".equalsIgnoreCase(strategy.getEnableLogging());
+            this.loggingEnabled.set("Y".equalsIgnoreCase(strategy.getEnableLogging()));
         } else {
-            this.loggingEnabled = false;
+            this.loggingEnabled.set(false);
         }
     }
-    
-    // ================== DEBUG METHODS ==================
-    
+
     /**
-     * Log a message at DEBUG level (only if enabled)
+     * Clears the ThreadLocal state.
+     * MUST be called in a finally block to prevent memory leaks in thread-pooled environments.
      */
+    public void clear() {
+        this.loggingEnabled.remove();
+    }
+
+    // ================== DEBUG METHODS ==================
+
     public void debug(String msg) {
-        if (loggingEnabled && logger.isDebugEnabled()) {
+        if (loggingEnabled.get() && logger.isDebugEnabled()) {
             logger.debug(msg);
         }
     }
-    
-    /**
-     * Log a message at DEBUG level with one parameter (only if enabled)
-     */
+
     public void debug(String format, Object arg) {
-        if (loggingEnabled && logger.isDebugEnabled()) {
+        if (loggingEnabled.get() && logger.isDebugEnabled()) {
             logger.debug(format, arg);
         }
     }
-    
-    /**
-     * Log a message at DEBUG level with multiple parameters (only if enabled)
-     */
+
     public void debug(String format, Object... arguments) {
-        if (loggingEnabled && logger.isDebugEnabled()) {
+        if (loggingEnabled.get() && logger.isDebugEnabled()) {
             logger.debug(format, arguments);
         }
     }
-    
-    /**
-     * Log a message at DEBUG level with exception (only if enabled)
-     */
+
     public void debug(String msg, Throwable t) {
-        if (loggingEnabled && logger.isDebugEnabled()) {
+        if (loggingEnabled.get() && logger.isDebugEnabled()) {
             logger.debug(msg, t);
         }
     }
-    
+
     // ================== INFO METHODS ==================
-    
-    /**
-     * Log a message at INFO level (only if enabled)
-     */
+
     public void info(String msg) {
-        if (loggingEnabled && logger.isInfoEnabled()) {
+        if (loggingEnabled.get() && logger.isInfoEnabled()) {
             logger.info(msg);
         }
     }
-    
-    /**
-     * Log a message at INFO level with one parameter (only if enabled)
-     */
+
     public void info(String format, Object arg) {
-        if (loggingEnabled && logger.isInfoEnabled()) {
+        if (loggingEnabled.get() && logger.isInfoEnabled()) {
             logger.info(format, arg);
         }
     }
-    
-    /**
-     * Log a message at INFO level with multiple parameters (only if enabled)
-     */
+
     public void info(String format, Object... arguments) {
-        if (loggingEnabled && logger.isInfoEnabled()) {
+        if (loggingEnabled.get() && logger.isInfoEnabled()) {
             logger.info(format, arguments);
         }
     }
-    
-    /**
-     * Log a message at INFO level with exception (only if enabled)
-     */
+
     public void info(String msg, Throwable t) {
-        if (loggingEnabled && logger.isInfoEnabled()) {
+        if (loggingEnabled.get() && logger.isInfoEnabled()) {
             logger.info(msg, t);
         }
     }
-    
+
     // ================== WARN METHODS ==================
-    
-    /**
-     * Log a message at WARN level (only if enabled)
-     */
+
     public void warn(String msg) {
-        if (loggingEnabled && logger.isWarnEnabled()) {
+        if (loggingEnabled.get() && logger.isWarnEnabled()) {
             logger.warn(msg);
         }
     }
-    
-    /**
-     * Log a message at WARN level with one parameter (only if enabled)
-     */
+
     public void warn(String format, Object arg) {
-        if (loggingEnabled && logger.isWarnEnabled()) {
+        if (loggingEnabled.get() && logger.isWarnEnabled()) {
             logger.warn(format, arg);
         }
     }
-    
-    /**
-     * Log a message at WARN level with multiple parameters (only if enabled)
-     */
+
     public void warn(String format, Object... arguments) {
-        if (loggingEnabled && logger.isWarnEnabled()) {
+        if (loggingEnabled.get() && logger.isWarnEnabled()) {
             logger.warn(format, arguments);
         }
     }
-    
-    /**
-     * Log a message at WARN level with exception (only if enabled)
-     */
+
     public void warn(String msg, Throwable t) {
-        if (loggingEnabled && logger.isWarnEnabled()) {
+        if (loggingEnabled.get() && logger.isWarnEnabled()) {
             logger.warn(msg, t);
         }
     }
-    
+
     // ================== ERROR METHODS (ALWAYS LOG) ==================
-    
-    /**
-     * Log a message at ERROR level (ALWAYS logged, ignores flag)
-     */
+
     public void error(String msg) {
-        logger.error(msg); // ALWAYS log errors
+        logger.error(msg);
     }
-    
-    /**
-     * Log a message at ERROR level with one parameter (ALWAYS logged)
-     */
+
     public void error(String format, Object arg) {
-        logger.error(format, arg); // ALWAYS log errors
+        logger.error(format, arg);
     }
-    
-    /**
-     * Log a message at ERROR level with multiple parameters (ALWAYS logged)
-     */
+
     public void error(String format, Object... arguments) {
-        logger.error(format, arguments); // ALWAYS log errors
+        logger.error(format, arguments);
     }
-    
-    /**
-     * Log a message at ERROR level with exception (ALWAYS logged)
-     */
+
     public void error(String msg, Throwable t) {
-        logger.error(msg, t); // ALWAYS log errors
+        logger.error(msg, t);
     }
-    
+
     // ================== UTILITY METHODS ==================
-    
-    /**
-     * Check if conditional logging is currently enabled
-     * 
-     * @return true if INFO/DEBUG/WARN logs will be written
-     */
+
     public boolean isLoggingEnabled() {
-        return loggingEnabled;
+        return loggingEnabled.get();
     }
-    
-    /**
-     * Check if DEBUG level is enabled (respects both flag and logger config)
-     * 
-     * @return true if debug logs will be written
-     */
+
     public boolean isDebugEnabled() {
-        return loggingEnabled && logger.isDebugEnabled();
+        return loggingEnabled.get() && logger.isDebugEnabled();
     }
-    
-    /**
-     * Check if INFO level is enabled (respects both flag and logger config)
-     * 
-     * @return true if info logs will be written
-     */
+
     public boolean isInfoEnabled() {
-        return loggingEnabled && logger.isInfoEnabled();
+        return loggingEnabled.get() && logger.isInfoEnabled();
     }
-    
-    /**
-     * Check if WARN level is enabled (respects both flag and logger config)
-     * 
-     * @return true if warn logs will be written
-     */
+
     public boolean isWarnEnabled() {
-        return loggingEnabled && logger.isWarnEnabled();
+        return loggingEnabled.get() && logger.isWarnEnabled();
     }
-    
-    /**
-     * Check if ERROR level is enabled (always true in typical configs)
-     * 
-     * @return true if error logs will be written
-     */
+
     public boolean isErrorEnabled() {
-        return logger.isErrorEnabled(); // ERROR always checked
+        return logger.isErrorEnabled();
     }
-    
-    /**
-     * Get the underlying SLF4J logger (for advanced use cases)
-     * Use this if you need to bypass conditional logic temporarily
-     * 
-     * @return The wrapped logger instance
-     */
+
     public Logger getUnderlyingLogger() {
         return logger;
     }
-    
+
     /**
-     * Temporarily enable all logging for a code block
-     * Useful for critical debugging sections
-     * 
+     * Temporarily enable all logging for a code block on the current thread.
+     *
      * Usage:
      * <pre>
      * try (AutoCloseable restorer = logger.temporarilyEnable()) {
      *     logger.info("This will log regardless of flag");
      * }
      * </pre>
-     * 
-     * @return AutoCloseable that restores original state when closed
+     *
+     * @return AutoCloseable that restores original thread state when closed
      */
     public AutoCloseable temporarilyEnable() {
-        final boolean originalState = this.loggingEnabled;
-        this.loggingEnabled = true;
-        
-        return () -> this.loggingEnabled = originalState;
+        final boolean originalState = this.loggingEnabled.get();
+        this.loggingEnabled.set(true);
+
+        return () -> this.loggingEnabled.set(originalState);
     }
-    
-    /**
-     * Get string representation for debugging
-     */
+
     @Override
     public String toString() {
-        return String.format("ConditionalLogger[enabled=%s, logger=%s]", 
-            loggingEnabled, logger.getName());
+        return String.format("ConditionalLogger[enabledForCurrentThread=%s, logger=%s]",
+                loggingEnabled.get(), logger.getName());
     }
 }

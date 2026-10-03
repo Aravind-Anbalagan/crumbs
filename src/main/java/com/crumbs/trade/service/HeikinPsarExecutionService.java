@@ -15,8 +15,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.crumbs.trade.utility.ConditionalLogger;
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,8 +38,8 @@ import com.crumbs.trade.repo.ShortStraddleRepository;
 @Service
 public class HeikinPsarExecutionService {
 
-    private static final Logger logger = LogManager.getLogger(HeikinPsarExecutionService.class);
-
+    private static final Logger baseLogger = LoggerFactory.getLogger(HeikinPsarExecutionService.class);
+    private final ConditionalLogger logger = new ConditionalLogger(baseLogger);
     // =========================================================
     // 🛠️ 1. SYSTEM CONFIGURATION & GLOBAL TOGGLES
     // =========================================================

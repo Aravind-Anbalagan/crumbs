@@ -4,7 +4,10 @@ import com.crumbs.trade.dto.PriceActionResult;
 import com.crumbs.trade.dto.SRLevelDTO;
 import com.crumbs.trade.dto.SupportResistanceZone;
 import com.crumbs.trade.entity.PricesIndex;
+import com.crumbs.trade.utility.ConditionalLogger;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -17,10 +20,11 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-@Slf4j
+
 @Service
 public class PriceActionService {
-
+    private static final Logger baseLogger = LoggerFactory.getLogger(PriceActionService.class);
+    private final ConditionalLogger log = new ConditionalLogger(baseLogger);
     // ==================== CONFIGURATION ====================
 
     private static final int     MAX_SR_ZONES              = 5;
@@ -158,30 +162,48 @@ public class PriceActionService {
         TreeMap<BigDecimal, SupportResistanceZone> supportMap    = new TreeMap<>();
         TreeMap<BigDecimal, SupportResistanceZone> resistanceMap = new TreeMap<>();
 
-        for (int i = 0; i < candles.size(); i++) {
-            PricesIndex c   = candles.get(i);
-            int         age = candles.size() - 1 - i;
+        int last = candles.size() - 1;
 
-            // ── Support: candle lows ─────────────────────────────────────────
-            if (c.getLow() != null) {
-                boolean suppRejection = (i + 1 < candles.size())
-                        && candles.get(i + 1).getClose().compareTo(c.getLow()) > 0;
-                boolean suppBreakout = (i > 0)
-                        && candles.get(i - 1).getClose().compareTo(c.getLow()) > 0
-                        && c.getClose().compareTo(c.getLow()) < 0;
+        for (int i = 1; i < last; i++) {            // skip first and last: pivot needs both neighbours
+            PricesIndex c    = candles.get(i);
+            PricesIndex prev = candles.get(i - 1);
+            PricesIndex next = candles.get(i + 1);
+            int age = last - i;
+
+            // swing low = support candidate (strict on the left, so equal lows aren't double counted)
+            if (c.getLow() != null && prev.getLow() != null && next.getLow() != null
+                    && c.getLow().compareTo(prev.getLow()) < 0
+                    && c.getLow().compareTo(next.getLow()) <= 0) {
                 addOrUpdate(exchange, supportMap, c.getLow(), c.getVolume(),
-                        avgVolume, tolerance, age, suppRejection, suppBreakout, candleMinutes);
+                        avgVolume, tolerance, age, true, false, candleMinutes);
             }
 
-            // ── Resistance: candle highs ─────────────────────────────────────
-            if (c.getHigh() != null) {
-                boolean resRejection = (i + 1 < candles.size())
-                        && candles.get(i + 1).getClose().compareTo(c.getHigh()) < 0;
-                boolean resBreakout = (i > 0)
-                        && candles.get(i - 1).getClose().compareTo(c.getHigh()) < 0
-                        && c.getClose().compareTo(c.getHigh()) > 0;
+            // swing high = resistance candidate
+            if (c.getHigh() != null && prev.getHigh() != null && next.getHigh() != null
+                    && c.getHigh().compareTo(prev.getHigh()) > 0
+                    && c.getHigh().compareTo(next.getHigh()) >= 0) {
                 addOrUpdate(exchange, resistanceMap, c.getHigh(), c.getVolume(),
-                        avgVolume, tolerance, age, resRejection, resBreakout, candleMinutes);
+                        avgVolume, tolerance, age, true, false, candleMinutes);
+            }
+        }
+
+// count breaks: a CLOSE that crosses through the level by more than the tolerance
+        for (SupportResistanceZone z : supportMap.values()) {
+            for (int i = 1; i < candles.size(); i++) {
+                BigDecimal pc = candles.get(i - 1).getClose(), cc = candles.get(i).getClose();
+                if (pc != null && cc != null
+                        && pc.compareTo(z.getLevel()) >= 0
+                        && cc.compareTo(z.getLevel().subtract(tolerance)) < 0)
+                    z.setBroken(z.getBroken() + 1);
+            }
+        }
+        for (SupportResistanceZone z : resistanceMap.values()) {
+            for (int i = 1; i < candles.size(); i++) {
+                BigDecimal pc = candles.get(i - 1).getClose(), cc = candles.get(i).getClose();
+                if (pc != null && cc != null
+                        && pc.compareTo(z.getLevel()) <= 0
+                        && cc.compareTo(z.getLevel().add(tolerance)) > 0)
+                    z.setBroken(z.getBroken() + 1);
             }
         }
 
@@ -380,7 +402,7 @@ public class PriceActionService {
      *   LOW      (<20) : single touch, no reaction              = 10
      */
     private String calcConfidence(int touches, int reacted, int broken, boolean volumeConfirmed) {
-        int score = (reacted * 20) + (touches * 10) - (broken * 30);
+        int score = (reacted * 15) - (broken * 30);
         if (volumeConfirmed) score += 15;
         if (score >= 40) return "CRITICAL";
         if (score >= 20) return "HIGH";
