@@ -3,7 +3,7 @@ import './AdvisoryDashboard.css';
 
 const PAGE_SIZE = 10;
 
-// 🧠 Robust action classifier for SL and TARGET
+// 🧠 Robust Action Classifier
 function getActionType(action) {
     const act = (action || '').trim().toUpperCase();
     if (act === 'NEW_ENTRY') return 'ENTRY';
@@ -40,11 +40,18 @@ function getColorFromCellType(type) {
     return 'color-no_trade';
 }
 
-// 🕒 Compact Date & Time Formatter for the Modal
+// 🕒 Compact Date & Time Formatter
 const formatDateTime = (isoString) => {
     if (!isoString) return '-';
     const d = new Date(isoString);
     return isNaN(d.getTime()) ? '-' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// 🕒 Intraday Time Formatter for Tooltips
+const formatTimeOnly = (isoString) => {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 export default function AdvisoryDashboard() {
@@ -116,7 +123,6 @@ export default function AdvisoryDashboard() {
         setCurrentPage(1);
     };
 
-    // 🚀 Dynamic Expiry Cycle Calculator (Last TUESDAY of month)
     const { startDate, endDate, daysArray, cycleRangeText, expiryDateText, isNewCycle } = useMemo(() => {
         const getLastTuesday = (year, month) => {
             let d = new Date(year, month + 1, 0);
@@ -164,17 +170,10 @@ export default function AdvisoryDashboard() {
         const rangeText = `${start.getDate()} ${start.toLocaleString('default', { month: 'short' })} — ${end.getDate()} ${end.toLocaleString('default', { month: 'short' })}`;
         const exactExpiryText = `${end.getDate()} ${end.toLocaleString('default', { month: 'short' })} ${end.getFullYear()}`;
 
-        return {
-            startDate: start,
-            endDate: end,
-            daysArray: days,
-            cycleRangeText: rangeText,
-            expiryDateText: exactExpiryText,
-            isNewCycle: newCycleStarted
-        };
+        return { startDate: start, endDate: end, daysArray: days, cycleRangeText: rangeText, expiryDateText: exactExpiryText, isNewCycle: newCycleStarted };
     }, []);
 
-    // 🧠 DYNAMIC MATRIX LOGIC — Timezone & Deduplication Hardened
+    // 🚀 STRICT LATEST-ACTION MATRIX WITH CHRONOLOGICAL TOOLTIPS
     const symbolMatrix = useMemo(() => {
         const matrix = {};
 
@@ -186,24 +185,14 @@ export default function AdvisoryDashboard() {
             return recordDate >= startDate && recordDate <= endDate;
         });
 
+        // Group records by exact date
         filteredTimelineData.forEach(record => {
-            if (!record.timestamp) return;
             const date = new Date(record.timestamp);
-            if (isNaN(date.getTime())) return;
-
-            // Safe local extraction
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const dateString = `${year}-${month}-${day}`;
+            const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
             if (!matrix[record.symbol]) matrix[record.symbol] = { records: {} };
-
-            // 🚀 Deduplication Guard: Keep the latest record for that specific calendar day
-            const existing = matrix[record.symbol].records[dateString];
-            if (!existing || new Date(record.timestamp) > new Date(existing.timestamp)) {
-                matrix[record.symbol].records[dateString] = record;
-            }
+            if (!matrix[record.symbol].records[dateString]) matrix[record.symbol].records[dateString] = [];
+            matrix[record.symbol].records[dateString].push(record);
         });
 
         const formattedMatrix = [];
@@ -213,7 +202,7 @@ export default function AdvisoryDashboard() {
             const rowDays = {};
             let isHolding = false;
             let currentTrend = 'NEUTRAL';
-            let latestTrade = null;
+            let latestTrade = null; // Carries over weekends/holidays
             let todayCell = null;
 
             let curr = new Date(startDate);
@@ -221,42 +210,67 @@ export default function AdvisoryDashboard() {
 
             while (curr <= endDate) {
                 const dateString = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-                const record = data.records[dateString];
+                const dailyRecords = data.records[dateString] || [];
+
+                // Sort chronologically (Morning -> Afternoon)
+                dailyRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
                 let typeForDay = 'EMPTY';
+                let tooltipEvents = [];
+                let endOfDayRecord = null;
+                let dayHasExit = false;
+                let dayExitType = null;
 
-                if (record) {
-                    latestTrade = record;
-                    const actionCategory = getActionType(record.actionTaken);
+                if (dailyRecords.length > 0) {
+                    dailyRecords.forEach(record => {
+                        latestTrade = record;
+                        const actionCat = getActionType(record.actionTaken);
+                        const timeStr = formatTimeOnly(record.timestamp);
 
-                    if (actionCategory === 'ENTRY') {
-                        isHolding = true;
-                        currentTrend = (record.optionType || '').toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
-                        typeForDay = `ENTRY_${currentTrend}`;
-                    }
-                    else if (actionCategory === 'MAINTAIN') {
-                        // 🚀 SELF-HEALING FIX
-                        isHolding = true;
-                        if (record.optionType) {
-                            currentTrend = record.optionType.toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
+                        // Add every single action to the tooltip so the user misses nothing
+                        tooltipEvents.push(`[${timeStr}] ${record.actionTaken}`);
+
+                        // Track continuous state
+                        if (actionCat === 'ENTRY') {
+                            isHolding = true;
+                            currentTrend = (record.optionType || '').toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
+                        } else if (actionCat === 'MAINTAIN') {
+                            isHolding = true;
+                            if (record.optionType) currentTrend = record.optionType.toUpperCase() === 'PE' ? 'BULLISH' : 'BEARISH';
+                        } else if (actionCat === 'EXIT_SL' || actionCat === 'EXIT_TARGET') {
+                            isHolding = false;
+                            dayHasExit = true;
+                            dayExitType = actionCat;
+                        } else if (actionCat === 'NO_TRADE') {
+                            if (!isHolding) currentTrend = 'NEUTRAL';
                         }
+                    });
+
+                    // 🎯 VISUAL RULE: The cell icon/color is based on the LAST action of the day
+                    endOfDayRecord = dailyRecords[dailyRecords.length - 1];
+                    const lastActionCat = getActionType(endOfDayRecord.actionTaken);
+
+                    if (lastActionCat === 'ENTRY') {
+                        typeForDay = `ENTRY_${currentTrend}`;
+                    } else if (lastActionCat === 'MAINTAIN') {
                         typeForDay = `ACTIVE_${currentTrend}`;
-                    }
-                    else if (actionCategory === 'EXIT_SL') {
-                        isHolding = false;
-                        typeForDay = 'EXIT_SL';
-                        currentTrend = 'NEUTRAL';
-                    }
-                    else if (actionCategory === 'EXIT_TARGET') {
-                        isHolding = false;
-                        typeForDay = 'EXIT_TARGET';
-                        currentTrend = 'NEUTRAL';
-                    }
-                    else {
-                        typeForDay = 'NO_TRADE';
+                    } else if (lastActionCat === 'EXIT_SL' || lastActionCat === 'EXIT_TARGET') {
+                        typeForDay = lastActionCat;
+                    } else {
+                        // If the latest scan was NO_TRADE, fallback to the significant event if one happened today
+                        if (dayHasExit) {
+                            typeForDay = dayExitType;
+                        } else if (isHolding) {
+                            typeForDay = `ACTIVE_${currentTrend}`;
+                        } else {
+                            typeForDay = 'NO_TRADE';
+                        }
                     }
                 } else {
+                    // Carry-over logic for Weekends/Holidays with no DB records
                     if (isHolding && curr <= today) {
                         typeForDay = `ACTIVE_${currentTrend}`;
+                        endOfDayRecord = latestTrade;
                     }
                 }
 
@@ -264,7 +278,8 @@ export default function AdvisoryDashboard() {
                     const dow = curr.getDay();
                     const dayCell = {
                         type: typeForDay,
-                        record: record || latestTrade,
+                        record: endOfDayRecord,
+                        tooltipEvents: tooltipEvents,
                         isWeekend: dow === 0 || dow === 6
                     };
                     rowDays[dateString] = dayCell;
@@ -289,35 +304,20 @@ export default function AdvisoryDashboard() {
                 counts[cat] += 1;
             }
             const hitSlInCycle = Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL');
-            if (hitSlInCycle) {
-                counts['CYCLE_SL'] += 1;
-            }
+            if (hitSlInCycle) counts['CYCLE_SL'] += 1;
         });
         return counts;
     }, [symbolMatrix]);
 
     const filteredMatrix = useMemo(() => {
         let activeMatrix = symbolMatrix;
-
         if (searchQuery.trim() !== '') {
             const query = searchQuery.toLowerCase();
             activeMatrix = activeMatrix.filter(row => row.symbol.toLowerCase().includes(query));
         }
-
         if (filterType === 'ALL') return activeMatrix;
-
-        if (filterType === 'CYCLE_SL') {
-            return activeMatrix.filter(row =>
-                Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL')
-            );
-        }
-        if (filterType === 'EXIT') {
-            return activeMatrix.filter(row => {
-                const cat = getFilterCategory(row.todayCell);
-                return cat === 'EXIT_SL' || cat === 'EXIT_TARGET';
-            });
-        }
-
+        if (filterType === 'CYCLE_SL') return activeMatrix.filter(row => Object.values(row.days).some(cell => cell && cell.type === 'EXIT_SL'));
+        if (filterType === 'EXIT') return activeMatrix.filter(row => { const cat = getFilterCategory(row.todayCell); return cat === 'EXIT_SL' || cat === 'EXIT_TARGET'; });
         return activeMatrix.filter(row => getFilterCategory(row.todayCell) === filterType);
     }, [symbolMatrix, filterType, searchQuery]);
 
@@ -330,9 +330,8 @@ export default function AdvisoryDashboard() {
     const formatPnL = (pnl) => {
         if (pnl === null || pnl === undefined) return '-';
         const val = parseFloat(pnl);
-        // Using standard +/- signs but removing specific colors for pure B&W support
-        if (val > 0) return <span>+₹{val.toFixed(2)}</span>;
-        if (val < 0) return <span>-₹{Math.abs(val).toFixed(2)}</span>;
+        if (val > 0) return <span style={{color: '#10b981'}}>+₹{val.toFixed(2)}</span>;
+        if (val < 0) return <span style={{color: '#ef4444'}}>-₹{Math.abs(val).toFixed(2)}</span>;
         return '₹0.00';
     };
 
@@ -379,28 +378,18 @@ export default function AdvisoryDashboard() {
                             { key: 'EXIT', label: 'Exit Today', count: filterCounts.EXIT },
                             { key: 'MAINTAIN', label: 'Maintain', count: filterCounts.MAINTAIN },
                         ].map(f => (
-                            <button
-                                key={f.key}
-                                className={`filter-chip ${filterType === f.key ? 'active' : ''}`}
-                                onClick={() => setFilterType(f.key)}
-                            >
+                            <button key={f.key} className={`filter-chip ${filterType === f.key ? 'active' : ''}`} onClick={() => setFilterType(f.key)}>
                                 {f.label} ({f.count})
                             </button>
                         ))}
                     </div>
-
                     <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--glass-border)' }}></div>
-
                     <div className="filter-inline-group">
                         <span className="filter-label" style={{ color: '#00a8ff' }}>Whole Cycle:</span>
                         {[
                             { key: 'CYCLE_SL', label: 'Hit Stop Loss', count: filterCounts.CYCLE_SL, isWarning: true }
                         ].map(f => (
-                            <button
-                                key={f.key}
-                                className={`filter-chip ${f.isWarning ? 'chip-warning' : ''} ${filterType === f.key ? 'active' : ''}`}
-                                onClick={() => setFilterType(f.key)}
-                            >
+                            <button key={f.key} className={`filter-chip ${f.isWarning ? 'chip-warning' : ''} ${filterType === f.key ? 'active' : ''}`} onClick={() => setFilterType(f.key)}>
                                 {f.label} ({f.count})
                             </button>
                         ))}
@@ -408,17 +397,9 @@ export default function AdvisoryDashboard() {
                 </div>
 
                 <div className="search-container">
-                    <input
-                        type="text"
-                        placeholder="Search instrument..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="search-input"
-                    />
+                    <input type="text" placeholder="Search instrument..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="search-input" />
                     {(searchQuery !== '' || filterType !== 'ALL') && (
-                        <button className="btn-reset" onClick={handleResetFilters} title="Clear Search and Filters">
-                            ✕ Reset
-                        </button>
+                        <button className="btn-reset" onClick={handleResetFilters} title="Clear Search and Filters">✕ Reset</button>
                     )}
                 </div>
             </div>
@@ -438,10 +419,7 @@ export default function AdvisoryDashboard() {
                                     <div className="timeline-symbol-col">Instrument</div>
                                     <div className="timeline-days-grid" style={{ gridTemplateColumns: `repeat(${daysArray.length}, minmax(25px, 1fr))` }}>
                                         {daysArray.map((dayObj) => (
-                                            <div
-                                                key={dayObj.dateString}
-                                                className={`day-header ${dayObj.isToday ? 'is-today' : ''} ${dayObj.isWeekend ? 'is-weekend' : ''}`}
-                                            >
+                                            <div key={dayObj.dateString} className={`day-header ${dayObj.isToday ? 'is-today' : ''} ${dayObj.isWeekend ? 'is-weekend' : ''}`}>
                                                 <span className="day-num">{dayObj.dayNum}</span>
                                                 <span className="day-month">{dayObj.monthStr}</span>
                                             </div>
@@ -475,10 +453,29 @@ export default function AdvisoryDashboard() {
                                                         {type === 'NO_TRADE' && <span className="marker-icon">·</span>}
 
                                                         {type !== 'EMPTY' && cell.record && (
-                                                            <div className="day-tooltip">
-                                                                <strong>{cell.record.actionTaken || 'HOLDING'}</strong>
+                                                            <div className="day-tooltip" style={{textAlign: 'left', minWidth: '180px'}}>
+                                                                <div style={{marginBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '4px', color: '#00a8ff'}}>
+                                                                    <strong>{dayObj.dayNum} {dayObj.monthStr} Timeline</strong>
+                                                                </div>
+
+                                                                {cell.tooltipEvents && cell.tooltipEvents.length > 0 ? (
+                                                                    cell.tooltipEvents.map((evt, idx) => (
+                                                                        <div key={idx} style={{
+                                                                            margin: '3px 0',
+                                                                            fontSize: '0.75rem',
+                                                                            color: evt.includes('ENTRY') ? '#10b981' : evt.includes('SL') ? '#ef4444' : '#e2e8f0'
+                                                                        }}>
+                                                                            {evt}
+                                                                        </div>
+                                                                    ))
+                                                                ) : (
+                                                                    <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>HOLDING (No New Scans)</div>
+                                                                )}
+
                                                                 {cell.record.recommendedStrike && (
-                                                                    <span>{cell.record.recommendedStrike} {cell.record.optionType}</span>
+                                                                    <div style={{marginTop: '6px', color: '#94a3b8', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '4px'}}>
+                                                                        Active Strike: {cell.record.recommendedStrike} {cell.record.optionType}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         )}
@@ -500,11 +497,9 @@ export default function AdvisoryDashboard() {
                 )}
             </div>
 
-            {/* 🚀 ENLARGED, HIGH-CONTRAST MONOCHROME DIALOG MODAL */}
             {dialogData && (
                 <div className="dialog-overlay" onClick={() => setDialogData(null)}>
                     <div className="dialog-box glass-panel" onClick={(e) => e.stopPropagation()}>
-
                         <div className="dialog-header">
                             <h3>{dialogData.symbol} <span className="text-muted">| {dialogData.formattedDate}</span></h3>
                             <button className="btn-close" onClick={() => setDialogData(null)}>✖</button>
@@ -514,6 +509,7 @@ export default function AdvisoryDashboard() {
                             <div className="dialog-status-row">
                                 <span className={`status-badge ${dialogData.status?.toLowerCase()}`}>{dialogData.status}</span>
                                 <strong>{dialogData.actionTaken}</strong>
+                                <span style={{marginLeft: 'auto', color: '#94a3b8', fontSize: '0.85rem'}}>Last Update: {formatTimeOnly(dialogData.timestamp)}</span>
                             </div>
 
                             <div className="dialog-grid">
