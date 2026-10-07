@@ -368,7 +368,7 @@ public class AdvisoryEngineService {
 
         List<String> warnings = new ArrayList<>();
 
-        // 🚀 GUARD 1: Proximity Alert (Now a Warning)
+        // 🚀 GUARD 1: Proximity Alert (Warning)
         BigDecimal safeBuffer = atr14.multiply(new BigDecimal("1.25"));
         boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
         boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
@@ -377,7 +377,7 @@ public class AdvisoryEngineService {
             log.warn("🚨 [WARNING] Proximity buffer breached on {}!", prev.getSymbol());
         }
 
-        // 🚀 GUARD 2: SMC Structural Reversal (Now a Warning)
+        // 🚀 GUARD 2: SMC Structural Reversal (Warning)
         if (smcSignalOpt.isPresent()) {
             FuturesBreakEvent bos = smcSignalOpt.get();
             boolean reversal = ("PE".equalsIgnoreCase(prev.getOptionType()) && "BREAKDOWN".equalsIgnoreCase(bos.getBreakType())) ||
@@ -388,45 +388,104 @@ public class AdvisoryEngineService {
             }
         }
 
-        // 🚀 GUARD 3: Daily Trend Flip (Now a Warning)
+        // 🚀 GUARD 3: Daily Trend Flip (Warning)
         if (prev.getDailyTrend() != null && !prev.getDailyTrend().equals(mtfTrend.dailyTrend())) {
             warnings.add("🚨 Trend flipped");
             log.warn("🚨 [WARNING] MTF Trend flipped on {} from {} to {}!", prev.getSymbol(), prev.getDailyTrend(), mtfTrend.dailyTrend());
         }
 
-        // 🚀 GUARD 4: Wall Migration (THE ONLY STRICT EXIT TRIGGER)
+        // ===================================================================
+        // 🚀 GUARD 4: VALUE TARGET (85% Premium Decay)
+        // ===================================================================
+        BigDecimal exitPremium = safelyFetchExitPremium(current, exchange);
+        if (exitPremium == null) {
+            exitPremium = current.getCurrentPremium() != null ? current.getCurrentPremium() : current.getEntryPremium();
+        }
+
+        if (exitPremium != null && prev.getEntryPremium() != null) {
+            BigDecimal targetPremium = prev.getEntryPremium().multiply(new BigDecimal("0.15"));
+            if (exitPremium.compareTo(targetPremium) <= 0) {
+                current.setCurrentPremium(exitPremium);
+                executeExit(current, exchange, "TARGET", String.format("Target hit. Premium decayed by >= 85%% (Entry: ₹%s -> Live: ₹%s). Locking in profit.", prev.getEntryPremium(), exitPremium));
+                return;
+            }
+            current.setCurrentPremium(exitPremium); // Update live premium for MTM
+        }
+
+        // ===================================================================
+        // 🚀 GUARD 5: STRUCTURAL TARGET & STOP LOSS (DUAL-VALIDATION)
+        // ===================================================================
         boolean wallMigrated = false;
         String wallExitReason = "";
-        String oiContext = "";
+        String exitReasoning = "";
 
-        if ("PE".equalsIgnoreCase(prev.getOptionType()) && oiData != null && oiData.putWall() != null) {
-            if (prev.getPutWallStrike() != null && prev.getPutWallStrike().compareTo(oiData.putWall().strike()) != 0) {
-                wallMigrated = true;
-                oiContext = String.format("Entry Put OI: %s -> Exit Put OI: %s", prev.getPutWallOi(), oiData.putWall().openInterest());
-                if (oiData.putWall().strike().compareTo(prev.getPutWallStrike()) > 0) {
-                    wallExitReason = "TARGET"; // Wall shifted UP (Favorable)
-                    log.info("🎯 [TARGET HIT] Put Wall migrated UP on {}. Executing exit.", prev.getSymbol());
-                } else {
-                    wallExitReason = "SL"; // Wall shifted DOWN (Unfavorable / Retreat)
-                    log.info("🛑 [STOP LOSS] Put Wall migrated DOWN on {}. Executing exit.", prev.getSymbol());
-                }
-            }
-        } else if ("CE".equalsIgnoreCase(prev.getOptionType()) && oiData != null && oiData.callWall() != null) {
-            if (prev.getCallWallStrike() != null && prev.getCallWallStrike().compareTo(oiData.callWall().strike()) != 0) {
-                wallMigrated = true;
-                oiContext = String.format("Entry Call OI: %s -> Exit Call OI: %s", prev.getCallWallOi(), oiData.callWall().openInterest());
-                if (oiData.callWall().strike().compareTo(prev.getCallWallStrike()) < 0) {
-                    wallExitReason = "TARGET"; // Wall shifted DOWN (Favorable)
-                    log.info("🎯 [TARGET HIT] Call Wall migrated DOWN on {}. Executing exit.", prev.getSymbol());
-                } else {
-                    wallExitReason = "SL"; // Wall shifted UP (Unfavorable / Retreat)
-                    log.info("🛑 [STOP LOSS] Call Wall migrated UP on {}. Executing exit.", prev.getSymbol());
+        if (oiData != null) {
+            BigDecimal prevPutStrike = prev.getPutWallStrike();
+            BigDecimal prevCallStrike = prev.getCallWallStrike();
+
+            BigDecimal prevPutOi = prev.getPutWallOi() != null ? prev.getPutWallOi() : BigDecimal.ZERO;
+            BigDecimal prevCallOi = prev.getCallWallOi() != null ? prev.getCallWallOi() : BigDecimal.ZERO;
+
+            boolean hasLivePut = oiData.putWall() != null;
+            boolean hasLiveCall = oiData.callWall() != null;
+
+            BigDecimal livePutStrike = hasLivePut ? oiData.putWall().strike() : null;
+            BigDecimal livePutOi = hasLivePut ? BigDecimal.valueOf(oiData.putWall().openInterest()) : BigDecimal.ZERO;
+
+            BigDecimal liveCallStrike = hasLiveCall ? oiData.callWall().strike() : null;
+            BigDecimal liveCallOi = hasLiveCall ? BigDecimal.valueOf(oiData.callWall().openInterest()) : BigDecimal.ZERO;
+
+            // Ensure we have BOTH sides to do Dual-Validation
+            if (hasLivePut && prevPutStrike != null && hasLiveCall && prevCallStrike != null) {
+
+                if ("PE".equalsIgnoreCase(prev.getOptionType())) {
+                    // --- BULLISH TRADE (Selling PE) ---
+
+                    // TARGET: Support pushes up AND Resistance concedes (stays flat or moves up)
+                    boolean supportRaised = livePutStrike.compareTo(prevPutStrike) > 0;
+                    boolean resistanceConceded = liveCallStrike.compareTo(prevCallStrike) >= 0;
+
+                    // SL: Support collapses AND Resistance attacks (moves down or builds OI)
+                    boolean supportWeakening = livePutStrike.compareTo(prevPutStrike) < 0 || livePutOi.compareTo(prevPutOi) < 0;
+                    boolean resistanceStrengthening = liveCallStrike.compareTo(prevCallStrike) < 0 || liveCallOi.compareTo(prevCallOi) > 0;
+
+                    if (supportRaised && resistanceConceded) {
+                        wallMigrated = true;
+                        wallExitReason = "TARGET";
+                        exitReasoning = String.format("Wall migrated. TARGET. PE shifted favorably (%s -> %s) and CE conceded.", prevPutStrike, livePutStrike);
+                    } else if (supportWeakening && resistanceStrengthening) {
+                        wallMigrated = true;
+                        wallExitReason = "SL";
+                        exitReasoning = String.format("Wall migrated. SL. PE weakening (OI: %s -> %s) AND CE strengthening (OI: %s -> %s).",
+                                prevPutOi, livePutOi, prevCallOi, liveCallOi);
+                    }
+                } else if ("CE".equalsIgnoreCase(prev.getOptionType())) {
+                    // --- BEARISH TRADE (Selling CE) ---
+
+                    // TARGET: Resistance pushes down AND Support concedes (stays flat or moves down)
+                    boolean resistanceLowered = liveCallStrike.compareTo(prevCallStrike) < 0;
+                    boolean supportConceded = livePutStrike.compareTo(prevPutStrike) <= 0;
+
+                    // SL: Resistance collapses AND Support attacks (moves up or builds OI)
+                    boolean resistanceWeakening = liveCallStrike.compareTo(prevCallStrike) > 0 || liveCallOi.compareTo(prevCallOi) < 0;
+                    boolean supportStrengthening = livePutStrike.compareTo(prevPutStrike) > 0 || livePutOi.compareTo(prevPutOi) > 0;
+
+                    if (resistanceLowered && supportConceded) {
+                        wallMigrated = true;
+                        wallExitReason = "TARGET";
+                        exitReasoning = String.format("Wall migrated. TARGET. CE shifted favorably (%s -> %s) and PE conceded.", prevCallStrike, liveCallStrike);
+                    } else if (resistanceWeakening && supportStrengthening) {
+                        wallMigrated = true;
+                        wallExitReason = "SL";
+                        exitReasoning = String.format("Wall migrated. SL. CE weakening (OI: %s -> %s) AND PE strengthening (OI: %s -> %s).",
+                                prevCallOi, liveCallOi, prevPutOi, livePutOi);
+                    }
                 }
             }
         }
 
         if (wallMigrated) {
-            executeExit(current, exchange, wallExitReason, String.format("Wall migrated. %s. %s", wallExitReason, oiContext));
+            executeExit(current, exchange, wallExitReason, exitReasoning);
             return;
         }
 
@@ -438,7 +497,7 @@ public class AdvisoryEngineService {
 
         String reasoning = String.format("Holding %s %s (Day %d).", prev.getRecommendedStrike(), prev.getOptionType(), daysHeld);
         if (!warnings.isEmpty()) {
-            reasoning += " [WARNINGS: " + String.join(", ", warnings) + "] Wall remains intact.";
+            reasoning += " [WARNINGS: " + String.join(", ", warnings) + "] Market structure intact.";
         } else {
             reasoning += " Premium decay progressing safely.";
         }
