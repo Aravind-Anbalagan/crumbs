@@ -74,13 +74,29 @@ public class MonitorOrderService {
         RiskConfiguration config = riskConfigRepository.findById(strategyKey).orElse(null);
 
         BigDecimal groupPnL = BigDecimal.ZERO;
+        SmartConnect backupConnection = null;
 
         for (Orders leg : groupLegs) {
             // If the cache is empty (fast-loop triggered exit), force fetch the live price
             if (!liveUiCachePnL.containsKey(leg.getId()) && leg.getAskPrice() != null) {
                 try {
                     ExchangeType exType = mapExchangeToType(leg.getExchange());
-                    BigDecimal ltp = webSocketService.getLatestLTP(exType, leg.getToken());
+                    BigDecimal ltp = null;
+
+                    if (exType != null) {
+                        ltp = webSocketService.getLatestLTP(exType, leg.getToken());
+                    }
+
+                    // ✅ FALLBACK FIX: Crucial for Paper Trades to secure accurate pricing if websocket misses it
+                    if (ltp == null || ltp.compareTo(BigDecimal.ZERO) <= 0) {
+                        if (backupConnection == null) {
+                            try { backupConnection = angelOne.signIn(); } catch (Exception ignored) {}
+                        }
+                        if (backupConnection != null) {
+                            ltp = angelOneService.getcurrentPrice(backupConnection, leg.getExchange(), leg.getSymbol(), leg.getToken());
+                        }
+                    }
+
                     if (ltp != null && ltp.compareTo(BigDecimal.ZERO) > 0) {
                         boolean isShort = isShortPosition(leg, config);
                         BigDecimal pointsDiff = isShort
@@ -95,8 +111,8 @@ public class MonitorOrderService {
             groupPnL = groupPnL.add(liveUiCachePnL.getOrDefault(leg.getId(), BigDecimal.ZERO));
         }
 
-        // closeGroup automatically handles broker sign-in if connection is null
-        return closeGroup(groupLegs, strategyKey, exitReason, groupPnL, null, config);
+        // closeGroup automatically handles broker sign-in if connection is null, calculates PnL math, and saves
+        return closeGroup(groupLegs, strategyKey, exitReason, groupPnL, backupConnection, config);
     }
 
     /**
