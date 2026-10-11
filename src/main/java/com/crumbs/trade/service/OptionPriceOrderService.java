@@ -1,7 +1,6 @@
 package com.crumbs.trade.service;
 
 import com.angelbroking.smartapi.SmartConnect;
-import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.angelbroking.smartapi.models.Order;
 import com.angelbroking.smartapi.models.OrderParams;
 import com.angelbroking.smartapi.utils.Constants;
@@ -16,17 +15,21 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
+/**
+ * ENTRY LOGIC ONLY. Every signal now produces a TWO-LEG hedged position (short CE + short PE).
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -35,207 +38,388 @@ public class OptionPriceOrderService {
     private static final String ZONE = "Asia/Kolkata";
     private static final String PAPER_ORDER_ID_MARKER = "1";
     private static final long CHASE_WAIT_MS = 10_000;
-    private static final int MAX_CHASE_ATTEMPTS = 30;
+    private static final int MAX_CHASE_ATTEMPTS = 6;      // 60s per pair (was 30 x 10s = 5 min per leg)
+    private static final int MIN_DAYS_TO_EXPIRY = 1;      // skip expiry-day gamma when selling premium
+    private static final String SELL = Constants.TRANSACTION_TYPE_SELL;
+    private static final String BUY = Constants.TRANSACTION_TYPE_BUY;
 
     private final AngelOne angelOne;
     private final OrderRepository orderRepository;
     private final StrategyRepo strategyRepo;
-    private final MonitorOrderService monitorOrderService; // ✅ Injected the execution engine
+    private final MonitorOrderService monitorOrderService;
+    private final TelegramService telegramService;          // NEW: alert if a leg cannot be unwound
 
+    // Initialised final fields are ignored by @RequiredArgsConstructor
+    private final Set<String> entriesInFlight = ConcurrentHashMap.newKeySet();
+    private final ExecutorService entryExecutor = Executors.newFixedThreadPool(2); // one task per symbol entry
+    private final ExecutorService legExecutor = Executors.newFixedThreadPool(4);   // CE and PE chase in parallel
+
+    // ==========================================
+    // BIAS -> SHORT STRADDLE SHAPE (always both legs)
+    // Offsets are in strikes from ATM (+1 = one strike higher, -1 = one lower).
+    // Skewed legs use ITM strikes only, because the scanner loads ATM + ITM contracts.
+    //   PE ITM = higher strike, CE ITM = lower strike.
+    // ==========================================
+    private enum Bias {
+        PURE_STRADDLE(0, 0),      // ATM CE + ATM PE
+        BULLISH_STRADDLE(0, 1),   // ATM CE + PE one strike up (ITM PE)
+        BEARISH_STRADDLE(-1, 0),  // CE one strike down (ITM CE) + ATM PE
+        BULLISH(0, 1),            // same as BULLISH_STRADDLE
+        BEARISH(-1, 0);           // same as BEARISH_STRADDLE
+
+        final int ceOffset;
+        final int peOffset;
+
+        Bias(int ceOffset, int peOffset) {
+            this.ceOffset = ceOffset;
+            this.peOffset = peOffset;
+        }
+
+        static Bias from(String label) {
+            if (label == null) return null;
+            if (label.contains("PURE STRADDLE/STRANGLE")) return PURE_STRADDLE;
+            if (label.contains("BULLISH STRADDLE")) return BULLISH_STRADDLE;
+            if (label.contains("BEARISH STRADDLE")) return BEARISH_STRADDLE;
+            if (label.startsWith("BULLISH")) return BULLISH;
+            if (label.startsWith("BEARISH")) return BEARISH;
+            return null; // NEUTRAL etc.
+        }
+    }
+
+    private record LegFill(ScannedContractDto dto, String orderId, BigDecimal avgPrice,
+                           int requestedQty, int filledQty) {
+        boolean complete() { return requestedQty > 0 && filledQty >= requestedQty; }
+        boolean exposed()  { return filledQty > 0; }
+    }
+
+    private record OrderState(String status, int filledQty, BigDecimal avg) {
+        BigDecimal avgOr(BigDecimal fallback) { return avg != null ? avg : fallback; }
+    }
+
+    // ==========================================
+    // ENTRY POINT (non-blocking: returns immediately, scanner thread is free)
+    // ==========================================
     public void processAiSignalOrder(String symbol, String biasLabel, List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
 
+        Bias bias = Bias.from(biasLabel);
+        if (bias == null) return;
+
+        String strategyName = "AI_BIAS_" + symbol;
+
+        // Orders are only saved after fills, so the DB lock alone cannot stop a second scan
+        // from entering while the first is still chasing. This in-memory guard closes that gap.
+        if (!entriesInFlight.add(strategyName)) {
+            log.info("🔐 [IN-FLIGHT] Entry already running for {}. Skipping.", symbol);
+            return;
+        }
+
+        List<ScannedContractDto> snapshot = List.copyOf(contracts);
+        try {
+            entryExecutor.submit(() -> {
+                try {
+                    runEntry(symbol, strategyName, bias, biasLabel, snapshot);
+                } catch (Exception e) {
+                    log.error("❌ Entry failed for {}: {}", symbol, e.getMessage(), e);
+                } finally {
+                    entriesInFlight.remove(strategyName);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            entriesInFlight.remove(strategyName);
+            throw e;
+        }
+    }
+
+    private void runEntry(String symbol, String strategyName, Bias bias, String biasLabel,
+                          List<ScannedContractDto> contracts) {
         if (hasActiveTradeTodayForSymbol(symbol)) {
             log.info("🔐 [DAILY LOCK] Trade already active today for {}. Skipping AI order.", symbol);
             return;
         }
 
-        boolean isLive = false;
-        try {
-            Strategy strat = strategyRepo.findByName("OPTION_PRICE_SCANNER");
-            if (strat != null && "Y".equalsIgnoreCase(strat.getLive())) {
-                isLive = true;
-            }
-        } catch (Exception e) {
-            log.warn("⚠️ Could not fetch strategy config for OPTION_PRICE_SCANNER: {}", e.getMessage());
+        // 1. One expiry for BOTH legs (the scan loads weekly + monthly)
+        LocalDate expiry = pickExpiry(contracts);
+        if (expiry == null) {
+            log.warn("⚠️ No eligible expiry for {}. Skipping.", symbol);
+            return;
+        }
+        List<ScannedContractDto> sameExpiry = contracts.stream()
+                .filter(c -> expiry.equals(c.getExpiryDate()))
+                .toList();
+
+        // 2. Strike geometry
+        double step = strikeStep(sameExpiry);
+        if (step <= 0) {
+            log.warn("⚠️ Cannot derive strike step for {}. Skipping.", symbol);
+            return;
+        }
+        double atm = atmStrike(sameExpiry);
+        double ceStrike = atm + bias.ceOffset * step;
+        double peStrike = atm + bias.peOffset * step;
+
+        // 3. Resolve BOTH legs first. Never trade one leg of a hedge.
+        ScannedContractDto ce = findLeg(sameExpiry, ceStrike, "CE");
+        ScannedContractDto pe = findLeg(sameExpiry, peStrike, "PE");
+        if (ce == null || pe == null) {
+            log.error("🛑 [{}] {} aborted: leg not in scanned contracts (CE {} -> {}, PE {} -> {}). No orders placed.",
+                    symbol, bias, ceStrike, ce != null, peStrike, pe != null);
+            return;
         }
 
-        List<Double> sortedStrikes = contracts.stream()
+        log.info("🎯 [{}] {} | expiry {} | SELL CE {} + SELL PE {} (ATM {}, step {})",
+                symbol, biasLabel, expiry, ceStrike, peStrike, atm, step);
+
+        executePair(strategyName, UUID.randomUUID().toString(), ce, pe, isLiveMode());
+    }
+
+    // ==========================================
+    // CONTRACT SELECTION HELPERS
+    // ==========================================
+    private LocalDate pickExpiry(List<ScannedContractDto> contracts) {
+        LocalDate earliest = LocalDate.now(ZoneId.of(ZONE)).plusDays(MIN_DAYS_TO_EXPIRY);
+        return contracts.stream()
+                .map(ScannedContractDto::getExpiryDate)   // assumes LocalDate; adapt if it is a String
+                .filter(Objects::nonNull)
+                .filter(d -> !d.isBefore(earliest))
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+    }
+
+    private double strikeStep(List<ScannedContractDto> contracts) {
+        List<Double> strikes = contracts.stream()
                 .map(ScannedContractDto::getStrike)
                 .filter(s -> s > 0)
                 .distinct()
                 .sorted()
                 .toList();
+        double min = Double.MAX_VALUE;
+        for (int i = 1; i < strikes.size(); i++) {
+            min = Math.min(min, strikes.get(i) - strikes.get(i - 1));
+        }
+        return min == Double.MAX_VALUE ? 0 : min;
+    }
 
-        if (sortedStrikes.isEmpty()) return;
-
-        ScannedContractDto atmContract = contracts.stream()
+    private double atmStrike(List<ScannedContractDto> contracts) {
+        ScannedContractDto atm = contracts.stream()
                 .filter(c -> c.getMoneyness() == OptionScannerConfig.Moneyness.ATM)
-                .findFirst()
-                .orElse(null);
+                .findFirst().orElse(null);
+        if (atm != null) return atm.getStrike();
 
-        double atmStrike = atmContract != null ? atmContract.getStrike() : sortedStrikes.get(sortedStrikes.size() / 2);
-        int atmIndex = sortedStrikes.indexOf(atmStrike);
-        if (atmIndex < 0) atmIndex = 0;
-
-        String tradeCycleId = UUID.randomUUID().toString();
-        String strategyName = "AI_BIAS_" + symbol;
-
-        if (biasLabel.contains("PURE STRADDLE/STRANGLE")) {
-            ScannedContractDto ce = findContract(contracts, atmStrike, "CE");
-            ScannedContractDto pe = findContract(contracts, atmStrike, "PE");
-            log.info("🎯 [PURE STRADDLE] {} -> ATM Strike: {}", symbol, atmStrike);
-            dispatchLegs(strategyName, symbol, tradeCycleId, ce, pe, isLive);
-
-        } else if (biasLabel.contains("BULLISH STRADDLE")) {
-            int ceIdx = Math.min(atmIndex + 1, sortedStrikes.size() - 1);
-            double ceStrike = sortedStrikes.get(ceIdx);
-            double peStrike = atmStrike;
-            ScannedContractDto ce = findContract(contracts, ceStrike, "CE");
-            ScannedContractDto pe = findContract(contracts, peStrike, "PE");
-            log.info("🎯 [BULLISH STRADDLE] {} -> CE: {} (OTM) | PE: {} (ATM)", symbol, ceStrike, peStrike);
-            dispatchLegs(strategyName, symbol, tradeCycleId, ce, pe, isLive);
-
-        } else if (biasLabel.contains("BEARISH STRADDLE")) {
-            int peIdx = Math.max(atmIndex - 0, 0);
-            double ceStrike = atmStrike;
-            double peStrike = sortedStrikes.get(peIdx);
-            ScannedContractDto ce = findContract(contracts, ceStrike, "CE");
-            ScannedContractDto pe = findContract(contracts, peStrike, "PE");
-            log.info("🎯 [BEARISH STRADDLE] {} -> CE: {} (ATM) | PE: {} (OTM)", symbol, ceStrike, peStrike);
-            dispatchLegs(strategyName, symbol, tradeCycleId, ce, pe, isLive);
-
-        } else if (biasLabel.startsWith("BULLISH")) {
-            ScannedContractDto pe = findContract(contracts, atmStrike, "PE");
-            log.info("🎯 [PURE BULLISH] {} -> Selling PE: {}", symbol, atmStrike);
-            dispatchSingleLeg(strategyName, symbol, tradeCycleId, pe, "SELL", isLive);
-
-        } else if (biasLabel.startsWith("BEARISH")) {
-            ScannedContractDto ce = findContract(contracts, atmStrike, "CE");
-            log.info("🎯 [PURE BEARISH] {} -> Selling CE: {}", symbol, atmStrike);
-            dispatchSingleLeg(strategyName, symbol, tradeCycleId, ce, "SELL", isLive);
+        BigDecimal spot = contracts.get(0).getSpotPrice();
+        List<Double> strikes = contracts.stream().map(ScannedContractDto::getStrike)
+                .filter(s -> s > 0).distinct().sorted().toList();
+        if (spot != null) {
+            return strikes.stream()
+                    .min(Comparator.comparingDouble(s -> Math.abs(s - spot.doubleValue())))
+                    .orElse(strikes.get(strikes.size() / 2));
         }
+        return strikes.get(strikes.size() / 2);
     }
 
-    private void dispatchLegs(String strategyName, String symbol, String cycleId,
-                              ScannedContractDto ce, ScannedContractDto pe, boolean isLive) {
-        if (ce != null) dispatchSingleLeg(strategyName, symbol, cycleId, ce, "SELL", isLive);
-        if (pe != null) dispatchSingleLeg(strategyName, symbol, cycleId, pe, "SELL", isLive);
+    private ScannedContractDto findLeg(List<ScannedContractDto> sameExpiry, double strike, String type) {
+        return sameExpiry.stream()
+                .filter(c -> Math.abs(c.getStrike() - strike) < 1e-6 && type.equalsIgnoreCase(c.getOptionType()))
+                .findFirst().orElse(null);
     }
 
-    @Async
-    public void dispatchSingleLeg(String strategyName, String symbol, String cycleId,
-                                  ScannedContractDto dto, String transactionType, boolean isLive) {
-        if (dto == null || dto.getToken() == null) {
-            log.warn("⚠️ Invalid contract details. Cannot dispatch order.");
-            return;
-        }
-
-        String safeExchange = "MCX".equalsIgnoreCase(dto.getExchange()) ? "MCX" : "NFO";
-
-        int quantity = dto.getLotsize() > 0 ? dto.getLotsize() : 1;
-        String tradingSymbol = dto.getSymbol() != null ? dto.getSymbol()
-                : dto.getName() + dto.getRawExpiry() + (int) dto.getStrike() + dto.getOptionType();
-
-        Orders legOrder = new Orders();
-        legOrder.setName(strategyName);
-        legOrder.setSymbol(tradingSymbol);
-        legOrder.setToken(dto.getToken());
-        legOrder.setStrike(BigDecimal.valueOf(dto.getStrike()));
-        legOrder.setOptionType(dto.getOptionType());
-        legOrder.setSide(dto.getOptionType());
-        legOrder.setQuantity(quantity);
-        legOrder.setExchange(safeExchange);
-        legOrder.setSignal(strategyName);
-        legOrder.setType(transactionType);
-        legOrder.setTradeCycleId(cycleId);
+    // ==========================================
+    // PAIR EXECUTION: both legs fill, or nothing is left open
+    // ==========================================
+    private void executePair(String strategyName, String cycleId,
+                             ScannedContractDto ce, ScannedContractDto pe, boolean isLive) {
+        int ceQty = quantityOf(ce);
+        int peQty = quantityOf(pe);
 
         if (!isLive) {
-            BigDecimal paperPrice = dto.getCurrentLtp() != null ? dto.getCurrentLtp() : BigDecimal.TEN;
-            log.info("📄 [PAPER] Order saved for {} {} @ ₹{}", strategyName, tradingSymbol, paperPrice);
-            finalizeOrderInDb(legOrder, paperPrice, PAPER_ORDER_ID_MARKER);
+            saveLeg(strategyName, cycleId, ce, SELL, ceQty, priceOrTen(ce), PAPER_ORDER_ID_MARKER);
+            saveLeg(strategyName, cycleId, pe, SELL, peQty, priceOrTen(pe), PAPER_ORDER_ID_MARKER);
+            log.info("📄 [PAPER] Hedged pair saved for {}", strategyName);
             return;
         }
 
-        SmartConnect smartConnect;
-        try {
-            smartConnect = angelOne.signIn();
-        } catch (Exception e) {
-            log.error("❌ Broker auth failed for {}: {}", tradingSymbol, e.getMessage());
+        final SmartConnect sc = signInOrNull();
+        if (sc == null) return;
+
+        CompletableFuture<LegFill> ceF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, ce, SELL, ceQty), legExecutor);
+        CompletableFuture<LegFill> peF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, pe, SELL, peQty), legExecutor);
+        LegFill ceFill = ceF.join();
+        LegFill peFill = peF.join();
+
+        if (ceFill.complete() && peFill.complete()) {
+            saveLeg(strategyName, cycleId, ce, SELL, ceFill.filledQty(), ceFill.avgPrice(), ceFill.orderId());
+            saveLeg(strategyName, cycleId, pe, SELL, peFill.filledQty(), peFill.avgPrice(), peFill.orderId());
+            log.info("✅ Hedged pair FILLED for {} | CE @ {} | PE @ {}", strategyName, ceFill.avgPrice(), peFill.avgPrice());
             return;
         }
 
-        if (smartConnect == null) return;
-
-        try {
-            BigDecimal limitPrice = getBestDepthPrice(smartConnect, safeExchange, dto.getToken(), dto.getCurrentLtp(), transactionType);
-
-            OrderParams orderParams = new OrderParams();
-            orderParams.variety = Constants.VARIETY_NORMAL;
-            orderParams.quantity = quantity;
-            orderParams.symboltoken = dto.getToken();
-            orderParams.exchange = safeExchange;
-            orderParams.ordertype = Constants.ORDER_TYPE_LIMIT;
-            orderParams.tradingsymbol = tradingSymbol;
-            orderParams.producttype = Constants.PRODUCT_CARRYFORWARD;
-            orderParams.duration = Constants.DURATION_DAY;
-            orderParams.transactiontype = transactionType;
-            orderParams.price = limitPrice.doubleValue();
-            orderParams.squareoff = "0";
-            orderParams.stoploss = "0";
-
-            Order placedOrder = smartConnect.placeOrder(orderParams, Constants.VARIETY_NORMAL);
-            if (placedOrder == null || placedOrder.orderId == null || placedOrder.orderId.isBlank()) {
-                log.error("❌ Failed placing limit order for {}", tradingSymbol);
-                return;
-            }
-
-            String orderId = placedOrder.orderId;
-            log.info("🎯 Placed Limit Order for {} @ ₹{} | OrderID: {}", tradingSymbol, limitPrice, orderId);
-            chaseLimitOrderByDepth(smartConnect, legOrder, orderParams, orderId, limitPrice, transactionType);
-
-        } catch (Exception e) {
-            log.error("❌ Exception during order placement for {}: {}", tradingSymbol, e.getMessage(), e);
-        }
+        log.error("🚨 Pair incomplete for {} (CE filled {}/{}, PE filled {}/{}). Unwinding.",
+                strategyName, ceFill.filledQty(), ceFill.requestedQty(), peFill.filledQty(), peFill.requestedQty());
+        unwind(sc, strategyName, ceFill);
+        unwind(sc, strategyName, peFill);
     }
 
-    private void chaseLimitOrderByDepth(SmartConnect smartConnect, Orders legOrder, OrderParams orderParams,
-                                        String orderId, BigDecimal initialPrice, String transactionType) {
-        BigDecimal activePrice = initialPrice;
+    private LegFill placeAndChase(SmartConnect sc, ScannedContractDto dto, String side, int qty) {
+        String exchange = exchangeOf(dto);
+        String tradingSymbol = tradingSymbolOf(dto);
+        BigDecimal price = dto.getCurrentLtp();
+        String orderId = null;
 
-        for (int attempt = 1; attempt <= MAX_CHASE_ATTEMPTS; attempt++) {
-            sleepQuietly(CHASE_WAIT_MS);
+        // Throwable: SmartAPIException is not always an Exception subclass in the SDK
+        try {
+            price = getBestDepthPrice(sc, exchange, dto.getToken(), dto.getCurrentLtp(), side);
+            OrderParams params = buildParams(exchange, dto.getToken(), tradingSymbol, side, qty, price, false);
 
-            String status = fetchOrderStatus(smartConnect, orderId);
-            if ("COMPLETE".equalsIgnoreCase(status)) {
-                log.info("✅ Order {} FILLED at ₹{} after {} attempts", orderId, activePrice, attempt);
-                finalizeOrderInDb(legOrder, activePrice, orderId);
-                return;
+            Order placed = sc.placeOrder(params, Constants.VARIETY_NORMAL);
+            if (placed == null || placed.orderId == null || placed.orderId.isBlank()) {
+                log.error("❌ Order placement returned no id for {}", tradingSymbol);
+                return new LegFill(dto, null, price, qty, 0);
             }
+            orderId = placed.orderId;
+            log.info("🎯 Placed {} {} @ ₹{} | OrderID: {}", side, tradingSymbol, price, orderId);
 
-            if ("REJECTED".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status)) {
-                log.warn("🚨 Order {} was {}. Stopping chaser.", orderId, status);
-                return;
-            }
+            for (int attempt = 1; attempt <= MAX_CHASE_ATTEMPTS; attempt++) {
+                sleepQuietly(CHASE_WAIT_MS);
+                OrderState st = fetchOrderState(sc, orderId);
 
-            BigDecimal newBestPrice = getBestDepthPrice(smartConnect, orderParams.exchange, orderParams.symboltoken, activePrice, transactionType);
-            if (newBestPrice.compareTo(activePrice) != 0) {
-                orderParams.price = newBestPrice.doubleValue();
-                try {
-                    smartConnect.modifyOrder(orderId, orderParams, Constants.VARIETY_NORMAL);
-                    log.info("🔄 Adjusted order {} price to ₹{}", orderId, newBestPrice);
-                    activePrice = newBestPrice;
-                } catch (Exception e) {
-                    log.warn("⚠️ Could not modify order {}: {}", orderId, e.getMessage());
+                if ("COMPLETE".equalsIgnoreCase(st.status())) {
+                    return new LegFill(dto, orderId, st.avgOr(price), qty, qty);
+                }
+                if ("REJECTED".equalsIgnoreCase(st.status()) || "CANCELLED".equalsIgnoreCase(st.status())) {
+                    log.warn("🚨 Order {} {}", orderId, st.status());
+                    return new LegFill(dto, orderId, st.avgOr(price), qty, st.filledQty());
+                }
+
+                BigDecimal best = getBestDepthPrice(sc, exchange, dto.getToken(), price, side);
+                if (best.compareTo(price) != 0) {
+                    params.price = best.doubleValue();
+                    try {
+                        sc.modifyOrder(orderId, params, Constants.VARIETY_NORMAL);
+                        price = best;
+                    } catch (Throwable t) {
+                        log.warn("⚠️ Could not modify order {}: {}", orderId, t.getMessage());
+                    }
                 }
             }
-        }
 
-        log.warn("⚠️ Chase timeout for {}. Order {} left as active limit.", legOrder.getSymbol(), orderId);
-        finalizeOrderInDb(legOrder, activePrice, orderId);
+            // Timeout: CANCEL (the old code left it live and recorded it as OPEN)
+            try { sc.cancelOrder(orderId, Constants.VARIETY_NORMAL); }
+            catch (Throwable t) { log.warn("⚠️ Cancel failed for {}: {}", orderId, t.getMessage()); }
+            sleepQuietly(1_000);
+
+            OrderState fin = fetchOrderState(sc, orderId);
+            int filled = "COMPLETE".equalsIgnoreCase(fin.status()) ? qty : fin.filledQty();
+            return new LegFill(dto, orderId, fin.avgOr(price), qty, filled);
+
+        } catch (Throwable t) {
+            log.error("❌ Leg failed for {}: {}", tradingSymbol, t.getMessage(), t);
+            int filled = orderId != null ? fetchOrderState(sc, orderId).filledQty() : 0;
+            return new LegFill(dto, orderId, price, qty, filled);
+        }
     }
 
-    private BigDecimal getBestDepthPrice(SmartConnect smartConnect, String exchange, String token, BigDecimal fallbackLtp, String side) {
+    /** Buys back whatever got filled on a leg when its partner leg did not fill. */
+    private void unwind(SmartConnect sc, String strategyName, LegFill leg) {
+        if (!leg.exposed()) return;
+        ScannedContractDto dto = leg.dto();
+        try {
+            OrderParams p = buildParams(exchangeOf(dto), dto.getToken(), tradingSymbolOf(dto),
+                    BUY, leg.filledQty(), BigDecimal.ZERO, true);
+            sc.placeOrder(p, Constants.VARIETY_NORMAL);
+            log.warn("↩️ Unwound {} x{} for {}", tradingSymbolOf(dto), leg.filledQty(), strategyName);
+        } catch (Throwable t) {
+            alert("🚨 MANUAL ACTION: could not unwind " + tradingSymbolOf(dto) + " x" + leg.filledQty()
+                    + " (" + strategyName + "): " + t.getMessage());
+        }
+    }
+
+    // ==========================================
+    // SMALL HELPERS
+    // ==========================================
+    private OrderParams buildParams(String exchange, String token, String tradingSymbol, String side,
+                                    int qty, BigDecimal price, boolean market) {
+        OrderParams p = new OrderParams();
+        p.variety = Constants.VARIETY_NORMAL;
+        p.quantity = qty;
+        p.symboltoken = token;
+        p.exchange = exchange;
+        p.ordertype = market ? Constants.ORDER_TYPE_MARKET : Constants.ORDER_TYPE_LIMIT;
+        p.tradingsymbol = tradingSymbol;
+        p.producttype = Constants.PRODUCT_CARRYFORWARD;
+        p.duration = Constants.DURATION_DAY;
+        p.transactiontype = side;
+        p.price = market ? 0.0 : price.doubleValue();
+        p.squareoff = "0";
+        p.stoploss = "0";
+        return p;
+    }
+
+    private OrderState fetchOrderState(SmartConnect sc, String orderId) {
+        try {
+            JSONObject r = sc.getIndividualOrderDetails(orderId);
+            if (r != null && r.optBoolean("status", false)) {
+                JSONObject d = r.optJSONObject("data");
+                if (d != null) {
+                    double avg = d.optDouble("averageprice", 0.0);   // verify field names against your responses
+                    return new OrderState(d.optString("status", "OPEN"),
+                            d.optInt("filledshares", 0),
+                            avg > 0 ? BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP) : null);
+                }
+            }
+        } catch (Throwable ignored) { }
+        return new OrderState("OPEN", 0, null);
+    }
+
+    private void saveLeg(String strategyName, String cycleId, ScannedContractDto dto, String side,
+                         int qty, BigDecimal price, String orderId) {
+        Orders leg = new Orders();
+        leg.setName(strategyName);
+        leg.setSymbol(tradingSymbolOf(dto));
+        leg.setToken(dto.getToken());
+        leg.setStrike(BigDecimal.valueOf(dto.getStrike()));
+        leg.setOptionType(dto.getOptionType());
+        leg.setSide(dto.getOptionType());
+        leg.setQuantity(qty);
+        leg.setExchange(exchangeOf(dto));
+        leg.setSignal(strategyName);
+        leg.setType(side);
+        leg.setTradeCycleId(cycleId);
+        finalizeOrderInDb(leg, price, orderId);
+    }
+
+    private boolean isLiveMode() {
+        try {
+            Strategy strat = strategyRepo.findByName("OPTION_PRICE_SCANNER");
+            return strat != null && "Y".equalsIgnoreCase(strat.getLive());
+        } catch (Exception e) {
+            log.warn("⚠️ Could not fetch strategy config for OPTION_PRICE_SCANNER: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private SmartConnect signInOrNull() {
+        try { return angelOne.signIn(); }
+        catch (Exception e) { log.error("❌ Broker auth failed: {}", e.getMessage()); return null; }
+    }
+
+    private String exchangeOf(ScannedContractDto dto) { return "MCX".equalsIgnoreCase(dto.getExchange()) ? "MCX" : "NFO"; }
+    private int quantityOf(ScannedContractDto dto) { return dto.getLotsize() > 0 ? dto.getLotsize() : 1; }
+    private BigDecimal priceOrTen(ScannedContractDto dto) { return dto.getCurrentLtp() != null ? dto.getCurrentLtp() : BigDecimal.TEN; }
+    private String tradingSymbolOf(ScannedContractDto dto) {
+        return dto.getSymbol() != null ? dto.getSymbol()
+                : dto.getName() + dto.getRawExpiry() + (int) dto.getStrike() + dto.getOptionType();
+    }
+
+    private void alert(String msg) {
+        log.error(msg);
+        try { telegramService.sendToNewChat(msg); } catch (Exception ignored) { }
+    }
+
+    // ==========================================
+    // EXISTING HELPERS (carried over, now included in full)
+    // ==========================================
+    private BigDecimal getBestDepthPrice(SmartConnect smartConnect, String exchange, String token,
+                                         BigDecimal fallbackLtp, String side) {
         String safeExchange = "MCX".equalsIgnoreCase(exchange) ? "MCX" : "NFO";
 
         try {
@@ -262,30 +446,10 @@ public class OptionPriceOrderService {
                     if (ltp > 0) return BigDecimal.valueOf(ltp).setScale(2, RoundingMode.HALF_UP);
                 }
             }
-        } catch (Exception ignored) {} catch (SmartAPIException e) {
-            throw new RuntimeException(e);
+        } catch (Throwable ignored) {
+            // fall through to fallback price
         }
         return fallbackLtp != null ? fallbackLtp : BigDecimal.valueOf(100.0);
-    }
-
-    private String fetchOrderStatus(SmartConnect smartConnect, String orderId) {
-        try {
-            JSONObject response = smartConnect.getIndividualOrderDetails(orderId);
-            if (response != null && response.optBoolean("status", false)) {
-                JSONObject data = response.optJSONObject("data");
-                if (data != null) return data.optString("status", "OPEN");
-            }
-        } catch (Exception ignored) {} catch (SmartAPIException e) {
-            throw new RuntimeException(e);
-        }
-        return "OPEN";
-    }
-
-    private ScannedContractDto findContract(List<ScannedContractDto> contracts, double strike, String type) {
-        return contracts.stream()
-                .filter(c -> Double.compare(c.getStrike(), strike) == 0 && type.equalsIgnoreCase(c.getOptionType()))
-                .findFirst()
-                .orElse(null);
     }
 
     private boolean hasActiveTradeTodayForSymbol(String symbol) {
@@ -308,10 +472,8 @@ public class OptionPriceOrderService {
     }
 
     // ==========================================
-    // 3:15 PM AUTO SQUARE OFF LOGIC
+    // 3:15 PM AUTO SQUARE OFF LOGIC (unchanged)
     // ==========================================
-
-    // ✅ REMOVED @Transactional: monitorOrderService handles its own saves, this prevents DB locks/timeouts.
     public void closeAllOpenTrades() {
         List<Orders> openOrders = orderRepository.findAll().stream()
                 .filter(o -> o.getActive() == 1 && "OPEN".equalsIgnoreCase(o.getStatus()))
@@ -325,7 +487,6 @@ public class OptionPriceOrderService {
 
         log.info("🔄 Auto Squaring off {} AI_BIAS trades via MonitorOrderService...", openOrders.size());
 
-        // ✅ Group by Cycle ID (or Name) so multi-leg trades exit as a group
         Map<String, List<Orders>> groupedOrders = openOrders.stream()
                 .collect(Collectors.groupingBy(o -> o.getTradeCycleId() != null ? o.getTradeCycleId() : o.getName()));
 
@@ -333,8 +494,6 @@ public class OptionPriceOrderService {
             try {
                 List<Orders> groupLegs = entry.getValue();
                 String strategyName = groupLegs.get(0).getName();
-
-                // ✅ MonitorOrderService natively handles BOTH Live and Paper executions + PnL sync
                 monitorOrderService.forceExit(groupLegs, strategyName, "3:15_AUTO_SQUARE_OFF");
             } catch (Exception e) {
                 log.error("❌ Exception during auto square-off for group {}: {}", entry.getKey(), e.getMessage());

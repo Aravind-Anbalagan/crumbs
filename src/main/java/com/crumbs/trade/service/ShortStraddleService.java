@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ShortStraddleService {
+    private static final Logger logger = LoggerFactory.getLogger(ShortStraddleService.class);
     private static final Logger baseLogger = LoggerFactory.getLogger(ShortStraddleService.class);
     private final ConditionalLogger log = new ConditionalLogger(baseLogger);
     private static final String STRATEGY_SIGNAL = "SHORT_STRADDLE";
@@ -200,7 +201,7 @@ public class ShortStraddleService {
         boolean isCpBelowCv = cp.compareTo(cv) < 0;
         boolean isGapAcceptable = currentGap.compareTo(safeDistance) <= 0;
 
-        log.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}",
+        logger.info("🔍 [{}] SCANNING | Strike: {} | CP: {} | CV: {} | Gap: {}",
                 tradeName, currentStrike, cp, cv, currentGap.setScale(2, RoundingMode.HALF_UP));
 
         if (isCpBelowCv && isGapAcceptable) {
@@ -209,7 +210,7 @@ public class ShortStraddleService {
             BigDecimal lastStrike = lastSeenStrikes.get(strikeKey);
 
             if (lastStrike != null && lastStrike.compareTo(currentStrike) != 0) {
-                log.warn("🔄 [{}] STRIKE MOVED: {} -> {}. Resetting hits to 1.", tradeName, lastStrike, currentStrike);
+                logger.warn("🔄 [{}] STRIKE MOVED: {} -> {}. Resetting hits to 1.", tradeName, lastStrike, currentStrike);
                 hitCounters.put(entryKey, 1);
                 lastHitTimestamps.put(entryKey, System.currentTimeMillis());
             } else if (canRegisterHit(entryKey)) {
@@ -219,7 +220,7 @@ public class ShortStraddleService {
             lastSeenStrikes.put(strikeKey, currentStrike);
             int count = hitCounters.getOrDefault(entryKey, 0);
 
-            log.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) on Strike: {}", tradeName, count, reqHits, currentStrike);
+            logger.info("🎯 [{}] ENTRY HIT TRACKER: ({}/{}) on Strike: {}", tradeName, count, reqHits, currentStrike);
 
             if (count >= reqHits) {
                 log.info("⚡ [{}] ALL HITS MET! Triggering execution at {}", tradeName, currentStrike);
