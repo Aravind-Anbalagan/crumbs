@@ -182,7 +182,8 @@ public class ShortStraddleService {
     private boolean canRegisterHit(String key) {
         long now = System.currentTimeMillis();
         Long last = lastHitTimestamps.get(key);
-        if (last == null || now - last >= HIT_DEBOUNCE_MS) {
+
+        if (last == null || (now - last) >= HIT_DEBOUNCE_MS) {
             lastHitTimestamps.put(key, now);
             return true;
         }
@@ -263,8 +264,13 @@ public class ShortStraddleService {
         BigDecimal slPoints = sourceConfig.getSlPoints();
         boolean isPointSlConfigured = slPoints != null && slPoints.compareTo(BigDecimal.ZERO) > 0;
 
-        // P&L-based SL: loss measured from entryGap, not live CP-CV
-        BigDecimal pnlLoss = entryGap.subtract(currentGap); // positive = losing
+        // 1. Calculate actual entry premium from DB records (CE askprice + PE askprice)
+        BigDecimal entryPremium = activeOrders.stream()
+                .map(o -> o.getAskPrice() != null ? o.getAskPrice() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // 2. Real P&L is purely based on premium. Since you are short, an increase is a loss.
+        BigDecimal pnlLoss = cp.subtract(entryPremium);
         boolean isPointSlBreached = isPointSlConfigured && (pnlLoss.compareTo(slPoints) >= 0);
 
         boolean isVwapCrossover = cp.compareTo(cv) > 0;
@@ -283,9 +289,10 @@ public class ShortStraddleService {
         boolean isHitsMet = currentSlHits >= reqSlHits;
 
         BigDecimal tradedStrike = activeOrders.get(0).getStrike();
-        String tradeStatus = currentGap.compareTo(entryGap) >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
-        String cushionSign = currentGap.compareTo(entryGap) >= 0 ? "+" : "";
-        BigDecimal currentPnL = currentGap.subtract(entryGap);
+        // Floating P&L purely in options premium points
+        BigDecimal currentPnL = entryPremium.subtract(cp);
+        String cushionSign = currentPnL.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
+        String tradeStatus = currentPnL.compareTo(BigDecimal.ZERO) >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
 
         String vStatus = isVwapCrossover ? "⚠️ CROSSOVER (" + currentSlHits + "/" + reqSlHits + ")" : "✅ STABLE";
 
@@ -298,8 +305,8 @@ public class ShortStraddleService {
             pStatus = "⚪ DISABLED";
         } else {
             pStatus = isPointSlBreached
-                    ? String.format("🚨 BREACHED (Loss %.2f >= SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap)
-                    : String.format("✅ SECURE (Loss %.2f < SL %.2f | EntryGap %.2f, CurGap %.2f)", pnlLoss, slPoints, entryGap, currentGap);
+                    ? String.format("🚨 BREACHED (Loss %.2f >= SL %.2f | EntryPrem %.2f, CurPrem %.2f)", pnlLoss, slPoints, entryPremium, cp)
+                    : String.format("✅ SECURE (Loss %.2f < SL %.2f | EntryPrem %.2f, CurPrem %.2f)", pnlLoss, slPoints, entryPremium, cp);
         }
 
         log.info("================================================================================");
