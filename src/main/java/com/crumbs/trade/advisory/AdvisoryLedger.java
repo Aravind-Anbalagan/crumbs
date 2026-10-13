@@ -136,4 +136,14 @@ public class AdvisoryLedger {
     // Add this with your other technical state columns
     @Column(name = "lot_size")
     private Integer lotSize;
+
+    // --- 20-Day Swing Anchors (Locked at Entry) ---
+    @Column(name = "anchor_swing_low", precision = 10, scale = 2)
+    private BigDecimal anchorSwingLow;
+
+    @Column(name = "anchor_swing_high", precision = 10, scale = 2)
+    private BigDecimal anchorSwingHigh;
+
+    @Column(name = "market_zone", length = 50)
+    private String marketZone;
 }

@@ -25,24 +25,24 @@ public class AdvisoryEngineScheduler {
     private final NiftyRepo niftyRepo;
 
     // =========================================================================
-    // PHASE 1: MORNING SCAN (9:00 AM)
-    // Evaluates overnight gaps, early morning trend flips, and wall migrations.
+    // PHASE 1: MORNING SCAN (9:20 AM)
+    // Evaluates targets and logs warnings, but is BLOCKED from triggering SLs.
     // =========================================================================
     @Scheduled(cron = "0 20 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMorningScan() {
-        log.info("🌅 PHASE 1: Starting 9:00 AM Morning Advisory Scan...");
-        executeScanTask("ADVISORY_SCAN");
+        log.info("🌅 PHASE 1: Starting 9:20 AM Morning Advisory Scan...");
+        executeScanTask("MORNING_SCAN");
     }
 
     // =========================================================================
     // PHASE 2: PRE-CLOSE SCAN (3:15 PM)
-    // Catches intraday SL breaches before market close & evaluates fresh entries
-    // on a fully-formed daily candle.
+    // Authorized to execute physical Stop-Losses if the daily candle closes
+    // beyond the anchored Swing zones.
     // =========================================================================
     @Scheduled(cron = "0 15 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runPreCloseScan() {
         log.info("🌇 PHASE 2: Starting 3:15 PM Pre-Close Advisory Scan...");
-        executeScanTask("ADVISORY_SCAN");
+        executeScanTask("PRE_CLOSE_SCAN");
     }
 
     // =========================================================================

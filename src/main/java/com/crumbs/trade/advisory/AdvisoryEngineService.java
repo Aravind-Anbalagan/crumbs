@@ -50,11 +50,26 @@ public class AdvisoryEngineService {
 
     @Autowired
     @Lazy
-    private AdvisoryEngineService self; // 🚀 Inject the proxy for transactional boundaries
+    private AdvisoryEngineService self; // Inject proxy for transactional boundaries
 
     public record MultiTimeframeTrend(String dailyTrend, String weeklyTrend, boolean isAligned) {}
 
+    // =========================================================================
+    // OVERLOADED METHODS FOR BACKWARD COMPATIBILITY (Prevents Caller Breakage)
+    // =========================================================================
     public OptionRecommendation processAdvisory(String name, String token) {
+        return processAdvisory(name, token, "INTRADAY");
+    }
+
+    @Transactional
+    public OptionRecommendation processAdvisoryInternal(String name, String token) {
+        return self.processAdvisoryInternal(name, token, "INTRADAY");
+    }
+
+    // =========================================================================
+    // MAIN ENTRY POINT WITH SCAN TYPE
+    // =========================================================================
+    public OptionRecommendation processAdvisory(String name, String token, String scanType) {
         Lock lock = SYMBOL_LOCKS.computeIfAbsent(name, k -> new ReentrantLock());
 
         boolean acquired;
@@ -72,7 +87,7 @@ public class AdvisoryEngineService {
         }
 
         try {
-            return self.processAdvisoryInternal(name, token);
+            return self.processAdvisoryInternal(name, token, scanType);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
             log.warn("🛡️ [DB GUARD] Database constraint blocked duplicate ACTIVE row for {}", name);
             return null;
@@ -82,9 +97,9 @@ public class AdvisoryEngineService {
     }
 
     @Transactional
-    public OptionRecommendation processAdvisoryInternal(String name, String token) {
+    public OptionRecommendation processAdvisoryInternal(String name, String token, String scanType) {
         log.info("🧠 ========================================================");
-        log.info("🧠 [ENGINE START] Analyzing Stateful Advisory for: {} (Token: {})", name, token);
+        log.info("🧠 [ENGINE START] Analyzing Stateful Advisory for: {} (Token: {} | Scan: {})", name, token, scanType);
 
         Indexes indexes = indexesRepo.findByToken(token);
         if (indexes == null) {
@@ -103,6 +118,32 @@ public class AdvisoryEngineService {
         }
 
         BigDecimal spotPrice = dailyCandles.get(dailyCandles.size() - 1).getClose();
+
+        // =====================================================================
+        // CALCULATE 20-DAY SWING ZONES
+        // =====================================================================
+        int lookback = Math.min(20, dailyCandles.size());
+        BigDecimal hh = BigDecimal.ZERO;
+        BigDecimal ll = new BigDecimal("9999999");
+
+        for (int i = dailyCandles.size() - lookback; i < dailyCandles.size(); i++) {
+            PricesIndex c = dailyCandles.get(i);
+            if (c.getHigh() != null && c.getHigh().compareTo(hh) > 0) hh = c.getHigh();
+            if (c.getLow() != null && c.getLow().compareTo(ll) < 0) ll = c.getLow();
+        }
+
+        BigDecimal range = hh.subtract(ll);
+        BigDecimal discountTop = ll.add(range.multiply(new BigDecimal("0.30")));
+        BigDecimal premiumBottom = hh.subtract(range.multiply(new BigDecimal("0.30")));
+
+        String currentZone = "CHOP";
+        if (spotPrice.compareTo(discountTop) <= 0) currentZone = "DISCOUNT";
+        else if (spotPrice.compareTo(premiumBottom) >= 0) currentZone = "PREMIUM";
+
+        log.info("🎯 [ZONE CALC] Spot: ₹{} | LL: ₹{} | HH: ₹{} | Zone: {}", spotPrice, ll, hh, currentZone);
+
+        // =====================================================================
+
         MultiTimeframeTrend mtfTrend = analyzeMultiTimeframeTrend(dailyCandles, spotPrice);
         BigDecimal atr14 = calculateATR(dailyCandles, 14);
 
@@ -113,7 +154,7 @@ public class AdvisoryEngineService {
 
         AdvisoryOiService.AdvisoryOiData oiData;
         try {
-            String fnoExchange = exchange.contains("MCX") ? "MCX" : "NFO";
+            String fnoExchange = (exchange != null && exchange.contains("MCX")) ? "MCX" : "NFO";
             oiData = oiService.fetchLiveOiAndGreeks(name, fnoExchange, indexes.getExpiry());
         } catch (Exception e) {
             log.error("⚠️ [API FAIL] Failed to fetch Live OI for {}. Error: {}", name, e.getMessage());
@@ -174,13 +215,13 @@ public class AdvisoryEngineService {
 
         if (isHoldingActiveTrade) {
             log.info("🔄 [PATH 2: HOLD/EXIT] Evaluating existing position for {}. Previous action: {}", name, prevRecord.getActionTaken());
-            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange, scanType);
         } else if (previousRecordOpt.isEmpty() || expiryChanged || prevPositionClosed || "NO_TRADE".equals(prevRecord.getActionTaken())) {
             log.info("✨ [PATH 1: NEW ENTRY] Scanning for fresh setup on {}...", name);
-            evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice);
+            evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice, currentZone, ll, hh);
         } else {
             log.warn("⚠️ [FALLBACK PATH] Unhandled state for {}. Forcing hold/exit evaluation.", name);
-            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange);
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange, scanType);
         }
 
         // =====================================================================
@@ -246,7 +287,8 @@ public class AdvisoryEngineService {
     // =========================================================================
     private void evaluateNewEntry(AdvisoryLedger newRecord, MultiTimeframeTrend mtfTrend,
                                   AdvisoryOiService.AdvisoryOiData oiData,
-                                  LocalDateTime now, BigDecimal spotPrice) {
+                                  LocalDateTime now, BigDecimal spotPrice,
+                                  String currentZone, BigDecimal ll, BigDecimal hh) {
 
         BigDecimal minPremium = new BigDecimal("10.0");
 
@@ -271,19 +313,29 @@ public class AdvisoryEngineService {
             return;
         }
 
+        // Lock current zone into record
+        newRecord.setMarketZone(currentZone);
+
         if ("BULLISH".equals(mtfTrend.dailyTrend())) {
-            if (oiData == null || oiData.putWall() == null) {
+            if (!"DISCOUNT".equals(currentZone)) {
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Bullish but NO Put Wall. Market lacks structure.");
+                newRecord.setReasoning(String.format("NO_TRADE: Spot (₹%s) is in %s Zone. Waiting for structural pullback to DISCOUNT.", spotPrice, currentZone));
+                newRecord.setStatus("ACTIVE");
+                return;
+            }
+
+            if (oiData == null || oiData.putWall() == null || oiData.putWall().strike().compareTo(spotPrice) >= 0) {
+                newRecord.setActionTaken("NO_TRADE");
+                newRecord.setReasoning("NO_TRADE: Spot is in DISCOUNT Zone, but Put Wall is missing or ITM. Institutions are not defending this yet.");
                 newRecord.setStatus("ACTIVE");
                 return;
             }
 
             BigDecimal putStrike = oiData.putWall().strike();
 
-            if (putStrike.compareTo(spotPrice) > 0 || isRecentlyBreached(lastClosedOpt, now) || oiData.putWall().ltp().compareTo(minPremium) < 0) {
+            if (isRecentlyBreached(lastClosedOpt, now) || oiData.putWall().ltp().compareTo(minPremium) < 0) {
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Put Wall violates entry conditions (ITM, Illiquid, or Cooling down).");
+                newRecord.setReasoning("Put Wall violates entry conditions (Illiquid or Cooling down).");
                 newRecord.setStatus("ACTIVE");
                 return;
             }
@@ -299,22 +351,35 @@ public class AdvisoryEngineService {
             newRecord.setEntryDate(now);
             newRecord.setDaysInPosition(1);
             newRecord.setStatus("ACTIVE");
-            newRecord.setReasoning(String.format("BULLISH: Selling PE at ₹%s | Entry Put OI: %s", putStrike, oiData.putWall().openInterest()));
+
+            // LOCK IN THE SWING ANCHORS
+            newRecord.setAnchorSwingLow(ll);
+            newRecord.setAnchorSwingHigh(hh);
+            newRecord.setReasoning(String.format("NEW_ENTRY: Spot (₹%s) pulled back into DISCOUNT Zone [Swing Low: ₹%s]. Put Wall confirms support. Selling %s PE at ₹%s | Put OI: %s",
+                    spotPrice, ll, putStrike, oiData.putWall().ltp(), oiData.putWall().openInterest()));
+
             log.info("✅ [ENTRY OPENED] Bulls activated on {}. Selling {} PE at ₹{}", newRecord.getSymbol(), putStrike, oiData.putWall().ltp());
-        }
-        else if ("BEARISH".equals(mtfTrend.dailyTrend())) {
-            if (oiData == null || oiData.callWall() == null) {
+
+        } else if ("BEARISH".equals(mtfTrend.dailyTrend())) {
+            if (!"PREMIUM".equals(currentZone)) {
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Bearish but NO Call Wall. Market lacks structure.");
+                newRecord.setReasoning(String.format("NO_TRADE: Spot (₹%s) is in %s Zone. Waiting for structural rally into PREMIUM.", spotPrice, currentZone));
+                newRecord.setStatus("ACTIVE");
+                return;
+            }
+
+            if (oiData == null || oiData.callWall() == null || oiData.callWall().strike().compareTo(spotPrice) <= 0) {
+                newRecord.setActionTaken("NO_TRADE");
+                newRecord.setReasoning("NO_TRADE: Spot is in PREMIUM Zone, but Call Wall is missing or ITM. Institutions are not defending this yet.");
                 newRecord.setStatus("ACTIVE");
                 return;
             }
 
             BigDecimal callStrike = oiData.callWall().strike();
 
-            if (callStrike.compareTo(spotPrice) < 0 || isRecentlyBreached(lastClosedOpt, now) || oiData.callWall().ltp().compareTo(minPremium) < 0) {
+            if (isRecentlyBreached(lastClosedOpt, now) || oiData.callWall().ltp().compareTo(minPremium) < 0) {
                 newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Call Wall violates entry conditions (ITM, Illiquid, or Cooling down).");
+                newRecord.setReasoning("Call Wall violates entry conditions (Illiquid or Cooling down).");
                 newRecord.setStatus("ACTIVE");
                 return;
             }
@@ -330,19 +395,25 @@ public class AdvisoryEngineService {
             newRecord.setEntryDate(now);
             newRecord.setDaysInPosition(1);
             newRecord.setStatus("ACTIVE");
-            newRecord.setReasoning(String.format("BEARISH: Selling CE at ₹%s | Entry Call OI: %s", callStrike, oiData.callWall().openInterest()));
+
+            // LOCK IN THE SWING ANCHORS
+            newRecord.setAnchorSwingLow(ll);
+            newRecord.setAnchorSwingHigh(hh);
+            newRecord.setReasoning(String.format("NEW_ENTRY: Spot (₹%s) rallied into PREMIUM Zone [Swing High: ₹%s]. Call Wall confirms resistance. Selling %s CE at ₹%s | Call OI: %s",
+                    spotPrice, hh, callStrike, oiData.callWall().ltp(), oiData.callWall().openInterest()));
+
             log.info("✅ [ENTRY OPENED] Bears activated on {}. Selling {} CE at ₹{}", newRecord.getSymbol(), callStrike, oiData.callWall().ltp());
         }
     }
 
     // =========================================================================
-    // PATH 2: HOLD OR EXIT EXISTING POSITION (MONTHLY CYCLE GOD-MODE)
+    // PATH 2: HOLD OR EXIT EXISTING POSITION
     // =========================================================================
     private void evaluateHoldOrExit(AdvisoryLedger prev, AdvisoryLedger current, BigDecimal spotPrice,
                                     MultiTimeframeTrend mtfTrend, BigDecimal atr14,
                                     AdvisoryOiService.AdvisoryOiData oiData,
                                     Optional<FuturesBreakEvent> smcSignalOpt,
-                                    LocalDateTime now, String exchange) {
+                                    LocalDateTime now, String exchange, String scanType) {
 
         if (prev.getEntryPremium() == null || prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
             current.setActionTaken("NO_TRADE");
@@ -352,7 +423,7 @@ public class AdvisoryEngineService {
             return;
         }
 
-        // Lock in original position specs
+        // Lock in original position specs & structural anchors
         current.setOptionType(prev.getOptionType());
         current.setRecommendedStrike(prev.getRecommendedStrike());
         current.setExpiryDate(prev.getExpiryDate());
@@ -363,12 +434,16 @@ public class AdvisoryEngineService {
         current.setCurrentPremium(prev.getCurrentPremium());
         current.setLotSize(prev.getLotSize());
 
+        current.setAnchorSwingLow(prev.getAnchorSwingLow());
+        current.setAnchorSwingHigh(prev.getAnchorSwingHigh());
+        current.setMarketZone(prev.getMarketZone());
+
         int daysHeld = (int) java.time.temporal.ChronoUnit.DAYS.between(current.getEntryDate().toLocalDate(), now.toLocalDate()) + 1;
         current.setDaysInPosition(daysHeld);
 
         List<String> warnings = new ArrayList<>();
 
-        // 🚀 GUARD 1: Proximity Alert (Warning)
+        // GUARD 1: Proximity Alert (Warning)
         BigDecimal safeBuffer = atr14.multiply(new BigDecimal("1.25"));
         boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
         boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
@@ -377,7 +452,7 @@ public class AdvisoryEngineService {
             log.warn("🚨 [WARNING] Proximity buffer breached on {}!", prev.getSymbol());
         }
 
-        // 🚀 GUARD 2: SMC Structural Reversal (Warning)
+        // GUARD 2: SMC Structural Reversal (Warning)
         if (smcSignalOpt.isPresent()) {
             FuturesBreakEvent bos = smcSignalOpt.get();
             boolean reversal = ("PE".equalsIgnoreCase(prev.getOptionType()) && "BREAKDOWN".equalsIgnoreCase(bos.getBreakType())) ||
@@ -388,14 +463,14 @@ public class AdvisoryEngineService {
             }
         }
 
-        // 🚀 GUARD 3: Daily Trend Flip (Warning)
+        // GUARD 3: Daily Trend Flip (Warning)
         if (prev.getDailyTrend() != null && !prev.getDailyTrend().equals(mtfTrend.dailyTrend())) {
             warnings.add("🚨 Trend flipped");
             log.warn("🚨 [WARNING] MTF Trend flipped on {} from {} to {}!", prev.getSymbol(), prev.getDailyTrend(), mtfTrend.dailyTrend());
         }
 
         // ===================================================================
-        // 🚀 GUARD 4: VALUE TARGET (85% Premium Decay)
+        // GUARD 4: VALUE TARGET (85% Premium Decay) - CAN trigger anytime
         // ===================================================================
         BigDecimal exitPremium = safelyFetchExitPremium(current, exchange);
         if (exitPremium == null) {
@@ -406,16 +481,40 @@ public class AdvisoryEngineService {
             BigDecimal targetPremium = prev.getEntryPremium().multiply(new BigDecimal("0.15"));
             if (exitPremium.compareTo(targetPremium) <= 0) {
                 current.setCurrentPremium(exitPremium);
-                executeExit(current, exchange, "TARGET", String.format("Target hit. Premium decayed by >= 85%% (Entry: ₹%s -> Live: ₹%s). Locking in profit.", prev.getEntryPremium(), exitPremium));
+                executeExit(current, exchange, "TARGET", String.format("TARGET: Premium decayed by >= 85%% (Entry: ₹%s -> Live: ₹%s). Locking in profit.", prev.getEntryPremium(), exitPremium));
                 return;
             }
             current.setCurrentPremium(exitPremium); // Update live premium for MTM
         }
 
         // ===================================================================
-        // 🚀 GUARD 5: STRUCTURAL TARGET & STOP LOSS (DUAL-VALIDATION)
+        // GUARD 5: STRUCTURAL STOP-LOSS (PHYSICAL BREACH)
+        // Only allowed during PRE_CLOSE_SCAN to prevent intraday fakeouts.
         // ===================================================================
-        boolean wallMigrated = false;
+        if ("PRE_CLOSE_SCAN".equals(scanType)) {
+            if ("PE".equalsIgnoreCase(prev.getOptionType()) && prev.getAnchorSwingLow() != null) {
+                BigDecimal slLevel = prev.getAnchorSwingLow().subtract(atr14.multiply(new BigDecimal("0.5")));
+
+                if (spotPrice.compareTo(slLevel) < 0) {
+                    executeExit(current, exchange, "SL", String.format("SL HIT: Structural Failure. Spot (₹%s) closed below the anchored Swing Low (₹%s). Exiting to protect capital.", spotPrice, prev.getAnchorSwingLow()));
+                    return;
+                }
+            } else if ("CE".equalsIgnoreCase(prev.getOptionType()) && prev.getAnchorSwingHigh() != null) {
+                BigDecimal slLevel = prev.getAnchorSwingHigh().add(atr14.multiply(new BigDecimal("0.5")));
+
+                if (spotPrice.compareTo(slLevel) > 0) {
+                    executeExit(current, exchange, "SL", String.format("SL HIT: Structural Failure. Spot (₹%s) closed above the anchored Swing High (₹%s). Exiting to protect capital.", spotPrice, prev.getAnchorSwingHigh()));
+                    return;
+                }
+            }
+        } else {
+            log.info("⏳ [{}] Skipping Physical SL checks for {}. Evaluating warnings only.", scanType, prev.getSymbol());
+        }
+
+        // ===================================================================
+        // GUARD 6: WALL MIGRATION / DUAL VALIDATION TARGETS & WARNINGS
+        // ===================================================================
+        boolean wallMigratedToTarget = false;
         String wallExitReason = "";
         String exitReasoning = "";
 
@@ -435,62 +534,49 @@ public class AdvisoryEngineService {
             BigDecimal liveCallStrike = hasLiveCall ? oiData.callWall().strike() : null;
             BigDecimal liveCallOi = hasLiveCall ? BigDecimal.valueOf(oiData.callWall().openInterest()) : BigDecimal.ZERO;
 
-            // Ensure we have BOTH sides to do Dual-Validation
             if (hasLivePut && prevPutStrike != null && hasLiveCall && prevCallStrike != null) {
 
                 if ("PE".equalsIgnoreCase(prev.getOptionType())) {
-                    // --- BULLISH TRADE (Selling PE) ---
-
-                    // TARGET: Support pushes up AND Resistance concedes (stays flat or moves up)
                     boolean supportRaised = livePutStrike.compareTo(prevPutStrike) > 0;
                     boolean resistanceConceded = liveCallStrike.compareTo(prevCallStrike) >= 0;
 
-                    // SL: Support collapses AND Resistance attacks (moves down or builds OI)
                     boolean supportWeakening = livePutStrike.compareTo(prevPutStrike) < 0 || livePutOi.compareTo(prevPutOi) < 0;
                     boolean resistanceStrengthening = liveCallStrike.compareTo(prevCallStrike) < 0 || liveCallOi.compareTo(prevCallOi) > 0;
 
                     if (supportRaised && resistanceConceded) {
-                        wallMigrated = true;
+                        wallMigratedToTarget = true;
                         wallExitReason = "TARGET";
                         exitReasoning = String.format("Wall migrated. TARGET. PE shifted favorably (%s -> %s) and CE conceded.", prevPutStrike, livePutStrike);
                     } else if (supportWeakening && resistanceStrengthening) {
-                        wallMigrated = true;
-                        wallExitReason = "SL";
-                        exitReasoning = String.format("Wall migrated. SL. PE weakening (OI: %s -> %s) AND CE strengthening (OI: %s -> %s).",
-                                prevPutOi, livePutOi, prevCallOi, liveCallOi);
+                        warnings.add("🚨 OI Wall shifted against us (Support Weakening & Resistance Strengthening)");
+                        log.warn("🚨 [WARNING] OI Wall shifting against {} position!", prev.getSymbol());
                     }
                 } else if ("CE".equalsIgnoreCase(prev.getOptionType())) {
-                    // --- BEARISH TRADE (Selling CE) ---
-
-                    // TARGET: Resistance pushes down AND Support concedes (stays flat or moves down)
                     boolean resistanceLowered = liveCallStrike.compareTo(prevCallStrike) < 0;
                     boolean supportConceded = livePutStrike.compareTo(prevPutStrike) <= 0;
 
-                    // SL: Resistance collapses AND Support attacks (moves up or builds OI)
                     boolean resistanceWeakening = liveCallStrike.compareTo(prevCallStrike) > 0 || liveCallOi.compareTo(prevCallOi) < 0;
                     boolean supportStrengthening = livePutStrike.compareTo(prevPutStrike) > 0 || livePutOi.compareTo(prevPutOi) > 0;
 
                     if (resistanceLowered && supportConceded) {
-                        wallMigrated = true;
+                        wallMigratedToTarget = true;
                         wallExitReason = "TARGET";
                         exitReasoning = String.format("Wall migrated. TARGET. CE shifted favorably (%s -> %s) and PE conceded.", prevCallStrike, liveCallStrike);
                     } else if (resistanceWeakening && supportStrengthening) {
-                        wallMigrated = true;
-                        wallExitReason = "SL";
-                        exitReasoning = String.format("Wall migrated. SL. CE weakening (OI: %s -> %s) AND PE strengthening (OI: %s -> %s).",
-                                prevCallOi, liveCallOi, prevPutOi, livePutOi);
+                        warnings.add("🚨 OI Wall shifted against us (Resistance Weakening & Support Strengthening)");
+                        log.warn("🚨 [WARNING] OI Wall shifting against {} position!", prev.getSymbol());
                     }
                 }
             }
         }
 
-        if (wallMigrated) {
+        if (wallMigratedToTarget) {
             executeExit(current, exchange, wallExitReason, exitReasoning);
             return;
         }
 
         // ===================================================================
-        // ALL WALLS INTACT: MAINTAIN POSITION & LOG WARNINGS
+        // ALL WALLS/ANCHORS INTACT: MAINTAIN POSITION & LOG WARNINGS
         // ===================================================================
         current.setActionTaken("MAINTAIN");
         current.setStatus("ACTIVE");
@@ -539,8 +625,6 @@ public class AdvisoryEngineService {
     private boolean isRecentlyBreached(Optional<AdvisoryLedger> lastClosedOpt, LocalDateTime now) {
         if (lastClosedOpt.isPresent()) {
             AdvisoryLedger lastTrade = lastClosedOpt.get();
-            // 🚀 The strike check is removed. If ANY wall collapses and triggers an SL,
-            // we pause the entire symbol for 2 days to avoid chasing a falling knife.
             boolean isBreachExit = "SL".equals(lastTrade.getActionTaken());
             boolean isRecent = lastTrade.getTimestamp().isAfter(now.minusDays(2));
 
