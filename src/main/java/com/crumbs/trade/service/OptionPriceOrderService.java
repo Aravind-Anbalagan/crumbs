@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 
 /**
  * ENTRY LOGIC ONLY. Every signal now produces a TWO-LEG hedged position (short CE + short PE).
+ * Includes 3-Tier Price Fetching: WebSocket -> API -> Fallback to 1.0
  */
 @Slf4j
 @Service
@@ -49,16 +50,12 @@ public class OptionPriceOrderService {
     private final MonitorOrderService monitorOrderService;
     private final TelegramService telegramService;          // NEW: alert if a leg cannot be unwound
 
-    // Initialised final fields are ignored by @RequiredArgsConstructor
     private final Set<String> entriesInFlight = ConcurrentHashMap.newKeySet();
     private final ExecutorService entryExecutor = Executors.newFixedThreadPool(2); // one task per symbol entry
     private final ExecutorService legExecutor = Executors.newFixedThreadPool(4);   // CE and PE chase in parallel
 
     // ==========================================
     // BIAS -> SHORT STRADDLE SHAPE (always both legs)
-    // Offsets are in strikes from ATM (+1 = one strike higher, -1 = one lower).
-    // Skewed legs use ITM strikes only, because the scanner loads ATM + ITM contracts.
-    //   PE ITM = higher strike, CE ITM = lower strike.
     // ==========================================
     private enum Bias {
         PURE_STRADDLE(0, 0),      // ATM CE + ATM PE
@@ -97,7 +94,7 @@ public class OptionPriceOrderService {
     }
 
     // ==========================================
-    // ENTRY POINT (non-blocking: returns immediately, scanner thread is free)
+    // ENTRY POINT
     // ==========================================
     public void processAiSignalOrder(String symbol, String biasLabel, List<ScannedContractDto> contracts) {
         if (contracts == null || contracts.isEmpty()) return;
@@ -107,8 +104,6 @@ public class OptionPriceOrderService {
 
         String strategyName = "AI_BIAS_" + symbol;
 
-        // Orders are only saved after fills, so the DB lock alone cannot stop a second scan
-        // from entering while the first is still chasing. This in-memory guard closes that gap.
         if (!entriesInFlight.add(strategyName)) {
             log.info("🔐 [IN-FLIGHT] Entry already running for {}. Skipping.", symbol);
             return;
@@ -138,7 +133,6 @@ public class OptionPriceOrderService {
             return;
         }
 
-        // 1. One expiry for BOTH legs (the scan loads weekly + monthly)
         LocalDate expiry = pickExpiry(contracts);
         if (expiry == null) {
             log.warn("⚠️ No eligible expiry for {}. Skipping.", symbol);
@@ -148,19 +142,19 @@ public class OptionPriceOrderService {
                 .filter(c -> expiry.equals(c.getExpiryDate()))
                 .toList();
 
-        // 2. Strike geometry
         double step = strikeStep(sameExpiry);
         if (step <= 0) {
             log.warn("⚠️ Cannot derive strike step for {}. Skipping.", symbol);
             return;
         }
+
         double atm = atmStrike(sameExpiry);
         double ceStrike = atm + bias.ceOffset * step;
         double peStrike = atm + bias.peOffset * step;
 
-        // 3. Resolve BOTH legs first. Never trade one leg of a hedge.
         ScannedContractDto ce = findLeg(sameExpiry, ceStrike, "CE");
         ScannedContractDto pe = findLeg(sameExpiry, peStrike, "PE");
+
         if (ce == null || pe == null) {
             log.error("🛑 [{}] {} aborted: leg not in scanned contracts (CE {} -> {}, PE {} -> {}). No orders placed.",
                     symbol, bias, ceStrike, ce != null, peStrike, pe != null);
@@ -174,12 +168,199 @@ public class OptionPriceOrderService {
     }
 
     // ==========================================
+    // PAIR EXECUTION
+    // ==========================================
+    private void executePair(String strategyName, String cycleId,
+                             ScannedContractDto ce, ScannedContractDto pe, boolean isLive) {
+        int ceQty = quantityOf(ce);
+        int peQty = quantityOf(pe);
+
+        final SmartConnect sc = signInOrNull();
+
+        // Paper Trade Execution with 3-Tier Price Fetch
+        if (!isLive) {
+            BigDecimal cePrice = getRealTimePrice(sc, ce, SELL);
+            BigDecimal pePrice = getRealTimePrice(sc, pe, SELL);
+
+            saveLeg(strategyName, cycleId, ce, SELL, ceQty, cePrice, PAPER_ORDER_ID_MARKER);
+            saveLeg(strategyName, cycleId, pe, SELL, peQty, pePrice, PAPER_ORDER_ID_MARKER);
+            log.info("📄 [PAPER] Hedged pair saved for {} | CE @ ₹{} | PE @ ₹{}", strategyName, cePrice, pePrice);
+            return;
+        }
+
+        if (sc == null) {
+            log.error("❌ SmartConnect is null, cannot execute live trades.");
+            return;
+        }
+
+        // Live Trade Execution
+        CompletableFuture<LegFill> ceF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, ce, SELL, ceQty), legExecutor);
+        CompletableFuture<LegFill> peF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, pe, SELL, peQty), legExecutor);
+        LegFill ceFill = ceF.join();
+        LegFill peFill = peF.join();
+
+        if (ceFill.complete() && peFill.complete()) {
+            saveLeg(strategyName, cycleId, ce, SELL, ceFill.filledQty(), ceFill.avgPrice(), ceFill.orderId());
+            saveLeg(strategyName, cycleId, pe, SELL, peFill.filledQty(), peFill.avgPrice(), peFill.orderId());
+            log.info("✅ Hedged pair FILLED for {} | CE @ {} | PE @ {}", strategyName, ceFill.avgPrice(), peFill.avgPrice());
+            return;
+        }
+
+        log.error("🚨 Pair incomplete for {} (CE filled {}/{}, PE filled {}/{}). Unwinding.",
+                strategyName, ceFill.filledQty(), ceFill.requestedQty(), peFill.filledQty(), peFill.requestedQty());
+        unwind(sc, strategyName, ceFill);
+        unwind(sc, strategyName, peFill);
+    }
+
+    private LegFill placeAndChase(SmartConnect sc, ScannedContractDto dto, String side, int qty) {
+        String exchange = exchangeOf(dto);
+        String tradingSymbol = tradingSymbolOf(dto);
+
+        BigDecimal price = getRealTimePrice(sc, dto, side);
+        String orderId = null;
+
+        try {
+            OrderParams params = buildParams(exchange, dto.getToken(), tradingSymbol, side, qty, price, false);
+
+            Order placed = sc.placeOrder(params, Constants.VARIETY_NORMAL);
+            if (placed == null || placed.orderId == null || placed.orderId.isBlank()) {
+                log.error("❌ Order placement returned no id for {}", tradingSymbol);
+                return new LegFill(dto, null, price, qty, 0);
+            }
+            orderId = placed.orderId;
+            log.info("🎯 Placed {} {} @ ₹{} | OrderID: {}", side, tradingSymbol, price, orderId);
+
+            for (int attempt = 1; attempt <= MAX_CHASE_ATTEMPTS; attempt++) {
+                sleepQuietly(CHASE_WAIT_MS);
+                OrderState st = fetchOrderState(sc, orderId);
+
+                if ("COMPLETE".equalsIgnoreCase(st.status())) {
+                    return new LegFill(dto, orderId, st.avgOr(price), qty, qty);
+                }
+                if ("REJECTED".equalsIgnoreCase(st.status()) || "CANCELLED".equalsIgnoreCase(st.status())) {
+                    log.warn("🚨 Order {} {}", orderId, st.status());
+                    return new LegFill(dto, orderId, st.avgOr(price), qty, st.filledQty());
+                }
+
+                BigDecimal best = getRealTimePrice(sc, dto, side);
+
+                // Do not modify the order if the price falls back to 1.0 during a live chase
+                if (best.compareTo(BigDecimal.ONE) > 0 && best.compareTo(price) != 0) {
+                    params.price = best.doubleValue();
+                    try {
+                        sc.modifyOrder(orderId, params, Constants.VARIETY_NORMAL);
+                        price = best;
+                    } catch (Throwable t) {
+                        log.warn("⚠️ Could not modify order {}: {}", orderId, t.getMessage());
+                    }
+                }
+            }
+
+            try { sc.cancelOrder(orderId, Constants.VARIETY_NORMAL); }
+            catch (Throwable t) { log.warn("⚠️ Cancel failed for {}: {}", orderId, t.getMessage()); }
+            sleepQuietly(1_000);
+
+            OrderState fin = fetchOrderState(sc, orderId);
+            int filled = "COMPLETE".equalsIgnoreCase(fin.status()) ? qty : fin.filledQty();
+            return new LegFill(dto, orderId, fin.avgOr(price), qty, filled);
+
+        } catch (Throwable t) {
+            log.error("❌ Leg failed for {}: {}", tradingSymbol, t.getMessage(), t);
+            int filled = orderId != null ? fetchOrderState(sc, orderId).filledQty() : 0;
+            return new LegFill(dto, orderId, price, qty, filled);
+        }
+    }
+
+    private void unwind(SmartConnect sc, String strategyName, LegFill leg) {
+        if (!leg.exposed()) return;
+        ScannedContractDto dto = leg.dto();
+        try {
+            OrderParams p = buildParams(exchangeOf(dto), dto.getToken(), tradingSymbolOf(dto),
+                    BUY, leg.filledQty(), BigDecimal.ZERO, true);
+            sc.placeOrder(p, Constants.VARIETY_NORMAL);
+            log.warn("↩️ Unwound {} x{} for {}", tradingSymbolOf(dto), leg.filledQty(), strategyName);
+        } catch (Throwable t) {
+            alert("🚨 MANUAL ACTION: could not unwind " + tradingSymbolOf(dto) + " x" + leg.filledQty()
+                    + " (" + strategyName + "): " + t.getMessage());
+        }
+    }
+
+    // ==========================================
+    // 3-TIER REAL-TIME PRICE FETCHING
+    // ==========================================
+    private BigDecimal getRealTimePrice(SmartConnect sc, ScannedContractDto dto, String side) {
+        // 1. Try WebSocket
+        BigDecimal wsPrice = getPriceFromWebSocket(dto.getToken());
+        if (wsPrice != null && wsPrice.compareTo(BigDecimal.ZERO) > 0) {
+            return wsPrice;
+        }
+
+        // 2. Try API via depth/LTP
+        if (sc != null) {
+            BigDecimal apiPrice = fetchPriceFromApi(sc, exchangeOf(dto), dto.getToken(), side);
+            if (apiPrice != null && apiPrice.compareTo(BigDecimal.ZERO) > 0) {
+                return apiPrice;
+            }
+        }
+
+        // 3. Try Scanner's previously fetched LTP as a last resort before 1.0
+        if (dto.getCurrentLtp() != null && dto.getCurrentLtp().compareTo(BigDecimal.ZERO) > 0) {
+            log.warn("⚠️ Used Scanner LTP for {} as WS/API failed.", tradingSymbolOf(dto));
+            return dto.getCurrentLtp();
+        }
+
+        // 4. Absolute Fallback
+        log.warn("⚠️ Could not fetch price from WS, API, or Scanner for {}. Defaulting to 1.0", tradingSymbolOf(dto));
+        return BigDecimal.ONE;
+    }
+
+    private BigDecimal getPriceFromWebSocket(String token) {
+        // TODO: Inject/Call your WebSocket Cache service here.
+        // Example: return webSocketLiveCache.getLtp(token);
+
+        return null; // Return null if not found in WS, forcing fallback to API
+    }
+
+    private BigDecimal fetchPriceFromApi(SmartConnect smartConnect, String exchange, String token, String side) {
+        String safeExchange = "MCX".equalsIgnoreCase(exchange) ? "MCX" : "NFO";
+
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("mode", "FULL");
+            JSONObject exchangeTokens = new JSONObject();
+            exchangeTokens.put(safeExchange, new JSONArray(List.of(token)));
+            payload.put("exchangeTokens", exchangeTokens);
+
+            JSONObject response = smartConnect.marketData(payload);
+            if (response != null && response.has("data")) {
+                JSONArray fetched = response.getJSONObject("data").optJSONArray("fetched");
+                if (fetched != null && !fetched.isEmpty()) {
+                    JSONObject depth = fetched.getJSONObject(0).optJSONObject("depth");
+                    if (depth != null) {
+                        String depthKey = Constants.TRANSACTION_TYPE_BUY.equalsIgnoreCase(side) ? "sell" : "buy";
+                        JSONArray book = depth.optJSONArray(depthKey);
+                        if (book != null && !book.isEmpty()) {
+                            double price = book.getJSONObject(0).optDouble("price", 0.0);
+                            if (price > 0) return BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP);
+                        }
+                    }
+                    double ltp = fetched.getJSONObject(0).optDouble("ltp", 0.0);
+                    if (ltp > 0) return BigDecimal.valueOf(ltp).setScale(2, RoundingMode.HALF_UP);
+                }
+            }
+        } catch (Throwable ignored) {
+            // Fails silently to allow fallback logic
+        }
+        return null;
+    }
+
+    // ==========================================
     // CONTRACT SELECTION HELPERS
     // ==========================================
     private LocalDate pickExpiry(List<ScannedContractDto> contracts) {
         LocalDate earliest = LocalDate.now(ZoneId.of(ZONE)).plusDays(MIN_DAYS_TO_EXPIRY);
         return contracts.stream()
-                .map(ScannedContractDto::getExpiryDate)   // assumes LocalDate; adapt if it is a String
+                .map(ScannedContractDto::getExpiryDate)
                 .filter(Objects::nonNull)
                 .filter(d -> !d.isBefore(earliest))
                 .min(Comparator.naturalOrder())
@@ -224,116 +405,6 @@ public class OptionPriceOrderService {
     }
 
     // ==========================================
-    // PAIR EXECUTION: both legs fill, or nothing is left open
-    // ==========================================
-    private void executePair(String strategyName, String cycleId,
-                             ScannedContractDto ce, ScannedContractDto pe, boolean isLive) {
-        int ceQty = quantityOf(ce);
-        int peQty = quantityOf(pe);
-
-        if (!isLive) {
-            saveLeg(strategyName, cycleId, ce, SELL, ceQty, priceOrTen(ce), PAPER_ORDER_ID_MARKER);
-            saveLeg(strategyName, cycleId, pe, SELL, peQty, priceOrTen(pe), PAPER_ORDER_ID_MARKER);
-            log.info("📄 [PAPER] Hedged pair saved for {}", strategyName);
-            return;
-        }
-
-        final SmartConnect sc = signInOrNull();
-        if (sc == null) return;
-
-        CompletableFuture<LegFill> ceF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, ce, SELL, ceQty), legExecutor);
-        CompletableFuture<LegFill> peF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, pe, SELL, peQty), legExecutor);
-        LegFill ceFill = ceF.join();
-        LegFill peFill = peF.join();
-
-        if (ceFill.complete() && peFill.complete()) {
-            saveLeg(strategyName, cycleId, ce, SELL, ceFill.filledQty(), ceFill.avgPrice(), ceFill.orderId());
-            saveLeg(strategyName, cycleId, pe, SELL, peFill.filledQty(), peFill.avgPrice(), peFill.orderId());
-            log.info("✅ Hedged pair FILLED for {} | CE @ {} | PE @ {}", strategyName, ceFill.avgPrice(), peFill.avgPrice());
-            return;
-        }
-
-        log.error("🚨 Pair incomplete for {} (CE filled {}/{}, PE filled {}/{}). Unwinding.",
-                strategyName, ceFill.filledQty(), ceFill.requestedQty(), peFill.filledQty(), peFill.requestedQty());
-        unwind(sc, strategyName, ceFill);
-        unwind(sc, strategyName, peFill);
-    }
-
-    private LegFill placeAndChase(SmartConnect sc, ScannedContractDto dto, String side, int qty) {
-        String exchange = exchangeOf(dto);
-        String tradingSymbol = tradingSymbolOf(dto);
-        BigDecimal price = dto.getCurrentLtp();
-        String orderId = null;
-
-        // Throwable: SmartAPIException is not always an Exception subclass in the SDK
-        try {
-            price = getBestDepthPrice(sc, exchange, dto.getToken(), dto.getCurrentLtp(), side);
-            OrderParams params = buildParams(exchange, dto.getToken(), tradingSymbol, side, qty, price, false);
-
-            Order placed = sc.placeOrder(params, Constants.VARIETY_NORMAL);
-            if (placed == null || placed.orderId == null || placed.orderId.isBlank()) {
-                log.error("❌ Order placement returned no id for {}", tradingSymbol);
-                return new LegFill(dto, null, price, qty, 0);
-            }
-            orderId = placed.orderId;
-            log.info("🎯 Placed {} {} @ ₹{} | OrderID: {}", side, tradingSymbol, price, orderId);
-
-            for (int attempt = 1; attempt <= MAX_CHASE_ATTEMPTS; attempt++) {
-                sleepQuietly(CHASE_WAIT_MS);
-                OrderState st = fetchOrderState(sc, orderId);
-
-                if ("COMPLETE".equalsIgnoreCase(st.status())) {
-                    return new LegFill(dto, orderId, st.avgOr(price), qty, qty);
-                }
-                if ("REJECTED".equalsIgnoreCase(st.status()) || "CANCELLED".equalsIgnoreCase(st.status())) {
-                    log.warn("🚨 Order {} {}", orderId, st.status());
-                    return new LegFill(dto, orderId, st.avgOr(price), qty, st.filledQty());
-                }
-
-                BigDecimal best = getBestDepthPrice(sc, exchange, dto.getToken(), price, side);
-                if (best.compareTo(price) != 0) {
-                    params.price = best.doubleValue();
-                    try {
-                        sc.modifyOrder(orderId, params, Constants.VARIETY_NORMAL);
-                        price = best;
-                    } catch (Throwable t) {
-                        log.warn("⚠️ Could not modify order {}: {}", orderId, t.getMessage());
-                    }
-                }
-            }
-
-            // Timeout: CANCEL (the old code left it live and recorded it as OPEN)
-            try { sc.cancelOrder(orderId, Constants.VARIETY_NORMAL); }
-            catch (Throwable t) { log.warn("⚠️ Cancel failed for {}: {}", orderId, t.getMessage()); }
-            sleepQuietly(1_000);
-
-            OrderState fin = fetchOrderState(sc, orderId);
-            int filled = "COMPLETE".equalsIgnoreCase(fin.status()) ? qty : fin.filledQty();
-            return new LegFill(dto, orderId, fin.avgOr(price), qty, filled);
-
-        } catch (Throwable t) {
-            log.error("❌ Leg failed for {}: {}", tradingSymbol, t.getMessage(), t);
-            int filled = orderId != null ? fetchOrderState(sc, orderId).filledQty() : 0;
-            return new LegFill(dto, orderId, price, qty, filled);
-        }
-    }
-
-    /** Buys back whatever got filled on a leg when its partner leg did not fill. */
-    private void unwind(SmartConnect sc, String strategyName, LegFill leg) {
-        if (!leg.exposed()) return;
-        ScannedContractDto dto = leg.dto();
-        try {
-            OrderParams p = buildParams(exchangeOf(dto), dto.getToken(), tradingSymbolOf(dto),
-                    BUY, leg.filledQty(), BigDecimal.ZERO, true);
-            sc.placeOrder(p, Constants.VARIETY_NORMAL);
-            log.warn("↩️ Unwound {} x{} for {}", tradingSymbolOf(dto), leg.filledQty(), strategyName);
-        } catch (Throwable t) {
-            alert("🚨 MANUAL ACTION: could not unwind " + tradingSymbolOf(dto) + " x" + leg.filledQty()
-                    + " (" + strategyName + "): " + t.getMessage());
-        }
-    }
-
-    // ==========================================
     // SMALL HELPERS
     // ==========================================
     private OrderParams buildParams(String exchange, String token, String tradingSymbol, String side,
@@ -360,7 +431,7 @@ public class OptionPriceOrderService {
             if (r != null && r.optBoolean("status", false)) {
                 JSONObject d = r.optJSONObject("data");
                 if (d != null) {
-                    double avg = d.optDouble("averageprice", 0.0);   // verify field names against your responses
+                    double avg = d.optDouble("averageprice", 0.0);
                     return new OrderState(d.optString("status", "OPEN"),
                             d.optInt("filledshares", 0),
                             avg > 0 ? BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP) : null);
@@ -404,7 +475,6 @@ public class OptionPriceOrderService {
 
     private String exchangeOf(ScannedContractDto dto) { return "MCX".equalsIgnoreCase(dto.getExchange()) ? "MCX" : "NFO"; }
     private int quantityOf(ScannedContractDto dto) { return dto.getLotsize() > 0 ? dto.getLotsize() : 1; }
-    private BigDecimal priceOrTen(ScannedContractDto dto) { return dto.getCurrentLtp() != null ? dto.getCurrentLtp() : BigDecimal.TEN; }
     private String tradingSymbolOf(ScannedContractDto dto) {
         return dto.getSymbol() != null ? dto.getSymbol()
                 : dto.getName() + dto.getRawExpiry() + (int) dto.getStrike() + dto.getOptionType();
@@ -413,43 +483,6 @@ public class OptionPriceOrderService {
     private void alert(String msg) {
         log.error(msg);
         try { telegramService.sendToNewChat(msg); } catch (Exception ignored) { }
-    }
-
-    // ==========================================
-    // EXISTING HELPERS (carried over, now included in full)
-    // ==========================================
-    private BigDecimal getBestDepthPrice(SmartConnect smartConnect, String exchange, String token,
-                                         BigDecimal fallbackLtp, String side) {
-        String safeExchange = "MCX".equalsIgnoreCase(exchange) ? "MCX" : "NFO";
-
-        try {
-            JSONObject payload = new JSONObject();
-            payload.put("mode", "FULL");
-            JSONObject exchangeTokens = new JSONObject();
-            exchangeTokens.put(safeExchange, new JSONArray(List.of(token)));
-            payload.put("exchangeTokens", exchangeTokens);
-
-            JSONObject response = smartConnect.marketData(payload);
-            if (response != null && response.has("data")) {
-                JSONArray fetched = response.getJSONObject("data").optJSONArray("fetched");
-                if (fetched != null && !fetched.isEmpty()) {
-                    JSONObject depth = fetched.getJSONObject(0).optJSONObject("depth");
-                    if (depth != null) {
-                        String depthKey = Constants.TRANSACTION_TYPE_BUY.equalsIgnoreCase(side) ? "sell" : "buy";
-                        JSONArray book = depth.optJSONArray(depthKey);
-                        if (book != null && !book.isEmpty()) {
-                            double price = book.getJSONObject(0).optDouble("price", 0.0);
-                            if (price > 0) return BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP);
-                        }
-                    }
-                    double ltp = fetched.getJSONObject(0).optDouble("ltp", 0.0);
-                    if (ltp > 0) return BigDecimal.valueOf(ltp).setScale(2, RoundingMode.HALF_UP);
-                }
-            }
-        } catch (Throwable ignored) {
-            // fall through to fallback price
-        }
-        return fallbackLtp != null ? fallbackLtp : BigDecimal.valueOf(100.0);
     }
 
     private boolean hasActiveTradeTodayForSymbol(String symbol) {
@@ -472,7 +505,7 @@ public class OptionPriceOrderService {
     }
 
     // ==========================================
-    // 3:15 PM AUTO SQUARE OFF LOGIC (unchanged)
+    // 3:15 PM AUTO SQUARE OFF LOGIC
     // ==========================================
     public void closeAllOpenTrades() {
         List<Orders> openOrders = orderRepository.findAll().stream()
