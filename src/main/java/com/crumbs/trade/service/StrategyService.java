@@ -256,7 +256,7 @@ public class StrategyService {
         if (!flagsRestored.compareAndSet(false, true)) return;
         try {
             LocalDate today = LocalDate.now(IST_ZONE);
-            List<Orders> todays = orderRepository.findByNameAndCreatedAtBetween(
+            List<Orders> todays = orderRepository.findOrdersByNameAndDateRange(
                     AppConstant.CPR_STRATEGY, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
 
             for (Orders o : todays) {
