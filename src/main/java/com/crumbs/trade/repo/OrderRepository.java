@@ -102,5 +102,5 @@ public interface OrderRepository extends JpaRepository<Orders, Long> {
 
     @Query("SELECT o FROM Orders o WHERE o.name = :stockName AND o.active = 1")
     List<Orders> findActiveTradesToday(@Param("stockName") String stockName);
-
+    List<Orders> findByNameAndCreatedAtBetween(String name, LocalDateTime from, LocalDateTime to);
 }

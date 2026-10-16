@@ -91,10 +91,12 @@ public class AdvisoryEngineScheduler {
                             Thread.sleep(300);
 
                             // Route the task to the correct engine logic
-                            if ("ADVISORY_SCAN".equals(taskType)) {
-                                engineService.processAdvisory(stock.getName(), stock.getToken());
+                            if ("MORNING_SCAN".equals(taskType) || "PRE_CLOSE_SCAN".equals(taskType)) {
+                                engineService.processAdvisory(stock.getName(), stock.getToken(), taskType);
                             } else if ("EOD_SETTLEMENT".equals(taskType)) {
                                 engineService.processEodPnl(stock.getName(), stock.getToken());
+                            } else {
+                                log.warn("⚠️ Unknown taskType received: {}", taskType);
                             }
 
                             break; // Success! Break out of retry loop

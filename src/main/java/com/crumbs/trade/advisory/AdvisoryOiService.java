@@ -81,8 +81,9 @@ public class AdvisoryOiService {
 
         // Proceed to parse the JSON only if we successfully retrieved it
         try {
+            // Replace the corrupted log line with:
             if (jsonResponse == null || jsonResponse.isEmpty()) {
-                log.warn("⚠️ Samcresponse = {SamcoOptionChainResponse@19121} \"SamcoOptionChainResponse[serverTime=29/09/26 13:42:16, status=Success, statusMessage=OptionChain details retrived successfully. , optionChainDetails=[OptionChainDetail[tradingSymbol=DRREDDY26SEP720CE, instrumentToken=null, exchange=NFO, underLyingSymbol=DRREDDY, strikePrice=720.0000, expiryDate=2026-09-29, optionType=CE, spotPrice=1240.60, lastTradedPrice=0.00, openInterest=0, impliedVolatility=inf, delta=inf, gamma=inf, theta=inf, vega=inf, bestBids=[DepthItem[number=1, quantity=0, price=0.00], DepthItem[number=2, quantity=0, price=0.00], DepthItem[number=3, quantity=0, price=0.00], DepthItem[number=4, quantity=0, price=0.00], DepthItem[number=5, quantity=0, price=0.00]], bestAsks=[DepthItem[number=1, quantity=0, price=0.00], DepthItem[number=2, quantity=0, price=0.00], DepthItem[number=3, quantity=0, price=0.00], DepthItem[number=4, quantity=0, price=0.00], DepthItem[number=5, quantity=0, price=0.00]]], OptionChainDetail[tradingSymbol=DRREDDY26SEP720PE, instrumentToken=null, exchange\"… Viewo returned empty option chain for {}", symbol);
+                log.warn("⚠️ Samco returned empty option chain for {}", symbol);
                 return new AdvisoryOiData(null, null, resolvedExpiry);
             }
 

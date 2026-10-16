@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 
 /**
  * ENTRY LOGIC ONLY. Every signal now produces a TWO-LEG hedged position (short CE + short PE).
- * Includes 3-Tier Price Fetching: WebSocket -> API -> Fallback to 1.0
+ * Includes 3-Tier Price Fetching: WebSocket -> API -> Scanner LTP -> Fallback to 1.0
  */
 @Slf4j
 @Service
@@ -48,7 +48,10 @@ public class OptionPriceOrderService {
     private final OrderRepository orderRepository;
     private final StrategyRepo strategyRepo;
     private final MonitorOrderService monitorOrderService;
-    private final TelegramService telegramService;          // NEW: alert if a leg cannot be unwound
+    private final TelegramService telegramService;
+
+    // INJECT YOUR WEBSOCKET SERVICE HERE WHEN READY
+    // private final TickCacheService tickCacheService;
 
     private final Set<String> entriesInFlight = ConcurrentHashMap.newKeySet();
     private final ExecutorService entryExecutor = Executors.newFixedThreadPool(2); // one task per symbol entry
@@ -58,11 +61,11 @@ public class OptionPriceOrderService {
     // BIAS -> SHORT STRADDLE SHAPE (always both legs)
     // ==========================================
     private enum Bias {
-        PURE_STRADDLE(0, 0),      // ATM CE + ATM PE
-        BULLISH_STRADDLE(0, 1),   // ATM CE + PE one strike up (ITM PE)
-        BEARISH_STRADDLE(-1, 0),  // CE one strike down (ITM CE) + ATM PE
-        BULLISH(0, 1),            // same as BULLISH_STRADDLE
-        BEARISH(-1, 0);           // same as BEARISH_STRADDLE
+        PURE_STRADDLE(0, 0),
+        BULLISH_STRADDLE(0, 1),
+        BEARISH_STRADDLE(-1, 0),
+        BULLISH(0, 1),
+        BEARISH(-1, 0);
 
         final int ceOffset;
         final int peOffset;
@@ -79,7 +82,7 @@ public class OptionPriceOrderService {
             if (label.contains("BEARISH STRADDLE")) return BEARISH_STRADDLE;
             if (label.startsWith("BULLISH")) return BULLISH;
             if (label.startsWith("BEARISH")) return BEARISH;
-            return null; // NEUTRAL etc.
+            return null;
         }
     }
 
@@ -177,7 +180,7 @@ public class OptionPriceOrderService {
 
         final SmartConnect sc = signInOrNull();
 
-        // Paper Trade Execution with 3-Tier Price Fetch
+        // 📝 PAPER TRADE EXECUTION (Uses real-time price fetching)
         if (!isLive) {
             BigDecimal cePrice = getRealTimePrice(sc, ce, SELL);
             BigDecimal pePrice = getRealTimePrice(sc, pe, SELL);
@@ -188,12 +191,12 @@ public class OptionPriceOrderService {
             return;
         }
 
+        // 🔴 LIVE TRADE EXECUTION
         if (sc == null) {
             log.error("❌ SmartConnect is null, cannot execute live trades.");
             return;
         }
 
-        // Live Trade Execution
         CompletableFuture<LegFill> ceF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, ce, SELL, ceQty), legExecutor);
         CompletableFuture<LegFill> peF = CompletableFuture.supplyAsync(() -> placeAndChase(sc, pe, SELL, peQty), legExecutor);
         LegFill ceFill = ceF.join();
@@ -303,7 +306,7 @@ public class OptionPriceOrderService {
             }
         }
 
-        // 3. Try Scanner's previously fetched LTP as a last resort before 1.0
+        // 3. Try Scanner's previously fetched LTP
         if (dto.getCurrentLtp() != null && dto.getCurrentLtp().compareTo(BigDecimal.ZERO) > 0) {
             log.warn("⚠️ Used Scanner LTP for {} as WS/API failed.", tradingSymbolOf(dto));
             return dto.getCurrentLtp();
@@ -315,10 +318,19 @@ public class OptionPriceOrderService {
     }
 
     private BigDecimal getPriceFromWebSocket(String token) {
-        // TODO: Inject/Call your WebSocket Cache service here.
-        // Example: return webSocketLiveCache.getLtp(token);
-
-        return null; // Return null if not found in WS, forcing fallback to API
+        /*
+         * TODO: Uncomment and use your WebSocket Service here.
+         * Example:
+         * try {
+         *     Double ltp = tickCacheService.getLtp(token);
+         *     if (ltp != null && ltp > 0) {
+         *         return BigDecimal.valueOf(ltp).setScale(2, RoundingMode.HALF_UP);
+         *     }
+         * } catch (Exception e) {
+         *     log.warn("WS fetch failed for token {}: {}", token, e.getMessage());
+         * }
+         */
+        return null; // Safely falls back to API tier
     }
 
     private BigDecimal fetchPriceFromApi(SmartConnect smartConnect, String exchange, String token, String side) {
