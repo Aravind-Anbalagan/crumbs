@@ -16,32 +16,32 @@ import org.hibernate.annotations.CreationTimestamp; // Add this import
 @Entity
 @Table(name = "ORDERS")
 public class Orders {
-	@Id
-	@Column(name="id", nullable = false, unique = true)
-	@GeneratedValue(strategy= GenerationType.IDENTITY)
-	Long id;
-	@Column(name="orderid")
-	String orderid;
-	@CreationTimestamp 
+    @Id
+    @Column(name="id", nullable = false, unique = true)
+    @GeneratedValue(strategy= GenerationType.IDENTITY)
+    Long id;
+    @Column(name="orderid")
+    String orderid;
+    @CreationTimestamp
     @Column(name="createdon", updatable = false)
-	private LocalDateTime createdOn;
-	@Column(name="symbol")
-	String symbol;
-	@Column(name="token")
-	String token;
-	@Column(name="name")
-	String name;
-	@Column(name="type")
-	String type;
-	@Column(name="active")
-	int active;
-	@Column(name="signal")
-	String signal;
-	@Column(name="exchange")
-	String exchange;
-	@Column(name="quantity")
-	int quantity;
-	@Column(name = "option_type")
+    private LocalDateTime createdOn;
+    @Column(name="symbol")
+    String symbol;
+    @Column(name="token")
+    String token;
+    @Column(name="name")
+    String name;
+    @Column(name="type")
+    String type;
+    @Column(name="active")
+    int active;
+    @Column(name="signal")
+    String signal;
+    @Column(name="exchange")
+    String exchange;
+    @Column(name="quantity")
+    int quantity;
+    @Column(name = "option_type")
     private String optionType; // CE / PE
 
     @Column(name = "side")
@@ -52,13 +52,13 @@ public class Orders {
 
     @Column(name = "status")
     private String status;     // OPEN / CLOSED
-    
+
     @Column(name = "trade_cycle_id")
     private String tradeCycleId;
-    
+
     @Column(name = "is_reversal")
     private Boolean reversal;
-    
+
     @Column(name = "closed_on")
     private LocalDateTime closedOn;
 
@@ -79,21 +79,21 @@ public class Orders {
 
     @Column(name = "strike", precision = 12, scale = 2)
     private BigDecimal strike;     // level price
-    
+
     @Column(name = "target", precision = 12, scale = 2)
     private BigDecimal target;
-    
+
     @Column(name = "exit_reason")
     private String exitReason;
-    
+
     @Column(name = "target_spot_price", precision = 19, scale = 2)
     private BigDecimal targetSpotPrice;
-    
+
     @PrePersist
     protected void onCreate() {
         if (this.createdOn == null) {
             this.createdOn = LocalDateTime.now();
         }
     }
-  
+
 }
