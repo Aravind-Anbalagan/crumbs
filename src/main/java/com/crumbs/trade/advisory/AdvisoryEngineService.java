@@ -4,15 +4,12 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CandleRequestDto;
-import com.crumbs.trade.entity.FuturesBreakEvent;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.service.AngelOneService;
 import com.crumbs.trade.service.AngelWebSocketService;
-import com.crumbs.trade.service.FuturesStrategyService.HourlyCandle;
 import com.crumbs.trade.service.SRService;
-import com.crumbs.trade.service.SmcLiteService;
 import com.crumbs.trade.utility.CycleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -40,7 +36,6 @@ public class AdvisoryEngineService {
     private final IndexesRepo indexesRepo;
     private final SRService srService;
     private final AdvisoryOiService oiService;
-    private final SmcLiteService smcLiteService;
     private final AdvisoryLedgerRepository ledgerRepository;
     private final AngelWebSocketService webSocketService;
     private final AngelOneService angelOneService;
@@ -150,8 +145,6 @@ public class AdvisoryEngineService {
         log.info("📊 [MARKET CONTEXT] Spot: ₹{} | Daily Trend: {} | Weekly Trend: {} | ATR: {}",
                 spotPrice, mtfTrend.dailyTrend(), mtfTrend.weeklyTrend(), atr14);
 
-        Optional<FuturesBreakEvent> smcSignalOpt = evaluateSmcOracle(name, exchange, indexes.getSymbol(), spotPrice);
-
         AdvisoryOiService.AdvisoryOiData oiData;
         try {
             String fnoExchange = (exchange != null && exchange.contains("MCX")) ? "MCX" : "NFO";
@@ -198,11 +191,6 @@ public class AdvisoryEngineService {
             newRecord.setCallWallOi(BigDecimal.valueOf(oiData.callWall().openInterest()));
         }
 
-        smcSignalOpt.ifPresent(bos -> {
-            newRecord.setSmcSignal(bos.getBreakType());
-            log.info("🧭 [SMC ORACLE] {} detected for {}", bos.getBreakType(), name);
-        });
-
         // =====================================================================
         // ROUTING LOGIC
         // =====================================================================
@@ -215,13 +203,13 @@ public class AdvisoryEngineService {
 
         if (isHoldingActiveTrade) {
             log.info("🔄 [PATH 2: HOLD/EXIT] Evaluating existing position for {}. Previous action: {}", name, prevRecord.getActionTaken());
-            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange, scanType);
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, now, exchange, scanType);
         } else if (previousRecordOpt.isEmpty() || expiryChanged || prevPositionClosed || "NO_TRADE".equals(prevRecord.getActionTaken())) {
             log.info("✨ [PATH 1: NEW ENTRY] Scanning for fresh setup on {}...", name);
             evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice, currentZone, ll, hh);
         } else {
             log.warn("⚠️ [FALLBACK PATH] Unhandled state for {}. Forcing hold/exit evaluation.", name);
-            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, smcSignalOpt, now, exchange, scanType);
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, now, exchange, scanType);
         }
 
         // =====================================================================
@@ -274,7 +262,6 @@ public class AdvisoryEngineService {
                 .callOiWallStrike(newRecord.getCallWallStrike())
                 .atr14(atr14)
                 .reasoning(newRecord.getReasoning())
-                .smcSignal(newRecord.getSmcSignal())
                 .unrealizedPnl(newRecord.getUnrealizedPnl())
                 .entryPremium(newRecord.getEntryPremium())
                 .entryDelta(newRecord.getEntryDelta())
@@ -426,7 +413,6 @@ public class AdvisoryEngineService {
     private void evaluateHoldOrExit(AdvisoryLedger prev, AdvisoryLedger current, BigDecimal spotPrice,
                                     MultiTimeframeTrend mtfTrend, BigDecimal atr14,
                                     AdvisoryOiService.AdvisoryOiData oiData,
-                                    Optional<FuturesBreakEvent> smcSignalOpt,
                                     LocalDateTime now, String exchange, String scanType) {
 
         if (prev.getEntryPremium() == null || prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
@@ -466,25 +452,14 @@ public class AdvisoryEngineService {
             log.warn("🚨 [WARNING] Proximity buffer breached on {}!", prev.getSymbol());
         }
 
-        // GUARD 2: SMC Structural Reversal (Warning)
-        if (smcSignalOpt.isPresent()) {
-            FuturesBreakEvent bos = smcSignalOpt.get();
-            boolean reversal = ("PE".equalsIgnoreCase(prev.getOptionType()) && "BREAKDOWN".equalsIgnoreCase(bos.getBreakType())) ||
-                    ("CE".equalsIgnoreCase(prev.getOptionType()) && "BREAKOUT".equalsIgnoreCase(bos.getBreakType()));
-            if (reversal) {
-                warnings.add("🚨 SMC Reversal");
-                log.warn("🚨 [WARNING] SMC Structural Reversal detected on {}!", prev.getSymbol());
-            }
-        }
-
-        // GUARD 3: Daily Trend Flip (Warning)
+        // GUARD 2: Daily Trend Flip (Warning)
         if (prev.getDailyTrend() != null && !prev.getDailyTrend().equals(mtfTrend.dailyTrend())) {
             warnings.add("🚨 Trend flipped");
             log.warn("🚨 [WARNING] MTF Trend flipped on {} from {} to {}!", prev.getSymbol(), prev.getDailyTrend(), mtfTrend.dailyTrend());
         }
 
         // ===================================================================
-        // GUARD 4: VALUE TARGET (85% Premium Decay) - CAN trigger anytime
+        // GUARD 3: VALUE TARGET (85% Premium Decay) - CAN trigger anytime
         // ===================================================================
         BigDecimal exitPremium = safelyFetchExitPremium(current, exchange);
         if (exitPremium == null) {
@@ -502,7 +477,7 @@ public class AdvisoryEngineService {
         }
 
         // ===================================================================
-        // GUARD 5: STRUCTURAL STOP-LOSS (PHYSICAL BREACH)
+        // GUARD 4: STRUCTURAL STOP-LOSS (PHYSICAL BREACH)
         // Only allowed during PRE_CLOSE_SCAN to prevent intraday fakeouts.
         // ===================================================================
         if ("PRE_CLOSE_SCAN".equals(scanType)) {
@@ -526,7 +501,7 @@ public class AdvisoryEngineService {
         }
 
         // ===================================================================
-        // GUARD 6: WALL MIGRATION / DUAL VALIDATION TARGETS & WARNINGS
+        // GUARD 5: WALL MIGRATION / DUAL VALIDATION TARGETS & WARNINGS
         // ===================================================================
         boolean wallMigratedToTarget = false;
         String wallExitReason = "";
@@ -662,38 +637,22 @@ public class AdvisoryEngineService {
             if (optionIndex == null || optionIndex.getToken() == null) return null;
 
             String optionToken = optionIndex.getToken();
-            String tradingSymbol = optionIndex.getSymbol();
-            String angelExchange = exchange.contains("MCX") ? "MCX" : "NFO";
             ExchangeType exType = exchange.contains("MCX") ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
 
+            // 🚀 FAST PATH: Fetch directly from in-memory WebSocket cache (0ms delay)
             BigDecimal exitLtp = webSocketService.getLatestLTP(exType, optionToken);
-            if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) return exitLtp;
 
-            SmartConnect smartConnect = angelOne.signIn();
-            BigDecimal restLtp = angelOneService.getcurrentPrice(smartConnect, angelExchange, tradingSymbol, optionToken);
-            if (restLtp != null && restLtp.compareTo(BigDecimal.ZERO) > 0) return restLtp;
+            if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) {
+                return exitLtp;
+            } else {
+                log.debug("⚠️ WebSocket LTP missing for token {}. Will retry next scan.", optionToken);
+                return null;
+            }
 
         } catch (Exception e) {
             log.error("❌ Exception fetching exit LTP for {}: {}", prev.getSymbol(), e.getMessage());
         }
         return null;
-    }
-
-    private Optional<FuturesBreakEvent> evaluateSmcOracle(String name, String exchange, String symbol, BigDecimal spotPrice) {
-        try {
-            CandleRequestDto hourlyReq = srService.getCandleTiming("ONE_HOUR", exchange);
-            List<PricesIndex> hourlyPrices = srService.getCandleData(hourlyReq, name, symbol);
-            if (hourlyPrices == null || hourlyPrices.isEmpty()) return Optional.empty();
-
-            List<HourlyCandle> smcCandles = hourlyPrices.stream().map(p ->
-                    new HourlyCandle(p.getTimestamp(), p.getOpen(), p.getHigh(), p.getLow(), p.getClose(),
-                            p.getVolume() != null ? p.getVolume().longValue() : 0L)
-            ).collect(Collectors.toList());
-
-            return smcLiteService.evaluateAndNotify(name, "NIFTY_50", smcCandles, spotPrice, false);
-        } catch (Exception e) {
-            return Optional.empty();
-        }
     }
 
     private MultiTimeframeTrend analyzeMultiTimeframeTrend(List<PricesIndex> candles, BigDecimal spotPrice) {

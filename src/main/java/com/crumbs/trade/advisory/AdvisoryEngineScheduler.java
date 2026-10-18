@@ -25,6 +25,9 @@ public class AdvisoryEngineScheduler {
     private final AdvisoryEngineService engineService;
     private final NiftyRepo niftyRepo;
 
+    // 🛡️ Global Throttle Lock to prevent 429 API rate limits
+    private static final Object THROTTLE_LOCK = new Object();
+
     // =========================================================================
     // PHASE 1: MORNING SCAN (9:20 AM)
     // Evaluates targets and logs warnings, but is BLOCKED from triggering SLs.
@@ -77,8 +80,8 @@ public class AdvisoryEngineScheduler {
             }
         }
 
-        // 🛡️ ANTI-429 GUARD: Reduced pool size to 1 for sequential processing
-        ExecutorService executor = Executors.newFixedThreadPool(1);
+        // 🚀 FAST CONCURRENCY: 3 Threads process DB/WebSocket operations in parallel
+        ExecutorService executor = Executors.newFixedThreadPool(3);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
         // Summary Counters
@@ -93,8 +96,12 @@ public class AdvisoryEngineScheduler {
 
                     for (int attempt = 1; attempt <= maxRetries; attempt++) {
                         try {
-                            // 🛡️ Increased micro-delay to 1500ms to stagger API hits and prevent 429s
-                            Thread.sleep(1500);
+                            // 🛡️ SYNCHRONIZED THROTTLE:
+                            // Guarantees no two threads start their API fetch at the exact same millisecond.
+                            // 500ms delay = max 2 requests per second globally, perfectly safe for Samco.
+                            synchronized (THROTTLE_LOCK) {
+                                Thread.sleep(500);
+                            }
 
                             if ("MORNING_SCAN".equals(taskType) || "PRE_CLOSE_SCAN".equals(taskType)) {
                                 OptionRecommendation rec = engineService.processAdvisory(stock.getName(), stock.getToken(), taskType);
@@ -124,7 +131,7 @@ public class AdvisoryEngineScheduler {
                                 log.warn("⏳ 429 Rate Limit hit for {} during {} (Attempt {}/{}). Cooling down...",
                                         stock.getName(), taskType, attempt, maxRetries);
                                 try {
-                                    Thread.sleep(3000);
+                                    Thread.sleep(3000); // Penalty box if rate limit is somehow hit
                                 } catch (InterruptedException ie) {
                                     Thread.currentThread().interrupt();
                                 }
