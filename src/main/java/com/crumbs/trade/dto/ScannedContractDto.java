@@ -57,15 +57,29 @@ public class ScannedContractDto {
     private Double extremePeakRsi;                  // Highest StochRSI reached while above 80 (e.g. 96.5)
     private Double extremeTroughRsi;                // Lowest StochRSI reached while below 20 (e.g. 4.2)
     private LocalDateTime lastEvaluatedAt;          // Last cycle timestamp
-    private SignalAction signalAction;              // REVERSAL_SELL_HOOK, REVERSAL_BUY_HOOK, TRACKING, NONE
-    // Add this to your ScannedContractDto
     private String timeFrame;
     private String aiBias;
-    public enum SignalAction {
+
+    // ==========================================
+    // 5. Distinct Signal Actions
+    // ==========================================
+    @Builder.Default
+    private RsiAction rsiAction = RsiAction.NONE;
+
+    @Builder.Default
+    private MaAction maAction = MaAction.NONE;
+
+    public enum RsiAction {
         NONE,
         TRACKING_OVERBOUGHT,
         TRACKING_OVERSOLD,
-        TRIGGER_OVERBOUGHT_HOOK, // Reached >= 80, stayed, and now hooked down < 80 / < 70
-        TRIGGER_OVERSOLD_HOOK    // Reached <= 20, stayed, and now hooked up > 20 / > 30
+        TRIGGER_OVERBOUGHT_HOOK,
+        TRIGGER_OVERSOLD_HOOK
+    }
+
+    public enum MaAction {
+        NONE,
+        NEAR_BREAKOUT,
+        NEAR_BREAKDOWN
     }
 }

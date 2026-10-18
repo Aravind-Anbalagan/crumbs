@@ -33,7 +33,7 @@ public class OptionIndicatorService {
     private static final Logger logger = LogManager.getLogger(OptionIndicatorService.class);
 
     private static final int RSI_PERIOD = 14;
-    private static final int MINIMUM_RSI_WARMUP = 28;  // NEW: Minimum candles required for Wilder's RSI
+    private static final int MINIMUM_RSI_WARMUP = 28;
     private static final int RATE_LIMIT_SLEEP_MS = 6000;
     private static final DateTimeFormatter ANGEL_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -43,28 +43,16 @@ public class OptionIndicatorService {
     private final AngelOne angelOne;
     private final StrategyConfigService configService;
 
-    /**
-     * Backward-compatible overload defaulting to ONE_HOUR.
-     */
     public List<ScannedContractDto> evaluateIndicatorsForContracts(List<ScannedContractDto> contracts) {
         return evaluateIndicatorsForContracts(contracts, "ONE_HOUR");
     }
 
-    /**
-     * Orchestrates fetching generic candles and applying RSI calculation for any timeframe.
-     * Uses multi-threading to fetch candles rapidly while respecting rate limits.
-     *
-     * @param contracts List of recently scanned contracts
-     * @param interval  Angel One interval (e.g., ONE_MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE, ONE_HOUR, ONE_DAY)
-     * @return Updated list of contracts
-     */
     public List<ScannedContractDto> evaluateIndicatorsForContracts(List<ScannedContractDto> contracts, String interval) {
         if (contracts == null || contracts.isEmpty()) return contracts;
 
         SmartConnect smartConnect = angelOne.signIn();
         if (smartConnect == null) return contracts;
 
-        // Fetch dynamic config ONCE before the parallel stream starts
         StrategyConfig config = configService.getActiveConfig();
         int dynamicMaPeriod = config.getMaPeriod();
         int dynamicRsiPeriod = config.getRsiPeriod();
@@ -81,7 +69,6 @@ public class OptionIndicatorService {
                             LocalDateTime[] window = resolveMarketWindow(normalizedInterval, dto.getExchange());
                             List<Double> closes = fetchHistoricalClosePrices(smartConnect, dto, window, normalizedInterval);
 
-                            // ✅ FIX #1: VALIDATE CLOSE PRICE DATA QUALITY BEFORE CALCULATION
                             if (closes == null || closes.isEmpty()) {
                                 logger.warn("⚠️ No candles for {}: RSI calculation skipped", dto.getSymbol());
                                 return;
@@ -96,7 +83,6 @@ public class OptionIndicatorService {
                             Double latestClose = closes.get(closes.size() - 1);
                             dto.setCurrentLtp(BigDecimal.valueOf(latestClose));
 
-                            // Use dynamic MA Period
                             if (closes.size() >= dynamicMaPeriod) {
                                 Double currentMa = MaCalculation.calculateSMA(closes, dynamicMaPeriod);
                                 if (currentMa != null) {
@@ -105,11 +91,9 @@ public class OptionIndicatorService {
                                 }
                             }
 
-                            // ✅ FIX #2: RSI CALCULATION WITH DETAILED LOGGING
                             if (closes.size() >= dynamicRsiPeriod + 1) {
                                 Double currentRsi = RsiCalculation.calculate(closes, dynamicRsiPeriod);
                                 if (currentRsi != null) {
-                                    // ✅ NEW: Log RSI context for debugging
                                     logger.info(
                                             "📊 RSI[{}] sym={} closes_count={} rsi={:.2f} ltp={:.2f} ma={:.2f}",
                                             normalizedInterval,
@@ -138,17 +122,12 @@ public class OptionIndicatorService {
         return contracts;
     }
 
-    /**
-     * Tracks extreme thresholds and triggers Reversal Hooks.
-     */
     private void updateRSIState(ScannedContractDto dto, double currentRsi, StrategyConfig config) {
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. Fetch dynamic thresholds from DB (fallback to 80/20 if null)
         double overboughtLevel = config.getRsiOverbought() != null ? config.getRsiOverbought() : 80.0;
         double oversoldLevel = config.getRsiOversold() != null ? config.getRsiOversold() : 20.0;
 
-        // Push current to previous for cycle comparison
         dto.setPreviousRsi(dto.getCurrentRsi());
         dto.setCurrentRsi(currentRsi);
         dto.setLastEvaluatedAt(now);
@@ -164,11 +143,10 @@ public class OptionIndicatorService {
             }
             dto.setAboveRSI80Count(dto.getAboveRSI80Count() + 1);
             dto.setExtremePeakRsi(Math.max(dto.getExtremePeakRsi() == null ? 0 : dto.getExtremePeakRsi(), currentRsi));
-            dto.setSignalAction(ScannedContractDto.SignalAction.TRACKING_OVERBOUGHT);
+            dto.setRsiAction(ScannedContractDto.RsiAction.TRACKING_OVERBOUGHT);
         }
-        // Hook Down: Was overbought, now crossed below
         else if (dto.isRSIAbove80() && currentRsi < overboughtLevel) {
-            dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK);
+            dto.setRsiAction(ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK);
             logger.info("📉 HOOK DOWN TRIGGERED for {}: RSI dropped from overbought to {}", dto.getSymbol(), currentRsi);
             dto.setRSIAbove80(false);
         }
@@ -187,11 +165,10 @@ public class OptionIndicatorService {
             }
             dto.setBelowRSI20Count(dto.getBelowRSI20Count() + 1);
             dto.setExtremeTroughRsi(Math.min(dto.getExtremeTroughRsi() == null ? 100 : dto.getExtremeTroughRsi(), currentRsi));
-            dto.setSignalAction(ScannedContractDto.SignalAction.TRACKING_OVERSOLD);
+            dto.setRsiAction(ScannedContractDto.RsiAction.TRACKING_OVERSOLD);
         }
-        // Hook Up: Was oversold, now crossed above
         else if (dto.isRSIBelow20() && currentRsi > oversoldLevel) {
-            dto.setSignalAction(ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK);
+            dto.setRsiAction(ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK);
             logger.info("📈 HOOK UP TRIGGERED for {}: RSI popped from oversold to {}", dto.getSymbol(), currentRsi);
             dto.setRSIBelow20(false);
         }
@@ -199,11 +176,11 @@ public class OptionIndicatorService {
             resetOversoldState(dto);
         }
 
-        // Neutral state (Inside the bounds)
+        // Neutral state
         if (currentRsi > oversoldLevel && currentRsi < overboughtLevel
-                && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
-                && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK) {
-            dto.setSignalAction(ScannedContractDto.SignalAction.NONE);
+                && dto.getRsiAction() != ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
+                && dto.getRsiAction() != ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK) {
+            dto.setRsiAction(ScannedContractDto.RsiAction.NONE);
         }
     }
 
@@ -212,7 +189,7 @@ public class OptionIndicatorService {
         dto.setAboveRSI80Count(0);
         dto.setAboveRSI80At(null);
         dto.setExtremePeakRsi(null);
-        dto.setSignalAction(ScannedContractDto.SignalAction.NONE);
+
     }
 
     private void resetOversoldState(ScannedContractDto dto) {
@@ -220,7 +197,7 @@ public class OptionIndicatorService {
         dto.setBelowRSI20Count(0);
         dto.setBelowRSI20At(null);
         dto.setExtremeTroughRsi(null);
-        dto.setSignalAction(ScannedContractDto.SignalAction.NONE);
+
     }
 
     private synchronized void throttleApi() {
@@ -231,14 +208,6 @@ public class OptionIndicatorService {
         lastApiCallTime = System.currentTimeMillis();
     }
 
-    // =========================================================
-    // 🌐 BROKER HISTORICAL CANDLE FETCHER - FIXED VERSION
-    // =========================================================
-
-    /**
-     * ✅ FIXED: Enhanced with better retry logic, validation, and edge case handling.
-     * Now properly handles empty responses and validates candle data quality.
-     */
     private List<Double> fetchHistoricalClosePrices(SmartConnect smartConnect, ScannedContractDto dto, LocalDateTime[] window, String interval) {
         int maxRetries = 5;
         long delay = 2000;
@@ -262,14 +231,12 @@ public class OptionIndicatorService {
                 throttleApi();
                 JSONArray candles = smartConnect.candleData(req);
 
-                // ✅ FIX #3: Proper empty response handling
                 if (candles == null || candles.isEmpty()) {
                     logger.debug("⚠️ API returned empty candles for {} (attempt {}/{}). Token: {}",
                             dto.getSymbol(), attempt, maxRetries, dto.getToken());
-                    continue;  // Retry, don't return null on first try
+                    continue;
                 }
 
-                // ✅ FIX #4: Validate and extract close prices
                 List<Double> closePrices = new ArrayList<>();
                 int validCount = 0;
                 int invalidCount = 0;
@@ -277,9 +244,8 @@ public class OptionIndicatorService {
                 for (int i = 0; i < candles.length(); i++) {
                     try {
                         JSONArray c = candles.getJSONArray(i);
-                        double close = c.getDouble(4);  // Index 4 = Close price
+                        double close = c.getDouble(4);
 
-                        // ✅ NEW: Validate close price is positive
                         if (close > 0) {
                             closePrices.add(close);
                             validCount++;
@@ -293,7 +259,6 @@ public class OptionIndicatorService {
                     }
                 }
 
-                // ✅ NEW: Log candle data quality
                 if (!closePrices.isEmpty()) {
                     logger.debug("📊 Candles for {} | Valid: {} | Invalid: {} | Total: {}",
                             dto.getSymbol(), validCount, invalidCount, closePrices.size());
@@ -323,11 +288,6 @@ public class OptionIndicatorService {
         return null;
     }
 
-    /**
-     * ✅ FIXED: Increased warmup from 45 days to 90 days for ONE_HOUR interval.
-     * Calculates an optimal historical lookback window tailored to the specific timeframe
-     * so that Wilder's RSI smoothing receives sufficient warmup candles.
-     */
     private LocalDateTime[] resolveMarketWindow(String interval, String exchange) {
         ZoneId ist = ZoneId.of("Asia/Kolkata");
         LocalDate today = LocalDate.now(ist);
@@ -339,12 +299,11 @@ public class OptionIndicatorService {
 
         LocalDate currentTradingDay = NSEWorkingDays.isNSEWorkingDay(today) ? today : NSEWorkingDays.getLastWorkingDay(today);
 
-        // ✅ FIX #5: INCREASED WARMUP PERIODS
         int calendarDaysBack = switch (interval) {
-            case "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE" -> 10;    // ~750 candles
-            case "FIFTEEN_MINUTE", "THIRTY_MINUTE" -> 30;              // ~50 candles
-            case "ONE_HOUR" -> 90;   // 🔴 INCREASED FROM 45 TO 90 (384 candles)
-            case "ONE_DAY" -> 365;   // ~1 year
+            case "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE" -> 10;
+            case "FIFTEEN_MINUTE", "THIRTY_MINUTE" -> 30;
+            case "ONE_HOUR" -> 90;
+            case "ONE_DAY" -> 365;
             default -> 60;
         };
 
@@ -353,10 +312,8 @@ public class OptionIndicatorService {
 
         LocalDateTime from = LocalDateTime.of(previousTradingDay, marketOpen);
 
-        // ✅ FIX #6: ALIGN TO COMPLETE CANDLES, NOT CURRENT TIME
         LocalDateTime to;
         if (currentTradingDay.isEqual(today) && now.isBefore(marketClose)) {
-            // Align to last complete candle
             LocalTime alignedTime = alignToLastCompleteCandle(now, interval);
             to = LocalDateTime.of(today, alignedTime);
         } else {
@@ -369,10 +326,6 @@ public class OptionIndicatorService {
         return new LocalDateTime[]{from, to};
     }
 
-    /**
-     * ✅ NEW: Align current time to the last COMPLETED candle boundary.
-     * Prevents requesting partial/incomplete candles mid-formation.
-     */
     private LocalTime alignToLastCompleteCandle(LocalTime currentTime, String interval) {
         return switch (interval) {
             case "ONE_MINUTE" -> currentTime.withSecond(0).minusMinutes(1);
@@ -393,7 +346,7 @@ public class OptionIndicatorService {
                 yield currentTime.withMinute(mins).withSecond(0).minusMinutes(30);
             }
             case "ONE_HOUR" -> currentTime.withMinute(0).withSecond(0).minusHours(1);
-            case "ONE_DAY" -> LocalTime.of(9, 15);  // Market open for NSE
+            case "ONE_DAY" -> LocalTime.of(9, 15);
             default -> currentTime;
         };
     }

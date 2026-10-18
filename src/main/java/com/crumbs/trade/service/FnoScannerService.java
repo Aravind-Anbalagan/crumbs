@@ -89,6 +89,9 @@ public class FnoScannerService {
             stock.setCurrentRangeBucket(null);
             stock.setRangeDirection(null);
             stock.setRangeEnteredAt(null);
+            stock.setPercentageChange(BigDecimal.ZERO);
+            stock.setPrevCloseDate(null);
+            stock.setPrevClose(null);
         }
 
         SmartConnect smartConnect = angelOne.signIn();

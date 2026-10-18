@@ -61,7 +61,7 @@ public class OptionPrice {
     private BigDecimal ltp;       // Option contract premium (e.g., 142.50)
     private Double extremePeakRsi;
     private Double extremeTroughRsi;
-    private String signalAction;
+
 
     // Used specifically for finding the unique record for the day
     private LocalDate evaluatedDate;
@@ -71,4 +71,9 @@ public class OptionPrice {
     private boolean isPriceAboveMa;
     @Column(name = "ai_bias")
     private String aiBias;
+    @Column(name = "rsi_action")
+    private String rsiAction;
+
+    @Column(name = "ma_action")
+    private String maAction;
 }

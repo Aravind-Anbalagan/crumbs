@@ -144,10 +144,18 @@ public class OptionPriceService {
                 dto.setAiBias(fullAiBias);
 
                 if (!dto.isRSIAbove80() && !dto.isRSIBelow20()
-                        && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
-                        && dto.getSignalAction() != ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK
+                        && dto.getRsiAction() != ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
+                        && dto.getRsiAction() != ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK
                         && !isNearMaTrigger(dto)) {
                     continue;
+                }
+                // ✅ ADD THIS BLOCK: Evaluate and set the explicit MA action
+                if (isNearMaBreakout(dto)) {
+                    dto.setMaAction(ScannedContractDto.MaAction.NEAR_BREAKOUT);
+                } else if (isNearMaBreakdown(dto)) {
+                    dto.setMaAction(ScannedContractDto.MaAction.NEAR_BREAKDOWN);
+                } else {
+                    dto.setMaAction(ScannedContractDto.MaAction.NONE);
                 }
 
                 OptionPrice newRecord = mapToEntity(dto);
@@ -203,8 +211,8 @@ public class OptionPriceService {
         boolean isMaEnabled = "Y".equalsIgnoreCase(activeConfig.getMaAlert());
 
         Map<String, List<ScannedContractDto>> hooksByIndex = contracts.stream()
-                .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
-                        || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK
+                .filter(c -> c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
+                        || c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK
                         || isNearMaTrigger(c))
                 .collect(Collectors.groupingBy(ScannedContractDto::getName));
 
@@ -215,8 +223,8 @@ public class OptionPriceService {
             List<ScannedContractDto> rsiTriggers = new ArrayList<>();
             if (isRsiEnabled) {
                 rsiTriggers = hooks.stream()
-                        .filter(c -> c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK
-                                || c.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERSOLD_HOOK)
+                        .filter(c -> c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
+                                || c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK)
                         .collect(Collectors.toList());
             }
 
@@ -258,7 +266,7 @@ public class OptionPriceService {
                 msg.append("----------------------------------------------\n");
 
                 for (ScannedContractDto hook : rsiTriggers) {
-                    String direction = hook.getSignalAction() == ScannedContractDto.SignalAction.TRIGGER_OVERBOUGHT_HOOK ? "SELL" : "BUY ";
+                    String direction = hook.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK ? "SELL" : "BUY ";
                     String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
                     String strikeStr = (int) hook.getStrike() + hook.getOptionType();
                     double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
@@ -414,7 +422,8 @@ public class OptionPriceService {
                 .extremeTroughRsi(dto.getExtremeTroughRsi())
                 .currentMa(dto.getCurrentMa())
                 .isPriceAboveMa(dto.isPriceAboveMa())
-                .signalAction(dto.getSignalAction() != null ? dto.getSignalAction().name() : "NONE")
+                .rsiAction(dto.getRsiAction() != null ? dto.getRsiAction().name() : "NONE")
+                .maAction(dto.getMaAction() != null ? dto.getMaAction().name() : "NONE")
                 .evaluatedAt(dto.getLastEvaluatedAt())
                 .aiBias(dto.getAiBias())
                 .build();

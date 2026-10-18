@@ -181,8 +181,8 @@ public class OptionChainScannerService {
                 if (config.getAllowedMoneyness() != null && !config.getAllowedMoneyness().contains(moneyness)) continue;
 
                 if (c.getToken() == null) continue;
-
-                ScannedContractDto dto = statefulContractCache.computeIfAbsent(c.getToken(), tokenKey -> {
+                String cacheKey = c.getToken() + "_" + config.getInterval();
+                ScannedContractDto dto = statefulContractCache.computeIfAbsent(cacheKey, key -> {
                     LocalDate expDate = parsedExpiries.get(rawExp);
                     LocalDate monthlyOpt = expDate != null ? monthlyExpiryMap.get(YearMonth.from(expDate)) : null;
                     boolean isMonthly = monthlyOpt != null && monthlyOpt.equals(expDate);
@@ -206,7 +206,8 @@ public class OptionChainScannerService {
                             .isRSIBelow20(false)
                             .aboveRSI80Count(0)
                             .belowRSI20Count(0)
-                            .signalAction(ScannedContractDto.SignalAction.NONE)
+                            .rsiAction(ScannedContractDto.RsiAction.NONE)
+                            .maAction(ScannedContractDto.MaAction.NONE)
                             .build();
                 });
 

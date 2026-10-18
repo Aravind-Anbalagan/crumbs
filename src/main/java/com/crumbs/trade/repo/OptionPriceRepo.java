@@ -34,14 +34,16 @@ public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
     // ==========================================
     // 2. LIVE DASHBOARD: RSI SIGNALS ONLY
     // ==========================================
+    // FIXED: Changed 'signal_action' to 'rsi_action'
     @Query(value = "SELECT DISTINCT ON (symbol) * FROM option_prices " +
-            "WHERE evaluated_date = CURRENT_DATE AND signal_action != 'NONE' " +
+            "WHERE evaluated_date = CURRENT_DATE AND rsi_action != 'NONE' " +
             "ORDER BY symbol, evaluated_at DESC",
             nativeQuery = true)
     List<OptionPrice> findLatestRsiSignalsAllTimeFrames();
 
+    // FIXED: Changed 'signal_action' to 'rsi_action'
     @Query(value = "SELECT DISTINCT ON (symbol) * FROM option_prices " +
-            "WHERE time_frame = :timeFrame AND evaluated_date = CURRENT_DATE AND signal_action != 'NONE' " +
+            "WHERE time_frame = :timeFrame AND evaluated_date = CURRENT_DATE AND rsi_action != 'NONE' " +
             "ORDER BY symbol, evaluated_at DESC",
             nativeQuery = true)
     List<OptionPrice> findLatestRsiSignalsByTimeFrame(@Param("timeFrame") String timeFrame);
@@ -49,7 +51,6 @@ public interface OptionPriceRepo extends JpaRepository<OptionPrice, Long> {
     // ==========================================
     // 3. LIVE DASHBOARD: MA SIGNALS (Breakouts & Breakdowns)
     // ==========================================
-    // FIXED: Removed 'AND is_price_above_ma = true' so Breakdowns can finally be queried.
     @Query(value = "SELECT DISTINCT ON (symbol) * FROM option_prices " +
             "WHERE evaluated_date = CURRENT_DATE " +
             "ORDER BY symbol, evaluated_at DESC",
