@@ -19,7 +19,9 @@ public class AdvisoryOiService {
     private final SamcoSessionManager sessionManager;
     private final ObjectMapper objectMapper;
 
-    // 🚀 Holds the complete details for a specific Strike (including Greeks)
+    // 🛡️ STRICT API THROTTLE: Forces all threads into a single-file line for API hits
+    private static final Object SAMCO_API_LOCK = new Object();
+
     public record StrikeDetails(
             BigDecimal strike,
             long openInterest,
@@ -29,7 +31,6 @@ public class AdvisoryOiService {
             double iv
     ) {}
 
-    // 🚀 Holds both the Call Wall and Put Wall with their respective Greeks
     public record AdvisoryOiData(
             StrikeDetails putWall,
             StrikeDetails callWall,
@@ -37,8 +38,6 @@ public class AdvisoryOiService {
     ) {}
 
     public AdvisoryOiData fetchLiveOiAndGreeks(String symbol, String exchange, String expiry) {
-        log.info("📊 Fetching Live OI & Greeks for {} {}...", symbol, expiry);
-
         StrikeDetails maxPut = null;
         StrikeDetails maxCall = null;
         long maxPutOi = 0L;
@@ -47,13 +46,19 @@ public class AdvisoryOiService {
         String resolvedExpiry = expiry;
         String jsonResponse = null;
 
-        // 🚀 FIX: Incremental Backoff Retry Mechanism (max 4 attempts)
         int maxRetries = 4;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 String sessionToken = sessionManager.getSession();
-                jsonResponse = samco.getOptionChain(sessionToken, exchange, symbol, expiry, null, null);
+
+                // 🛑 ABSOLUTE BOTTLENECK: No two threads can pass this point at the same time
+                synchronized (SAMCO_API_LOCK) {
+                    Thread.sleep(1200); // Guarantee 1.2 seconds between every single Samco call
+                    jsonResponse = samco.getOptionChain(sessionToken, exchange, symbol, expiry, null, null);
+                }
+
                 break; // API call succeeded! Break out of the retry loop.
+
             } catch (Exception e) {
                 boolean isRateLimit = e.getMessage() != null && e.getMessage().contains("429");
 
@@ -81,7 +86,6 @@ public class AdvisoryOiService {
 
         // Proceed to parse the JSON only if we successfully retrieved it
         try {
-            // Replace the corrupted log line with:
             if (jsonResponse == null || jsonResponse.isEmpty()) {
                 log.warn("⚠️ Samco returned empty option chain for {}", symbol);
                 return new AdvisoryOiData(null, null, resolvedExpiry);
@@ -96,12 +100,11 @@ public class AdvisoryOiService {
                     resolvedExpiry = response.optionChainDetails().get(0).expiryDate();
                 }
 
-                // 🚀 Pre-filter the list to ONLY contain the target expiry
                 final String targetExpiry = resolvedExpiry;
                 var currentExpiryDetails = response.optionChainDetails().stream()
                         .filter(detail -> targetExpiry.equalsIgnoreCase(detail.expiryDate()))
                         .toList();
-                // 🚀 Now the loop ONLY iterates over the current expiry data
+
                 for (var detail : currentExpiryDetails) {
                     long currentOi = parseLongSafely(detail.openInterest());
                     BigDecimal currentStrike = new BigDecimal(detail.strikePrice());
@@ -121,13 +124,6 @@ public class AdvisoryOiService {
                         maxCallOi = currentOi;
                         maxCall = new StrikeDetails(currentStrike, currentOi, ltp, delta, theta, iv);
                     }
-                }
-
-                if (maxPut != null && maxCall != null) {
-                    log.info("🧱 Found PUT Wall: Strike {} (OI: {}, LTP: {}, Delta: {})",
-                            maxPut.strike(), maxPut.openInterest(), maxPut.ltp(), maxPut.delta());
-                    log.info("🧱 Found CALL Wall: Strike {} (OI: {}, LTP: {}, Delta: {})",
-                            maxCall.strike(), maxCall.openInterest(), maxCall.ltp(), maxCall.delta());
                 }
 
             } else {
