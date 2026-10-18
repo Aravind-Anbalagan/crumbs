@@ -133,8 +133,8 @@ public class AdvisoryEngineService {
         }
 
         BigDecimal range = hh.subtract(ll);
-        BigDecimal discountTop = ll.add(range.multiply(new BigDecimal("0.30")));
-        BigDecimal premiumBottom = hh.subtract(range.multiply(new BigDecimal("0.30")));
+        BigDecimal discountTop = ll.add(range.multiply(new BigDecimal("0.50")));
+        BigDecimal premiumBottom = hh.subtract(range.multiply(new BigDecimal("0.50")));
 
         String currentZone = "CHOP";
         if (spotPrice.compareTo(discountTop) <= 0) currentZone = "DISCOUNT";
@@ -283,7 +283,7 @@ public class AdvisoryEngineService {
     }
 
     // =========================================================================
-    // PATH 1: NEW POSITION ENTRY
+    // PATH 1: NEW POSITION ENTRY (WITH AUDIT TRAIL)
     // =========================================================================
     private void evaluateNewEntry(AdvisoryLedger newRecord, MultiTimeframeTrend mtfTrend,
                                   AdvisoryOiService.AdvisoryOiData oiData,
@@ -291,118 +291,132 @@ public class AdvisoryEngineService {
                                   String currentZone, BigDecimal ll, BigDecimal hh) {
 
         BigDecimal minPremium = new BigDecimal("10.0");
+        List<String> auditTrail = new ArrayList<>();
+        boolean canTrade = true;
 
         Optional<AdvisoryLedger> lastClosedOpt = ledgerRepository
                 .findTopBySymbolAndStatusOrderByTimestampDesc(newRecord.getSymbol(), "HISTORY");
 
-        // Same Day Re-entry Block
+        // 1. Cooldown Check
         if (lastClosedOpt.isPresent() && lastClosedOpt.get().getTimestamp().toLocalDate().equals(now.toLocalDate())) {
-            newRecord.setActionTaken("NO_TRADE");
-            newRecord.setReasoning("Position closed today. Re-entry deferred to next session.");
-            newRecord.setStatus("ACTIVE");
-            log.info("🛑 [BLOCKED] Same-day re-entry blocked for {}", newRecord.getSymbol());
-            return;
+            auditTrail.add("❌ Cooldown (Same-day re-entry blocked)");
+            canTrade = false;
+        } else {
+            auditTrail.add("✅ Cooldown (Clear)");
         }
 
-        // Trend Alignment Check
+        // 2. Trend Alignment
         if (!mtfTrend.isAligned()) {
-            newRecord.setActionTaken("NO_TRADE");
-            newRecord.setReasoning(String.format("Timeframe misalignment: Daily %s, Weekly %s", mtfTrend.dailyTrend(), mtfTrend.weeklyTrend()));
-            newRecord.setStatus("ACTIVE");
-            log.info("🛑 [BLOCKED] MTF Misalignment on {}", newRecord.getSymbol());
-            return;
+            auditTrail.add(String.format("❌ Trend (Misaligned: D=%s, W=%s)", mtfTrend.dailyTrend(), mtfTrend.weeklyTrend()));
+            canTrade = false;
+        } else {
+            auditTrail.add(String.format("✅ Trend (%s)", mtfTrend.dailyTrend()));
         }
 
-        // Lock current zone into record
         newRecord.setMarketZone(currentZone);
 
-        if ("BULLISH".equals(mtfTrend.dailyTrend())) {
+        // 3. Zone & OI Checks based on Trend
+        if (canTrade && "BULLISH".equals(mtfTrend.dailyTrend())) {
             if (!"DISCOUNT".equals(currentZone)) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("NO_TRADE: Spot (₹%s) is in %s Zone. Waiting for structural pullback to DISCOUNT.", spotPrice, currentZone));
-                newRecord.setStatus("ACTIVE");
-                return;
+                auditTrail.add(String.format("❌ Zone (Spot in %s, needs DISCOUNT)", currentZone));
+                canTrade = false;
+            } else {
+                auditTrail.add("✅ Zone (In DISCOUNT)");
             }
 
-            if (oiData == null || oiData.putWall() == null || oiData.putWall().strike().compareTo(spotPrice) >= 0) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("NO_TRADE: Spot is in DISCOUNT Zone, but Put Wall is missing or ITM. Institutions are not defending this yet.");
-                newRecord.setStatus("ACTIVE");
-                return;
+            if (canTrade) {
+                if (oiData == null || oiData.putWall() == null) {
+                    auditTrail.add("❌ OI Wall (Put Wall Missing)");
+                    canTrade = false;
+                } else if (oiData.putWall().strike().compareTo(spotPrice) >= 0) {
+                    auditTrail.add(String.format("❌ OI Wall (Put Wall %s is ITM, needs to be OTM)", oiData.putWall().strike()));
+                    canTrade = false;
+                } else {
+                    auditTrail.add(String.format("✅ OI Wall (Put Wall at %s confirms support)", oiData.putWall().strike()));
+
+                    if (isRecentlyBreached(lastClosedOpt, now)) {
+                        auditTrail.add("❌ Execution (Recent SL breach cooldown active)");
+                        canTrade = false;
+                    } else if (oiData.putWall().ltp().compareTo(minPremium) < 0) {
+                        auditTrail.add(String.format("❌ Premium (₹%s < ₹%s min)", oiData.putWall().ltp(), minPremium));
+                        canTrade = false;
+                    } else {
+                        auditTrail.add("✅ Premium & Execution checks passed");
+
+                        // Execute Bullish Entry
+                        newRecord.setActionTaken("NEW_ENTRY");
+                        newRecord.setOptionType("PE");
+                        newRecord.setRecommendedStrike(oiData.putWall().strike());
+                        Indexes optIndex = getOptionIndexMetadata(newRecord);
+                        newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
+                        newRecord.setEntryPremium(oiData.putWall().ltp());
+                        newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
+                        newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
+                        newRecord.setEntryDate(now);
+                        newRecord.setDaysInPosition(1);
+                        newRecord.setStatus("ACTIVE");
+                        newRecord.setAnchorSwingLow(ll);
+                        newRecord.setAnchorSwingHigh(hh);
+                    }
+                }
             }
-
-            BigDecimal putStrike = oiData.putWall().strike();
-
-            if (isRecentlyBreached(lastClosedOpt, now) || oiData.putWall().ltp().compareTo(minPremium) < 0) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Put Wall violates entry conditions (Illiquid or Cooling down).");
-                newRecord.setStatus("ACTIVE");
-                return;
-            }
-
-            newRecord.setActionTaken("NEW_ENTRY");
-            newRecord.setOptionType("PE");
-            newRecord.setRecommendedStrike(putStrike);
-            Indexes optIndex = getOptionIndexMetadata(newRecord);
-            newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
-            newRecord.setEntryPremium(oiData.putWall().ltp());
-            newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
-            newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
-            newRecord.setEntryDate(now);
-            newRecord.setDaysInPosition(1);
-            newRecord.setStatus("ACTIVE");
-
-            // LOCK IN THE SWING ANCHORS
-            newRecord.setAnchorSwingLow(ll);
-            newRecord.setAnchorSwingHigh(hh);
-            newRecord.setReasoning(String.format("NEW_ENTRY: Spot (₹%s) pulled back into DISCOUNT Zone [Swing Low: ₹%s]. Put Wall confirms support. Selling %s PE at ₹%s | Put OI: %s",
-                    spotPrice, ll, putStrike, oiData.putWall().ltp(), oiData.putWall().openInterest()));
-
-            log.info("✅ [ENTRY OPENED] Bulls activated on {}. Selling {} PE at ₹{}", newRecord.getSymbol(), putStrike, oiData.putWall().ltp());
-
-        } else if ("BEARISH".equals(mtfTrend.dailyTrend())) {
+        } else if (canTrade && "BEARISH".equals(mtfTrend.dailyTrend())) {
             if (!"PREMIUM".equals(currentZone)) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning(String.format("NO_TRADE: Spot (₹%s) is in %s Zone. Waiting for structural rally into PREMIUM.", spotPrice, currentZone));
-                newRecord.setStatus("ACTIVE");
-                return;
+                auditTrail.add(String.format("❌ Zone (Spot in %s, needs PREMIUM)", currentZone));
+                canTrade = false;
+            } else {
+                auditTrail.add("✅ Zone (In PREMIUM)");
             }
 
-            if (oiData == null || oiData.callWall() == null || oiData.callWall().strike().compareTo(spotPrice) <= 0) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("NO_TRADE: Spot is in PREMIUM Zone, but Call Wall is missing or ITM. Institutions are not defending this yet.");
-                newRecord.setStatus("ACTIVE");
-                return;
+            if (canTrade) {
+                if (oiData == null || oiData.callWall() == null) {
+                    auditTrail.add("❌ OI Wall (Call Wall Missing)");
+                    canTrade = false;
+                } else if (oiData.callWall().strike().compareTo(spotPrice) <= 0) {
+                    auditTrail.add(String.format("❌ OI Wall (Call Wall %s is ITM, needs to be OTM)", oiData.callWall().strike()));
+                    canTrade = false;
+                } else {
+                    auditTrail.add(String.format("✅ OI Wall (Call Wall at %s confirms resistance)", oiData.callWall().strike()));
+
+                    if (isRecentlyBreached(lastClosedOpt, now)) {
+                        auditTrail.add("❌ Execution (Recent SL breach cooldown active)");
+                        canTrade = false;
+                    } else if (oiData.callWall().ltp().compareTo(minPremium) < 0) {
+                        auditTrail.add(String.format("❌ Premium (₹%s < ₹%s min)", oiData.callWall().ltp(), minPremium));
+                        canTrade = false;
+                    } else {
+                        auditTrail.add("✅ Premium & Execution checks passed");
+
+                        // Execute Bearish Entry
+                        newRecord.setActionTaken("NEW_ENTRY");
+                        newRecord.setOptionType("CE");
+                        newRecord.setRecommendedStrike(oiData.callWall().strike());
+                        Indexes optIndex = getOptionIndexMetadata(newRecord);
+                        newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
+                        newRecord.setEntryPremium(oiData.callWall().ltp());
+                        newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
+                        newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
+                        newRecord.setEntryDate(now);
+                        newRecord.setDaysInPosition(1);
+                        newRecord.setStatus("ACTIVE");
+                        newRecord.setAnchorSwingLow(ll);
+                        newRecord.setAnchorSwingHigh(hh);
+                    }
+                }
             }
+        }
 
-            BigDecimal callStrike = oiData.callWall().strike();
-
-            if (isRecentlyBreached(lastClosedOpt, now) || oiData.callWall().ltp().compareTo(minPremium) < 0) {
-                newRecord.setActionTaken("NO_TRADE");
-                newRecord.setReasoning("Call Wall violates entry conditions (Illiquid or Cooling down).");
-                newRecord.setStatus("ACTIVE");
-                return;
-            }
-
-            newRecord.setActionTaken("NEW_ENTRY");
-            newRecord.setOptionType("CE");
-            newRecord.setRecommendedStrike(callStrike);
-            Indexes optIndex = getOptionIndexMetadata(newRecord);
-            newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
-            newRecord.setEntryPremium(oiData.callWall().ltp());
-            newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
-            newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
-            newRecord.setEntryDate(now);
-            newRecord.setDaysInPosition(1);
+        // Finalize Logging and DB Record
+        String combinedAuditLog = String.join(" | ", auditTrail);
+        if (!canTrade) {
+            newRecord.setActionTaken("NO_TRADE");
+            newRecord.setReasoning(combinedAuditLog);
             newRecord.setStatus("ACTIVE");
-
-            // LOCK IN THE SWING ANCHORS
-            newRecord.setAnchorSwingLow(ll);
-            newRecord.setAnchorSwingHigh(hh);
-            newRecord.setReasoning(String.format("NEW_ENTRY: Spot (₹%s) rallied into PREMIUM Zone [Swing High: ₹%s]. Call Wall confirms resistance. Selling %s CE at ₹%s | Call OI: %s",
-                    spotPrice, hh, callStrike, oiData.callWall().ltp(), oiData.callWall().openInterest()));
-
-            log.info("✅ [ENTRY OPENED] Bears activated on {}. Selling {} CE at ₹{}", newRecord.getSymbol(), callStrike, oiData.callWall().ltp());
+            log.info("🔎 [SCAN AUDIT] {} -> {}", newRecord.getSymbol(), combinedAuditLog);
+        } else {
+            newRecord.setReasoning("ENTRY APPROVED | " + combinedAuditLog);
+            log.info("✅ [ENTRY OPENED] {} -> Sold {} {} at ₹{} | Audit: {}",
+                    newRecord.getSymbol(), newRecord.getRecommendedStrike(), newRecord.getOptionType(), newRecord.getEntryPremium(), combinedAuditLog);
         }
     }
 
