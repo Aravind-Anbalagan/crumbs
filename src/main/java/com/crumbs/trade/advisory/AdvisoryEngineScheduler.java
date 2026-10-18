@@ -81,7 +81,7 @@ public class AdvisoryEngineScheduler {
         }
 
         // 🚀 FAST CONCURRENCY: 3 Threads process DB/WebSocket operations in parallel
-        ExecutorService executor = Executors.newFixedThreadPool(3);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
         // Summary Counters
