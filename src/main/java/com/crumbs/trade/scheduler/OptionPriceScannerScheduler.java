@@ -2,8 +2,10 @@ package com.crumbs.trade.scheduler;
 
 import com.crumbs.trade.builder.OptionScannerConfig;
 import com.crumbs.trade.dto.ScannedContractDto;
+import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.NiftyRepo;
+import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.service.OptionChainScannerService;
 import com.crumbs.trade.service.OptionIndicatorService;
 import com.crumbs.trade.service.OptionPriceOrderService;
@@ -38,15 +40,33 @@ public class OptionPriceScannerScheduler {
     private final StrategyConfigService configService;
     private final NiftyRepo niftyRepo;
     private final OptionPriceOrderService optionPriceOrderService;
+    private final StrategyRepo strategyRepo; // ✅ Added StrategyRepo
 
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM","SILVERM");
     private static final List<String> NSE_SYMBOLS = List.of("NIFTY", "BANKNIFTY");
+
+    // ==========================================
+    // STRATEGY TOGGLE CHECK
+    // ==========================================
+    private boolean isScannerStrategyActive() {
+        try {
+            Strategy strat = strategyRepo.findByName("OPTION_PRICE_SCANNER");
+            // Assuming your Strategy entity uses an integer (1) for active.
+            // If it uses boolean, change this to strat.isActive()
+            return strat != null && "Y".equalsIgnoreCase(strat.getActive());
+        } catch (Exception e) {
+            logger.error("⚠️ Could not verify OPTION_PRICE_SCANNER strategy status: {}", e.getMessage());
+            return false;
+        }
+    }
 
     // ==========================================
     // 1. NSE 1-HOUR SCHEDULER
     // ==========================================
     @Scheduled(cron = "0 30 9-14 * * MON-FRI", zone = "Asia/Kolkata")
     public void runNseHourlyScan() {
+        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
         LocalDate today = LocalDate.now(istZone);
@@ -100,6 +120,8 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(cron = "0 0 16-23 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMcxHourlyScan() {
+        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
 
@@ -116,6 +138,8 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(cron = "0 15 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void squareOffAllTrades315PM() {
+        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
         if (!NSEWorkingDays.isNSEWorkingDay(today)) {
             return;
@@ -130,6 +154,8 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(fixedDelay = 5000)
     public void runAiTradeRiskMonitor() {
+        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+
         // Continuously invokes the driver to evaluate active trades and pass them to MonitorOrderService
         optionPriceService.monitorActiveAiTrades(null);
     }
@@ -160,6 +186,86 @@ public class OptionPriceScannerScheduler {
 
             } catch (Exception e) {
                 logger.error("🛑 Scheduled scan failed for symbol {} on {}: {}", symbol, interval, e.getMessage());
+            }
+        }
+    }
+
+    // ==========================================
+    // 5. 1-MINUTE VWAP SCHEDULER (ATM ONLY)
+    // ==========================================
+    @Scheduled(cron = "5 * 9-15 * * MON-FRI", zone = "Asia/Kolkata")
+    public void runNseMinuteVwapScan() {
+        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+
+        ZoneId istZone = ZoneId.of("Asia/Kolkata");
+        LocalTime now = LocalTime.now(istZone);
+        LocalDate today = LocalDate.now(istZone);
+
+        // Ensure we only run during market hours
+        if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) {
+            return;
+        }
+        if (!NSEWorkingDays.isNSEWorkingDay(today)) {
+            return;
+        }
+
+        logger.info("⏱️ [VWAP] Starting 1-Minute ATM Option Scanner...");
+
+        // Target NIFTY/BANKNIFTY + configured volatile stocks
+        StrategyConfig activeConfig = configService.getActiveConfig();
+        BigDecimal threshold = activeConfig.getMinPercentageChange() != null
+                ? activeConfig.getMinPercentageChange()
+                : BigDecimal.valueOf(5.0);
+
+        List<String> allNames = niftyRepo.getAllNames();
+        Set<String> uniqueSymbolsToScan = new HashSet<>(NSE_SYMBOLS);
+
+        if (allNames != null) {
+            for (String symbol : allNames) {
+                try {
+                    Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(symbol);
+                    if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
+                        BigDecimal currentChange = stockOpt.get().getPercentageChange();
+                        if (currentChange.abs().compareTo(threshold) >= 0) {
+                            uniqueSymbolsToScan.add(symbol);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("⚠️ Error evaluating percentage threshold for symbol '{}': {}", symbol, e.getMessage());
+                }
+            }
+        }
+
+        List<String> symbolsToScan = new ArrayList<>(uniqueSymbolsToScan);
+        executeAtmScanWorkflow(symbolsToScan, "ONE_MINUTE");
+    }
+
+    // ==========================================
+    // DEDICATED VWAP ENGINE (RESTRICTED TO ATM)
+    // ==========================================
+    private void executeAtmScanWorkflow(List<String> symbols, String interval) {
+        OptionScannerConfig config = OptionScannerConfig.builder()
+                .monthsToScan(1)
+                .scanWeekly(true)
+                .scanMonthly(true)
+                .strikeDistance(0) // 🔴 STRICTLY 0 to prevent DB bloat
+                .interval(interval)
+                .allowedMoneyness(Set.of(OptionScannerConfig.Moneyness.ATM)) // 🔴 ONLY ATM
+                .build();
+
+        for (String symbol : symbols) {
+            try {
+                logger.debug("📊 Scanning 1-Min ATM VWAP for {}...", symbol);
+
+                List<ScannedContractDto> contracts = scannerService.scanEligibleContractsList(symbol, config);
+
+                if (contracts != null && !contracts.isEmpty()) {
+                    contracts = indicatorService.evaluateIndicatorsForContracts(contracts, config.getInterval());
+                    optionPriceService.saveVwapPairData(contracts);
+                }
+
+            } catch (Exception e) {
+                logger.error("🛑 Scheduled VWAP scan failed for symbol {} on {}: {}", symbol, interval, e.getMessage());
             }
         }
     }

@@ -59,7 +59,7 @@ public class ScannedContractDto {
     private LocalDateTime lastEvaluatedAt;          // Last cycle timestamp
     private String timeFrame;
     private String aiBias;
-
+    private BigDecimal currentVwap;
     // ==========================================
     // 5. Distinct Signal Actions
     // ==========================================

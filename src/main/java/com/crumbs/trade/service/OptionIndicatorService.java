@@ -241,14 +241,31 @@ public class OptionIndicatorService {
                 int validCount = 0;
                 int invalidCount = 0;
 
+                // Anchor VWAP to the current trading day in the window
+                LocalDate targetDate = window[1].toLocalDate();
+                double cumulativeTypicalPriceVolume = 0.0;
+                double cumulativeVolume = 0.0;
+
                 for (int i = 0; i < candles.length(); i++) {
                     try {
                         JSONArray c = candles.getJSONArray(i);
+                        String timeStr = c.getString(0); // e.g. "2026-10-18T09:15:00+05:30"
+                        double high = c.getDouble(2);
+                        double low = c.getDouble(3);
                         double close = c.getDouble(4);
+                        double volume = c.getDouble(5);
 
                         if (close > 0) {
                             closePrices.add(close);
                             validCount++;
+
+                            // 📊 Daily Anchored VWAP Calculation
+                            // Only accumulate volume and price if the candle belongs to the target day
+                            if (timeStr != null && timeStr.startsWith(targetDate.toString())) {
+                                double typicalPrice = (high + low + close) / 3.0;
+                                cumulativeTypicalPriceVolume += (typicalPrice * volume);
+                                cumulativeVolume += volume;
+                            }
                         } else {
                             logger.debug("  ⚠️ Invalid close price {} for candle {}", close, i);
                             invalidCount++;
@@ -257,6 +274,14 @@ public class OptionIndicatorService {
                         logger.debug("  ⚠️ Failed to parse candle {}: {}", i, e.getMessage());
                         invalidCount++;
                     }
+                }
+
+                // ✅ Convert to BigDecimal and assign to DTO
+                if (cumulativeVolume > 0) {
+                    double finalVwap = cumulativeTypicalPriceVolume / cumulativeVolume;
+                    dto.setCurrentVwap(BigDecimal.valueOf(finalVwap));
+                } else {
+                    dto.setCurrentVwap(null); // No volume traded yet today
                 }
 
                 if (!closePrices.isEmpty()) {

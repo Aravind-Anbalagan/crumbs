@@ -5,9 +5,11 @@ import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
 import com.crumbs.trade.entity.Orders;
+import com.crumbs.trade.entity.StraddleVwapData;
 import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.OptionPriceRepo;
 import com.crumbs.trade.repo.OrderRepository;
+import com.crumbs.trade.repo.StraddleVwapRepo;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,7 +38,7 @@ public class OptionPriceService {
     private final StrategyConfigService configService;
     private final OptionPriceOrderService optionPriceOrderService;
     private final MonitorOrderService monitorOrderService;
-
+    private final StraddleVwapRepo straddleVwapRepo;
     // ==========================================
     // FAST-LOOP PNL & RISK MONITORING
     // ==========================================
@@ -468,5 +470,68 @@ public class OptionPriceService {
 
     public List<String> getUniqueTimeFrames() {
         return optionPriceRepo.findDistinctTimeFrames();
+    }
+
+    @Transactional
+    public void saveVwapPairData(List<ScannedContractDto> contracts) {
+        if (contracts == null || contracts.isEmpty()) return;
+
+        LocalDateTime now = LocalDateTime.now();
+        List<StraddleVwapData> vwapRecords = new ArrayList<>();
+
+        Map<String, List<ScannedContractDto>> groupedBySymbol = contracts.stream()
+                .collect(Collectors.groupingBy(ScannedContractDto::getName));
+
+        groupedBySymbol.forEach((symbol, symbolContracts) -> {
+
+            // Pluck the ATM CE and PE
+            ScannedContractDto ce = symbolContracts.stream()
+                    .filter(c -> "CE".equalsIgnoreCase(c.getOptionType()))
+                    .findFirst().orElse(null);
+
+            ScannedContractDto pe = symbolContracts.stream()
+                    .filter(c -> "PE".equalsIgnoreCase(c.getOptionType()))
+                    .findFirst().orElse(null);
+
+            if (ce != null && pe != null) {
+                BigDecimal ceLtp = ce.getCurrentLtp() != null ? ce.getCurrentLtp() : BigDecimal.ZERO;
+                BigDecimal peLtp = pe.getCurrentLtp() != null ? pe.getCurrentLtp() : BigDecimal.ZERO;
+
+                BigDecimal ceVwap = ce.getCurrentVwap() != null ? ce.getCurrentVwap() : BigDecimal.ZERO;
+                BigDecimal peVwap = pe.getCurrentVwap() != null ? pe.getCurrentVwap() : BigDecimal.ZERO;
+
+                // Combine Premium and VWAP
+                BigDecimal combinedLtp = ceLtp.add(peLtp);
+                BigDecimal combinedVwap = ceVwap.add(peVwap);
+
+                StraddleVwapData record = StraddleVwapData.builder()
+                        .symbol(symbol)
+                        .strike(ce.getStrike())
+                        .timeFrame(ce.getTimeFrame())
+                        .evaluatedAt(now)
+                        .ceLtp(ceLtp)
+                        .ceVwap(ceVwap)
+                        .peLtp(peLtp)
+                        .peVwap(peVwap)
+                        .combinedLtp(combinedLtp)
+                        .combinedVwap(combinedVwap)
+                        .build();
+
+                vwapRecords.add(record);
+            } else {
+                logger.warn("⚠️ Could not pair CE and PE for VWAP processing on {}", symbol);
+            }
+        });
+
+        if (!vwapRecords.isEmpty()) {
+            straddleVwapRepo.saveAll(vwapRecords);
+            logger.info("💾 Saved {} Combined Straddle VWAP records.", vwapRecords.size());
+        }
+    }
+    // ==========================================
+    // STRADDLE VWAP CHART DATA FETCHER
+    // ==========================================
+    public List<StraddleVwapData> getVwapChartData(String symbol, LocalDateTime startOfDay, LocalDateTime endOfDay) {
+        return straddleVwapRepo.findChartDataForSymbol(symbol, startOfDay, endOfDay);
     }
 }
