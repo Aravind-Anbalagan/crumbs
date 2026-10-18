@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -76,9 +77,14 @@ public class AdvisoryEngineScheduler {
             }
         }
 
-        // 🛡️ Safe Pool Size of 3 to respect broker rate limits
-        ExecutorService executor = Executors.newFixedThreadPool(3);
+        // 🛡️ ANTI-429 GUARD: Reduced pool size to 1 for sequential processing
+        ExecutorService executor = Executors.newFixedThreadPool(1);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        // Summary Counters
+        AtomicInteger actionableCount = new AtomicInteger(0);
+        AtomicInteger noTradeCount = new AtomicInteger(0);
+        AtomicInteger errorCount = new AtomicInteger(0);
 
         try {
             for (Nifty stock : dedupedStocks) {
@@ -87,14 +93,24 @@ public class AdvisoryEngineScheduler {
 
                     for (int attempt = 1; attempt <= maxRetries; attempt++) {
                         try {
-                            // Micro-delay to stagger API hits
-                            Thread.sleep(300);
+                            // 🛡️ Increased micro-delay to 1500ms to stagger API hits and prevent 429s
+                            Thread.sleep(1500);
 
-                            // Route the task to the correct engine logic
                             if ("MORNING_SCAN".equals(taskType) || "PRE_CLOSE_SCAN".equals(taskType)) {
-                                engineService.processAdvisory(stock.getName(), stock.getToken(), taskType);
+                                OptionRecommendation rec = engineService.processAdvisory(stock.getName(), stock.getToken(), taskType);
+
+                                if (rec != null) {
+                                    if ("NO_TRADE".equals(rec.getAction())) {
+                                        noTradeCount.incrementAndGet();
+                                    } else {
+                                        actionableCount.incrementAndGet();
+                                    }
+                                } else {
+                                    errorCount.incrementAndGet();
+                                }
                             } else if ("EOD_SETTLEMENT".equals(taskType)) {
                                 engineService.processEodPnl(stock.getName(), stock.getToken());
+                                actionableCount.incrementAndGet();
                             } else {
                                 log.warn("⚠️ Unknown taskType received: {}", taskType);
                             }
@@ -114,7 +130,11 @@ public class AdvisoryEngineScheduler {
                                 }
                                 continue; // Retry
                             }
+
                             log.error("❌ Failed {} for {}: {}", taskType, stock.getName(), e.getMessage());
+                            if (attempt == maxRetries) {
+                                errorCount.incrementAndGet();
+                            }
                             break; // Fail permanently
                         }
                     }
@@ -124,7 +144,16 @@ public class AdvisoryEngineScheduler {
 
             // Wait for all threads to finish
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-            log.info("✅ {} completed for {} unique symbols.", taskType, dedupedStocks.size());
+
+            // 📊 Final Summary Output
+            log.info("======================================================");
+            log.info("✅ {} SUMMARY REPORT", taskType);
+            log.info("======================================================");
+            log.info("Total Unique Symbols Scanned : {}", dedupedStocks.size());
+            log.info("Actionable (Entry/Hold/Exit) : {}", actionableCount.get());
+            log.info("No Trade (Rejected by logic) : {}", noTradeCount.get());
+            log.info("Errors (API Fails/Skips)     : {}", errorCount.get());
+            log.info("======================================================");
 
         } finally {
             executor.shutdown();
