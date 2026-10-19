@@ -78,6 +78,8 @@ public class StraddleTokenService {
         return BigDecimal.valueOf(nearest);
     }
 
+    // In StraddleTokenService.java
+
     public List<StraddlePremiumDto> getOrBuildStrikeList(String name, BigDecimal atmStrike) {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
         if (strikeListCache.containsKey(name) && today.equals(strikeInitDate.get(name))) {
@@ -85,7 +87,8 @@ public class StraddleTokenService {
         }
 
         logger.info("Building strike list ONCE for {} using ATM {}", name, atmStrike);
-        int stepInterval = 50; 
+
+        int stepInterval = 50;
         if (name != null) {
             String upperName = name.toUpperCase();
             if (upperName.contains("SENSEX") || upperName.contains("BANK") || upperName.contains("CRUDEOIL")) {
@@ -95,17 +98,25 @@ public class StraddleTokenService {
             }
         }
 
-        int rangeValue = 600;
+        // --- REDUCED RANGE LOGIC ---
+        // Formula: rangeValue = (desired number of strikes away from ATM) * stepInterval
+        // Example: 5 strikes away * 50 interval = 250 range
+
+        int rangeValue = 500; // Default (NIFTY)
+
         if (name != null) {
             String upperName = name.toUpperCase();
-            if (upperName.contains("SENSEX")) {
-                rangeValue = 1000;
+            if (upperName.contains("SENSEX") || upperName.contains("BANK")) {
+                rangeValue = 500; // SENSEX/BANKNIFTY: ATM +/- 5 strikes -> 11 total strikes
+            } else if (upperName.contains("CRUDEOIL")) {
+                rangeValue = 500; // CRUDEOIL: ATM +/- 5 strikes
             } else if (upperName.contains("GOLDM")) {
-                rangeValue = 3000;
+                rangeValue = 2000; // GOLDM: ATM +/- 3 strikes
             }
         }
 
         List<StraddlePremiumDto> strikeList = buildStraddleDtos(name, atmStrike, stepInterval, rangeValue);
+
         strikeListCache.put(name, strikeList);
         strikeInitDate.put(name, today);
         return strikeList;

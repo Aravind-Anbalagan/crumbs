@@ -35,7 +35,7 @@ public class StraddleMarketDataService {
     private final PredictionService predictionService;
 
     // Rate Limiting State
-    private static final long CANDLE_API_DELAY_MS = 1000;
+    private static final long CANDLE_API_DELAY_MS = 500;
     private volatile long lastCandleApiCall = 0;
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final long INITIAL_RETRY_DELAY_MS = 2000;
