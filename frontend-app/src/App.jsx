@@ -9,6 +9,8 @@ import OrderHistory from './pages/OrderHistory';
 import OITracker from './pages/OITracker';
 import AdvisoryDashboard from './pages/AdvisoryDashboard';
 import OptionPrice from './pages/OptionPrice';
+import VwapStraddle from './pages/VwapStraddle';
+
 const ProtectedRoute = ({ children }) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
   return isLoggedIn ? children : <Navigate to="/signin" replace />;
@@ -40,6 +42,7 @@ export default function App() {
           <Route path="dashboard/oi-tracker" element={<OITracker />} />
           <Route path="dashboard/advisory" element={<AdvisoryDashboard />} />
           <Route path="dashboard/option-price" element={<OptionPrice />} />
+          <Route path="dashboard/vwap-straddle" element={<VwapStraddle />} />
           {/* Direct access redirects */}
           <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
           <Route path="result" element={<Navigate to="/dashboard/result" replace />} />

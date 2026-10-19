@@ -68,6 +68,11 @@ const MENU = [
         label: 'Short Straddle',
         desc: 'Premium-collecting neutral setup',
       },
+      {
+          to: '/dashboard/vwap-straddle', // 👈 Added here
+          label: 'VWAP Straddle',
+          desc: 'Intraday combined VWAP crossovers',
+        },
        {
           to: '/dashboard/oi-tracker',
           label: '⚡ OI Tracker',

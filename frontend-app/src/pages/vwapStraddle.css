@@ -1,0 +1,262 @@
+/* Container to take full available screen space */
+.vwap-straddle-full {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  background-color: transparent;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-main, #e0e0e0);
+}
+/* 👇 ADD THIS NEW BLOCK HERE 👇 */
+.vwap-selector option {
+  background-color: var(--bg-main, #0b0f19); /* Forces dark background in the dropdown list */
+  color: var(--text-main, #ffffff);          /* Forces light text */
+  padding: 10px;                             /* Adds breathing room to options (works in some browsers) */
+}
+/* 👆 ---------------------- 👆 */
+/* Helpers */
+.flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.2rem;
+  color: var(--text-muted, #888);
+  height: 100%;
+  width: 100%;
+}
+
+.error {
+  color: var(--danger-text, #FF1744);
+}
+
+/* Header layout */
+.vwap-straddle-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.vwap-straddle-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-main, #ffffff);
+}
+
+.spot-price {
+  background-color: rgba(79, 172, 254, 0.1);
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #4facfe;
+  border: 1px solid rgba(79, 172, 254, 0.3);
+}
+
+/* Dropdown Controls */
+.vwap-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.control-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vwap-selector {
+  background-color: var(--panel-bg, rgba(25, 30, 45, 0.8));
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main, #fff);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
+  outline: none;
+  cursor: pointer;
+  min-width: 140px;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23888888%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px top 50%;
+  background-size: 10px auto;
+  transition: all 0.2s ease;
+}
+
+.vwap-selector:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vwap-selector:hover:not(:disabled) {
+  border-color: var(--nav-active, #4facfe);
+  background-color: var(--panel-item-hover, rgba(30, 40, 60, 0.9));
+}
+
+.vwap-selector:focus {
+  border-color: var(--nav-active, #4facfe);
+  box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.25);
+}
+
+/* Full Screen Chart Wrapper */
+.vwap-straddle-wrapper {
+  flex-grow: 1;
+  width: 100%;
+  position: relative;
+  background-color: var(--glass-bg, rgba(15, 20, 32, 0.6));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.05));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 20px rgba(0, 0, 0, 0.1);
+  min-height: 400px;
+}
+
+/* Loading Overlay */
+.chart-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--glass-bg, rgba(11, 15, 25, 0.8));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 10;
+  color: var(--nav-active, #4facfe);
+  font-weight: 600;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(79, 172, 254, 0.2);
+  border-top-color: var(--nav-active, #4facfe);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.chart-empty {
+  font-size: 1.1rem;
+  opacity: 0.6;
+}
+
+/* Custom Tooltip Styling */
+.vwap-straddle-tooltip {
+  background-color: var(--panel-bg, rgba(20, 25, 40, 0.95));
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.vwap-straddle-tooltip p {
+  margin: 6px 0;
+  font-size: 0.95rem;
+  color: var(--text-main, #fff);
+}
+
+.tooltip-time {
+  font-weight: 700;
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+  padding-bottom: 8px;
+  margin-bottom: 10px !important;
+}
+
+.tooltip-ltp span { color: #00E676; font-weight: 700; }
+.tooltip-vwap span { color: #2979FF; font-weight: 700; }
+
+.tooltip-signal {
+  margin-top: 10px !important;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tooltip-signal.entry {
+  background-color: rgba(0, 230, 118, 0.15);
+  color: #00E676;
+  border: 1px solid rgba(0, 230, 118, 0.5);
+}
+
+.tooltip-signal.sl {
+  background-color: rgba(255, 23, 68, 0.15);
+  color: #FF1744;
+  border: 1px solid rgba(255, 23, 68, 0.5);
+}
+
+/* Recharts overrides */
+.recharts-cartesian-axis-tick-value {
+  fill: var(--text-muted, #777);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.recharts-legend-item-text {
+  color: var(--text-main, #ddd) !important;
+  font-weight: 500;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .vwap-straddle-full {
+    padding: 16px;
+  }
+
+  .vwap-straddle-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .vwap-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .control-group {
+    flex: 1;
+  }
+
+  .vwap-selector {
+    width: 100%;
+    min-width: 0;
+  }
+}

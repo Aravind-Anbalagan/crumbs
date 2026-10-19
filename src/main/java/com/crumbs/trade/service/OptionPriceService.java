@@ -534,4 +534,8 @@ public class OptionPriceService {
     public List<StraddleVwapData> getVwapChartData(String symbol, LocalDateTime startOfDay, LocalDateTime endOfDay) {
         return straddleVwapRepo.findChartDataForSymbol(symbol, startOfDay, endOfDay);
     }
+
+    public List<String> getUniqueSymbols() {
+        return straddleVwapRepo.findDistinctSymbols();
+    }
 }

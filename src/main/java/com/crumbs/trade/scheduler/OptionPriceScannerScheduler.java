@@ -23,10 +23,10 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
@@ -40,10 +40,16 @@ public class OptionPriceScannerScheduler {
     private final StrategyConfigService configService;
     private final NiftyRepo niftyRepo;
     private final OptionPriceOrderService optionPriceOrderService;
-    private final StrategyRepo strategyRepo; // ✅ Added StrategyRepo
+    private final StrategyRepo strategyRepo;
 
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM","SILVERM");
     private static final List<String> NSE_SYMBOLS = List.of("NIFTY", "BANKNIFTY");
+
+    // ==========================================
+    // PERSISTENT DAILY STATE
+    // ==========================================
+    private final Set<String> dailyActiveSymbols = ConcurrentHashMap.newKeySet();
+    private LocalDate trackingDate = null;
 
     // ==========================================
     // STRATEGY TOGGLE CHECK
@@ -51,8 +57,6 @@ public class OptionPriceScannerScheduler {
     private boolean isScannerStrategyActive() {
         try {
             Strategy strat = strategyRepo.findByName("OPTION_PRICE_SCANNER");
-            // Assuming your Strategy entity uses an integer (1) for active.
-            // If it uses boolean, change this to strat.isActive()
             return strat != null && "Y".equalsIgnoreCase(strat.getActive());
         } catch (Exception e) {
             logger.error("⚠️ Could not verify OPTION_PRICE_SCANNER strategy status: {}", e.getMessage());
@@ -61,41 +65,31 @@ public class OptionPriceScannerScheduler {
     }
 
     // ==========================================
-    // 1. NSE 1-HOUR SCHEDULER
+    // DYNAMIC SYMBOL COLLECTOR (PERSISTENT)
     // ==========================================
-    @Scheduled(cron = "0 30 9-14 * * MON-FRI", zone = "Asia/Kolkata")
-    public void runNseHourlyScan() {
-        if (!isScannerStrategyActive()) return; // ✅ Master Switch
-
-        ZoneId istZone = ZoneId.of("Asia/Kolkata");
-        LocalTime now = LocalTime.now(istZone);
-        LocalDate today = LocalDate.now(istZone);
-
-        if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) {
-            return;
-        }
-        if (!NSEWorkingDays.isNSEWorkingDay(today)) {
-            return;
+    private List<String> getDailySymbolsToScan(LocalDate today, BigDecimal threshold) {
+        // 1. Reset list if it is a new trading day
+        if (trackingDate == null || !trackingDate.equals(today)) {
+            dailyActiveSymbols.clear();
+            dailyActiveSymbols.addAll(NSE_SYMBOLS);
+            trackingDate = today;
+            logger.info("🔄 Resetting daily scanning symbols list for new trading day: {}", today);
         }
 
-        logger.info("🚀 [NSE] Starting 1-Hour Option Scanner...");
-
-        StrategyConfig activeConfig = configService.getActiveConfig();
-        BigDecimal threshold = activeConfig.getMinPercentageChange() != null
-                ? activeConfig.getMinPercentageChange()
-                : BigDecimal.valueOf(5.0);
-
+        // 2. Fetch all names to check against threshold
         List<String> allNames = niftyRepo.getAllNames();
-        Set<String> uniqueSymbolsToScan = new HashSet<>(NSE_SYMBOLS);
-
         if (allNames != null) {
             for (String symbol : allNames) {
                 try {
-                    Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(symbol);
-                    if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
-                        BigDecimal currentChange = stockOpt.get().getPercentageChange();
-                        if (currentChange.abs().compareTo(threshold) >= 0) {
-                            uniqueSymbolsToScan.add(symbol);
+                    // Optimization: Skip DB check if the symbol is already in our daily active list
+                    if (!dailyActiveSymbols.contains(symbol)) {
+                        Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(symbol);
+                        if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
+                            BigDecimal currentChange = stockOpt.get().getPercentageChange();
+                            if (currentChange.abs().compareTo(threshold) >= 0) {
+                                logger.info("🎯 Symbol {} touched threshold {}%. Adding to persistent daily scan list.", symbol, threshold);
+                                dailyActiveSymbols.add(symbol);
+                            }
                         }
                     }
                 } catch (Exception e) {
@@ -104,8 +98,33 @@ public class OptionPriceScannerScheduler {
             }
         }
 
-        List<String> symbolsToScan = new ArrayList<>(uniqueSymbolsToScan);
-        logger.info("✅ [NSE] Scanning {} symbols (Default indices + stocks exceeding {}% threshold).",
+        return new ArrayList<>(dailyActiveSymbols);
+    }
+
+    // ==========================================
+    // 1. NSE 1-HOUR SCHEDULER
+    // ==========================================
+    @Scheduled(cron = "0 30 9-14 * * MON-FRI", zone = "Asia/Kolkata")
+    public void runNseHourlyScan() {
+        if (!isScannerStrategyActive()) return;
+
+        ZoneId istZone = ZoneId.of("Asia/Kolkata");
+        LocalTime now = LocalTime.now(istZone);
+        LocalDate today = LocalDate.now(istZone);
+
+        if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) return;
+        if (!NSEWorkingDays.isNSEWorkingDay(today)) return;
+
+        logger.info("🚀 [NSE] Starting 1-Hour Option Scanner...");
+
+        StrategyConfig activeConfig = configService.getActiveConfig();
+        BigDecimal threshold = activeConfig.getMinPercentageChange() != null
+                ? activeConfig.getMinPercentageChange()
+                : BigDecimal.valueOf(5.0);
+
+        List<String> symbolsToScan = getDailySymbolsToScan(today, threshold);
+
+        logger.info("✅ [NSE] Scanning {} symbols (Default indices + stocks that breached {}% threshold today).",
                 symbolsToScan.size(), threshold);
 
         String interval = activeConfig.getDefaultInterval() != null
@@ -120,14 +139,12 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(cron = "0 0 16-23 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMcxHourlyScan() {
-        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+        if (!isScannerStrategyActive()) return;
 
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
 
-        if (now.isBefore(LocalTime.of(16, 0)) || now.isAfter(LocalTime.of(23, 30))) {
-            return;
-        }
+        if (now.isBefore(LocalTime.of(16, 0)) || now.isAfter(LocalTime.of(23, 30))) return;
 
         logger.info("🛢️ [MCX] Starting 1-Hour Option Scanner...");
         executeScanWorkflow(MCX_SYMBOLS, "ONE_HOUR");
@@ -138,12 +155,10 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(cron = "0 15 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void squareOffAllTrades315PM() {
-        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+        if (!isScannerStrategyActive()) return;
 
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
-        if (!NSEWorkingDays.isNSEWorkingDay(today)) {
-            return;
-        }
+        if (!NSEWorkingDays.isNSEWorkingDay(today)) return;
 
         logger.info("⏰ [SQUARE-OFF] 3:15 PM Reached. Initiating forced market exit for all open AI_BIAS trades...");
         optionPriceOrderService.closeAllOpenTrades();
@@ -154,9 +169,7 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(fixedDelay = 5000)
     public void runAiTradeRiskMonitor() {
-        if (!isScannerStrategyActive()) return; // ✅ Master Switch
-
-        // Continuously invokes the driver to evaluate active trades and pass them to MonitorOrderService
+        if (!isScannerStrategyActive()) return;
         optionPriceService.monitorActiveAiTrades(null);
     }
 
@@ -195,48 +208,24 @@ public class OptionPriceScannerScheduler {
     // ==========================================
     @Scheduled(cron = "5 * 9-15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runNseMinuteVwapScan() {
-        if (!isScannerStrategyActive()) return; // ✅ Master Switch
+        if (!isScannerStrategyActive()) return;
 
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         LocalTime now = LocalTime.now(istZone);
         LocalDate today = LocalDate.now(istZone);
 
-        // Ensure we only run during market hours
-        if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) {
-            return;
-        }
-        if (!NSEWorkingDays.isNSEWorkingDay(today)) {
-            return;
-        }
+        if (now.isBefore(LocalTime.of(9, 15)) || now.isAfter(LocalTime.of(15, 30))) return;
+        if (!NSEWorkingDays.isNSEWorkingDay(today)) return;
 
         logger.info("⏱️ [VWAP] Starting 1-Minute ATM Option Scanner...");
 
-        // Target NIFTY/BANKNIFTY + configured volatile stocks
         StrategyConfig activeConfig = configService.getActiveConfig();
         BigDecimal threshold = activeConfig.getMinPercentageChange() != null
                 ? activeConfig.getMinPercentageChange()
                 : BigDecimal.valueOf(5.0);
 
-        List<String> allNames = niftyRepo.getAllNames();
-        Set<String> uniqueSymbolsToScan = new HashSet<>(NSE_SYMBOLS);
-
-        if (allNames != null) {
-            for (String symbol : allNames) {
-                try {
-                    Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(symbol);
-                    if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
-                        BigDecimal currentChange = stockOpt.get().getPercentageChange();
-                        if (currentChange.abs().compareTo(threshold) >= 0) {
-                            uniqueSymbolsToScan.add(symbol);
-                        }
-                    }
-                } catch (Exception e) {
-                    logger.error("⚠️ Error evaluating percentage threshold for symbol '{}': {}", symbol, e.getMessage());
-                }
-            }
-        }
-
-        List<String> symbolsToScan = new ArrayList<>(uniqueSymbolsToScan);
+        // Fetch our persistent daily list
+        List<String> symbolsToScan = getDailySymbolsToScan(today, threshold);
         executeAtmScanWorkflow(symbolsToScan, "ONE_MINUTE");
     }
 
@@ -248,9 +237,9 @@ public class OptionPriceScannerScheduler {
                 .monthsToScan(1)
                 .scanWeekly(true)
                 .scanMonthly(true)
-                .strikeDistance(0) // 🔴 STRICTLY 0 to prevent DB bloat
+                .strikeDistance(0)
                 .interval(interval)
-                .allowedMoneyness(Set.of(OptionScannerConfig.Moneyness.ATM)) // 🔴 ONLY ATM
+                .allowedMoneyness(Set.of(OptionScannerConfig.Moneyness.ATM))
                 .build();
 
         for (String symbol : symbols) {

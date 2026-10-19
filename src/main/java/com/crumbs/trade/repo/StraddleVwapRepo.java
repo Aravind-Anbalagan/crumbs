@@ -20,4 +20,7 @@ public interface StraddleVwapRepo extends JpaRepository<StraddleVwapData, Long> 
             @Param("symbol") String symbol,
             @Param("startOfDay") LocalDateTime startOfDay,
             @Param("endOfDay") LocalDateTime endOfDay);
+
+    @Query("SELECT DISTINCT v.symbol FROM StraddleVwapData v ORDER BY v.symbol ASC")
+    List<String> findDistinctSymbols();
 }

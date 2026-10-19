@@ -292,4 +292,9 @@ public class OptionChainScannerController {
 
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/vwap/symbols")
+    public ResponseEntity<List<String>> getSymbols() {
+        return ResponseEntity.ok(optionPriceService.getUniqueSymbols());
+    }
 }
