@@ -150,7 +150,7 @@ public class ShortStraddleService {
 
         } else {
             if (straddlesUsed >= maxAllowed) {
-                log.info("🛑 [{}] Max daily trades reached ({}/{}). Stopping scans.", tradeName, straddlesUsed, maxAllowed);
+                logger.info("🛑 [{}] Max daily trades reached ({}/{}). Stopping scans.", tradeName, straddlesUsed, maxAllowed);
                 return;
             }
 
