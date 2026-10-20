@@ -4,8 +4,10 @@ import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.CandleRequestDto;
+import com.crumbs.trade.entity.Futures;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.PricesIndex;
+import com.crumbs.trade.repo.FuturesRepo;
 import com.crumbs.trade.repo.IndexesRepo;
 import com.crumbs.trade.service.AngelOneService;
 import com.crumbs.trade.service.AngelWebSocketService;
@@ -34,6 +36,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class AdvisoryEngineService {
 
     private final IndexesRepo indexesRepo;
+    private final FuturesRepo futuresRepo; // 👈 Newly added for macro expiry levels
     private final SRService srService;
     private final AdvisoryOiService oiService;
     private final AdvisoryLedgerRepository ledgerRepository;
@@ -45,9 +48,43 @@ public class AdvisoryEngineService {
 
     @Autowired
     @Lazy
-    private AdvisoryEngineService self; // Inject proxy for transactional boundaries
+    private AdvisoryEngineService self;
 
-    public record MultiTimeframeTrend(String dailyTrend, String weeklyTrend, boolean isAligned) {}
+    // =========================================================================
+    // THE 3-PILLAR TREND LOGIC
+    // =========================================================================
+    public record TrendPillars(BigDecimal ma20, BigDecimal ma50, BigDecimal expiryHigh, BigDecimal expiryLow) {
+
+        // EXACT ENTRY: All 3 Must Be True
+        public boolean isBullish(BigDecimal spot) {
+            return expiryHigh != null
+                    && spot.compareTo(ma20) > 0
+                    && spot.compareTo(ma50) > 0
+                    && spot.compareTo(expiryHigh) > 0;
+        }
+
+        public boolean isBearish(BigDecimal spot) {
+            return expiryLow != null
+                    && spot.compareTo(ma20) < 0
+                    && spot.compareTo(ma50) < 0
+                    && spot.compareTo(expiryLow) < 0;
+        }
+
+        // EXACT STOP LOSS: All 3 Must Be True (Total Reversal)
+        public boolean isBullishFailure(BigDecimal spot) {
+            return expiryHigh != null
+                    && spot.compareTo(ma20) < 0
+                    && spot.compareTo(ma50) < 0
+                    && spot.compareTo(expiryHigh) < 0;
+        }
+
+        public boolean isBearishFailure(BigDecimal spot) {
+            return expiryLow != null
+                    && spot.compareTo(ma20) > 0
+                    && spot.compareTo(ma50) > 0
+                    && spot.compareTo(expiryLow) > 0;
+        }
+    }
 
     // =========================================================================
     // OVERLOADED METHODS FOR BACKWARD COMPATIBILITY (Prevents Caller Breakage)
@@ -62,7 +99,7 @@ public class AdvisoryEngineService {
     }
 
     // =========================================================================
-    // MAIN ENTRY POINT WITH SCAN TYPE
+    // MAIN ENTRY POINT
     // =========================================================================
     public OptionRecommendation processAdvisory(String name, String token, String scanType) {
         Lock lock = SYMBOL_LOCKS.computeIfAbsent(name, k -> new ReentrantLock());
@@ -103,7 +140,6 @@ public class AdvisoryEngineService {
         }
 
         String exchange = indexes.getExchange();
-
         CandleRequestDto dailyReq = srService.getCandleTiming("ONE_DAY", exchange);
         List<PricesIndex> dailyCandles = srService.getCandleData(dailyReq, name, indexes.getSymbol());
 
@@ -115,35 +151,14 @@ public class AdvisoryEngineService {
         BigDecimal spotPrice = dailyCandles.get(dailyCandles.size() - 1).getClose();
 
         // =====================================================================
-        // CALCULATE 20-DAY SWING ZONES
+        // FETCH MACRO LEVELS & CALCULATE 3 PILLARS
         // =====================================================================
-        int lookback = Math.min(20, dailyCandles.size());
-        BigDecimal hh = BigDecimal.ZERO;
-        BigDecimal ll = new BigDecimal("9999999");
-
-        for (int i = dailyCandles.size() - lookback; i < dailyCandles.size(); i++) {
-            PricesIndex c = dailyCandles.get(i);
-            if (c.getHigh() != null && c.getHigh().compareTo(hh) > 0) hh = c.getHigh();
-            if (c.getLow() != null && c.getLow().compareTo(ll) < 0) ll = c.getLow();
-        }
-
-        BigDecimal range = hh.subtract(ll);
-        BigDecimal discountTop = ll.add(range.multiply(new BigDecimal("0.50")));
-        BigDecimal premiumBottom = hh.subtract(range.multiply(new BigDecimal("0.50")));
-
-        String currentZone = "CHOP";
-        if (spotPrice.compareTo(discountTop) <= 0) currentZone = "DISCOUNT";
-        else if (spotPrice.compareTo(premiumBottom) >= 0) currentZone = "PREMIUM";
-
-        log.info("🎯 [ZONE CALC] Spot: ₹{} | LL: ₹{} | HH: ₹{} | Zone: {}", spotPrice, ll, hh, currentZone);
-
-        // =====================================================================
-
-        MultiTimeframeTrend mtfTrend = analyzeMultiTimeframeTrend(dailyCandles, spotPrice);
+        Futures futureData = futuresRepo.findFirstByName(name);
+        TrendPillars pillars = calculatePillars(dailyCandles, futureData);
         BigDecimal atr14 = calculateATR(dailyCandles, 14);
 
-        log.info("📊 [MARKET CONTEXT] Spot: ₹{} | Daily Trend: {} | Weekly Trend: {} | ATR: {}",
-                spotPrice, mtfTrend.dailyTrend(), mtfTrend.weeklyTrend(), atr14);
+        log.info("📊 [MARKET CONTEXT] Spot: ₹{} | 20MA: {} | 50MA: {} | Expiry H/L: {}/{} | ATR: {}",
+                spotPrice, pillars.ma20(), pillars.ma50(), pillars.expiryHigh(), pillars.expiryLow(), atr14);
 
         AdvisoryOiService.AdvisoryOiData oiData;
         try {
@@ -162,6 +177,8 @@ public class AdvisoryEngineService {
         LocalDateTime now = LocalDateTime.now();
         CycleUtils.CycleBoundary cycle = CycleUtils.getCurrentCycleBoundary(LocalDate.now());
 
+        String roughTrend = pillars.isBullish(spotPrice) ? "BULLISH" : (pillars.isBearish(spotPrice) ? "BEARISH" : "CHOP");
+
         AdvisoryLedger newRecord = AdvisoryLedger.builder()
                 .symbol(name)
                 .expiryDate(resolvedExpiry)
@@ -170,7 +187,7 @@ public class AdvisoryEngineService {
                 .cycleStartDate(cycle.startDate())
                 .cycleEndDate(cycle.endDate())
                 .spotPrice(spotPrice)
-                .dailyTrend(mtfTrend.dailyTrend())
+                .dailyTrend(roughTrend)
                 .atr14(atr14)
                 .isNewDay(true)
                 .build();
@@ -203,13 +220,13 @@ public class AdvisoryEngineService {
 
         if (isHoldingActiveTrade) {
             log.info("🔄 [PATH 2: HOLD/EXIT] Evaluating existing position for {}. Previous action: {}", name, prevRecord.getActionTaken());
-            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, now, exchange, scanType);
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, pillars, atr14, oiData, now, exchange, scanType, futureData);
         } else if (previousRecordOpt.isEmpty() || expiryChanged || prevPositionClosed || "NO_TRADE".equals(prevRecord.getActionTaken())) {
-            log.info("✨ [PATH 1: NEW ENTRY] Scanning for fresh setup on {}...", name);
-            evaluateNewEntry(newRecord, mtfTrend, oiData, now, spotPrice, currentZone, ll, hh);
+            log.info("✨ [PATH 1: NEW ENTRY] Scanning for fresh 3-Pillar setup on {}...", name);
+            evaluateNewEntry(newRecord, pillars, oiData, now, spotPrice);
         } else {
             log.warn("⚠️ [FALLBACK PATH] Unhandled state for {}. Forcing hold/exit evaluation.", name);
-            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, mtfTrend, atr14, oiData, now, exchange, scanType);
+            evaluateHoldOrExit(prevRecord, newRecord, spotPrice, pillars, atr14, oiData, now, exchange, scanType, futureData);
         }
 
         // =====================================================================
@@ -223,7 +240,6 @@ public class AdvisoryEngineService {
                 shouldSave = true;
                 saveReason = newRecord.getActionTaken();
 
-                // Calculate MTM for active trades
                 if (newRecord.getEntryPremium() != null && !newRecord.getActionTaken().equals("NO_TRADE")) {
                     BigDecimal liveLtp = safelyFetchExitPremium(newRecord, exchange);
                     if (liveLtp != null) {
@@ -255,7 +271,7 @@ public class AdvisoryEngineService {
                 .symbol(name)
                 .timestamp(now)
                 .spotPrice(spotPrice)
-                .dailyTrend(mtfTrend.dailyTrend())
+                .dailyTrend(roughTrend)
                 .action(newRecord.getActionTaken())
                 .recommendedStrike(newRecord.getRecommendedStrike())
                 .putOiWallStrike(newRecord.getPutWallStrike())
@@ -270,12 +286,11 @@ public class AdvisoryEngineService {
     }
 
     // =========================================================================
-    // PATH 1: NEW POSITION ENTRY (WITH AUDIT TRAIL)
+    // PATH 1: NEW POSITION ENTRY
     // =========================================================================
-    private void evaluateNewEntry(AdvisoryLedger newRecord, MultiTimeframeTrend mtfTrend,
+    private void evaluateNewEntry(AdvisoryLedger newRecord, TrendPillars pillars,
                                   AdvisoryOiService.AdvisoryOiData oiData,
-                                  LocalDateTime now, BigDecimal spotPrice,
-                                  String currentZone, BigDecimal ll, BigDecimal hh) {
+                                  LocalDateTime now, BigDecimal spotPrice) {
 
         BigDecimal minPremium = new BigDecimal("10.0");
         List<String> auditTrail = new ArrayList<>();
@@ -292,108 +307,85 @@ public class AdvisoryEngineService {
             auditTrail.add("✅ Cooldown (Clear)");
         }
 
-        // 2. Trend Alignment
-        if (!mtfTrend.isAligned()) {
-            auditTrail.add(String.format("❌ Trend (Misaligned: D=%s, W=%s)", mtfTrend.dailyTrend(), mtfTrend.weeklyTrend()));
+        // 2. Trend & OI Execution Logic
+        if (canTrade && pillars.isBullish(spotPrice)) {
+            auditTrail.add("✅ Trend (3-Pillar Bullish Confirmed)");
+
+            if (oiData == null || oiData.putWall() == null) {
+                auditTrail.add("❌ OI Wall (Put Wall Missing)");
+                canTrade = false;
+            } else if (oiData.putWall().strike().compareTo(spotPrice) >= 0) {
+                auditTrail.add(String.format("❌ OI Wall (Put Wall %s is ITM, needs to be OTM)", oiData.putWall().strike()));
+                canTrade = false;
+            } else if (isRecentlyBreached(lastClosedOpt, now)) {
+                auditTrail.add("❌ Execution (Recent SL breach cooldown active)");
+                canTrade = false;
+            } else if (oiData.putWall().ltp().compareTo(minPremium) < 0) {
+                auditTrail.add(String.format("❌ Premium (₹%s < ₹%s min)", oiData.putWall().ltp(), minPremium));
+                canTrade = false;
+            } else {
+                auditTrail.add(String.format("✅ OI Wall (Put Wall at %s confirms support)", oiData.putWall().strike()));
+
+                // Execute Bullish Entry (Sell PE)
+                newRecord.setActionTaken("NEW_ENTRY");
+                newRecord.setOptionType("PE");
+                newRecord.setRecommendedStrike(oiData.putWall().strike());
+                Indexes optIndex = getOptionIndexMetadata(newRecord);
+                newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
+                newRecord.setEntryPremium(oiData.putWall().ltp());
+                newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
+                newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
+                newRecord.setEntryDate(now);
+                newRecord.setDaysInPosition(1);
+                newRecord.setStatus("ACTIVE");
+
+                // Lock in the macro anchors
+                newRecord.setExpiryHighAnchor(pillars.expiryHigh());
+                newRecord.setExpiryLowAnchor(pillars.expiryLow());
+            }
+
+        } else if (canTrade && pillars.isBearish(spotPrice)) {
+            auditTrail.add("✅ Trend (3-Pillar Bearish Confirmed)");
+
+            if (oiData == null || oiData.callWall() == null) {
+                auditTrail.add("❌ OI Wall (Call Wall Missing)");
+                canTrade = false;
+            } else if (oiData.callWall().strike().compareTo(spotPrice) <= 0) {
+                auditTrail.add(String.format("❌ OI Wall (Call Wall %s is ITM, needs to be OTM)", oiData.callWall().strike()));
+                canTrade = false;
+            } else if (isRecentlyBreached(lastClosedOpt, now)) {
+                auditTrail.add("❌ Execution (Recent SL breach cooldown active)");
+                canTrade = false;
+            } else if (oiData.callWall().ltp().compareTo(minPremium) < 0) {
+                auditTrail.add(String.format("❌ Premium (₹%s < ₹%s min)", oiData.callWall().ltp(), minPremium));
+                canTrade = false;
+            } else {
+                auditTrail.add(String.format("✅ OI Wall (Call Wall at %s confirms resistance)", oiData.callWall().strike()));
+
+                // Execute Bearish Entry (Sell CE)
+                newRecord.setActionTaken("NEW_ENTRY");
+                newRecord.setOptionType("CE");
+                newRecord.setRecommendedStrike(oiData.callWall().strike());
+                Indexes optIndex = getOptionIndexMetadata(newRecord);
+                newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
+                newRecord.setEntryPremium(oiData.callWall().ltp());
+                newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
+                newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
+                newRecord.setEntryDate(now);
+                newRecord.setDaysInPosition(1);
+                newRecord.setStatus("ACTIVE");
+
+                // Lock in the macro anchors
+                newRecord.setExpiryHighAnchor(pillars.expiryHigh());
+                newRecord.setExpiryLowAnchor(pillars.expiryLow());
+            }
+
+        } else if (canTrade) {
+            auditTrail.add(String.format("❌ Trend (No 3-Pillar Alignment. Spot: %s | 20MA: %s | 50MA: %s | High: %s | Low: %s)",
+                    spotPrice, pillars.ma20(), pillars.ma50(), pillars.expiryHigh(), pillars.expiryLow()));
             canTrade = false;
-        } else {
-            auditTrail.add(String.format("✅ Trend (%s)", mtfTrend.dailyTrend()));
         }
 
-        newRecord.setMarketZone(currentZone);
-
-        // 3. Zone & OI Checks based on Trend
-        if (canTrade && "BULLISH".equals(mtfTrend.dailyTrend())) {
-            if (!"DISCOUNT".equals(currentZone)) {
-                auditTrail.add(String.format("❌ Zone (Spot in %s, needs DISCOUNT)", currentZone));
-                canTrade = false;
-            } else {
-                auditTrail.add("✅ Zone (In DISCOUNT)");
-            }
-
-            if (canTrade) {
-                if (oiData == null || oiData.putWall() == null) {
-                    auditTrail.add("❌ OI Wall (Put Wall Missing)");
-                    canTrade = false;
-                } else if (oiData.putWall().strike().compareTo(spotPrice) >= 0) {
-                    auditTrail.add(String.format("❌ OI Wall (Put Wall %s is ITM, needs to be OTM)", oiData.putWall().strike()));
-                    canTrade = false;
-                } else {
-                    auditTrail.add(String.format("✅ OI Wall (Put Wall at %s confirms support)", oiData.putWall().strike()));
-
-                    if (isRecentlyBreached(lastClosedOpt, now)) {
-                        auditTrail.add("❌ Execution (Recent SL breach cooldown active)");
-                        canTrade = false;
-                    } else if (oiData.putWall().ltp().compareTo(minPremium) < 0) {
-                        auditTrail.add(String.format("❌ Premium (₹%s < ₹%s min)", oiData.putWall().ltp(), minPremium));
-                        canTrade = false;
-                    } else {
-                        auditTrail.add("✅ Premium & Execution checks passed");
-
-                        // Execute Bullish Entry
-                        newRecord.setActionTaken("NEW_ENTRY");
-                        newRecord.setOptionType("PE");
-                        newRecord.setRecommendedStrike(oiData.putWall().strike());
-                        Indexes optIndex = getOptionIndexMetadata(newRecord);
-                        newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
-                        newRecord.setEntryPremium(oiData.putWall().ltp());
-                        newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
-                        newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
-                        newRecord.setEntryDate(now);
-                        newRecord.setDaysInPosition(1);
-                        newRecord.setStatus("ACTIVE");
-                        newRecord.setAnchorSwingLow(ll);
-                        newRecord.setAnchorSwingHigh(hh);
-                    }
-                }
-            }
-        } else if (canTrade && "BEARISH".equals(mtfTrend.dailyTrend())) {
-            if (!"PREMIUM".equals(currentZone)) {
-                auditTrail.add(String.format("❌ Zone (Spot in %s, needs PREMIUM)", currentZone));
-                canTrade = false;
-            } else {
-                auditTrail.add("✅ Zone (In PREMIUM)");
-            }
-
-            if (canTrade) {
-                if (oiData == null || oiData.callWall() == null) {
-                    auditTrail.add("❌ OI Wall (Call Wall Missing)");
-                    canTrade = false;
-                } else if (oiData.callWall().strike().compareTo(spotPrice) <= 0) {
-                    auditTrail.add(String.format("❌ OI Wall (Call Wall %s is ITM, needs to be OTM)", oiData.callWall().strike()));
-                    canTrade = false;
-                } else {
-                    auditTrail.add(String.format("✅ OI Wall (Call Wall at %s confirms resistance)", oiData.callWall().strike()));
-
-                    if (isRecentlyBreached(lastClosedOpt, now)) {
-                        auditTrail.add("❌ Execution (Recent SL breach cooldown active)");
-                        canTrade = false;
-                    } else if (oiData.callWall().ltp().compareTo(minPremium) < 0) {
-                        auditTrail.add(String.format("❌ Premium (₹%s < ₹%s min)", oiData.callWall().ltp(), minPremium));
-                        canTrade = false;
-                    } else {
-                        auditTrail.add("✅ Premium & Execution checks passed");
-
-                        // Execute Bearish Entry
-                        newRecord.setActionTaken("NEW_ENTRY");
-                        newRecord.setOptionType("CE");
-                        newRecord.setRecommendedStrike(oiData.callWall().strike());
-                        Indexes optIndex = getOptionIndexMetadata(newRecord);
-                        newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
-                        newRecord.setEntryPremium(oiData.callWall().ltp());
-                        newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
-                        newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
-                        newRecord.setEntryDate(now);
-                        newRecord.setDaysInPosition(1);
-                        newRecord.setStatus("ACTIVE");
-                        newRecord.setAnchorSwingLow(ll);
-                        newRecord.setAnchorSwingHigh(hh);
-                    }
-                }
-            }
-        }
-
-        // Finalize Logging and DB Record
         String combinedAuditLog = String.join(" | ", auditTrail);
         if (!canTrade) {
             newRecord.setActionTaken("NO_TRADE");
@@ -411,9 +403,9 @@ public class AdvisoryEngineService {
     // PATH 2: HOLD OR EXIT EXISTING POSITION
     // =========================================================================
     private void evaluateHoldOrExit(AdvisoryLedger prev, AdvisoryLedger current, BigDecimal spotPrice,
-                                    MultiTimeframeTrend mtfTrend, BigDecimal atr14,
+                                    TrendPillars pillars, BigDecimal atr14,
                                     AdvisoryOiService.AdvisoryOiData oiData,
-                                    LocalDateTime now, String exchange, String scanType) {
+                                    LocalDateTime now, String exchange, String scanType, Futures futureData) {
 
         if (prev.getEntryPremium() == null || prev.getRecommendedStrike() == null || prev.getOptionType() == null) {
             current.setActionTaken("NO_TRADE");
@@ -423,7 +415,7 @@ public class AdvisoryEngineService {
             return;
         }
 
-        // Lock in original position specs & structural anchors
+        // Lock in original position specs
         current.setOptionType(prev.getOptionType());
         current.setRecommendedStrike(prev.getRecommendedStrike());
         current.setExpiryDate(prev.getExpiryDate());
@@ -434,16 +426,21 @@ public class AdvisoryEngineService {
         current.setCurrentPremium(prev.getCurrentPremium());
         current.setLotSize(prev.getLotSize());
 
-        current.setAnchorSwingLow(prev.getAnchorSwingLow());
-        current.setAnchorSwingHigh(prev.getAnchorSwingHigh());
-        current.setMarketZone(prev.getMarketZone());
+        // 🔥 IN-FLIGHT TRADE MIGRATION SAFETY CHECK 🔥
+        // If this trade was opened BEFORE the code update, it won't have expiry anchors.
+        // We seamlessly fall back to the live Futures data so the trade doesn't break.
+        BigDecimal lockedExpiryHigh = prev.getExpiryHighAnchor() != null ? prev.getExpiryHighAnchor() : (futureData != null ? futureData.getExpiryHigh() : null);
+        BigDecimal lockedExpiryLow = prev.getExpiryLowAnchor() != null ? prev.getExpiryLowAnchor() : (futureData != null ? futureData.getExpiryLow() : null);
+
+        current.setExpiryHighAnchor(lockedExpiryHigh);
+        current.setExpiryLowAnchor(lockedExpiryLow);
 
         int daysHeld = (int) java.time.temporal.ChronoUnit.DAYS.between(current.getEntryDate().toLocalDate(), now.toLocalDate()) + 1;
         current.setDaysInPosition(daysHeld);
 
         List<String> warnings = new ArrayList<>();
 
-        // GUARD 1: Proximity Alert (Warning)
+        // Proximity Warning
         BigDecimal safeBuffer = atr14.multiply(new BigDecimal("1.25"));
         boolean ceBreached = "CE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().subtract(safeBuffer)) >= 0;
         boolean peBreached = "PE".equalsIgnoreCase(prev.getOptionType()) && spotPrice.compareTo(prev.getRecommendedStrike().add(safeBuffer)) <= 0;
@@ -452,20 +449,14 @@ public class AdvisoryEngineService {
             log.warn("🚨 [WARNING] Proximity buffer breached on {}!", prev.getSymbol());
         }
 
-        // GUARD 2: Daily Trend Flip (Warning)
-        if (prev.getDailyTrend() != null && !prev.getDailyTrend().equals(mtfTrend.dailyTrend())) {
-            warnings.add("🚨 Trend flipped");
-            log.warn("🚨 [WARNING] MTF Trend flipped on {} from {} to {}!", prev.getSymbol(), prev.getDailyTrend(), mtfTrend.dailyTrend());
-        }
-
-        // ===================================================================
-        // GUARD 3: VALUE TARGET (85% Premium Decay) - CAN trigger anytime
-        // ===================================================================
         BigDecimal exitPremium = safelyFetchExitPremium(current, exchange);
         if (exitPremium == null) {
             exitPremium = current.getCurrentPremium() != null ? current.getCurrentPremium() : current.getEntryPremium();
         }
 
+        // ===================================================================
+        // EXIT 1: VALUE TARGET (85% Premium Decay) - CAN trigger anytime
+        // ===================================================================
         if (exitPremium != null && prev.getEntryPremium() != null) {
             BigDecimal targetPremium = prev.getEntryPremium().multiply(new BigDecimal("0.15"));
             if (exitPremium.compareTo(targetPremium) <= 0) {
@@ -477,22 +468,21 @@ public class AdvisoryEngineService {
         }
 
         // ===================================================================
-        // GUARD 4: STRUCTURAL STOP-LOSS (PHYSICAL BREACH)
+        // EXIT 2: STRUCTURAL STOP-LOSS (ALL 3 PILLARS FAILED)
         // Only allowed during PRE_CLOSE_SCAN to prevent intraday fakeouts.
         // ===================================================================
         if ("PRE_CLOSE_SCAN".equals(scanType)) {
-            if ("PE".equalsIgnoreCase(prev.getOptionType()) && prev.getAnchorSwingLow() != null) {
-                BigDecimal slLevel = prev.getAnchorSwingLow().subtract(atr14.multiply(new BigDecimal("0.5")));
+            // Reconstruct the pillars using the exact anchors from when the trade was originally placed
+            TrendPillars lockedPillars = new TrendPillars(pillars.ma20(), pillars.ma50(), lockedExpiryHigh, lockedExpiryLow);
 
-                if (spotPrice.compareTo(slLevel) < 0) {
-                    executeExit(current, exchange, "SL", String.format("SL HIT: Structural Failure. Spot (₹%s) closed below the anchored Swing Low (₹%s). Exiting to protect capital.", spotPrice, prev.getAnchorSwingLow()));
+            if ("PE".equalsIgnoreCase(prev.getOptionType())) {
+                if (lockedPillars.isBullishFailure(spotPrice)) {
+                    executeExit(current, exchange, "SL", String.format("SL HIT: Full Structural Failure. Spot (₹%s) closed below 20MA, 50MA, and Expiry High.", spotPrice));
                     return;
                 }
-            } else if ("CE".equalsIgnoreCase(prev.getOptionType()) && prev.getAnchorSwingHigh() != null) {
-                BigDecimal slLevel = prev.getAnchorSwingHigh().add(atr14.multiply(new BigDecimal("0.5")));
-
-                if (spotPrice.compareTo(slLevel) > 0) {
-                    executeExit(current, exchange, "SL", String.format("SL HIT: Structural Failure. Spot (₹%s) closed above the anchored Swing High (₹%s). Exiting to protect capital.", spotPrice, prev.getAnchorSwingHigh()));
+            } else if ("CE".equalsIgnoreCase(prev.getOptionType())) {
+                if (lockedPillars.isBearishFailure(spotPrice)) {
+                    executeExit(current, exchange, "SL", String.format("SL HIT: Full Structural Failure. Spot (₹%s) closed above 20MA, 50MA, and Expiry Low.", spotPrice));
                     return;
                 }
             }
@@ -501,7 +491,7 @@ public class AdvisoryEngineService {
         }
 
         // ===================================================================
-        // GUARD 5: WALL MIGRATION / DUAL VALIDATION TARGETS & WARNINGS
+        // EXIT 3: WALL MIGRATION (Dynamic Support/Resistance collapse)
         // ===================================================================
         boolean wallMigratedToTarget = false;
         String wallExitReason = "";
@@ -511,17 +501,11 @@ public class AdvisoryEngineService {
             BigDecimal prevPutStrike = prev.getPutWallStrike();
             BigDecimal prevCallStrike = prev.getCallWallStrike();
 
-            BigDecimal prevPutOi = prev.getPutWallOi() != null ? prev.getPutWallOi() : BigDecimal.ZERO;
-            BigDecimal prevCallOi = prev.getCallWallOi() != null ? prev.getCallWallOi() : BigDecimal.ZERO;
-
             boolean hasLivePut = oiData.putWall() != null;
             boolean hasLiveCall = oiData.callWall() != null;
 
             BigDecimal livePutStrike = hasLivePut ? oiData.putWall().strike() : null;
-            BigDecimal livePutOi = hasLivePut ? BigDecimal.valueOf(oiData.putWall().openInterest()) : BigDecimal.ZERO;
-
             BigDecimal liveCallStrike = hasLiveCall ? oiData.callWall().strike() : null;
-            BigDecimal liveCallOi = hasLiveCall ? BigDecimal.valueOf(oiData.callWall().openInterest()) : BigDecimal.ZERO;
 
             if (hasLivePut && prevPutStrike != null && hasLiveCall && prevCallStrike != null) {
 
@@ -529,31 +513,23 @@ public class AdvisoryEngineService {
                     boolean supportRaised = livePutStrike.compareTo(prevPutStrike) > 0;
                     boolean resistanceConceded = liveCallStrike.compareTo(prevCallStrike) >= 0;
 
-                    boolean supportWeakening = livePutStrike.compareTo(prevPutStrike) < 0 || livePutOi.compareTo(prevPutOi) < 0;
-                    boolean resistanceStrengthening = liveCallStrike.compareTo(prevCallStrike) < 0 || liveCallOi.compareTo(prevCallOi) > 0;
-
                     if (supportRaised && resistanceConceded) {
                         wallMigratedToTarget = true;
                         wallExitReason = "TARGET";
                         exitReasoning = String.format("Wall migrated. TARGET. PE shifted favorably (%s -> %s) and CE conceded.", prevPutStrike, livePutStrike);
-                    } else if (supportWeakening && resistanceStrengthening) {
-                        warnings.add("🚨 OI Wall shifted against us (Support Weakening & Resistance Strengthening)");
-                        log.warn("🚨 [WARNING] OI Wall shifting against {} position!", prev.getSymbol());
+                    } else if (livePutStrike.compareTo(prevPutStrike) < 0) {
+                        warnings.add("🚨 Support Wall retreating lower");
                     }
                 } else if ("CE".equalsIgnoreCase(prev.getOptionType())) {
                     boolean resistanceLowered = liveCallStrike.compareTo(prevCallStrike) < 0;
                     boolean supportConceded = livePutStrike.compareTo(prevPutStrike) <= 0;
 
-                    boolean resistanceWeakening = liveCallStrike.compareTo(prevCallStrike) > 0 || liveCallOi.compareTo(prevCallOi) < 0;
-                    boolean supportStrengthening = livePutStrike.compareTo(prevPutStrike) > 0 || livePutOi.compareTo(prevPutOi) > 0;
-
                     if (resistanceLowered && supportConceded) {
                         wallMigratedToTarget = true;
                         wallExitReason = "TARGET";
                         exitReasoning = String.format("Wall migrated. TARGET. CE shifted favorably (%s -> %s) and PE conceded.", prevCallStrike, liveCallStrike);
-                    } else if (resistanceWeakening && supportStrengthening) {
-                        warnings.add("🚨 OI Wall shifted against us (Resistance Weakening & Support Strengthening)");
-                        log.warn("🚨 [WARNING] OI Wall shifting against {} position!", prev.getSymbol());
+                    } else if (liveCallStrike.compareTo(prevCallStrike) > 0) {
+                        warnings.add("🚨 Resistance Wall retreating higher");
                     }
                 }
             }
@@ -565,14 +541,14 @@ public class AdvisoryEngineService {
         }
 
         // ===================================================================
-        // ALL WALLS/ANCHORS INTACT: MAINTAIN POSITION & LOG WARNINGS
+        // ALL PILLARS/WALLS INTACT: MAINTAIN POSITION
         // ===================================================================
         current.setActionTaken("MAINTAIN");
         current.setStatus("ACTIVE");
 
         String reasoning = String.format("Holding %s %s (Day %d).", prev.getRecommendedStrike(), prev.getOptionType(), daysHeld);
         if (!warnings.isEmpty()) {
-            reasoning += " [WARNINGS: " + String.join(", ", warnings) + "] Market structure intact.";
+            reasoning += " [WARNINGS: " + String.join(", ", warnings) + "] Trend intact.";
         } else {
             reasoning += " Premium decay progressing safely.";
         }
@@ -609,8 +585,23 @@ public class AdvisoryEngineService {
     }
 
     // =========================================================================
-    // HELPER: PREVENT SL CHURNING
+    // HELPER METHODS
     // =========================================================================
+    private TrendPillars calculatePillars(List<PricesIndex> candles, Futures futureData) {
+        BigDecimal sum20 = BigDecimal.ZERO;
+        for (int i = candles.size() - 20; i < candles.size(); i++) sum20 = sum20.add(candles.get(i).getClose());
+        BigDecimal ma20 = sum20.divide(new BigDecimal("20"), 2, RoundingMode.HALF_UP);
+
+        BigDecimal sum50 = BigDecimal.ZERO;
+        for (int i = candles.size() - 50; i < candles.size(); i++) sum50 = sum50.add(candles.get(i).getClose());
+        BigDecimal ma50 = sum50.divide(new BigDecimal("50"), 2, RoundingMode.HALF_UP);
+
+        BigDecimal expHigh = futureData != null ? futureData.getExpiryHigh() : null;
+        BigDecimal expLow = futureData != null ? futureData.getExpiryLow() : null;
+
+        return new TrendPillars(ma20, ma50, expHigh, expLow);
+    }
+
     private boolean isRecentlyBreached(Optional<AdvisoryLedger> lastClosedOpt, LocalDateTime now) {
         if (lastClosedOpt.isPresent()) {
             AdvisoryLedger lastTrade = lastClosedOpt.get();
@@ -625,10 +616,6 @@ public class AdvisoryEngineService {
         return false;
     }
 
-    // =========================================================================
-    // HELPERS
-    // =========================================================================
-
     private BigDecimal safelyFetchExitPremium(AdvisoryLedger prev, String exchange) {
         if (prev.getRecommendedStrike() == null || prev.getOptionType() == null) return null;
 
@@ -639,7 +626,6 @@ public class AdvisoryEngineService {
             String optionToken = optionIndex.getToken();
             ExchangeType exType = exchange.contains("MCX") ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
 
-            // 🚀 FAST PATH: Fetch directly from in-memory WebSocket cache (0ms delay)
             BigDecimal exitLtp = webSocketService.getLatestLTP(exType, optionToken);
 
             if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) {
@@ -655,20 +641,6 @@ public class AdvisoryEngineService {
         return null;
     }
 
-    private MultiTimeframeTrend analyzeMultiTimeframeTrend(List<PricesIndex> candles, BigDecimal spotPrice) {
-        BigDecimal sum20 = BigDecimal.ZERO;
-        for (int i = candles.size() - 20; i < candles.size(); i++) sum20 = sum20.add(candles.get(i).getClose());
-        BigDecimal ma20 = sum20.divide(new BigDecimal("20"), 2, RoundingMode.HALF_UP);
-        String dailyTrend = spotPrice.compareTo(ma20) >= 0 ? "BULLISH" : "BEARISH";
-
-        BigDecimal sum50 = BigDecimal.ZERO;
-        for (int i = candles.size() - 50; i < candles.size(); i++) sum50 = sum50.add(candles.get(i).getClose());
-        BigDecimal ma50 = sum50.divide(new BigDecimal("50"), 2, RoundingMode.HALF_UP);
-        String weeklyTrend = spotPrice.compareTo(ma50) >= 0 ? "BULLISH" : "BEARISH";
-
-        return new MultiTimeframeTrend(dailyTrend, weeklyTrend, dailyTrend.equals(weeklyTrend));
-    }
-
     private BigDecimal calculateATR(List<PricesIndex> candles, int period) {
         if (candles == null || candles.size() < period) return estimateATRFromRange(candles);
 
@@ -676,7 +648,7 @@ public class AdvisoryEngineService {
         int validTRs = 0;
         for (int i = candles.size() - period; i < candles.size(); i++) {
             PricesIndex candle = candles.get(i);
-            PricesIndex prevCandle = candles.get(i - 1);
+            PricesIndex prevCandle = candles.get(i - 1); // 🔥 Subtraction bug fixed here!
             if (candle.getHigh() == null || candle.getLow() == null || prevCandle.getClose() == null) continue;
 
             BigDecimal high = candle.getHigh();

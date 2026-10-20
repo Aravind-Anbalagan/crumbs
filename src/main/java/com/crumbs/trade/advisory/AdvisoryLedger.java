@@ -146,4 +146,10 @@ public class AdvisoryLedger {
 
     @Column(name = "market_zone", length = 50)
     private String marketZone;
+
+    @Column(name = "expiry_high_anchor", precision = 10, scale = 2)
+    private BigDecimal expiryHighAnchor;
+
+    @Column(name = "expiry_low_anchor", precision = 10, scale = 2)
+    private BigDecimal expiryLowAnchor;
 }

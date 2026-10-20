@@ -16,7 +16,7 @@ public interface FuturesRepo extends JpaRepository<Futures, Long> {
     // saveAll()
     // findById()
     // delete()
-	
+    Futures findFirstByName(String name);
 	List<Futures> findByIsNifty50True();
     List<Futures> findByIsNiftyNext50True();
     List<Futures> findByIsNifty100True();

@@ -25,12 +25,8 @@ public class AdvisoryEngineScheduler {
     private final AdvisoryEngineService engineService;
     private final NiftyRepo niftyRepo;
 
-    // 🛡️ Global Throttle Lock to prevent 429 API rate limits
-    private static final Object THROTTLE_LOCK = new Object();
-
     // =========================================================================
     // PHASE 1: MORNING SCAN (9:20 AM)
-    // Evaluates targets and logs warnings, but is BLOCKED from triggering SLs.
     // =========================================================================
     @Scheduled(cron = "0 20 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void runMorningScan() {
@@ -40,8 +36,6 @@ public class AdvisoryEngineScheduler {
 
     // =========================================================================
     // PHASE 2: PRE-CLOSE SCAN (3:15 PM)
-    // Authorized to execute physical Stop-Losses if the daily candle closes
-    // beyond the anchored Swing zones.
     // =========================================================================
     @Scheduled(cron = "0 15 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runPreCloseScan() {
@@ -51,8 +45,6 @@ public class AdvisoryEngineScheduler {
 
     // =========================================================================
     // PHASE 3: EOD MTM SETTLEMENT (3:35 PM)
-    // Pure accounting run. Fetches the final closing bells prices to update
-    // the Unrealized PnL for active holdings. Does NOT evaluate trades.
     // =========================================================================
     @Scheduled(cron = "0 35 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void runEodPnlSettlement() {
@@ -60,11 +52,9 @@ public class AdvisoryEngineScheduler {
         executeScanTask("EOD_SETTLEMENT");
     }
 
-    // 🧠 Centralized execution engine to handle deduping, threading, and rate limits
     private void executeScanTask(String taskType) {
         List<Nifty> activeStocks = niftyRepo.findByIsActiveTrueAndTokenIsNotNull();
 
-        // 🚨 DEDUP GUARD: Collapse to one task per unique symbol name
         Map<String, List<Nifty>> bySymbol = activeStocks.stream()
                 .collect(Collectors.groupingBy(Nifty::getName));
 
@@ -73,18 +63,18 @@ public class AdvisoryEngineScheduler {
             List<Nifty> rows = entry.getValue();
             if (rows.size() > 1) {
                 String tokens = rows.stream().map(Nifty::getToken).collect(Collectors.joining(", "));
-                log.error("⚠️ DUPLICATE ACTIVE ENTRIES for symbol '{}' (tokens: {}). Skipping extras to avoid ledger race.", entry.getKey(), tokens);
+                log.error("⚠️ DUPLICATE ACTIVE ENTRIES for symbol '{}' (tokens: {}). Skipping extras.", entry.getKey(), tokens);
                 rows.stream().min(Comparator.comparing(Nifty::getToken)).ifPresent(dedupedStocks::add);
             } else {
                 dedupedStocks.add(rows.get(0));
             }
         }
 
-        // 🚀 FAST CONCURRENCY: 3 Threads process DB/WebSocket operations in parallel
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        // 🚀 INCREASED CONCURRENCY: Bumped from 2 to 10 threads.
+        // Samco throttling is now handled dynamically by AdvisoryOiService.
+        ExecutorService executor = Executors.newFixedThreadPool(10);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-        // Summary Counters
         AtomicInteger actionableCount = new AtomicInteger(0);
         AtomicInteger noTradeCount = new AtomicInteger(0);
         AtomicInteger errorCount = new AtomicInteger(0);
@@ -96,13 +86,6 @@ public class AdvisoryEngineScheduler {
 
                     for (int attempt = 1; attempt <= maxRetries; attempt++) {
                         try {
-                            // 🛡️ SYNCHRONIZED THROTTLE:
-                            // Guarantees no two threads start their API fetch at the exact same millisecond.
-                            // 500ms delay = max 2 requests per second globally, perfectly safe for Samco.
-                            synchronized (THROTTLE_LOCK) {
-                                Thread.sleep(500);
-                            }
-
                             if ("MORNING_SCAN".equals(taskType) || "PRE_CLOSE_SCAN".equals(taskType)) {
                                 OptionRecommendation rec = engineService.processAdvisory(stock.getName(), stock.getToken(), taskType);
 
@@ -121,8 +104,7 @@ public class AdvisoryEngineScheduler {
                             } else {
                                 log.warn("⚠️ Unknown taskType received: {}", taskType);
                             }
-
-                            break; // Success! Break out of retry loop
+                            break;
 
                         } catch (Exception e) {
                             String errorLog = e.getMessage() + (e.getCause() != null ? e.getCause().getMessage() : "");
@@ -130,29 +112,23 @@ public class AdvisoryEngineScheduler {
                             if (errorLog.contains("429") && attempt < maxRetries) {
                                 log.warn("⏳ 429 Rate Limit hit for {} during {} (Attempt {}/{}). Cooling down...",
                                         stock.getName(), taskType, attempt, maxRetries);
-                                try {
-                                    Thread.sleep(3000); // Penalty box if rate limit is somehow hit
-                                } catch (InterruptedException ie) {
-                                    Thread.currentThread().interrupt();
-                                }
-                                continue; // Retry
+                                try { Thread.sleep(3000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                                continue;
                             }
 
                             log.error("❌ Failed {} for {}: {}", taskType, stock.getName(), e.getMessage());
                             if (attempt == maxRetries) {
                                 errorCount.incrementAndGet();
                             }
-                            break; // Fail permanently
+                            break;
                         }
                     }
                 }, executor);
                 futures.add(future);
             }
 
-            // Wait for all threads to finish
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-            // 📊 Final Summary Output
             log.info("======================================================");
             log.info("✅ {} SUMMARY REPORT", taskType);
             log.info("======================================================");
