@@ -47,9 +47,7 @@ public class AiService {
                 StockAnalysisDTO dto = dailyDto(stock);
                 String aiResponse = analyzeDailyWithAi(dto);
                 if (aiResponse == null) return;
-
                 AiRecommendation recommendation = objectMapper.readValue(aiResponse, AiRecommendation.class);
-
                 log.info("✅ [{}] Recommendation: {}, Confidence: {}, Target: {}, StopLoss: {}, Reason: {}",
                         dto.getTradingSymbol(),
                         recommendation.getRecommendation(),
