@@ -54,7 +54,8 @@ public class MonitorOrderService {
     private final Map<String, BigDecimal> lastPnlSnapshot = new ConcurrentHashMap<>();
     private final Map<String, Integer> panicStreak = new ConcurrentHashMap<>();
     private final Map<Long, BigDecimal> reconciledEntryPriceCache = new ConcurrentHashMap<>();
-
+    private final Map<String, Integer> trailingFloorHoldCounter = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> pendingTrailingFloors = new ConcurrentHashMap<>();
     // Debounce state to prevent spamming Angel One API rate limits
     private volatile JSONArray cachedTradeBook = null;
     private volatile long lastTradeBookFetchTime = 0;
@@ -291,24 +292,45 @@ public class MonitorOrderService {
 
         if (activation != null && drawdownPct != null && peakPnL.compareTo(activation) >= 0) {
             BigDecimal allowedDrop = peakPnL.multiply(drawdownPct);
-            BigDecimal dynamicFloor = peakPnL.subtract(allowedDrop);
+            BigDecimal calculatedDynamicFloor = peakPnL.subtract(allowedDrop);
+
             BigDecimal existingFloor = activeTrailingFloors.get(strategyKey);
-
-            if (existingFloor == null) {
+            if (existingFloor == null && config.getCurrentTrailingFloor() != null) {
                 existingFloor = config.getCurrentTrailingFloor();
-                if (existingFloor != null) {
-                    activeTrailingFloors.put(strategyKey, existingFloor);
+                activeTrailingFloors.put(strategyKey, existingFloor);
+            }
+
+            // Check if the newly calculated floor is higher than our safely locked-in floor
+            if (existingFloor == null || calculatedDynamicFloor.compareTo(existingFloor) > 0) {
+                BigDecimal pending = pendingTrailingFloors.get(strategyKey);
+
+                // If the pending floor is basically the same (within ₹5 to account for micro LTP jitter)
+                if (pending != null && calculatedDynamicFloor.subtract(pending).abs().intValue() < 5) {
+                    int holdCount = trailingFloorHoldCounter.merge(strategyKey, 1, Integer::sum);
+
+                    if (holdCount >= 3) {
+                        activeTrailingFloors.put(strategyKey, calculatedDynamicFloor);
+                        config.setCurrentTrailingFloor(calculatedDynamicFloor);
+                        riskConfigRepository.save(config);
+
+                        trailingFloorHoldCounter.remove(strategyKey);
+                        pendingTrailingFloors.remove(strategyKey);
+                        log.info("🔒 [TRAILING STOP] Floor raised and locked at {} for {}", calculatedDynamicFloor, strategyKey);
+                    }
+                } else {
+                    // New higher peak detected, start the 3-tick countdown
+                    pendingTrailingFloors.put(strategyKey, calculatedDynamicFloor);
+                    trailingFloorHoldCounter.put(strategyKey, 1);
                 }
+            } else {
+                // Price dropped before locking in the new high, reset the counter
+                trailingFloorHoldCounter.remove(strategyKey);
+                pendingTrailingFloors.remove(strategyKey);
             }
 
-            if (existingFloor == null || dynamicFloor.compareTo(existingFloor) > 0) {
-                activeTrailingFloors.put(strategyKey, dynamicFloor);
-                config.setCurrentTrailingFloor(dynamicFloor);
-                riskConfigRepository.save(config);
-            }
-
-            BigDecimal currentFloor = activeTrailingFloors.get(strategyKey);
-            if (currentFloor != null && combinedGroupPnL.compareTo(currentFloor) <= 0) {
+            // Evaluate the breach against the safely locked-in floor ONLY
+            BigDecimal lockedFloor = activeTrailingFloors.get(strategyKey);
+            if (lockedFloor != null && combinedGroupPnL.compareTo(lockedFloor) <= 0) {
                 return closeGroup(groupLegs, strategyKey, "RUBBER_BAND_MAX_DRAWDOWN_BREACHED", combinedGroupPnL, activeConnection, config);
             }
         }
@@ -535,6 +557,17 @@ public class MonitorOrderService {
                 ordersRepository.save(leg);
                 totalRupeePnL = totalRupeePnL.add(leg.getPl() != null ? leg.getPl() : BigDecimal.ZERO);
                 closedCount++;
+
+                // ✅ ADDED: Auto-unsubscribe from WebSocket to prevent hitting the 1,000 token cap
+                try {
+                    ExchangeType exType = "MCX".equalsIgnoreCase(leg.getExchange())
+                            ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
+
+                    webSocketService.unsubscribe(exType, leg.getToken());
+                    log.info("🧹 Unsubscribed {} from WebSocket to free up connection pool.", leg.getSymbol());
+                } catch (Exception e) {
+                    log.warn("Failed to clean up websocket subscription for {}", leg.getSymbol());
+                }
             }
         }
 
@@ -542,7 +575,8 @@ public class MonitorOrderService {
         activeTrailingFloors.remove(strategyKey);
         lastPnlSnapshot.remove(strategyKey);
         panicStreak.remove(strategyKey);
-
+        trailingFloorHoldCounter.remove(strategyKey);
+        pendingTrailingFloors.remove(strategyKey);
         // Wipe the Risk Config in the database so the next trade starts fresh
         if (config != null) {
             config.setCurrentPeakPnl(null);

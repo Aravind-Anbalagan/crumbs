@@ -3,6 +3,7 @@ package com.crumbs.trade.service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.models.Order;
 import com.angelbroking.smartapi.models.OrderParams;
+import com.angelbroking.smartapi.smartstream.models.ExchangeType;
 import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.builder.OptionScannerConfig;
@@ -49,7 +50,7 @@ public class OptionPriceOrderService {
     private final StrategyRepo strategyRepo;
     private final MonitorOrderService monitorOrderService;
     private final TelegramService telegramService;
-
+    private final AngelWebSocketService angelWebSocketService;
     // INJECT YOUR WEBSOCKET SERVICE HERE WHEN READY
     // private final TickCacheService tickCacheService;
 
@@ -293,7 +294,7 @@ public class OptionPriceOrderService {
     // ==========================================
     private BigDecimal getRealTimePrice(SmartConnect sc, ScannedContractDto dto, String side) {
         // 1. Try WebSocket
-        BigDecimal wsPrice = getPriceFromWebSocket(dto.getToken());
+        BigDecimal wsPrice = getPriceFromWebSocket(dto);
         if (wsPrice != null && wsPrice.compareTo(BigDecimal.ZERO) > 0) {
             return wsPrice;
         }
@@ -317,20 +318,35 @@ public class OptionPriceOrderService {
         return BigDecimal.ONE;
     }
 
-    private BigDecimal getPriceFromWebSocket(String token) {
-        /*
-         * TODO: Uncomment and use your WebSocket Service here.
-         * Example:
-         * try {
-         *     Double ltp = tickCacheService.getLtp(token);
-         *     if (ltp != null && ltp > 0) {
-         *         return BigDecimal.valueOf(ltp).setScale(2, RoundingMode.HALF_UP);
-         *     }
-         * } catch (Exception e) {
-         *     log.warn("WS fetch failed for token {}: {}", token, e.getMessage());
-         * }
-         */
-        return null; // Safely falls back to API tier
+    private BigDecimal getPriceFromWebSocket(ScannedContractDto dto) {
+        try {
+            // Map to exact enum value
+            ExchangeType exType = "MCX".equalsIgnoreCase(dto.getExchange())
+                    ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
+
+            // 1. Send the dynamic subscription request
+            angelWebSocketService.subscribe(exType, dto.getToken());
+
+            // 2. Wait up to 1 second for AngelOne to stream the first tick
+            long timeout = System.currentTimeMillis() + 1000;
+
+            while (System.currentTimeMillis() < timeout) {
+                BigDecimal price = angelWebSocketService.getLatestLTP(exType, dto.getToken());
+
+                // ✅ CHANGED: Since the common service returns ZERO when empty, we check for > 0
+                if (price != null && price.compareTo(BigDecimal.ZERO) > 0) {
+                    return price; // Valid price received!
+                }
+
+                sleepQuietly(100); // Poll every 100ms
+            }
+
+            log.warn("⏳ WebSocket did not receive a tick for {} within 1 second. Falling back to API...", tradingSymbolOf(dto));
+        } catch (Exception e) {
+            log.warn("⚠️ WS fetch failed for token {}: {}", dto.getToken(), e.getMessage());
+        }
+
+        return null; // Safely falls back to Tier 2 API
     }
 
     private BigDecimal fetchPriceFromApi(SmartConnect smartConnect, String exchange, String token, String side) {

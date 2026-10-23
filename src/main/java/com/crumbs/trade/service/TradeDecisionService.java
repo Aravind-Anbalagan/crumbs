@@ -54,7 +54,12 @@ public class TradeDecisionService {
         String conf = sup ? "a close above the reversal candle's high" : "a close below the reversal candle's low";
         String pre = "At " + zone + " " + f(sg * lvl) + ": ";
         BigDecimal lv = BigDecimal.valueOf(sg * lvl);
-        String waitTrig = (sup ? "Buy only after a close above " : "Sell only after a close below ") + f(sg * lvl);
+
+        // price already moved away from the level (in the trade direction): the entry is missed
+        boolean extended = px > lvl + ZONE * atr;
+        String waitTrig = extended
+                ? "Entry missed. Wait for a pullback to " + f(sg * lvl) + " and a rejection candle there."
+                : (sup ? "Buy only after a close above " : "Sell only after a close below ") + f(sg * lvl);
 
         // 1) history: held vs broke, counted from candles
         int[] hb = history(m, lvl, atr);
@@ -80,6 +85,7 @@ public class TradeDecisionService {
         dbg.put("atr", atr); dbg.put("held", held); dbg.put("sample", cnt); dbg.put("wilsonLow", wl);
         dbg.put("netMoveAtr", net); dbg.put("efficiency", er); dbg.put("impulse", impulse);
         dbg.put("rvol", rvol); dbg.put("confirmed", confirmed); dbg.put("watch", watch);
+        dbg.put("extended", extended); dbg.put("distanceFromLevel", Math.abs(px - lvl));
 
         if (accepted) {
             return out("WAIT", pre + "price closed beyond the level, so it is breaking, not holding. "
@@ -101,7 +107,8 @@ public class TradeDecisionService {
         double target = opp.stream().filter(o -> o > px + atr).min(Double::compare).orElse(px + 3 * atr);
         double risk = px - stop, reward = target - px;
         if (risk <= 0 || reward < MIN_RR * risk) {
-            return out("WAIT", pre + who + " reacted, but the next level is too close for the risk (reward/risk "
+            return out("WAIT", pre + who + " reacted, but price is already " + f(Math.abs(px - lvl))
+                    + " points away and the next level is too close for the risk (reward/risk "
                     + String.format("%.1f", risk > 0 ? reward / risk : 0) + ").", lv, waitTrig, dbg);
         }
         String sample = cnt < MIN_SAMPLE ? " (low sample: " + ev + ")" : " (held " + ev + ")";
