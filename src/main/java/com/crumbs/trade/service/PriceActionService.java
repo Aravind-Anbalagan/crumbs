@@ -149,7 +149,8 @@ public class PriceActionService {
 
         BigDecimal avgVolume  = totalVolume.divide(BigDecimal.valueOf(candles.size()), RoundingMode.HALF_UP);
         BigDecimal avgRange   = totalRange.divide(BigDecimal.valueOf(validCandles),    RoundingMode.HALF_UP);
-        BigDecimal tolerance  = avgRange.max(currentPrice.multiply(TOLERANCE_PCT));
+        BigDecimal tolerance = atr(candles, 14).multiply(BigDecimal.valueOf(0.3))
+                .max(currentPrice.multiply(BigDecimal.valueOf(0.0005)));
 
         BigDecimal maxDistance = VOLUME_IGNORED.contains(exchange.toUpperCase())
                 ? avgRange.max(currentPrice.multiply(MCX_MAX_DISTANCE_PCT))
@@ -475,5 +476,17 @@ public class PriceActionService {
             case "FOUR_HOUR"       -> 240;
             default                -> 1440;  // ONE_DAY
         };
+    }
+    private BigDecimal atr(List<PricesIndex> c, int period) {
+        int n = c.size();
+        int p = Math.min(period, n - 1);
+        double sum = 0;
+        for (int i = n - p; i < n; i++) {
+            double h  = c.get(i).getHigh().doubleValue();
+            double l  = c.get(i).getLow().doubleValue();
+            double pc = c.get(i - 1).getClose().doubleValue();
+            sum += Math.max(h - l, Math.max(Math.abs(h - pc), Math.abs(l - pc)));
+        }
+        return BigDecimal.valueOf(sum / p);
     }
 }

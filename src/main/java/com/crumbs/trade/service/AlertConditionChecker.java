@@ -50,7 +50,6 @@ public class AlertConditionChecker {
 
         if (ceVwap.compareTo(BigDecimal.ZERO) <= 0 ||
             peVwap.compareTo(BigDecimal.ZERO) <= 0) return false;
-
         return cePrice.compareTo(ceVwap) > 0    // CE Price > CE VWAP
             && pePrice.compareTo(peVwap) < 0    // PE Price < PE VWAP
             && cePrice.compareTo(pePrice) > 0;  // CE > PE

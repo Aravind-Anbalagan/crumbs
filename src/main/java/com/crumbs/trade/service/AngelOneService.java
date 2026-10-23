@@ -124,6 +124,7 @@ public class AngelOneService {
 	@Autowired
     RiskConfigurationRepository riskConfigurationRepository;
     @Autowired OptionPriceRepo optionPriceRepo;
+    @Autowired StraddleVwapRepo straddleVwapRepo;
 	/*
 	 * Get current price
 	 */
@@ -228,6 +229,7 @@ public class AngelOneService {
 		optionsGreeksRepo.deleteAll();
         riskConfigurationRepository.resetAllTrailingData();
         optionPriceRepo.deleteAll();
+        straddleVwapRepo.deleteAll();
 		}
 	/*
 	 * Get current price (Dynamic Keyword) - Simple rate limit handling with exponential backoff.

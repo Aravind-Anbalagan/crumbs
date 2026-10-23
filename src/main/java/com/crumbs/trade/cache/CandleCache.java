@@ -1,11 +1,11 @@
 package com.crumbs.trade.cache;
 
 import com.crumbs.trade.entity.PricesIndex;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -14,80 +14,63 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class CandleCache {
 
-    private static final Logger logger = LoggerFactory.getLogger(CandleCache.class);
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
     private final Map<String, List<PricesIndex>> cache     = new ConcurrentHashMap<>();
     private final Map<String, LocalDate>         cacheDate = new ConcurrentHashMap<>();
 
+    /** One place to build the key (used in step 7). */
+    public static String cacheKey(String name, String symbol, String timeFrame) {
+        return name + "_" + symbol + "_" + timeFrame;
+    }
+
     public boolean isLoadedToday(String name) {
-        if (name == null || name.isEmpty()) {
-            //logger.warn("⚠️ [CACHE] isLoadedToday called with null/empty name");
-            return false;
-        }
+        if (name == null || name.isEmpty()) return false;
         LocalDate loaded = cacheDate.get(name);
-        if (loaded == null) {
-            //logger.info("📭 [CACHE] No cache found for {} — full load required", name);
-            return false;
-        }
-        boolean result = loaded.equals(LocalDate.now());
-        //logger.info("🔍 [CACHE] isLoadedToday({}) = {} | cached={} | today={}", name, result, loaded, LocalDate.now());
-        return result;
+        return loaded != null && loaded.equals(LocalDate.now(IST));
     }
 
-    public List<PricesIndex> get(String name) {
+    public synchronized List<PricesIndex> get(String name) {
         if (name == null || name.isEmpty()) return new ArrayList<>();
-        List<PricesIndex> candles = cache.getOrDefault(name, new ArrayList<>());
-        //logger.debug("📤 [CACHE] get({}) → {} candles", name, candles.size());
-        return candles;
+        return new ArrayList<>(cache.getOrDefault(name, new ArrayList<>()));   // copy, not the live list
     }
 
-    public void loadAll(String name, List<PricesIndex> candles) {
+    public synchronized void loadAll(String name, List<PricesIndex> candles) {
         if (name == null || candles == null) return;
         cache.put(name, new ArrayList<>(candles));
-        cacheDate.put(name, LocalDate.now());
-        //logger.info("✅ [CACHE] loadAll({}) → {} candles cached for today", name, candles.size());
+        cacheDate.put(name, LocalDate.now(IST));
     }
 
-    public void addOrUpdateLatest(String name, PricesIndex latest) {
-        if (name == null || latest == null) {
-            //logger.warn("⚠️ [CACHE] addOrUpdateLatest called with null values");
-            return;
-        }
-        List<PricesIndex> candles = cache.getOrDefault(name, new ArrayList<>());
+    public synchronized void addOrUpdateLatest(String name, PricesIndex latest) {
+        if (name == null || latest == null || latest.getTimestamp() == null) return;
+        List<PricesIndex> list = cache.computeIfAbsent(name, k -> new ArrayList<>());
+        Instant t = Instant.parse(latest.getTimestamp());
 
-        if (!candles.isEmpty()) {
-            PricesIndex last = candles.get(candles.size() - 1);
-            if (last.getTimestamp() != null && last.getTimestamp().equals(latest.getTimestamp())) {
-                candles.set(candles.size() - 1, latest);
-                //logger.debug("🔄 [CACHE] Updated existing candle for {} @ {}", name, latest.getTimestamp());
-            } else {
-                candles.add(latest);
-                //logger.debug("➕ [CACHE] Added new candle for {} @ {}", name, latest.getTimestamp());
-            }
-        } else {
-            candles.add(latest);
-            //logger.debug("➕ [CACHE] First candle added for {} @ {}", name, latest.getTimestamp());
+        int i = list.size() - 1;
+        while (i >= 0) {
+            Instant ti = Instant.parse(list.get(i).getTimestamp());
+            if (ti.equals(t)) { list.set(i, latest); return; }   // same candle: replace
+            if (ti.isBefore(t)) break;                           // found insert point
+            i--;
         }
-        cache.put(name, candles);
+        list.add(i + 1, latest);                                 // sorted insert, never duplicates
     }
 
-    public void clear(String name) {
+    public synchronized void clear(String name) {
         cache.remove(name);
         cacheDate.remove(name);
-        //logger.info("🧹 [CACHE] Cleared cache for {}", name);
     }
 
-    public void clearAll() {
+    public synchronized void clearAll() {
         cache.clear();
         cacheDate.clear();
-        //logger.info("🧹 [CACHE] All caches cleared");
     }
 
-    public int size(String name) {
+    public synchronized int size(String name) {
         return cache.getOrDefault(name, new ArrayList<>()).size();
     }
 
-    public boolean isEmpty(String name) {
+    public synchronized boolean isEmpty(String name) {
         return cache.getOrDefault(name, new ArrayList<>()).isEmpty();
     }
 }

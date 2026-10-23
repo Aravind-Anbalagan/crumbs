@@ -4,13 +4,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -23,6 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.crumbs.trade.broker.AngelOne;
+import com.crumbs.trade.broker.Samco;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -34,8 +30,7 @@ import org.springframework.stereotype.Service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.angelbroking.smartapi.utils.Constants;
-import com.crumbs.trade.broker.AngelOne;
-import com.crumbs.trade.broker.Samco;
+
 import com.crumbs.trade.cache.CandleCache;
 import com.crumbs.trade.dto.Candlestick;
 import com.crumbs.trade.dto.OHLC;
@@ -62,7 +57,8 @@ public class ChartService {
 
     Logger logger = LoggerFactory.getLogger(ChartService.class);
 
-    @Autowired AngelOne angelOne;
+    @Autowired
+    AngelOne angelOne;
 
     // ✅ Replaced: taskService.getHourAndMinutes() + taskService.getPriceType()
     @Autowired PriceUtilService priceUtilService;
@@ -87,7 +83,8 @@ public class ChartService {
     @Autowired VWAPIndicator vwapIndicator;
     @Autowired StrategyRepo strategyRepo;
     @Autowired CandleCache candleCache;
-    @Autowired Samco samco;
+    @Autowired
+    Samco samco;
 
     private static final String MCX_SYMBOL = "CRUDEOIL";
 
@@ -234,17 +231,27 @@ public class ChartService {
         return strategy;
     }
 
-    private void updateLatestCandle(Indexes indexes, String type, String cacheKey, String timeFrame) {
-        int intervalMinutes = SRService.TimeFrame.valueOf(timeFrame).getCandleMinutes();
-        String from = getCurrentCandleTime("FROM", intervalMinutes);
-        String to   = getCurrentCandleTime("TO",   intervalMinutes);
-        logger.info("🕯 [INCREMENTAL] Fetching latest candle for {} | from={} to={}", cacheKey, from, to);
-        JSONArray responseArray = getJsonDetails(indexes, from, to, timeFrame);
+    private void updateLatestCandle(Indexes indexes, String type, String cacheKey, String timeFrame,
+                                    String broker, String fromDate, String toDate) {
+        List<PricesIndex> cached = candleCache.get(cacheKey);
+        String from = fromDate;
+        if (!cached.isEmpty()) {
+            Instant last = Instant.parse(cached.get(cached.size() - 1).getTimestamp());
+            from = last.atZone(ZoneId.of("Asia/Kolkata"))
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));   // only from the last candle
+        }
+        logger.info("🕯 [INCREMENTAL] {} | from={} to={}", cacheKey, from, toDate);
+
+        JSONArray responseArray = getJsonDetails(broker, indexes, from, toDate, timeFrame);
         if (responseArray == null || responseArray.isEmpty()) return;
-        OHLC ohlc = getOHLC((JSONArray) responseArray.get(responseArray.length() - 1));
-        if (ohlc == null) return;
-        PricesIndex latest = buildPricesIndex(ohlc, cacheKey, indexes.getExchange());
-        candleCache.addOrUpdateLatest(cacheKey, latest);
+
+        responseArray.forEach(item -> {
+            OHLC ohlc = getOHLC((JSONArray) item);
+            if (ohlc != null) {
+                // indexes.getName(), not cacheKey, so the name field matches the loadAll path
+                candleCache.addOrUpdateLatest(cacheKey, buildPricesIndex(ohlc, indexes.getName(), indexes.getExchange()));
+            }
+        });
     }
 
     // =========================================================
@@ -959,7 +966,9 @@ public class ChartService {
             }
 
         } else {
-            String cacheKey = name + "_" + timeFrame;
+            logger.info("CACHE WRITE key={}_{} symbol={} token={} exchange={}",
+                    name, timeFrame, indexes.getSymbol(), indexes.getToken(), indexes.getExchange());
+            String cacheKey = CandleCache.cacheKey(name, indexes.getSymbol(), timeFrame);
             if (candleCache.isLoadedToday(cacheKey)) {
                 updateLatestCandle(indexes, type, cacheKey, timeFrame, broker, fromDate, toDate);
             } else {
@@ -976,20 +985,7 @@ public class ChartService {
         }
     }
 
-    private void updateLatestCandle(Indexes indexes, String type, String cacheKey, String timeFrame, String broker, String fromDate, String toDate) {
-        logger.info("🕯 [INCREMENTAL] Fetching candles for {} | from={} to={}", cacheKey, fromDate, toDate);
-        
-        JSONArray responseArray = getJsonDetails(broker, indexes, fromDate, toDate, timeFrame);
-        if (responseArray == null || responseArray.isEmpty()) return;
-        
-        responseArray.forEach(item -> {
-            OHLC ohlc = getOHLC((JSONArray) item);
-            if (ohlc != null) {
-                PricesIndex latest = buildPricesIndex(ohlc, cacheKey, indexes.getExchange());
-                candleCache.addOrUpdateLatest(cacheKey, latest);
-            }
-        });
-    }
+
     
  // =========================================================
  // Combined Signal (VWAP + EMA Crossover)

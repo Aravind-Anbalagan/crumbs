@@ -8,11 +8,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -62,7 +58,7 @@ public class SRService {
     @Autowired StrategyRepo strategyRepo;
     @Autowired LevelRepository levelRepo;
     @Autowired CandleCache candleCache;
-
+    @Autowired TradeDecisionService decisionService;
     // ── Previous-day OHLC cache ───────────────────────────────────────────────
     // FIX 1: Store the date alongside the value so the entry is evicted on the
     //         next calendar day rather than living forever in the JVM.
@@ -113,7 +109,7 @@ public class SRService {
                 candleRequestDto.getTimeFrame(), name,
                 candleRequestDto.getFromDate(), candleRequestDto.getToDate(), name
             );
-            String cacheKey = name + "_" + candleRequestDto.getTimeFrame();
+            String cacheKey = CandleCache.cacheKey(name, symbol, candleRequestDto.getTimeFrame());
             return candleCache.get(cacheKey);
         }
         return Collections.emptyList();
@@ -221,51 +217,18 @@ public class SRService {
 
     @Transactional
     public Signals getSignals(String name, String type) {
-        Strategy strategy = getTokenDetails(name, type);
-        Signals  signal   = new Signals();
+        Signals signal = new Signals();
 
-        PriceActionResult pr = getPriceAction("FIVE_MINUTE", strategy.getName(),
-                strategy.getExchange(), strategy.getTradingsymbol());
+        ChartDataDTO dto = analyzeIntraday(name, "FIVE_MINUTE");
+        if (dto == null || dto.getDecision() == null) return signal;
 
-        if (pr != null && pr.getCurrentPrice() != null) {
-            String currentDate = LocalDateTime.now()
-                    .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
+        String d = dto.getDecision().getSignal();
+        String finalSignal = "WAIT".equalsIgnoreCase(d) ? "HOLD" : d;
 
-            BigDecimal currentPrice = pr.getCurrentPrice();
-            BigDecimal buffer = currentPrice.multiply(BigDecimal.valueOf(0.003));
-
-            List<BigDecimal> supports = Optional.ofNullable(pr.getSupportLevels())
-                    .orElse(Collections.emptyList()).stream()
-                    .map(SRLevelDTO::getPrice).collect(Collectors.toList());
-
-            List<BigDecimal> resistances = Optional.ofNullable(pr.getResistanceLevels())
-                    .orElse(Collections.emptyList()).stream()
-                    .map(SRLevelDTO::getPrice).collect(Collectors.toList());
-
-            BigDecimal nearestSupport = supports.stream()
-                    .filter(s -> s.compareTo(currentPrice) <= 0)
-                    .max(Comparator.naturalOrder()).orElse(null);
-
-            BigDecimal nearestResistance = resistances.stream()
-                    .filter(r -> r.compareTo(currentPrice) >= 0)
-                    .min(Comparator.naturalOrder()).orElse(null);
-
-            boolean nearSupport     = nearestSupport != null
-                    && currentPrice.subtract(nearestSupport).compareTo(buffer) <= 0;
-            boolean nearResistance  = nearestResistance != null
-                    && nearestResistance.subtract(currentPrice).compareTo(buffer) <= 0;
-
-            String finalSignal = nearSupport && nearResistance ? "HOLD"
-                    : nearSupport    ? "BUY"
-                    : nearResistance ? "SELL"
-                    : "HOLD";
-
-            signal.setFinals(finalSignal);
-            signal.setName(name);
-            signal.setCreatedAt(currentDate);
-            signalRepo.save(signal);
-        }
-
+        signal.setFinals(finalSignal);
+        signal.setName(name);
+        signal.setCreatedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss")));
+        signalRepo.save(signal);
         return signal;
     }
 
@@ -288,6 +251,7 @@ public class SRService {
         TimerLog.end(logger, "getCandleData", t);
 
         if (candles == null || candles.isEmpty()) {
+            candles = dedupe(candles);
             logger.warn("No candles available for {}", name);
             TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
             return null;
@@ -308,6 +272,12 @@ public class SRService {
         TimerLog.end(logger, "getPreviousDayCandle", t);
 
         dto.setCandles(toCandleList(candles));
+        BigDecimal live = getCurrentPriceForIndex(name, symbol);   // ZERO on failure, so the decision falls back to last close
+        if (live == null || live.signum() <= 0) {
+            logger.warn("Live price unavailable for {}, using last close", name);
+        }
+        dto.setDecision(decisionService.decide(dto.getCandles(), result.getSupportLevels(),
+                result.getResistanceLevels(), live, timeFrame));
         TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
         return dto;
     }
@@ -398,5 +368,18 @@ public class SRService {
 
     public String getExchange(String input) {
         return "NIFTY".equalsIgnoreCase(input) ? "NFO" : "MCX";
+    }
+
+    private List<PricesIndex> dedupe(List<PricesIndex> in) {
+        Map<Instant, PricesIndex> m = new TreeMap<>();
+        for (PricesIndex p : in) {
+            if (p.getTimestamp() == null) continue;
+            Instant key = Instant.parse(p.getTimestamp());
+            PricesIndex old = m.get(key);
+            boolean hasVol   = p.getVolume() != null && p.getVolume().signum() > 0;
+            boolean oldNoVol = old == null || old.getVolume() == null || old.getVolume().signum() == 0;
+            if (old == null || (hasVol && oldNoVol)) m.put(key, p);   // keep the row with volume
+        }
+        return new ArrayList<>(m.values());
     }
 }

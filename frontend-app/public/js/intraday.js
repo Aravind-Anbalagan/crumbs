@@ -11,7 +11,8 @@ const SR_COLOR   = {
 const TF_SECS    = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, ONE_HOUR:3600, ONE_DAY:86400 };
 const IST_OFFSET = 19800;
 const MAX_RETRY  = 3, RETRY_DELAY = 2000;
-const NON_LAYER  = new Set(['candles','signals','supportLevels','resistanceLevels',
+// 'decision' and 'previousDayCandle' added so they are not treated as chart layers
+const NON_LAYER  = new Set(['candles','signals','supportLevels','resistanceLevels','decision','previousDayCandle',
   'final_signal','finalSignal','final_confidence','finalConfidence','final_reason','finalReason']);
 const LAYER_COLORS = ['#22c55e','#ef4444','#3b82f6','#f59e0b','#a855f7','#06b6d4','#f97316','#ec4899'];
 
@@ -30,6 +31,7 @@ let ssePrevPrice=null;
 let srSupLines=[], srResLines=[], srRegistry={};
 let layerReg={}, layerColorIdx=0;
 let sseSource=null, iKeyCurrent=null;
+let decisionLine=null;
 const iKeyCache={}, pendingTicks=[];
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -180,21 +182,6 @@ function findNearestSR(price){
   });
   return best;
 }
-function calcDecision(lvl){
-  const r    = srReacted(lvl);
-  const b    = srBroken(lvl);
-  const conf = (lvl.confidence || '').toUpperCase();
-  const isS  = lvl._type === 'support';
-  if(conf === 'CRITICAL'){
-    if(b === 0) return { cls: 'critical', icon: '🔴', label: isS ? 'Priority Buy Zone'  : 'Priority Sell Zone', detail: `${r} ${isS ? 'bounces' : 'rejections'}, zero ${isS ? 'breakdowns' : 'breakouts'}` };
-    return { cls: 'watch', icon: '⚠️', label: 'Critical — breaks recorded', detail: `${b} ${isS ? 'breakdown' : 'breakout'}${b !== 1 ? 's' : ''}` };
-  }
-  if(conf === 'HIGH'){
-    if(b === 0 && r >= 5) return { cls: 'strong', icon: '🛡', label: 'Strong Hold Expected', detail: `${r} ${isS ? 'bounces' : 'rejections'}, no ${isS ? 'breakdowns' : 'breakouts'}` };
-    return { cls: 'watch', icon: '⚠️', label: 'Watchlist Level', detail: `V:${lvl.visited || 0} R:${r} B:${b}` };
-  }
-  return { cls: 'risky', icon: '🟢', label: 'Background Level — Low Priority', detail: `V:${lvl.visited || 0}` };
-}
 
 function showSRTooltip(lvl, mx, my){
   const type      = lvl._type;
@@ -243,12 +230,8 @@ function showSRTooltip(lvl, mx, my){
   vcTxt.textContent  = vc ? 'Heavy Volume' : 'No Heavy Volume';
   vcTxt.style.color  = vc ? '#4ade80' : '#64748b';
   $('ttLast').innerHTML = 'Last: <span>' + (lvl.lastVisited || '&mdash;') + '</span>';
-  const dec   = calcDecision(lvl);
-  const decEl = $('ttDecision');
-  decEl.className = 'tt-decision ' + dec.cls;
-  decEl.innerHTML = `${dec.icon} <strong>${dec.label}</strong> — ${dec.detail}`;
   const rect = chartEl.getBoundingClientRect();
-  const ax = rect.left + mx, ay = rect.top + my, W = 276, H = 340;
+  const ax = rect.left + mx, ay = rect.top + my, W = 276, H = 300;
   let left = ax + 16, top = ay - H / 2;
   if(left + W > window.innerWidth - 16) left = ax - W - 16;
   top = Math.max(8, Math.min(window.innerHeight - H - 8, top));
@@ -265,6 +248,32 @@ function initSRCrosshair(){
     const lvl = findNearestSR(price);
     if(lvl) showSRTooltip(lvl, param.point.x, param.point.y); else hideSRTooltip();
   });
+}
+
+// ── Decision panel ────────────────────────────────────────────
+function renderDecision(d){
+  const panel=$('decisionPanel'); if(!panel) return;
+  const sig=(d&&d.signal?d.signal:'WAIT').toUpperCase();
+  panel.className = sig==='BUY'?'buy':sig==='SELL'?'sell':'wait';
+  $('dpSignal').textContent = d?sig:'–';
+  $('dpLevel').textContent  = d&&d.level!=null?Number(d.level).toFixed(2):'';
+  $('dpMsg').textContent    = d&&d.message?d.message:'No decision available.';
+  $('dpTrig').textContent   = d&&d.trigger?d.trigger:'';
+  $('dpTime').textContent   = d?'Updated '+new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour12:false}):'';
+  const wrap=$('dpDebugWrap');
+  if(d&&d.debug){ $('dpDebug').textContent=JSON.stringify(d.debug,null,2); wrap.style.display='block'; }
+  else wrap.style.display='none';
+}
+function drawDecisionLine(){
+  if(decisionLine&&candleSeries){try{candleSeries.removePriceLine(decisionLine);}catch(e){}}
+  decisionLine=null;
+  const d=lastData&&lastData.decision;
+  if(!candleSeries||!d||d.level==null) return;
+  const col=d.signal==='BUY'?'#16a34a':d.signal==='SELL'?'#dc2626':'#f59e0b';
+  try{
+    decisionLine=candleSeries.createPriceLine({price:Number(d.level),color:col,lineWidth:2,
+      lineStyle:LightweightCharts.LineStyle.Dotted,axisLabelVisible:true,title:'▶ '+d.signal});
+  }catch(e){}
 }
 
 // ── Dynamic Layers ────────────────────────────────────────────
@@ -328,7 +337,7 @@ function drawLayer(key,data){
 function redrawAllLayers(){
   if(!lastData||!candleSeries)return;
   Object.keys(layerReg).forEach(k=>{clearLayer(k);if(layerReg[k].enabled)drawLayer(k,lastData);});
-  redrawSR(); redrawUserLines();
+  redrawSR(); redrawUserLines(); drawDecisionLine();
 }
 
 // ── SSE ───────────────────────────────────────────────────────
@@ -371,12 +380,12 @@ function applyTick(priceOrObj) {
   updatePricePanel(price); ssePrevPrice = price;
   if(!candleSeries || !lastCandles.length) return;
   const last = lastCandles[lastCandles.length-1];
-  const lTime  = last.time; 
+  const lTime  = last.time;
   const lOpen  = Number(last.open) || price;
   const lHigh  = Number(last.high) || price;
   const lLow   = Number(last.low) || price;
   const lClose = Number(last.close) || price;
-  const lVol   = Number(last.volume) || 0; 
+  const lVol   = Number(last.volume) || 0;
   const tfSec = TF_SECS[selectedTimeFrame] || 300;
   const nowUTC = Math.floor(Date.now() / 1000);
   let barFloor = Math.floor((nowUTC + IST_OFFSET) / tfSec) * tfSec - IST_OFFSET;
@@ -386,7 +395,7 @@ function applyTick(priceOrObj) {
     const yy = d.getUTCFullYear();
     const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
     const dd = String(d.getUTCDate()).padStart(2, '0');
-    barFloor = `${yy}-${mo}-${dd}`; 
+    barFloor = `${yy}-${mo}-${dd}`;
     isNewCandle = (barFloor !== lTime);
   } else {
     isNewCandle = (barFloor > Number(lTime));
@@ -487,7 +496,7 @@ function initChart(){
 function destroyChart(){
   hideSRTooltip(); srRegistry={};
   drawnLines.forEach(ld=>{try{if(ld.type==='hline')candleSeries.removePriceLine(ld.line);else chart.removeSeries(ld.series);}catch(e){}});
-  drawnLines=[]; clearLines(srSupLines); clearLines(srResLines);
+  drawnLines=[]; decisionLine=null; clearLines(srSupLines); clearLines(srResLines);
   Object.values(layerReg).forEach(cfg=>{cfg.lines.forEach(l=>{try{candleSeries.removePriceLine(l);}catch(e){}});cfg.lines=[];});
   if(chart){
     if(candleSeries){try{chart.removeSeries(candleSeries);}catch(e){} candleSeries=null;}
@@ -560,7 +569,8 @@ function updateChart(data){
 
 // ── Fetch ─────────────────────────────────────────────────────
 async function fetchData(){
-  const r=await fetch('/api/intraday?timeFrame='+selectedTimeFrame+'&name='+selectedSymbol);
+  const dbg = $('chkDebug') && $('chkDebug').checked;
+  const r=await fetch('/api/intraday?timeFrame='+selectedTimeFrame+'&name='+selectedSymbol+'&debug='+(dbg?'true':'false'));
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }
@@ -577,12 +587,14 @@ async function refresh(firstLoad){
   }
   try{
     const data=await fetchData();
-    chartEl.style.display='block'; 
+    chartEl.style.display='block';
     if(!chart)initChart();
     updateChart(data);
+    renderDecision(data.decision);
     loaderEl.style.display='none'; errorEl.style.display='none'; retryCount=0;
     if(firstLoad)setTimeout(()=>{if(chart)chart.resize(chartEl.clientWidth,chartEl.clientHeight);},50);
   }catch(e){
+    renderDecision(null);   // never leave an old BUY on screen after a failed refresh
     if(firstLoad&&retryCount<MAX_RETRY){
       retryCount++;loaderText.textContent='Connection failed. Retrying…';retryEl.textContent='Attempt '+retryCount+' of '+MAX_RETRY;
       setTimeout(()=>refresh(true),RETRY_DELAY);
@@ -676,7 +688,9 @@ chkLive.addEventListener('change',  ()=>setLiveRefresh(chkLive.checked));
 chkSupport.addEventListener('change',    ()=>redrawSR());
 chkResistance.addEventListener('change', ()=>redrawSR());
 CONFIDENCE_LEVELS.forEach(k=>{const el=$('chk'+k);if(el)el.addEventListener('change',()=>redrawSR());});
+$('chkDebug').addEventListener('change',()=>{ if(chartReady) refresh(false); });
 
+// chkDebug intentionally NOT in ALL_CHKS so Reset / Uncheck All do not flip it
 const SR_CHKS=['chkSupport','chkResistance',...CONFIDENCE_LEVELS.map(k=>'chk'+k)];
 const ALL_CHKS=['chkVolume','chkPrice','chkGrid','chkLive',...SR_CHKS];
 
@@ -698,11 +712,11 @@ $('btnFit').addEventListener('click',()=>{if(chart)chart.timeScale().fitContent(
 $('symbolSelect').addEventListener('change',()=>{
   selectedSymbol=$('symbolSelect').value;ssePrevPrice=null;iKeyCurrent=null;pendingTicks.length=0;
   layerReg={};layerColorIdx=0;resolveKey(selectedSymbol); syncFreezeState();
-  destroyChart();isFirstLoad=true;lastCandles=[];refresh(true);
+  destroyChart();isFirstLoad=true;lastCandles=[];renderDecision(null);refresh(true);
 });
 $('tfSelect').addEventListener('change',()=>{
   selectedTimeFrame=$('tfSelect').value; syncFreezeState();
-  destroyChart();isFirstLoad=true;lastCandles=[];refresh(true);
+  destroyChart();isFirstLoad=true;lastCandles=[];renderDecision(null);refresh(true);
 });
 $('btnHLine').addEventListener('click',    ()=>setDrawMode('hline'));
 $('btnVLine').addEventListener('click',    ()=>setDrawMode('vline'));

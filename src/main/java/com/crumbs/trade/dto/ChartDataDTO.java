@@ -10,4 +10,5 @@ public class ChartDataDTO {
     private List<SRLevelDTO>  resistanceLevels;
     private CandleDTO         previousDayCandle;
     private List<SignalDTO>   signals;
+    private DecisionDTO decision;
 }

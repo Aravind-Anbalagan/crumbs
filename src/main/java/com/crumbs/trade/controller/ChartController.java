@@ -77,9 +77,14 @@ public class ChartController {
     @GetMapping(value = "/intraday", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChartDataDTO getIntraday(
             @RequestParam(name = "timeFrame", defaultValue = "FIVE_MINUTE") String timeFrame,
-            @RequestParam(name = "name") String name) {
+            @RequestParam(name = "name") String name,
+            @RequestParam(name = "debug", defaultValue = "false") boolean debug) {
 
-        return srService.analyzeIntraday(name, timeFrame);
+        ChartDataDTO dto = srService.analyzeIntraday(name, timeFrame);
+        if (dto != null && !debug && dto.getDecision() != null) {
+            dto.getDecision().setDebug(null);
+        }
+        return dto;
     }
 
     /**
