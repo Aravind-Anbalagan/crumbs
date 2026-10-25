@@ -51,4 +51,5 @@ public class OptionScannerConfig {
     public enum Moneyness {
         ATM, ITM, OTM
     }
+    private Double targetStrike;
 }

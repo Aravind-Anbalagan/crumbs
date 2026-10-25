@@ -151,7 +151,12 @@ public class OptionChainScannerService {
                 return Collections.emptyMap();
             }
 
-            double atmStrike = findAtmStrike(allStrikes, spotLtp);
+            double atmStrike;
+            if (config.getTargetStrike() != null && config.getTargetStrike() > 0) {
+                atmStrike = config.getTargetStrike();
+            } else {
+                atmStrike = findAtmStrike(allStrikes, spotLtp);
+            }
             int atmIndex = allStrikes.indexOf(atmStrike);
             if (atmIndex < 0) atmIndex = 0;
 
