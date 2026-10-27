@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -59,6 +60,13 @@ public class MonitorOrderService {
     // Debounce state to prevent spamming Angel One API rate limits
     private volatile JSONArray cachedTradeBook = null;
     private volatile long lastTradeBookFetchTime = 0;
+
+    /**
+     * Legs whose exit order outcome could not be determined (timeout AND order-book check failed).
+     * They are skipped by closeGroup until the app restarts, so an exit that may already be live
+     * is never sent a second time. Check the Angel One order book manually for these legs.
+     */
+    private final Set<Long> exitStatusUnknownLegs = ConcurrentHashMap.newKeySet();
 
     public Map<Long, BigDecimal> getLivePnLForUI() {
         return liveUiCachePnL;
@@ -416,6 +424,13 @@ public class MonitorOrderService {
         Map<Long, String> exitOrderIds = new HashMap<>();
 
         for (Orders leg : group) {
+            // ✅ NEW: never send a second exit for a leg whose first exit outcome is unknown
+            if (exitStatusUnknownLegs.contains(leg.getId())) {
+                log.warn("⏭️ [MONITOR] Skipping {} — earlier exit order status UNKNOWN. Verify in Angel One order book.",
+                        leg.getSymbol());
+                continue;
+            }
+
             leg.setTradePhase(PHASE_EXIT_IN_PROGRESS);
             ordersRepository.saveAndFlush(leg);
 
@@ -450,6 +465,17 @@ public class MonitorOrderService {
                             throw new SmartAPIException("Empty Order ID");
                         }
                     } catch (Exception | SmartAPIException e) {
+                        // ✅ NEW: outcome unknown -> do NOT retry (could create a duplicate exit)
+                        if (e instanceof AngelOneService.OrderStatusUnknownException) {
+                            exitStatusUnknownLegs.add(leg.getId());
+                            log.error("🚨 [MONITOR] Exit order status UNKNOWN for {} — NOT retrying. Check Angel One order book. {}",
+                                    leg.getSymbol(), e.getMessage());
+                            try {
+                                telegramService.sendMessage("🚨 Exit order status UNKNOWN for " + leg.getSymbol()
+                                        + ". Not retried. Check the Angel One order book NOW.");
+                            } catch (Exception ignored) {}
+                            break;
+                        }
                         attempt++;
                         if (attempt >= 3) break;
                         try { Thread.sleep(backoff); backoff *= 2; } catch (InterruptedException ie) { break; }

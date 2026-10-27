@@ -2,7 +2,7 @@ package com.crumbs.trade.broker;
 
 import com.crumbs.trade.entity.Brokers;
 import com.crumbs.trade.repo.BrokersRepo;
-
+import com.crumbs.trade.utility.BrokerProxyClient;
 
 import in.samco.api.QuoteApi;
 import in.samco.api.update.MultiQuoteAPI;

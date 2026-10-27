@@ -175,7 +175,7 @@ public class OrderService {
     // skipActiveCheck = false → same behaviour as original orderPlaceWithToken
     // =========================================================================
     public void orderPlaceWithToken(Token token, String strategyName,
-                                     String signal, boolean skipActiveCheck)
+                                    String signal, boolean skipActiveCheck)
             throws SmartAPIException, Exception {
 
         logger.info("Order Trigger (token, skipCheck={}) -> Strategy={} | Signal={} | Symbol={}",
@@ -184,7 +184,7 @@ public class OrderService {
         SmartConnect sc = angelOne.signIn();
         if (sc == null) throw new Exception("AngelOne login failed");
         Strategy strategy = strategyRepo.findByName(strategyName);
-       
+
         if (strategy == null) throw new Exception("Strategy not found: " + strategyName);
 
         if (!skipActiveCheck) {
@@ -207,102 +207,102 @@ public class OrderService {
         placeFinalOrder(sc, token, strategy, 0, null);
     }
 
- // =========================================================================
- // EXIT BY TOKEN (Updated with Safe Broker Execution & Boolean Return)
- // =========================================================================
- @Transactional
- public boolean exitActiveTradeByToken(String token, String sourceName, String tradeName)
-         throws IOException, SmartAPIException {
+    // =========================================================================
+    // EXIT BY TOKEN (Updated with Safe Broker Execution & Boolean Return)
+    // =========================================================================
+    @Transactional
+    public boolean exitActiveTradeByToken(String token, String sourceName, String tradeName)
+            throws IOException, SmartAPIException {
 
-     Strategy strategy = strategyRepo.findByName(sourceName);
-     Orders activeTrade = ordersRepo.findByNameAndTokenAndActive(tradeName, token, 1).orElse(null);
+        Strategy strategy = strategyRepo.findByName(sourceName);
+        Orders activeTrade = ordersRepo.findByNameAndTokenAndActive(tradeName, token, 1).orElse(null);
 
-     if (activeTrade == null) {
-         logger.info("ℹ️ No active trade for token -> {} under strategy -> {}", token, tradeName);
-         return true; // Treat as success if already closed or not found
-     }
+        if (activeTrade == null) {
+            logger.info("ℹ️ No active trade for token -> {} under strategy -> {}", token, tradeName);
+            return true; // Treat as success if already closed or not found
+        }
 
-     logger.info("🚪 Exiting trade by token -> {} | symbol={}", token, activeTrade.getSymbol());
-     SmartConnect sc = angelOne.signIn();
+        logger.info("🚪 Exiting trade by token -> {} | symbol={}", token, activeTrade.getSymbol());
+        SmartConnect sc = angelOne.signIn();
 
-     // 1. Fetch current price at exit
-     BigDecimal exitPrice = angelOneService.getcurrentPrice(sc, 
-             activeTrade.getExchange(), activeTrade.getSymbol(), activeTrade.getToken(), "ltp");
-     
-     if (exitPrice == null || exitPrice.compareTo(BigDecimal.ZERO) == 0) {
-         exitPrice = BigDecimal.ZERO;
-     }
+        // 1. Fetch current price at exit
+        BigDecimal exitPrice = angelOneService.getcurrentPrice(sc,
+                activeTrade.getExchange(), activeTrade.getSymbol(), activeTrade.getToken(), "ltp");
 
-     // 2. Execute market exit if Live (CRITICAL: Only proceed to DB save if broker accepts!)
-     if (strategy != null && "Y".equalsIgnoreCase(strategy.getLive())) {
-         try {
-             placeExitOrder(activeTrade);
-         } catch (Exception | SmartAPIException e) {
-             logger.error("❌ Broker exit FAILED for token {} ({}). Leaving DB as ACTIVE for retry. Error: {}", 
-                     token, activeTrade.getSymbol(), e.getMessage());
-             return false; // Stop execution! Do NOT overwrite DB to CLOSED!
-         }
-     }
+        if (exitPrice == null || exitPrice.compareTo(BigDecimal.ZERO) == 0) {
+            exitPrice = BigDecimal.ZERO;
+        }
 
-     // 3. Compute P&L
-     BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
-     BigDecimal pnl = BigDecimal.ZERO;
+        // 2. Execute market exit if Live (CRITICAL: Only proceed to DB save if broker accepts!)
+        if (strategy != null && "Y".equalsIgnoreCase(strategy.getLive())) {
+            try {
+                placeExitOrder(activeTrade);
+            } catch (Exception | SmartAPIException e) {
+                logger.error("❌ Broker exit FAILED for token {} ({}). Leaving DB as ACTIVE for retry. Error: {}",
+                        token, activeTrade.getSymbol(), e.getMessage());
+                return false; // Stop execution! Do NOT overwrite DB to CLOSED!
+            }
+        }
 
-     if (entryPrice.compareTo(BigDecimal.ZERO) > 0) {
-         if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
-             pnl = exitPrice.subtract(entryPrice);
-         } else {
-             pnl = entryPrice.subtract(exitPrice);
-         }
-     }
+        // 3. Compute P&L
+        BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
+        BigDecimal pnl = BigDecimal.ZERO;
 
-     // 4. Update details and commit to DB
-     activeTrade.setExitPrice(exitPrice);
-     BigDecimal quantity = BigDecimal.valueOf(activeTrade.getQuantity());
-     activeTrade.setPl(pnl.multiply(quantity));
-     activeTrade.setActive(0);
-     activeTrade.setStatus("CLOSED");
+        if (entryPrice.compareTo(BigDecimal.ZERO) > 0) {
+            if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
+                pnl = exitPrice.subtract(entryPrice);
+            } else {
+                pnl = entryPrice.subtract(exitPrice);
+            }
+        }
 
-     ordersRepo.save(activeTrade);
-     logger.info("✅ Trade closed by token -> {} | Entry: {} | Exit: {} | PnL: {}", 
-             activeTrade.getSymbol(), entryPrice, exitPrice, pnl.multiply(quantity));
-     return true;
- }
+        // 4. Update details and commit to DB
+        activeTrade.setExitPrice(exitPrice);
+        BigDecimal quantity = BigDecimal.valueOf(activeTrade.getQuantity());
+        activeTrade.setPl(pnl.multiply(quantity));
+        activeTrade.setActive(0);
+        activeTrade.setStatus("CLOSED");
 
-//=========================================================================
- // CREATE NEW ENTRY
- // =========================================================================
- private void placeNewEntry(String strategyName, int spotPrice,
-         String signal, SmartConnect sc, Strategy strategy, OrderMeta meta)
-         throws Exception, SmartAPIException {
+        ordersRepo.save(activeTrade);
+        logger.info("✅ Trade closed by token -> {} | Entry: {} | Exit: {} | PnL: {}",
+                activeTrade.getSymbol(), entryPrice, exitPrice, pnl.multiply(quantity));
+        return true;
+    }
 
-     Token token = createToken(strategy, signal);
+    //=========================================================================
+    // CREATE NEW ENTRY
+    // =========================================================================
+    private void placeNewEntry(String strategyName, int spotPrice,
+                               String signal, SmartConnect sc, Strategy strategy, OrderMeta meta)
+            throws Exception, SmartAPIException {
 
-     if (token.getToken() == null || token.getToken().isEmpty()) {
-         throw new Exception(
-                 "Token resolution failed for strategy: " + strategyName);
-     }
+        Token token = createToken(strategy, signal);
 
-     // Apply meta first (this injects the Index Spot Price into token.EntryPrice)
-     prepareSellOrder(token, strategyName, signal, meta);
+        if (token.getToken() == null || token.getToken().isEmpty()) {
+            throw new Exception(
+                    "Token resolution failed for strategy: " + strategyName);
+        }
 
-     // Fetch the ACTUAL Option Premium using the newly generated Option token
-     BigDecimal optionPremium = angelOneService.getcurrentPrice(sc,
-             token.getExch_seg(), token.getSymbol(), token.getToken(),
-             "ltp");
+        // Apply meta first (this injects the Index Spot Price into token.EntryPrice)
+        prepareSellOrder(token, strategyName, signal, meta);
 
-     if (optionPremium != null) {
-         // Overwrite the Index Spot price with the true Option Premium
-         token.setAskPrice(optionPremium); 
-         token.setEntryPrice(optionPremium); 
-         logger.info("Fetched Option Premium for {}: {}", token.getSymbol(), optionPremium);
-     } else {
-         logger.warn("⚠️ Could not fetch LTP for option {}. DB will record 0.", token.getSymbol());
-     }
+        // Fetch the ACTUAL Option Premium using the newly generated Option token
+        BigDecimal optionPremium = angelOneService.getcurrentPrice(sc,
+                token.getExch_seg(), token.getSymbol(), token.getToken(),
+                "ltp");
 
-     // 🟢 FIX: Use 'spotPrice' instead of StrategyService.MIN/MAX
-     placeFinalOrder(sc, token, strategy, spotPrice, meta);
- }
+        if (optionPremium != null) {
+            // Overwrite the Index Spot price with the true Option Premium
+            token.setAskPrice(optionPremium);
+            token.setEntryPrice(optionPremium);
+            logger.info("Fetched Option Premium for {}: {}", token.getSymbol(), optionPremium);
+        } else {
+            logger.warn("⚠️ Could not fetch LTP for option {}. DB will record 0.", token.getSymbol());
+        }
+
+        // 🟢 FIX: Use 'spotPrice' instead of StrategyService.MIN/MAX
+        placeFinalOrder(sc, token, strategy, spotPrice, meta);
+    }
 
     // =========================================================================
     // CREATE TOKEN
@@ -318,12 +318,12 @@ public class OrderService {
             token.setToken(dto.getToken());
             token.setExch_seg(dto.getExchange());
             token.setQuantity(dto.getLotSize());
-            
+
             // 🟢 FIX 2: Transfer Strike and OptionType from DTO to Token
             if (dto.getStrike() != null) {
-                token.setStrike(new BigDecimal(dto.getStrike())); 
+                token.setStrike(new BigDecimal(dto.getStrike()));
             }
-      
+
 
         } catch (AddressException | MessagingException | IOException e) {
             logger.error("❌ Error during Token creation: {}", e.getMessage());
@@ -374,7 +374,7 @@ public class OrderService {
                 tradingSymbol, currentPrice, optionType, nearestStrike);
 
         strategy.setTradingsymbol(tradingSymbol);
-        
+
         // 🟢 FIX 1: Attach Strike and OptionType to the DTO so they don't get lost
         strategy.setStrike(String.valueOf(nearestStrike)); // Adjust to Integer/BigDecimal if your DTO demands it
         strategy.setOptionType(optionType);
@@ -391,67 +391,67 @@ public class OrderService {
         return strategy;
     }
 
- // =========================================================================
- // EXIT ACTIVE TRADE  (Updated with Exit Price & P&L Calculation)
- // =========================================================================
- @Transactional
- public void exitActiveTrade(String strategyName) throws IOException, SmartAPIException {
+    // =========================================================================
+    // EXIT ACTIVE TRADE  (Updated with Exit Price & P&L Calculation)
+    // =========================================================================
+    @Transactional
+    public void exitActiveTrade(String strategyName) throws IOException, SmartAPIException {
 
-     Strategy strategy    = strategyRepo.findByName(strategyName);
-     Orders   activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
+        Strategy strategy    = strategyRepo.findByName(strategyName);
+        Orders   activeTrade = ordersRepo.findByNameAndActive(strategyName, 1);
 
-  // 🟢 ADD THIS NULL GUARD
-     if (strategy == null) {
-         logger.error("❌ CRITICAL: Strategy not found: {}. Aborting exit.", strategyName);
-         return;
-     }
-     if (activeTrade == null) {
-         logger.info("ℹ️ No active trade for strategy → {}", strategyName);
-         return;
-     }
+        // 🟢 ADD THIS NULL GUARD
+        if (strategy == null) {
+            logger.error("❌ CRITICAL: Strategy not found: {}. Aborting exit.", strategyName);
+            return;
+        }
+        if (activeTrade == null) {
+            logger.info("ℹ️ No active trade for strategy → {}", strategyName);
+            return;
+        }
 
-     logger.info("🚪 Exiting active trade → {}", activeTrade.getSymbol());
+        logger.info("🚪 Exiting active trade → {}", activeTrade.getSymbol());
 
-     SmartConnect sc = angelOne.signIn();
+        SmartConnect sc = angelOne.signIn();
 
-     // 1. Fetch current market price at exit
-     BigDecimal exitPrice = angelOneService.getcurrentPrice(sc, 
-             activeTrade.getExchange(), activeTrade.getSymbol(), activeTrade.getToken(), "ltp");
-     
-     if (exitPrice == null || exitPrice.compareTo(BigDecimal.ZERO) == 0) {
-         logger.warn("⚠️ Could not fetch market exit price for {}. Defaulting to ZERO.", activeTrade.getSymbol());
-         exitPrice = BigDecimal.ZERO;
-     }
+        // 1. Fetch current market price at exit
+        BigDecimal exitPrice = angelOneService.getcurrentPrice(sc,
+                activeTrade.getExchange(), activeTrade.getSymbol(), activeTrade.getToken(), "ltp");
 
-     // 2. Execute market exit if Live
-     if ("Y".equalsIgnoreCase(strategy.getLive())) {
-         placeExitOrder(activeTrade);
-     }
+        if (exitPrice == null || exitPrice.compareTo(BigDecimal.ZERO) == 0) {
+            logger.warn("⚠️ Could not fetch market exit price for {}. Defaulting to ZERO.", activeTrade.getSymbol());
+            exitPrice = BigDecimal.ZERO;
+        }
 
-     // 3. Compute P&L
-     BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
-     BigDecimal pnl = BigDecimal.ZERO;
+        // 2. Execute market exit if Live
+        if ("Y".equalsIgnoreCase(strategy.getLive())) {
+            placeExitOrder(activeTrade);
+        }
 
-     if (entryPrice.compareTo(BigDecimal.ZERO) > 0) {
-         // Options Strategy Check: SELL (Shorting options) vs BUY (Going long options)
-         if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
-             pnl = exitPrice.subtract(entryPrice); // Long: Exit - Entry
-         } else {
-             pnl = entryPrice.subtract(exitPrice); // Short: Entry - Exit
-         }
-     }
+        // 3. Compute P&L
+        BigDecimal entryPrice = activeTrade.getAskPrice() != null ? activeTrade.getAskPrice() : BigDecimal.ZERO;
+        BigDecimal pnl = BigDecimal.ZERO;
 
-     // 4. Update and commit details
-     activeTrade.setExitPrice(exitPrice);
-     BigDecimal quantity = BigDecimal.valueOf(activeTrade.getQuantity());
-     activeTrade.setPl(pnl.multiply(quantity));
-     activeTrade.setActive(0);
-     activeTrade.setStatus("CLOSED");
+        if (entryPrice.compareTo(BigDecimal.ZERO) > 0) {
+            // Options Strategy Check: SELL (Shorting options) vs BUY (Going long options)
+            if ("BUY".equalsIgnoreCase(activeTrade.getType()) || "BUY".equalsIgnoreCase(activeTrade.getOptionType())) {
+                pnl = exitPrice.subtract(entryPrice); // Long: Exit - Entry
+            } else {
+                pnl = entryPrice.subtract(exitPrice); // Short: Entry - Exit
+            }
+        }
 
-     ordersRepo.save(activeTrade);
-     logger.info("✅ Trade closed -> {} | Entry: {} | Exit: {} | PnL: {}", 
-    	        activeTrade.getSymbol(), entryPrice, exitPrice, pnl.multiply(quantity));
- }
+        // 4. Update and commit details
+        activeTrade.setExitPrice(exitPrice);
+        BigDecimal quantity = BigDecimal.valueOf(activeTrade.getQuantity());
+        activeTrade.setPl(pnl.multiply(quantity));
+        activeTrade.setActive(0);
+        activeTrade.setStatus("CLOSED");
+
+        ordersRepo.save(activeTrade);
+        logger.info("✅ Trade closed -> {} | Entry: {} | Exit: {} | PnL: {}",
+                activeTrade.getSymbol(), entryPrice, exitPrice, pnl.multiply(quantity));
+    }
 
     // =========================================================================
     // EXIT ORDER (private)
@@ -469,9 +469,14 @@ public class OrderService {
         token.setQuantity(activeTrade.getQuantity());
 
         prepareBuyOrder(token, activeTrade.getName());
-        angelOneService.placeOrder(sc, token);
 
-        logger.info("✅ EXIT BUY ORDER SENT → {}", activeTrade.getSymbol());
+        // ✅ NEW: an exit only counts if the broker returned an order id
+        Token placed = angelOneService.placeOrder(sc, token);
+        if (placed == null || placed.getOrderId() == null || placed.getOrderId().isBlank()) {
+            throw new IOException("EXIT ORDER FAILED (no order id) for " + activeTrade.getSymbol());
+        }
+
+        logger.info("✅ EXIT BUY ORDER SENT → {} | orderId={}", activeTrade.getSymbol(), placed.getOrderId());
     }
 
     // =========================================================================
@@ -523,8 +528,15 @@ public class OrderService {
             throws SmartAPIException, Exception {
 
         if ("Y".equalsIgnoreCase(strategy.getLive())) {
-            angelOneService.placeOrder(sc, token);
-            logger.info("LIVE ENTRY ORDER -> {}", token.getSymbol());
+            Token placed = angelOneService.placeOrder(sc, token);
+
+            // ✅ NEW: a live entry that got no order id must NOT be saved as an active trade
+            // (insertOrder would store orderid "1", which the monitor treats as a paper trade)
+            if (placed == null || placed.getOrderId() == null || placed.getOrderId().isBlank()) {
+                throw new Exception("LIVE ENTRY ORDER FAILED (no order id) for " + token.getSymbol()
+                        + " - not saved as an active trade");
+            }
+            logger.info("LIVE ENTRY ORDER PLACED -> {} | orderId={}", token.getSymbol(), placed.getOrderId());
         }
 
         // Always save to DB — required for SL monitoring and exit tracking
