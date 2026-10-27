@@ -32,12 +32,8 @@ WORKDIR /app
 COPY --from=build /app/target/crumbs.jar crumbs.jar
 
 # Replaced old diagnostics & uncapped memory with strict off-heap & thread limits
-ENV JAVA_TOOL_OPTIONS="-Xms128m -Xmx350m -XX:MaxMetaspaceSize=160m -Xss256k -XX:MaxDirectMemorySize=64m -XX:+UseSerialGC -XX:+UseContainerSupport"
+# Strict off-heap & thread limits + allow Basic auth for HTTPS proxy tunnelling
+ENV JAVA_TOOL_OPTIONS="-Xms128m -Xmx350m -XX:MaxMetaspaceSize=160m -Xss256k -XX:MaxDirectMemorySize=64m -XX:+UseSerialGC -XX:+UseContainerSupport -Djdk.http.auth.tunneling.disabledSchemes="
 
 EXPOSE 8080
-CMD ["sh", "-c", "exec java \
-  -Dhttp.proxyHost=${PROXY_HOST} \
-  -Dhttp.proxyPort=${PROXY_PORT} \
-  -Dhttps.proxyHost=${PROXY_HOST} \
-  -Dhttps.proxyPort=${PROXY_PORT} \
-  -jar crumbs.jar"]
+CMD ["java", "-jar", "crumbs.jar"]
