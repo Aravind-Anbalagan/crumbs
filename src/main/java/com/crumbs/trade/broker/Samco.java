@@ -2,6 +2,7 @@ package com.crumbs.trade.broker;
 
 import com.crumbs.trade.entity.Brokers;
 import com.crumbs.trade.repo.BrokersRepo;
+import com.crumbs.trade.utility.BrokerProxyClient;
 
 import in.samco.api.QuoteApi;
 import in.samco.api.update.MultiQuoteAPI;
@@ -17,7 +18,6 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +38,14 @@ public class Samco {
     @Autowired
     private BrokersRepo brokersRepository;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    /**
+     * All of Samco's own REST calls (login, token, candles, option chain, whoami)
+     * go through the static-IP proxy. The Samco SDK classes (QuoteApi, MultiQuoteAPI)
+     * use their own HTTP client and still connect directly; they are market-data
+     * calls and do not need the static IP.
+     */
+    @Autowired
+    private BrokerProxyClient proxyClient;
 
     // -------------------------------------------------------------------------
     // LOAD BROKER CONFIG FROM DB
@@ -118,7 +125,7 @@ public class Samco {
      * Required for order placement APIs.
      *
      * @param primaryIp   your primary static IP (required)
-     * @param secondaryIp your secondary/backup static IP (required)
+     * @param secondaryIp your secondary/backup static IP (may be null/blank)
      */
     public void registerStaticIp(String primaryIp, String secondaryIp) {
         if (primaryIp == null || primaryIp.trim().isEmpty()) {
@@ -129,7 +136,7 @@ public class Samco {
         JSONObject body = new JSONObject()
                 .put("clientId", broker.getUsername())
                 .put("primaryIp", primaryIp.trim())
-                .put("secondaryIp", secondaryIp.trim())
+                .put("secondaryIp", secondaryIp == null ? "" : secondaryIp.trim())
                 .put("password", broker.getPassword());
 
         JSONObject response = post("/ip/ipRegistration", body.toString(), null);
@@ -145,7 +152,7 @@ public class Samco {
      * Updates registered static IP(s). Can only be done once per calendar week.
      *
      * @param primaryIp   new primary static IP (required)
-     * @param secondaryIp new secondary/backup static IP (required)
+     * @param secondaryIp new secondary/backup static IP (may be null/blank)
      */
     public void updateStaticIp(String primaryIp, String secondaryIp) {
         if (primaryIp == null || primaryIp.trim().isEmpty()) {
@@ -156,7 +163,7 @@ public class Samco {
         JSONObject body = new JSONObject()
                 .put("clientId", broker.getUsername())
                 .put("primaryIp", primaryIp.trim())
-                .put("secondaryIp", secondaryIp.trim())
+                .put("secondaryIp", secondaryIp == null ? "" : secondaryIp.trim())
                 .put("password", broker.getPassword());
 
         JSONObject response = post("/ip/ipUpdate", body.toString(), null);
@@ -166,6 +173,32 @@ public class Samco {
         }
         logger.info("Static IP updated successfully. primaryIp={}, secondaryIp={}",
                 primaryIp, secondaryIp);
+    }
+
+    // -------------------------------------------------------------------------
+    // IP CHECK
+    // -------------------------------------------------------------------------
+
+    /**
+     * Calls Samco's GET /ip/whoami to show which source IP Samco sees.
+     * Through the proxy this should report the reserved IP (129.212.247.19).
+     * Pass a session token if Samco requires one; null is allowed.
+     */
+    public String whoAmI(String sessionToken) {
+        try {
+            HttpRequest.Builder b = HttpRequest.newBuilder()
+                    .uri(URI.create(BASE_URL + "/ip/whoami"))
+                    .header("Accept", "application/json")
+                    .GET();
+            if (sessionToken != null && !sessionToken.isEmpty()) {
+                b.header("x-session-token", sessionToken);
+            }
+            HttpResponse<String> resp = proxyClient.send(b.build());
+            logger.info("Samco whoami -> HTTP {} : {}", resp.statusCode(), resp.body());
+            return resp.body();
+        } catch (Exception e) {
+            throw new RuntimeException("Samco whoami failed: " + e.getMessage(), e);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -186,7 +219,7 @@ public class Samco {
         if (broker.getApikey() == null || broker.getApikey().isEmpty()) {
             throw new RuntimeException(
                     "Secret key not set. Complete one-time setup: " +
-                    "POST /admin/samco/request-otp → /admin/samco/request-secret-key → /admin/samco/save-secret-key");
+                            "POST /admin/samco/request-otp → /admin/samco/request-secret-key → /admin/samco/save-secret-key");
         }
 
         // Step 3 (daily): Generate Access Token
@@ -223,33 +256,30 @@ public class Samco {
 
     public BigDecimal getIndexPrice(String sessionToken, String indexName) {
         QuoteApi quoteApi = new QuoteApi();
-        if("NIFTY".equalsIgnoreCase(indexName))
-        {
-        	indexName="NIFTY 50";
-        } else if ("BANKNIFTY".equalsIgnoreCase(indexName) )
-        {
-            indexName ="NIFTY BANK";
+        if ("NIFTY".equalsIgnoreCase(indexName)) {
+            indexName = "NIFTY 50";
+        } else if ("BANKNIFTY".equalsIgnoreCase(indexName)) {
+            indexName = "NIFTY BANK";
         }
         // Pass the dynamic indexName ("NIFTY 50" or "SENSEX")
         IndexDetailsResponse indexQuote = quoteApi.getIndexQuote(sessionToken, indexName);
-        
+
         if (indexQuote == null) {
             throw new RuntimeException("IndexQuote API returned null response for " + indexName);
         }
-        
+
         if (!"Success".equals(indexQuote.getStatus())) {
             throw new RuntimeException("IndexQuote API failed for " + indexName + ": " + indexQuote.getStatusMessage());
         }
-        
+
         if (indexQuote.getIndexDetails() == null || indexQuote.getIndexDetails().isEmpty()) {
             throw new RuntimeException("No index details in response for " + indexName);
         }
-        
+
         BigDecimal price = BigDecimal.valueOf(indexQuote.getIndexDetails().get(0).getSpotPrice());
-        
-        // Updated logger to reflect the specific index being fetched
+
         logger.info("{} spot price: {}", indexName, price);
-        
+
         return price;
     }
 
@@ -292,8 +322,7 @@ public class Samco {
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody));
             if (sessionToken != null)
                 builder.header("Authorization", sessionToken);
-            HttpResponse<String> resp =
-                    httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> resp = proxyClient.send(builder.build());
             if (resp.statusCode() != 200 && resp.statusCode() != 201)
                 throw new RuntimeException(
                         "HTTP " + resp.statusCode() + " from " + path + ": " + resp.body());
@@ -314,33 +343,30 @@ public class Samco {
         logger.info("LTP fetched: {}", ltp);
         return ltp;
     }
-    
-   
+
     /**
      * Fetches Intraday OHLC Candle Data directly via REST to support custom timeframes.
      * Supported intervals: "1", "5", "10", "15", "30", "60"
      */
-    public String getIntradayCandleData(String sessionToken, String symbol, String exchange, 
+    public String getIntradayCandleData(String sessionToken, String symbol, String exchange,
                                         String fromDate, String toDate, String interval) {
-        
-        // 1. Log the exact raw inputs being passed into the method
-        logger.info("Initiating Samco Candle fetch -> Symbol: {}, Exchange: {}, From: {}, To: {}, Interval: {}", 
-                    symbol, exchange, fromDate, toDate, interval);
+
+        logger.info("Initiating Samco Candle fetch -> Symbol: {}, Exchange: {}, From: {}, To: {}, Interval: {}",
+                symbol, exchange, fromDate, toDate, interval);
 
         try {
             // Dynamically build and securely encode URL parameters
             StringBuilder queryParams = new StringBuilder();
             queryParams.append("?symbolName=").append(URLEncoder.encode(symbol, StandardCharsets.UTF_8));
-            
+
             if (exchange != null && !exchange.trim().isEmpty()) {
                 queryParams.append("&exchange=").append(URLEncoder.encode(exchange, StandardCharsets.UTF_8));
             }
             if (fromDate != null && !fromDate.trim().isEmpty()) {
-                // CRITICAL FIX: Replace '+' with '%20' for Samco's strict URL parser
+                // Replace '+' with '%20' for Samco's strict URL parser
                 queryParams.append("&fromDate=").append(URLEncoder.encode(fromDate, StandardCharsets.UTF_8).replace("+", "%20"));
             }
             if (toDate != null && !toDate.trim().isEmpty()) {
-                // CRITICAL FIX: Replace '+' with '%20' for Samco's strict URL parser
                 queryParams.append("&toDate=").append(URLEncoder.encode(toDate, StandardCharsets.UTF_8).replace("+", "%20"));
             }
             if (interval != null && !interval.trim().isEmpty()) {
@@ -349,29 +375,26 @@ public class Samco {
 
             String endpoint = BASE_URL + "/intraday/candleData" + queryParams.toString();
 
-            // 2. Log the final URL. If it breaks, copy this exact string to Postman/Browser
             logger.info("🚀 Constructed Samco URL: {}", endpoint);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .header("Accept", "application/json")
-                    .header("x-session-token", sessionToken) 
+                    .header("x-session-token", sessionToken)
                     .GET()
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = proxyClient.send(request);
 
             if (response.statusCode() != 200) {
-                // 3. Log the exact error body returned by Samco
                 logger.error("❌ Samco API HTTP {} Error. Body: {}", response.statusCode(), response.body());
                 throw new RuntimeException("HTTP " + response.statusCode() + " from candle API: " + response.body());
             }
 
-            // 4. Log success with the payload size
-            logger.info("✅ Successfully fetched {}-min candles for {}:{}. Response length: {} chars", 
-                        interval, exchange, symbol, response.body().length());
-            
-            return response.body(); 
+            logger.info("✅ Successfully fetched {}-min candles for {}:{}. Response length: {} chars",
+                    interval, exchange, symbol, response.body().length());
+
+            return response.body();
 
         } catch (Exception e) {
             logger.error("💥 REST getIntradayCandleData failed for {}: {}", symbol, e.getMessage());
@@ -383,25 +406,24 @@ public class Samco {
      * Fetches Option Chain Data (CE or PE) directly via REST.
      * Evaluated and used to map multidimensional greeks/premiums for strategy logic.
      */
-	public String getOptionChain(String sessionToken, String exchange,
-			String symbol, String expiryDate, String strikePrice,
-			String optionType) {
+    public String getOptionChain(String sessionToken, String exchange,
+                                 String symbol, String expiryDate, String strikePrice,
+                                 String optionType) {
 
-		logger.info(
-				"Initiating Samco Option Chain fetch -> Exchange: {}, Symbol: {}, Expiry: {}, Strike: {}, Type: {}",
-				exchange, symbol, expiryDate, strikePrice, optionType);
+        logger.info(
+                "Initiating Samco Option Chain fetch -> Exchange: {}, Symbol: {}, Expiry: {}, Strike: {}, Type: {}",
+                exchange, symbol, expiryDate, strikePrice, optionType);
 
-		try {
-			StringBuilder queryParams = new StringBuilder();
-			// 2. Use the dynamic exchange variable instead of hardcoded "NFO"
-			queryParams.append("?exchange=").append(
-					URLEncoder.encode(exchange, StandardCharsets.UTF_8));
-			queryParams.append("&searchSymbolName=")
-					.append(URLEncoder.encode(symbol, StandardCharsets.UTF_8));
-			if (strikePrice != null && !strikePrice.trim().isEmpty()) {
-				queryParams.append("&strikePrice=").append(
-						URLEncoder.encode(strikePrice, StandardCharsets.UTF_8));
-			}
+        try {
+            StringBuilder queryParams = new StringBuilder();
+            queryParams.append("?exchange=").append(
+                    URLEncoder.encode(exchange, StandardCharsets.UTF_8));
+            queryParams.append("&searchSymbolName=")
+                    .append(URLEncoder.encode(symbol, StandardCharsets.UTF_8));
+            if (strikePrice != null && !strikePrice.trim().isEmpty()) {
+                queryParams.append("&strikePrice=").append(
+                        URLEncoder.encode(strikePrice, StandardCharsets.UTF_8));
+            }
             if (optionType != null && !optionType.trim().isEmpty()) {
                 queryParams.append("&optionType=").append(URLEncoder.encode(optionType, StandardCharsets.UTF_8));
             }
@@ -420,18 +442,18 @@ public class Samco {
                     .GET()
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = proxyClient.send(request);
 
             if (response.statusCode() != 200) {
                 logger.error("❌ Samco API HTTP {} Error on Option Chain. Body: {}", response.statusCode(), response.body());
                 throw new RuntimeException("HTTP " + response.statusCode() + " from option chain API: " + response.body());
             }
 
-            logger.info("✅ Successfully fetched Option Chain for {}:{}:{}. Response length: {} chars", 
-                        symbol, strikePrice, optionType, response.body().length());
-            
+            logger.info("✅ Successfully fetched Option Chain for {}:{}:{}. Response length: {} chars",
+                    symbol, strikePrice, optionType, response.body().length());
+
             // Returns raw JSON string to be mapped to OptionChainDetail DTOs by the caller
-            return response.body(); 
+            return response.body();
 
         } catch (Exception e) {
             logger.error("💥 REST getOptionChain failed for {}: {}", symbol, e.getMessage());
