@@ -1,33 +1,30 @@
 package com.crumbs.trade.service;
 
+import com.crumbs.trade.broker.BrokerProxyClient;
 import com.crumbs.trade.dto.*;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
-import com.crumbs.trade.utility.Utility;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.BodyInserters;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.*;
 import java.math.BigDecimal;
-import java.net.*;
+import java.net.URI;
+import java.net.URL;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,17 +37,16 @@ public class FlatTradeService {
     private static final String AUTH_URL = "https://authapi.flattrade.in/trade/apitoken";
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
-    @Value("${PROXY_HOST:}")
-    private String proxyHost;
-
-    @Value("${PROXY_PORT:0}")
-    private int proxyPort;
-
     private String cachedJKey = null;
     private Instant lastFetchTime = null;
 
+    /** Direct WebClient: used for token-free-IP calls (LTP, quotes, order status). */
     @Autowired
     private WebClient webClient;
+
+    /** Static-IP proxy client: used ONLY for place / modify order calls. */
+    @Autowired
+    private BrokerProxyClient proxyClient;
 
     @Autowired
     private BrokerConfigService brokerConfigService;
@@ -60,6 +56,7 @@ public class FlatTradeService {
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+
     /**
      * MAIN ENTRY POINT: Gets a valid token by checking Memory -> Database -> API Exchange.
      */
@@ -70,13 +67,10 @@ public class FlatTradeService {
             return cachedJKey;
         }
 
-        // 2. Setup Proxy for all outbound calls
-        applyProxy();
-
-        // 3. Check Database (Handles Railway Restarts)
+        // 2. Check Database (Handles Railway Restarts)
         logger.info("[FLATTRADE] Token not in memory. Checking Database for persisted token...");
         BrokerAuthConfig cfg = brokerConfigService.getFlatTradeConfig();
-        
+
         if (isTokenStillValid(cfg.getTokenDate()) && cfg.getApiToken() != null) {
             logger.info("[FLATTRADE] Found valid token in DB (Generated at: {}). Loading to memory.", cfg.getTokenDate());
             this.cachedJKey = cfg.getApiToken();
@@ -84,11 +78,8 @@ public class FlatTradeService {
             return cachedJKey;
         }
 
-        // 4. If DB token is expired/missing, perform new API Exchange
+        // 3. If DB token is expired/missing, perform new API Exchange (direct connection)
         logger.warn("[FLATTRADE] No valid token found in DB/Memory. Starting API token exchange...");
-        
-        // Log the current IP to verify Proxy is working
-        logger.info("[PROXY] Verifying outbound IP: {}", getPublicIP());
 
         String requestCode = cfg.getRequestCode();
         if (requestCode == null || requestCode.isEmpty()) {
@@ -108,10 +99,9 @@ public class FlatTradeService {
         payload.put("request_code", requestCode);
         payload.put("api_secret", apiSecretHash);
 
-        logger.info("[FLATTRADE-API] Sending POST to {} | Code: {}", AUTH_URL, requestCode);
-        
+        logger.info("[FLATTRADE-API] Sending POST to {}", AUTH_URL);
+
         String responseBody = sendPost(AUTH_URL, payload.toString());
-        logger.info("[FLATTRADE-API] RAW RESPONSE: {}", responseBody);
 
         JSONObject json = new JSONObject(responseBody);
         String status = json.has("stat") ? json.getString("stat") : json.optString("status");
@@ -119,11 +109,11 @@ public class FlatTradeService {
         if ("Ok".equalsIgnoreCase(status)) {
             this.cachedJKey = json.getString("token");
             this.lastFetchTime = Instant.now();
-            
+
             // Persist to DB for future restarts
             brokerConfigService.updateApiToken(this.cachedJKey);
             brokerConfigService.clearRequestCode();
-            
+
             logger.info("[FLATTRADE-SUCCESS] New token generated and saved to DB for user: {}", json.optString("client"));
             return cachedJKey;
         } else {
@@ -138,10 +128,10 @@ public class FlatTradeService {
      */
     private boolean isTokenStillValid(Instant tokenTime) {
         if (tokenTime == null) return false;
-        
+
         ZonedDateTime now = ZonedDateTime.now(IST);
         ZonedDateTime tokenGeneratedAt = tokenTime.atZone(IST);
-        
+
         ZonedDateTime todaySixAM = now.withHour(6).withMinute(0).withSecond(0).withNano(0);
 
         if (now.isAfter(todaySixAM)) {
@@ -154,45 +144,41 @@ public class FlatTradeService {
         }
     }
 
-    private void applyProxy() {
-        if (proxyHost != null && !proxyHost.isEmpty()) {
-            System.setProperty("https.proxyHost", proxyHost);
-            System.setProperty("https.proxyPort", String.valueOf(proxyPort));
-            
-            ProxySelector.setDefault(new ProxySelector() {
-                @Override
-                public List<Proxy> select(URI uri) {
-                    return Collections.singletonList(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)));
-                }
-                @Override
-                public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {
-                    logger.error("[PROXY] Connection failed to {}: {}", uri, ioe.getMessage());
-                }
-            });
-            logger.info("[PROXY] Routing via DigitalOcean Proxy: {}:{}", proxyHost, proxyPort);
-        }
-    }
-
-    private String getPublicIP() {
-        try {
-            URL url = new URL("https://api.ipify.org");
-            HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
-            con.setConnectTimeout(5000);
-            try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
-                return in.readLine();
-            }
-        } catch (Exception e) {
-            return "IP check failed: " + e.getMessage();
-        }
-    }
-
     // --- NETWORK HELPERS ---
+
+    /**
+     * Sends an order-type request (place / modify) through the static-IP proxy.
+     * Everything else in this class connects directly.
+     */
+    private String postOrderViaProxy(String url, String rawPayload) throws Exception {
+        if (!proxyClient.isProxyEnabled()) {
+            logger.warn("[FLATTRADE-ORDER] Proxy is NOT configured; order will leave from a non-whitelisted IP.");
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(15))
+                // FlatTrade requires this header even though the body is "jData=...&jKey=..."
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(rawPayload))
+                .build();
+
+        HttpResponse<String> response = proxyClient.sendOrder(request);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            logger.error("[FLATTRADE-CRITICAL] HTTP {} from {}. Body: {}",
+                    response.statusCode(), url, response.body());
+            throw new RuntimeException("FlatTrade API Rejected Request (HTTP "
+                    + response.statusCode() + "): " + response.body());
+        }
+        return response.body();
+    }
 
     private static String sendPost(String urlStr, String jsonPayload) throws IOException {
         URL url = new URL(urlStr);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
         con.setRequestMethod("POST");
         con.setRequestProperty("Content-Type", "application/json");
+        con.setConnectTimeout(10000);
+        con.setReadTimeout(15000);
         con.setDoOutput(true);
         try (OutputStream os = con.getOutputStream()) {
             os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));
@@ -200,7 +186,7 @@ public class FlatTradeService {
         return readResponse(con);
     }
 
-    private static String readResponse(HttpURLConnection con) throws IOException {
+    private static String readResponse(HttpsURLConnection con) throws IOException {
         int code = con.getResponseCode();
         InputStream is = (code >= 200 && code < 400) ? con.getInputStream() : con.getErrorStream();
         if (is == null) return "Empty Response Body (HTTP " + code + ")";
@@ -224,7 +210,7 @@ public class FlatTradeService {
         return hexString.toString();
     }
 
-    // --- EXISTING TRADING METHODS (LTP, PlaceOrder) ---
+    // --- TRADING METHODS (LTP direct, PlaceOrder / ModifyOrder via proxy) ---
 
     public BigDecimal getCurrentPrice(String exch, String token) {
         try {
@@ -240,21 +226,20 @@ public class FlatTradeService {
                     .retrieve().bodyToMono(FlatTradeLtpResponse.class).block();
 
             return (res != null && "Ok".equalsIgnoreCase(res.getStat())) ? new BigDecimal(res.getLtp()) : null;
-        } catch (Exception e) { 
+        } catch (Exception e) {
             logger.error("[FLATTRADE-LTP] Error: {}", e.getMessage());
-            return null; 
+            return null;
         }
     }
 
     /**
-     * Updated to return the Token object with norenordno and price populated.
+     * Places the order THROUGH THE PROXY (static IP) and returns the Token with orderId populated.
      */
     public Token PlaceOrderInFlatTrade(Token token) throws Exception {
         String key = getTokenForFlatTrade();
         if (key == null) throw new RuntimeException("Token generation failed.");
 
         // WARNING: Ensure token.getSymbol() contains the hyphen (e.g., "RELIANCE-EQ").
-        // If your normalizeToken() removes the hyphen, do not use it here!
 
         // 1. Create the JSON string (Requires @JsonInclude(JsonInclude.Include.NON_NULL) on JData class)
         String jDataJson = objectMapper.writeValueAsString(setJDataForOrder(token));
@@ -262,16 +247,11 @@ public class FlatTradeService {
         // 2. Build the raw unescaped string EXACTLY as FlatTrade wants it
         String rawPayload = "jData=" + jDataJson + "&jKey=" + key;
 
-        logger.info("[FLATTRADE-ORDER] Sending Dynamic Payload: {}", rawPayload);
+        // Log jData only; never log the session key (jKey)
+        logger.info("[FLATTRADE-ORDER] Sending order via proxy. jData: {}", jDataJson);
 
         try {
-            // 3. Send with the contradictory header they require
-            String responseBody = webClient.post().uri(BASE_URL + "/PlaceOrder")
-                    .header("Content-Type", "application/json")
-                    .bodyValue(rawPayload)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String responseBody = postOrderViaProxy(BASE_URL + "/PlaceOrder", rawPayload);
 
             if (responseBody != null) {
                 JSONObject response = new JSONObject(responseBody);
@@ -290,26 +270,21 @@ public class FlatTradeService {
             }
             return token;
 
-        } catch (WebClientResponseException e) {
-            // 4. Always catch this so WebClient doesn't hide FlatTrade's error messages
-            String actualErrorBody = e.getResponseBodyAsString();
-            logger.error("[FLATTRADE-CRITICAL] HTTP {}. Server said: {}", e.getStatusCode(), actualErrorBody);
-            throw new RuntimeException("FlatTrade API Rejected Request: " + actualErrorBody);
         } catch (Exception e) {
-            logger.error("[FLATTRADE-CRITICAL] Request Failed: {}", e.getMessage());
+            logger.error("[FLATTRADE-CRITICAL] Request Failed: {}", e.toString());
             throw e;
         }
     }
 
     /**
-     * Fetches exact execution details for a specific FlatTrade order.
+     * Fetches exact execution details for a specific FlatTrade order (direct connection).
      * Use this to get the 'avgprc' for your PnL calculations.
      */
     public JSONObject getIndividualOrderDetails(String orderId) {
         try {
             String jKey = getTokenForFlatTrade();
             Map<String, String> jData = new HashMap<>();
-            jData.put("uid", "MALIT158"); // Your UID from the service
+            jData.put("uid", "MALIT158");
             jData.put("norenordno", orderId);
 
             String body = "jData=" + objectMapper.writeValueAsString(jData) + "&jKey=" + jKey;
@@ -368,9 +343,8 @@ public class FlatTradeService {
         return jdata;
     }
 
-
     /**
-     * Retrieves the Market Depth / Quotes (bp1 = best bid, sp1 = best ask).
+     * Retrieves the Market Depth / Quotes (bp1 = best bid, sp1 = best ask). Direct connection.
      */
     public JSONObject getMarketQuotes(String exch, String token) {
         try {
@@ -398,7 +372,7 @@ public class FlatTradeService {
     }
 
     /**
-     * Modifies the price of an existing Limit Order.
+     * Modifies the price of an existing Limit Order THROUGH THE PROXY (static IP).
      * Note: FlatTrade requires the cumulative total order qty in the qty field.
      */
     public boolean modifyFlatTradeOrder(Token token, double newPrice, String orderId) {
@@ -419,12 +393,7 @@ public class FlatTradeService {
             String jDataJson = objectMapper.writeValueAsString(jdata);
             String rawPayload = "jData=" + jDataJson + "&jKey=" + key;
 
-            String responseBody = webClient.post().uri(BASE_URL + "/ModifyOrder")
-                    .header("Content-Type", "application/json")
-                    .bodyValue(rawPayload)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String responseBody = postOrderViaProxy(BASE_URL + "/ModifyOrder", rawPayload);
 
             if (responseBody != null) {
                 JSONObject response = new JSONObject(responseBody);
@@ -435,7 +404,7 @@ public class FlatTradeService {
                 }
             }
         } catch (Exception e) {
-            logger.error("[FLATTRADE-MODIFY-CRITICAL] Error modifying order {}: {}", orderId, e.getMessage());
+            logger.error("[FLATTRADE-MODIFY-CRITICAL] Error modifying order {}: {}", orderId, e.toString());
         }
         return false;
     }
@@ -444,8 +413,9 @@ public class FlatTradeService {
      * SMART EXECUTION ENGINE:
      * 1. Fetches quantity from DB via StrategyRepo.
      * 2. Checks market depth (bp1/sp1) to determine current executable price.
-     * 3. Submits limit order.
+     * 3. Submits limit order (through the proxy).
      * 4. Asynchronously polls order status & adjusts price if market moves away.
+     *    Polling and quotes are direct; only place/modify use the proxy.
      */
     @Async
     public CompletableFuture<Void> executeSmartOrder(Token token, String instrumentToken) {
@@ -564,8 +534,7 @@ public class FlatTradeService {
      * NSE Hours: 9:15 AM to 3:30 PM IST, Monday - Friday.
      */
     private boolean isMarketOpen() {
-        ZoneId istZone = ZoneId.of("Asia/Kolkata");
-        ZonedDateTime now = ZonedDateTime.now(istZone);
+        ZonedDateTime now = ZonedDateTime.now(IST);
 
         // 1. Check if it's a weekend
         DayOfWeek day = now.getDayOfWeek();

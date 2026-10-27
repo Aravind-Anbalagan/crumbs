@@ -2,7 +2,7 @@ package com.crumbs.trade.broker;
 
 import com.crumbs.trade.entity.Brokers;
 import com.crumbs.trade.repo.BrokersRepo;
-import com.crumbs.trade.utility.BrokerProxyClient;
+
 
 import in.samco.api.QuoteApi;
 import in.samco.api.update.MultiQuoteAPI;
@@ -39,10 +39,10 @@ public class Samco {
     private BrokersRepo brokersRepository;
 
     /**
-     * All of Samco's own REST calls (login, token, candles, option chain, whoami)
-     * go through the static-IP proxy. The Samco SDK classes (QuoteApi, MultiQuoteAPI)
-     * use their own HTTP client and still connect directly; they are market-data
-     * calls and do not need the static IP.
+     * Everything in this class connects DIRECTLY (sendDirect), including login.
+     * Samco ORDER calls (place / modify / cancel), when added, must use
+     * proxyClient.sendOrder(...). The Samco SDK classes (QuoteApi, MultiQuoteAPI)
+     * use their own HTTP client and connect directly.
      */
     @Autowired
     private BrokerProxyClient proxyClient;
@@ -176,32 +176,6 @@ public class Samco {
     }
 
     // -------------------------------------------------------------------------
-    // IP CHECK
-    // -------------------------------------------------------------------------
-
-    /**
-     * Calls Samco's GET /ip/whoami to show which source IP Samco sees.
-     * Through the proxy this should report the reserved IP (129.212.247.19).
-     * Pass a session token if Samco requires one; null is allowed.
-     */
-    public String whoAmI(String sessionToken) {
-        try {
-            HttpRequest.Builder b = HttpRequest.newBuilder()
-                    .uri(URI.create(BASE_URL + "/ip/whoami"))
-                    .header("Accept", "application/json")
-                    .GET();
-            if (sessionToken != null && !sessionToken.isEmpty()) {
-                b.header("x-session-token", sessionToken);
-            }
-            HttpResponse<String> resp = proxyClient.send(b.build());
-            logger.info("Samco whoami -> HTTP {} : {}", resp.statusCode(), resp.body());
-            return resp.body();
-        } catch (Exception e) {
-            throw new RuntimeException("Samco whoami failed: " + e.getMessage(), e);
-        }
-    }
-
-    // -------------------------------------------------------------------------
     // DAILY AUTH  (call once every trading day on startup)
     // -------------------------------------------------------------------------
 
@@ -322,7 +296,7 @@ public class Samco {
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody));
             if (sessionToken != null)
                 builder.header("Authorization", sessionToken);
-            HttpResponse<String> resp = proxyClient.send(builder.build());
+            HttpResponse<String> resp = proxyClient.sendDirect(builder.build());
             if (resp.statusCode() != 200 && resp.statusCode() != 201)
                 throw new RuntimeException(
                         "HTTP " + resp.statusCode() + " from " + path + ": " + resp.body());
@@ -384,7 +358,7 @@ public class Samco {
                     .GET()
                     .build();
 
-            HttpResponse<String> response = proxyClient.send(request);
+            HttpResponse<String> response = proxyClient.sendDirect(request);
 
             if (response.statusCode() != 200) {
                 logger.error("❌ Samco API HTTP {} Error. Body: {}", response.statusCode(), response.body());
@@ -442,7 +416,7 @@ public class Samco {
                     .GET()
                     .build();
 
-            HttpResponse<String> response = proxyClient.send(request);
+            HttpResponse<String> response = proxyClient.sendDirect(request);
 
             if (response.statusCode() != 200) {
                 logger.error("❌ Samco API HTTP {} Error on Option Chain. Body: {}", response.statusCode(), response.body());

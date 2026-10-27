@@ -1,4 +1,4 @@
-package com.crumbs.trade.utility;
+package com.crumbs.trade.broker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +37,11 @@ public class BrokerProxyClient {
     private static final Logger logger = LoggerFactory.getLogger(BrokerProxyClient.class);
 
     private final HttpClient client;
+    /** Direct connection (Railway's own IP): login and market data. */
+    private final HttpClient directClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
     private final boolean proxyEnabled;
     private final String host;
     private final int port;
@@ -81,27 +86,46 @@ public class BrokerProxyClient {
         return proxyEnabled;
     }
 
-    /** Sends a request through the proxy (or directly if no proxy is configured). */
-    public HttpResponse<String> send(HttpRequest request) throws Exception {
+    /**
+     * THE ONLY METHOD THAT USES THE PROXY FOR TRADING TRAFFIC.
+     * Call it solely for order placement / modification / cancellation.
+     * Every other API call (login, quotes, candles, option chain, order status,
+     * positions, ...) must use sendDirect(...).
+     */
+    public HttpResponse<String> sendOrder(HttpRequest request) throws Exception {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    /** Returns the public IP seen by the outside world. Should be the reserved IP when proxied. */
+    /** Direct connection, never proxied. Use for login and market data. */
+    public HttpResponse<String> sendDirect(HttpRequest request) throws Exception {
+        return directClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    /**
+     * Manual diagnostic only (NOT called automatically unless PROXY_SELFTEST=true).
+     * Returns the public IP seen when going through the proxy.
+     */
     public String checkIp() throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create("https://checkip.amazonaws.com"))
                 .timeout(Duration.ofSeconds(15))
                 .GET()
                 .build();
-        HttpResponse<String> resp = send(req);
+        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() != 200) {
             throw new RuntimeException("checkip returned HTTP " + resp.statusCode());
         }
         return resp.body().trim();
     }
 
-    /** Startup self-test. Remove once you are happy with the setup. */
+    /** Startup self-test: OFF by default so the proxy carries order traffic only. */
+    @Value("${PROXY_SELFTEST:false}")
+    private boolean selfTestEnabled;
+
     @EventListener(ApplicationReadyEvent.class)
     public void proxySelfTest() {
+        if (!selfTestEnabled) {
+            return;
+        }
         try {
             logger.info("Proxy egress IP: {} (proxyEnabled={})", checkIp(), proxyEnabled);
         } catch (Exception e) {
