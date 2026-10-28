@@ -1,15 +1,10 @@
 package com.crumbs.trade.service;
 
-import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.dto.DominanceSummaryDto;
 import com.crumbs.trade.dto.ScannedContractDto;
 import com.crumbs.trade.entity.OptionPrice;
-import com.crumbs.trade.entity.Orders;
-import com.crumbs.trade.entity.StraddleVwapData;
 import com.crumbs.trade.entity.StrategyConfig;
 import com.crumbs.trade.repo.OptionPriceRepo;
-import com.crumbs.trade.repo.OrderRepository;
-import com.crumbs.trade.repo.StraddleVwapRepo;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,45 +28,8 @@ public class OptionPriceService {
     private static final DateTimeFormatter TIME_ONLY_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final OptionPriceRepo optionPriceRepo;
-    private final OrderRepository ordersRepository;
     private final TelegramService telegramService;
     private final StrategyConfigService configService;
-    private final OptionPriceOrderService optionPriceOrderService;
-    private final MonitorOrderService monitorOrderService;
-    private final StraddleVwapRepo straddleVwapRepo;
-    // ==========================================
-    // FAST-LOOP PNL & RISK MONITORING
-    // ==========================================
-
-    /**
-     * Called by a fast-loop scheduler to track PnL and enforce risk thresholds
-     * for active AI Bias trades by consuming the existing MonitorOrderService.
-     */
-
-    public void monitorActiveAiTrades(SmartConnect connection) {
-        List<Orders> allActiveOrders = ordersRepository.findByStatusAndActive("OPEN", 1);
-        if (allActiveOrders == null || allActiveOrders.isEmpty()) return;
-
-        // Isolate only trades originating from the AI Bias scanner
-        List<Orders> aiTrades = allActiveOrders.stream()
-                .filter(o -> o.getName() != null && o.getName().startsWith("AI_BIAS"))
-                .collect(Collectors.toList());
-
-        if (aiTrades.isEmpty()) return;
-
-        // Group by exact strategy name (e.g., "AI_BIAS_NIFTY", "AI_BIAS_CRUDEOIL")
-        Map<String, List<Orders>> tradesByStrategy = aiTrades.stream()
-                .collect(Collectors.groupingBy(Orders::getName));
-
-        // Feed each strategy group into the Master Risk Engine
-        for (Map.Entry<String, List<Orders>> entry : tradesByStrategy.entrySet()) {
-            monitorOrderService.evaluateAndClose(entry.getValue(), entry.getKey(), connection);
-        }
-    }
-
-    // ==========================================
-    // CORE AI SCANNER & EXECUTION LOGIC
-    // ==========================================
 
     @Transactional
     public void saveExtremeContracts(List<ScannedContractDto> contracts) {
@@ -80,132 +38,38 @@ public class OptionPriceService {
         LocalDate today = LocalDate.now();
         List<OptionPrice> newRecords = new ArrayList<>();
 
-        Map<String, List<ScannedContractDto>> groupedBySymbol = contracts.stream()
-                .collect(Collectors.groupingBy(ScannedContractDto::getName));
+        for (ScannedContractDto dto : contracts) {
+            boolean isRsiTrigger = dto.isRSIAbove80() || dto.isRSIBelow20()
+                    || dto.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
+                    || dto.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK;
 
-        groupedBySymbol.forEach((symbol, symbolContracts) -> {
+            boolean isMaTrigger = isNearMaTrigger(dto);
 
-            long ceBreakouts = symbolContracts.stream().filter(c -> "CE".equals(c.getOptionType()) && isNearMaBreakout(c)).count();
-            long ceBreakdowns = symbolContracts.stream().filter(c -> "CE".equals(c.getOptionType()) && isNearMaBreakdown(c)).count();
-            long peBreakouts = symbolContracts.stream().filter(c -> "PE".equals(c.getOptionType()) && isNearMaBreakout(c)).count();
-            long peBreakdowns = symbolContracts.stream().filter(c -> "PE".equals(c.getOptionType()) && isNearMaBreakdown(c)).count();
-
-            long bullishScore = ceBreakouts + peBreakdowns;
-            long bearishScore = peBreakouts + ceBreakdowns;
-
-            String biasLabel;
-
-            // ==========================================
-            // HIGH-CONVICTION AI BIAS LOGIC (Threshold: 3)
-            // ==========================================
-            if (bullishScore < 3 && bearishScore < 3) {
-                // Treats anything below 3 as market noise
-                biasLabel = "NEUTRAL WEAK (" + bullishScore + ":" + bearishScore + ")";
+            if (!isRsiTrigger && !isMaTrigger) {
+                continue;
             }
-            else if (bullishScore >= 3 && bearishScore < 3) {
-                // Bulls have strong momentum, bear noise ignored
-                biasLabel = "BULLISH STRONG (" + bullishScore + ":" + bearishScore + ")";
-            }
-            else if (bearishScore >= 3 && bullishScore < 3) {
-                // Bears have strong momentum, bull noise ignored
-                biasLabel = "BEARISH STRONG (" + bullishScore + ":" + bearishScore + ")";
-            }
-            else if (bullishScore >= 3 && bearishScore >= 3) {
-                // Both sides broke the threshold (High Volatility)
-                if (Math.abs(bullishScore - bearishScore) <= 1) {
-                    biasLabel = "PURE STRADDLE/STRANGLE STRONG (" + bullishScore + ":" + bearishScore + ")";
-                } else if (bullishScore > bearishScore) {
-                    biasLabel = "BULLISH STRADDLE STRONG (" + bullishScore + ":" + bearishScore + ")";
-                } else {
-                    biasLabel = "BEARISH STRADDLE STRONG (" + bullishScore + ":" + bearishScore + ")";
-                }
+
+            if (isNearMaBreakout(dto)) {
+                dto.setMaAction(ScannedContractDto.MaAction.NEAR_BREAKOUT);
+            } else if (isNearMaBreakdown(dto)) {
+                dto.setMaAction(ScannedContractDto.MaAction.NEAR_BREAKDOWN);
             } else {
-                // Safety fallback
-                biasLabel = "NEUTRAL (" + bullishScore + ":" + bearishScore + ")";
+                dto.setMaAction(ScannedContractDto.MaAction.NONE);
             }
 
-            String strategyKey = "AI_BIAS_" + symbol;
+            OptionPrice newRecord = mapToEntity(dto);
+            newRecord.setEvaluatedDate(today);
 
-            // The rest of your code remains untouched...
-            if (!biasLabel.startsWith("NEUTRAL")) {
-                evaluateTrendReversalExits(strategyKey, biasLabel);
-            }
-
-            try {
-                if (!biasLabel.startsWith("NEUTRAL")) {
-                    optionPriceOrderService.processAiSignalOrder(symbol, biasLabel, symbolContracts);
-                }
-            } catch (Exception e) {
-                logger.error("🛑 Order execution firewall caught exception for {}: {}. Scanner continuing safely.", symbol, e.getMessage());
-            }
-
-            String fullAiBias = String.format("%s | Breakouts(CE:%d PE:%d) Breakdowns(CE:%d PE:%d)",
-                    biasLabel, ceBreakouts, peBreakouts, ceBreakdowns, peBreakdowns);
-
-            for (ScannedContractDto dto : symbolContracts) {
-                dto.setAiBias(fullAiBias);
-
-                if (!dto.isRSIAbove80() && !dto.isRSIBelow20()
-                        && dto.getRsiAction() != ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
-                        && dto.getRsiAction() != ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK
-                        && !isNearMaTrigger(dto)) {
-                    continue;
-                }
-                // ✅ ADD THIS BLOCK: Evaluate and set the explicit MA action
-                if (isNearMaBreakout(dto)) {
-                    dto.setMaAction(ScannedContractDto.MaAction.NEAR_BREAKOUT);
-                } else if (isNearMaBreakdown(dto)) {
-                    dto.setMaAction(ScannedContractDto.MaAction.NEAR_BREAKDOWN);
-                } else {
-                    dto.setMaAction(ScannedContractDto.MaAction.NONE);
-                }
-
-                OptionPrice newRecord = mapToEntity(dto);
-                newRecord.setEvaluatedDate(today);
-                newRecords.add(newRecord);
-            }
-        });
+            newRecords.add(newRecord);
+        }
 
         if (!newRecords.isEmpty()) {
             optionPriceRepo.saveAll(newRecords);
-            logger.info("💾 Appended {} records into option_prices timeseries.", newRecords.size());
+            logger.info("💾 Saved {} alert-triggering records to option_prices.", newRecords.size());
         }
 
         sendHookNotifications(contracts);
     }
-
-    /**
-     * Checks if the newly generated AI bias conflicts with any existing open trade for this symbol.
-     * If a reversal is detected, triggers a force exit via the MonitorOrderService.
-     */
-    private void evaluateTrendReversalExits(String strategyKey, String newBiasLabel) {
-        List<Orders> openTrades = ordersRepository.findByStatusAndActive("OPEN", 1).stream()
-                .filter(o -> strategyKey.equalsIgnoreCase(o.getName()))
-                .collect(Collectors.toList());
-
-        if (openTrades.isEmpty()) return;
-
-        boolean isNowBullish = newBiasLabel.contains("BULLISH");
-        boolean isNowBearish = newBiasLabel.contains("BEARISH");
-
-        for (Orders trade : openTrades) {
-            boolean holdingLongExposure = ("BUY".equalsIgnoreCase(trade.getType()) && "CE".equalsIgnoreCase(trade.getOptionType())) ||
-                    ("SELL".equalsIgnoreCase(trade.getType()) && "PE".equalsIgnoreCase(trade.getOptionType()));
-
-            boolean holdingShortExposure = ("SELL".equalsIgnoreCase(trade.getType()) && "CE".equalsIgnoreCase(trade.getOptionType())) ||
-                    ("BUY".equalsIgnoreCase(trade.getType()) && "PE".equalsIgnoreCase(trade.getOptionType()));
-
-            if ((holdingLongExposure && isNowBearish) || (holdingShortExposure && isNowBullish)) {
-                logger.warn("🔄 [AI BIAS REVERSAL] Trend flipped to {}. Liquidating strategy: {}", newBiasLabel, strategyKey);
-                monitorOrderService.forceExit(openTrades, strategyKey, "AI_BIAS_TREND_REVERSAL");
-                break;
-            }
-        }
-    }
-
-    // ==========================================
-    // NOTIFICATIONS & UTILITY LOGIC
-    // ==========================================
 
     private void sendHookNotifications(List<ScannedContractDto> contracts) {
         StrategyConfig activeConfig = configService.getActiveConfig();
@@ -222,103 +86,110 @@ public class OptionPriceService {
 
         hooksByIndex.forEach((symbol, hooks) -> {
 
-            List<ScannedContractDto> rsiTriggers = new ArrayList<>();
-            if (isRsiEnabled) {
-                rsiTriggers = hooks.stream()
-                        .filter(c -> c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK
-                                || c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK)
-                        .collect(Collectors.toList());
-            }
-
-            List<ScannedContractDto> maBreakouts = new ArrayList<>();
-            List<ScannedContractDto> maBreakdowns = new ArrayList<>();
-            if (isMaEnabled) {
-                maBreakouts = hooks.stream().filter(this::isNearMaBreakout).collect(Collectors.toList());
-                maBreakdowns = hooks.stream().filter(this::isNearMaBreakdown).collect(Collectors.toList());
-            }
-
-            if (rsiTriggers.isEmpty() && maBreakouts.isEmpty() && maBreakdowns.isEmpty()) {
-                return;
-            }
-
-            logger.info("🔔 Alert dispatching for {}. RSI Enabled: {}, MA Enabled: {}", symbol, isRsiEnabled, isMaEnabled);
-
             String tf = hooks.get(0).getTimeFrame();
             BigDecimal spot = hooks.get(0).getSpotPrice();
-            String fullBias = hooks.get(0).getAiBias() != null ? hooks.get(0).getAiBias() : "NEUTRAL | Stats(0)";
-
-            String[] biasParts = fullBias.split("\\|");
-            String primaryBias = biasParts[0].trim();
-            String statsBlock = biasParts.length > 1 ? biasParts[1].trim() : "";
-
-            StringBuilder msg = new StringBuilder();
-            msg.append("🚨 *OPTIONS SCANNER (").append(tf).append(") — ").append(symbol).append("*\n");
-
+            String headerInfo = "🚨 *" + symbol + " (" + tf + ")*";
             if (spot != null) {
-                msg.append("📍 Spot: `").append(String.format("%.2f", spot.doubleValue())).append("`\n");
+                headerInfo += " | Spot: `" + String.format("%.2f", spot.doubleValue()) + "`\n";
+            } else {
+                headerInfo += "\n";
             }
 
-            msg.append("🧠 *AI BIAS: ").append(primaryBias).append("*\n");
-            msg.append("📊 `").append(statsBlock).append("`\n");
+            // 1. Separate Alert: RSI Overbought (SELL)
+            if (isRsiEnabled) {
+                List<ScannedContractDto> overboughtHooks = hooks.stream()
+                        .filter(c -> c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK)
+                        .toList();
 
-            if (!rsiTriggers.isEmpty()) {
-                msg.append("\n⚡ *RSI Hooks*\n```\n");
-                msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %-4s | %s%n",
-                        "TIME", "DIR", "STRIKE", "LTP", "RSI", "CNT"));
-                msg.append("----------------------------------------------\n");
-
-                for (ScannedContractDto hook : rsiTriggers) {
-                    String direction = hook.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK ? "SELL" : "BUY ";
-                    String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
-                    String strikeStr = (int) hook.getStrike() + hook.getOptionType();
-                    double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
-                    double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
-                    int count = direction.equals("SELL") ? hook.getAboveRSI80Count() : hook.getBelowRSI20Count();
-
-                    msg.append(String.format("%-5s | %-4s | %-8s | %-7.2f | %-4.1f | %-3d%n",
-                            timeStr, direction, strikeStr, ltpVal, rsiVal, count));
+                if (!overboughtHooks.isEmpty()) {
+                    StringBuilder msg = new StringBuilder(headerInfo);
+                    msg.append("📉 *RSI Overbought Hook (SELL)*\n```\n");
+                    msg.append(String.format("%-5s | %-16s | %-7s | %-4s | %s%n", "TIME", "STRIKE", "LTP", "RSI", "CNT"));
+                    msg.append("--------------------------------------------------\n");
+                    for (ScannedContractDto hook : overboughtHooks) {
+                        msg.append(formatRsiRow(hook));
+                    }
+                    msg.append("```");
+                    sendAlertSafely(msg.toString().trim());
                 }
-                msg.append("```\n");
-            }
 
-            if (!maBreakouts.isEmpty()) {
-                msg.append("\n📈 *MA Breakouts*\n```\n");
-                msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %s%n",
-                        "TIME", "DIR", "STRIKE", "LTP", "MA 20"));
-                msg.append("------------------------------------------\n");
+                // 2. Separate Alert: RSI Oversold (BUY)
+                List<ScannedContractDto> oversoldHooks = hooks.stream()
+                        .filter(c -> c.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERSOLD_HOOK)
+                        .toList();
 
-                for (ScannedContractDto hook : maBreakouts) {
-                    msg.append(formatMaRow(hook, "MA↑ "));
+                if (!oversoldHooks.isEmpty()) {
+                    StringBuilder msg = new StringBuilder(headerInfo);
+                    msg.append("📈 *RSI Oversold Hook (BUY)*\n```\n");
+                    msg.append(String.format("%-5s | %-16s | %-7s | %-4s | %s%n", "TIME", "STRIKE", "LTP", "RSI", "CNT"));
+                    msg.append("--------------------------------------------------\n");
+                    for (ScannedContractDto hook : oversoldHooks) {
+                        msg.append(formatRsiRow(hook));
+                    }
+                    msg.append("```");
+                    sendAlertSafely(msg.toString().trim());
                 }
-                msg.append("```\n");
             }
 
-            if (!maBreakdowns.isEmpty()) {
-                msg.append("\n📉 *MA Breakdowns*\n```\n");
-                msg.append(String.format("%-5s | %-4s | %-8s | %-7s | %s%n",
-                        "TIME", "DIR", "STRIKE", "LTP", "MA 20"));
-                msg.append("------------------------------------------\n");
-
-                for (ScannedContractDto hook : maBreakdowns) {
-                    msg.append(formatMaRow(hook, "MA↓ "));
+            // 3. Separate Alert: MA Breakout
+            if (isMaEnabled) {
+                List<ScannedContractDto> maBreakouts = hooks.stream().filter(this::isNearMaBreakout).toList();
+                if (!maBreakouts.isEmpty()) {
+                    StringBuilder msg = new StringBuilder(headerInfo);
+                    msg.append("🚀 *MA Breakout (PRICE > MA)*\n```\n");
+                    msg.append(String.format("%-5s | %-16s | %-7s | %s%n", "TIME", "STRIKE", "LTP", "MA 20"));
+                    msg.append("----------------------------------------------\n");
+                    for (ScannedContractDto hook : maBreakouts) {
+                        msg.append(formatMaRow(hook));
+                    }
+                    msg.append("```");
+                    sendAlertSafely(msg.toString().trim());
                 }
-                msg.append("```");
-            }
 
-            try {
-                telegramService.sendToNewChat(msg.toString().trim());
-            } catch (Exception e) {
-                logger.error("Failed to send Telegram alert for hooks: {}", e.getMessage());
+                // 4. Separate Alert: MA Breakdown
+                List<ScannedContractDto> maBreakdowns = hooks.stream().filter(this::isNearMaBreakdown).toList();
+                if (!maBreakdowns.isEmpty()) {
+                    StringBuilder msg = new StringBuilder(headerInfo);
+                    msg.append("⚠️ *MA Breakdown (PRICE < MA)*\n```\n");
+                    msg.append(String.format("%-5s | %-16s | %-7s | %s%n", "TIME", "STRIKE", "LTP", "MA 20"));
+                    msg.append("----------------------------------------------\n");
+                    for (ScannedContractDto hook : maBreakdowns) {
+                        msg.append(formatMaRow(hook));
+                    }
+                    msg.append("```");
+                    sendAlertSafely(msg.toString().trim());
+                }
             }
         });
     }
 
-    private String formatMaRow(ScannedContractDto hook, String dir) {
+    private void sendAlertSafely(String message) {
+        try {
+            telegramService.sendToNewChat(message);
+        } catch (Exception e) {
+            logger.error("Failed to send Telegram alert: {}", e.getMessage());
+        }
+    }
+
+    private String formatRsiRow(ScannedContractDto hook) {
         String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
-        String strikeStr = (int) hook.getStrike() + hook.getOptionType();
+        String expiry = hook.getRawExpiry() != null ? hook.getRawExpiry().substring(0, 5) : ""; // E.g., "31OCT"
+        String strikeStr = expiry + " " + (int) hook.getStrike() + hook.getOptionType();
+        double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
+        double rsiVal = hook.getCurrentRsi() != null ? hook.getCurrentRsi() : 0.0;
+        int count = hook.getRsiAction() == ScannedContractDto.RsiAction.TRIGGER_OVERBOUGHT_HOOK ? hook.getAboveRSI80Count() : hook.getBelowRSI20Count();
+
+        return String.format("%-5s | %-16s | %-7.2f | %-4.1f | %-3d%n", timeStr, strikeStr, ltpVal, rsiVal, count);
+    }
+
+    private String formatMaRow(ScannedContractDto hook) {
+        String timeStr = hook.getLastEvaluatedAt() != null ? hook.getLastEvaluatedAt().format(TIME_ONLY_FMT) : "--:--";
+        String expiry = hook.getRawExpiry() != null ? hook.getRawExpiry().substring(0, 5) : ""; // E.g., "31OCT"
+        String strikeStr = expiry + " " + (int) hook.getStrike() + hook.getOptionType();
         double ltpVal = hook.getCurrentLtp() != null ? hook.getCurrentLtp().doubleValue() : 0.0;
         double maVal = hook.getCurrentMa() != null ? hook.getCurrentMa() : 0.0;
-        return String.format("%-5s | %-4s | %-8s | %-7.2f | %-7.2f%n", timeStr, dir, strikeStr, ltpVal, maVal);
+
+        return String.format("%-5s | %-16s | %-7.2f | %-7.2f%n", timeStr, strikeStr, ltpVal, maVal);
     }
 
     private boolean isNearMaTrigger(ScannedContractDto dto) {
@@ -427,7 +298,6 @@ public class OptionPriceService {
                 .rsiAction(dto.getRsiAction() != null ? dto.getRsiAction().name() : "NONE")
                 .maAction(dto.getMaAction() != null ? dto.getMaAction().name() : "NONE")
                 .evaluatedAt(dto.getLastEvaluatedAt())
-                .aiBias(dto.getAiBias())
                 .build();
     }
 
@@ -470,72 +340,5 @@ public class OptionPriceService {
 
     public List<String> getUniqueTimeFrames() {
         return optionPriceRepo.findDistinctTimeFrames();
-    }
-
-    @Transactional
-    public void saveVwapPairData(List<ScannedContractDto> contracts) {
-        if (contracts == null || contracts.isEmpty()) return;
-
-        LocalDateTime now = LocalDateTime.now();
-        List<StraddleVwapData> vwapRecords = new ArrayList<>();
-
-        Map<String, List<ScannedContractDto>> groupedBySymbol = contracts.stream()
-                .collect(Collectors.groupingBy(ScannedContractDto::getName));
-
-        groupedBySymbol.forEach((symbol, symbolContracts) -> {
-
-            // Pluck the ATM CE and PE
-            ScannedContractDto ce = symbolContracts.stream()
-                    .filter(c -> "CE".equalsIgnoreCase(c.getOptionType()))
-                    .findFirst().orElse(null);
-
-            ScannedContractDto pe = symbolContracts.stream()
-                    .filter(c -> "PE".equalsIgnoreCase(c.getOptionType()))
-                    .findFirst().orElse(null);
-
-            if (ce != null && pe != null) {
-                BigDecimal ceLtp = ce.getCurrentLtp() != null ? ce.getCurrentLtp() : BigDecimal.ZERO;
-                BigDecimal peLtp = pe.getCurrentLtp() != null ? pe.getCurrentLtp() : BigDecimal.ZERO;
-
-                BigDecimal ceVwap = ce.getCurrentVwap() != null ? ce.getCurrentVwap() : BigDecimal.ZERO;
-                BigDecimal peVwap = pe.getCurrentVwap() != null ? pe.getCurrentVwap() : BigDecimal.ZERO;
-
-                // Combine Premium and VWAP
-                BigDecimal combinedLtp = ceLtp.add(peLtp);
-                BigDecimal combinedVwap = ceVwap.add(peVwap);
-
-                StraddleVwapData record = StraddleVwapData.builder()
-                        .symbol(symbol)
-                        .strike(ce.getStrike())
-                        .timeFrame(ce.getTimeFrame())
-                        .evaluatedAt(now)
-                        .ceLtp(ceLtp)
-                        .ceVwap(ceVwap)
-                        .peLtp(peLtp)
-                        .peVwap(peVwap)
-                        .combinedLtp(combinedLtp)
-                        .combinedVwap(combinedVwap)
-                        .build();
-
-                vwapRecords.add(record);
-            } else {
-                logger.warn("⚠️ Could not pair CE and PE for VWAP processing on {}", symbol);
-            }
-        });
-
-        if (!vwapRecords.isEmpty()) {
-            straddleVwapRepo.saveAll(vwapRecords);
-            logger.info("💾 Saved {} Combined Straddle VWAP records.", vwapRecords.size());
-        }
-    }
-    // ==========================================
-    // STRADDLE VWAP CHART DATA FETCHER
-    // ==========================================
-    public List<StraddleVwapData> getVwapChartData(String symbol, LocalDateTime startOfDay, LocalDateTime endOfDay) {
-        return straddleVwapRepo.findChartDataForSymbol(symbol, startOfDay, endOfDay);
-    }
-
-    public List<String> getUniqueSymbols() {
-        return straddleVwapRepo.findDistinctSymbols();
     }
 }
