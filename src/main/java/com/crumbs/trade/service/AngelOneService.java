@@ -50,90 +50,37 @@ public class AngelOneService {
 
     static Logger logger = LoggerFactory.getLogger(AngelOneService.class);
 
-
-    @Autowired
-    PricesNiftyRepo pricesNiftyRepo;
-
-    @Autowired
-    PricesMcxRepo pricesMcxRepo;
-
-    @Autowired
-    PricesIndexRepo pricesIndexRepo;
-
-    @Autowired
-    PriceHeikinashiNiftyRepo priceHeikinashiNiftyRepo;
-
-    @Autowired
-    PriceHeikinashiMcxRepo priceHeikinashiMcxRepo;
-
-    @Autowired
-    PsarNiftyRepo psarNiftyRepo;
-
-    @Autowired
-    PsarMcxRepo psarMcxRepo;
-
-    @Autowired
-    IndicatorRepo indicatorRepo;
-
-    @Autowired
-    ResultMcxRepo resultMcxRepo;
-
-    @Autowired
-    ResultNiftyRepo resultNiftyRepo;
-
-    @Autowired
-    ResultVixRepo resultVixRepo;
-
-    @Autowired
-    OIRepo oiRepo;
-
-    @Autowired
-    VixRepo vixRepo;
-
-    @Autowired
-    AngelOne angelOne;
-
-    @Autowired
-    StrategyRepo strategyRepo;
-
-    @Autowired
-    TaskService taskService;
-
-    @Autowired
-    OrderRepository orderRepository;
-
-    @Autowired
-    PriceRepo priceRepo;
-
-    @Autowired
-    SignalsRepo signalsRepo;
-
-    @Autowired
-    CPRRepo cprRepo;
-
-    @Autowired
-    StraddleIntradayRepo straddleIntradayRepo;
-
-    @Autowired
-    TradeExecutionRepo tradeExecutionRepo;
-
-    @Autowired
-    PredictionHistoryRepo predictionHistoryRepo;
-
-    @Autowired
-    PreMarketAnalysisRepo preMarketAnalysisRepo;
-
-    @Autowired
-    AlertRepo alertRepo;
-
+    @Autowired PricesNiftyRepo pricesNiftyRepo;
+    @Autowired PricesMcxRepo pricesMcxRepo;
+    @Autowired PricesIndexRepo pricesIndexRepo;
+    @Autowired PriceHeikinashiNiftyRepo priceHeikinashiNiftyRepo;
+    @Autowired PriceHeikinashiMcxRepo priceHeikinashiMcxRepo;
+    @Autowired PsarNiftyRepo psarNiftyRepo;
+    @Autowired PsarMcxRepo psarMcxRepo;
+    @Autowired IndicatorRepo indicatorRepo;
+    @Autowired ResultMcxRepo resultMcxRepo;
+    @Autowired ResultNiftyRepo resultNiftyRepo;
+    @Autowired ResultVixRepo resultVixRepo;
+    @Autowired OIRepo oiRepo;
+    @Autowired VixRepo vixRepo;
+    @Autowired AngelOne angelOne;
+    @Autowired StrategyRepo strategyRepo;
+    @Autowired TaskService taskService;
+    @Autowired OrderRepository orderRepository;
+    @Autowired PriceRepo priceRepo;
+    @Autowired SignalsRepo signalsRepo;
+    @Autowired CPRRepo cprRepo;
+    @Autowired StraddleIntradayRepo straddleIntradayRepo;
+    @Autowired TradeExecutionRepo tradeExecutionRepo;
+    @Autowired PredictionHistoryRepo predictionHistoryRepo;
+    @Autowired PreMarketAnalysisRepo preMarketAnalysisRepo;
+    @Autowired AlertRepo alertRepo;
     @Autowired OIResultRepo oiResultRepo;
     @Autowired IntradayTradeRepo intradayTradeRepo;
     @Autowired LevelRepository levelRepository;
     @Autowired OptionsGreeksRepo optionsGreeksRepo;
-    @Autowired
-    RiskConfigurationRepository riskConfigurationRepository;
+    @Autowired RiskConfigurationRepository riskConfigurationRepository;
     @Autowired OptionPriceRepo optionPriceRepo;
-    @Autowired StraddleVwapRepo straddleVwapRepo;
 
     // -------------------------------------------------------------------------
     // STATIC-IP PROXY (orders only)
@@ -151,64 +98,39 @@ public class AngelOneService {
     private static final String ORDER_PLACE_URL = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/placeOrder";
     private static final String ORDER_BOOK_URL  = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/getOrderBook";
 
-    /**
-     * Thrown when we cannot tell whether Angel accepted the order (timeout etc.) AND
-     * the order-book check also failed. Callers must NOT blindly retry on this.
-     */
     public static class OrderStatusUnknownException extends RuntimeException {
         public OrderStatusUnknownException(String message) {
             super(message);
         }
     }
 
-    /*
-     * Get current price
-     */
     private static final int MAX_RETRIES = 3;
     private static final long INITIAL_DELAY_MS = 300;
 
     private final Map<String, BigDecimal> lastKnownLtp = new ConcurrentHashMap<>();
 
-    public BigDecimal getcurrentPrice(
-            SmartConnect smartConnect,
-            String exchange,
-            String tradingSymbol,
-            String symboltoken) {
-
+    public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol, String symboltoken) {
         int attempt = 0;
         long delay = INITIAL_DELAY_MS;
 
         while (attempt < MAX_RETRIES) {
             try {
-
-                JSONObject jsonObject =
-                        smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
-
+                JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
                 if (jsonObject == null) {
                     logger.warn("Null response from Angel for {}", tradingSymbol);
                 } else if (!jsonObject.has("ltp")) {
-                    logger.warn("LTP missing in response for {}: {}",
-                            tradingSymbol, jsonObject.toString());
+                    logger.warn("LTP missing in response for {}: {}", tradingSymbol, jsonObject.toString());
                 } else {
-
-                    BigDecimal ltp =
-                            new BigDecimal(jsonObject.get("ltp").toString());
-
+                    BigDecimal ltp = new BigDecimal(jsonObject.get("ltp").toString());
                     if (ltp.compareTo(BigDecimal.ZERO) > 0) {
-
-                        // ✅ store last known
                         lastKnownLtp.put(tradingSymbol, ltp);
-
                         return ltp;
                     }
                 }
-
             } catch (Exception e) {
-                logger.error("Attempt {} failed for {}: {}",
-                        attempt + 1, tradingSymbol, e.getMessage());
+                logger.error("Attempt {} failed for {}: {}", attempt + 1, tradingSymbol, e.getMessage());
             }
 
-            // 🔁 Exponential Backoff
             try {
                 Thread.sleep(delay);
             } catch (InterruptedException ie) {
@@ -220,25 +142,19 @@ public class AngelOneService {
             attempt++;
         }
 
-        // ⚡ Fallback to last known
         BigDecimal fallback = lastKnownLtp.get(tradingSymbol);
-
         if (fallback != null) {
             logger.warn("Using fallback LTP for {}", tradingSymbol);
             return fallback;
         }
 
         logger.error("All retries failed for {}. Returning null.", tradingSymbol);
-        return null;   // ❗ DO NOT return 0
+        return null;
     }
-
 
     @Transactional
     public void deleteOrders() {
-        // TODO Auto-generated method stub
-
         pricesNiftyRepo.deleteAll();
-        //indicatorRepo.deleteAll();
         pricesMcxRepo.deleteAll();
         pricesIndexRepo.deleteAll();
         priceHeikinashiNiftyRepo.deleteAll();
@@ -257,28 +173,22 @@ public class AngelOneService {
         straddleIntradayRepo.deleteAll();
         tradeExecutionRepo.deleteAll();
         predictionHistoryRepo.deleteAll();
-        //preMarketAnalysisRepo.deleteAll();
         alertRepo.deleteAll();
-        //oiResultRepo.deleteAll();
         intradayTradeRepo.deleteAll();
         levelRepository.deleteAll();
         optionsGreeksRepo.deleteAll();
         riskConfigurationRepository.resetAllTrailingData();
         optionPriceRepo.deleteAll();
-        straddleVwapRepo.deleteAll();
+        // REMOVED straddleVwapRepo.deleteAll();
     }
-    /*
-     * Get current price (Dynamic Keyword) - Simple rate limit handling with exponential backoff.
-     * No caching involved.
-     */
+
     public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol, String symboltoken, String keyword) {
         int maxRetries = 3;
-        long delay = 300; // start with 300ms delay
+        long delay = 300;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 JSONObject jsonObject = smartConnect.getLTP(exchange, tradingSymbol, symboltoken);
-
                 if (jsonObject != null && jsonObject.has(keyword)) {
                     Object valObj = jsonObject.get(keyword);
                     if (valObj != null) {
@@ -290,21 +200,19 @@ public class AngelOneService {
                         keyword, tradingSymbol, attempt, maxRetries, e.getMessage());
             }
 
-            // Backoff before retrying
             try {
                 Thread.sleep(delay);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             }
-            delay *= 2; // Double the delay for the next attempt
+            delay *= 2;
         }
 
         logger.error("Failed to fetch '{}' for {} after {} attempts. Returning 0 to prevent crash.", keyword, tradingSymbol, maxRetries);
         return BigDecimal.ZERO;
     }
 
-    // 🟢 CHANGE: Added 'int breakEven' parameter to the method signature
     public void createStrategy_modified(SmartConnect smartConnect, String strategyName, int spotPrice, String type, String signal, int breakEven)
             throws SmartAPIException, Exception {
         try {
@@ -339,8 +247,6 @@ public class AngelOneService {
                             tokenCE.setVariety(Constants.VARIETY_STOPLOSS);
                             tokenCE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
                             tokenCE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
-
-                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MAX
                             insertOrder(tokenCE, breakEven);
                             placeOrder(smartConnect, tokenCE);
                         } else {
@@ -348,11 +254,9 @@ public class AngelOneService {
                         }
                     } else {
                         if(strategy.getPapertrade().equalsIgnoreCase("Y")) {
-                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MAX
                             insertOrder(tokenCE, breakEven);
                         }
                     }
-
                 } else if (type.equalsIgnoreCase("BUY")) {
                     tokenPE.setProductType(Constants.PRODUCT_CARRYFORWARD);
                     tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_SELL);
@@ -371,8 +275,6 @@ public class AngelOneService {
                             tokenPE.setVariety(Constants.VARIETY_STOPLOSS);
                             tokenPE.setOrderType(Constants.ORDER_TYPE_STOPLOSS_LIMIT);
                             tokenPE.setTransactionType(Constants.TRANSACTION_TYPE_BUY);
-
-                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MIN
                             insertOrder(tokenPE, breakEven);
                             placeOrder(smartConnect, tokenPE);
                         } else {
@@ -380,7 +282,6 @@ public class AngelOneService {
                         }
                     } else {
                         if (strategy.getPapertrade().equalsIgnoreCase("Y")) {
-                            // 🟢 FIX: Use breakEven parameter instead of StrategyService.MIN
                             insertOrder(tokenPE, breakEven);
                         }
                     }
@@ -393,30 +294,18 @@ public class AngelOneService {
 
     @Transactional
     public Orders insertOrder(Token token, int breakEven) throws Exception {
-
         Orders orders = new Orders();
-
-        // ORDER ID
         orders.setOrderid(token.getOrderId() != null ? token.getOrderId() : "1");
-
-        // CREATED DATE
         orders.setCreatedOn(LocalDateTime.now());
 
-        // 🟢 FIX: SAFELY MAP ASK PRICE AND ENTRY PRICE
-        // Prioritize getAskPrice/getEntryPrice (which we set in OrderService)
-        // Fallback to getPrice() just in case older parts of your system still use it
         BigDecimal actualPremium = token.getAskPrice() != null ? token.getAskPrice() :
                 (token.getEntryPrice() != null ? token.getEntryPrice() :
                         (token.getPrice() != null ? BigDecimal.valueOf(token.getPrice()) : BigDecimal.ZERO));
 
         orders.setAskPrice(actualPremium);
 
-
-        // SL
         Double sl = token.getTriggerPrice();
         orders.setSl(sl != null ? BigDecimal.valueOf(sl) : BigDecimal.ZERO);
-
-        // BASIC DETAILS
         orders.setSymbol(safe(token.getSymbol()));
         orders.setToken(safe(token.getToken()));
         orders.setName(safe(token.getName()));
@@ -427,39 +316,27 @@ public class AngelOneService {
             orders.setType(safe(token.getType()));
         }
         orders.setExchange(safe(token.getExch_seg()));
-
-        // ACTIVE TRADE
         orders.setActive(1);
-
-        // BREAKEVEN
         orders.setBreakeven(BigDecimal.valueOf(breakEven));
-
-        // QUANTITY
         try {
             orders.setQuantity(token.getQuantity());
         } catch (Exception e) {
             orders.setQuantity(0);
         }
-
         return orderRepository.save(orders);
     }
 
-    // small helper
     private String safe(String value) {
         return value == null ? "" : value;
     }
 
-
-    public Token createSymbol(BigDecimal currentPrice, String type, SmartConnect smartConnect, String expiry,int spotPrice, Strategy strategy,String buyer) throws JsonProcessingException, IOException, AddressException, MessagingException
-    {
-        //Take Complete Option Chain Price
+    public Token createSymbol(BigDecimal currentPrice, String type, SmartConnect smartConnect, String expiry,int spotPrice, Strategy strategy,String buyer) throws JsonProcessingException, IOException, AddressException, MessagingException {
         if (type.equalsIgnoreCase("CE")) {
             currentPrice = currentPrice.add(new BigDecimal("500"));
         } else if (type.equalsIgnoreCase("PE")) {
             currentPrice = currentPrice.subtract(new BigDecimal("500"));
         }
         int slot = 0;
-
         HashMap<Token, Integer> priceMap = new HashMap<>();
         int price =0;
         if (strategy.getName().contains("SENSEX")) {
@@ -469,13 +346,10 @@ public class AngelOneService {
             slot =50;
             price = currentPrice.intValue() % slot;
         }
-
         int roundPrice = currentPrice.intValue() - price;
 
-        for(int i=0;i<20;i++)
-        {
+        for(int i=0;i<20;i++) {
             Token token=new Token();
-            //NIFTY21NOV2424250CE
             String symbol=strategy.getSymbol() + expiry + roundPrice +type;
             token.setSymbol(symbol);
             token.setExch_seg(strategy.getExchange());
@@ -491,30 +365,20 @@ public class AngelOneService {
             } else if (type.equalsIgnoreCase("PE")) {
                 roundPrice = roundPrice + slot;
             }
-
         }
         return findNearestPrice(priceMap,spotPrice);
-
-
     }
-    private Token findNearestPrice(HashMap<Token, Integer> priceMap,int spotPrice) {
-        // TODO Auto-generated method stub
-        Map<Double, Token> map = new HashMap<>();
 
-        for (Entry<Token, Integer> entry : priceMap.entrySet())
-        {
-            Token token = entry.getKey();
+    private Token findNearestPrice(HashMap<Token, Integer> priceMap,int spotPrice) {
+        Map<Double, Token> map = new HashMap<>();
+        for (Entry<Token, Integer> entry : priceMap.entrySet()) {
             map.put(entry.getValue().doubleValue(),entry.getKey());
         }
-        if(spotPrice==0)
-        {
+        if(spotPrice==0) {
             return nearestKeys(map, new Long(155));
-        }
-        else
-        {
+        } else {
             return nearestKeys(map, new Long(spotPrice));
         }
-
     }
 
     public static Token nearestKeys(Map<Double, Token> map, Long target) {
@@ -528,17 +392,13 @@ public class AngelOneService {
             }
         }
         return map.get(nearest);
-        //return nearest;
     }
 
     @SuppressWarnings("unused")
     public Token getTokenBasedOnStrikePrice(Token token) throws JsonProcessingException, IOException {
-        // create ObjectMapper instance
-
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             Indexes indexes = taskService.getIndexChart("NIFTY", token.getSymbol());
-
             if (indexes != null) {
                 token.setToken(indexes.getToken());
                 token.setName(indexes.getName());
@@ -548,42 +408,18 @@ public class AngelOneService {
             } else {
                 logger.error("Unable to get token " + token.getName());
             }
-            /*
-             * JsonNode rootNode = objectMapper.readTree(new
-             * File(System.getProperty("user.dir") + "/tokens.txt")); rootNode.forEach(node
-             * -> { //System.out.println(node); if
-             * (node.path("symbol").asText().equalsIgnoreCase(token.getSymbol())) {
-             *
-             * token.setToken(node.path("token").asText());
-             * token.setName(node.path("name").asText());
-             * token.setExpiry(node.path("expiry").asText());
-             * token.setStrike(node.path("strike").asText());
-             * token.setQuantity(node.path("lotsize").asInt()); }
-             *
-             * }); logger.info("Got token " + token.getName()); if (token.getName() == null)
-             * { logger.error("Unable to get token " + token.getName()); }
-             */
         } catch (Exception ex) {
             logger.error(ex.getMessage());
         }
-
         return token;
-
     }
-
-    // -------------------------------------------------------------------------
-    // ORDER PLACEMENT (through the static-IP proxy)
-    // -------------------------------------------------------------------------
 
     private HttpRequest.Builder angelRequest(String url) {
         String token = angelOne.getAccessToken();
-
-        // 1. STRICT DEBUG LOGGING
         if (token == null || token.trim().isEmpty() || token.equals("null")) {
             logger.error("🚨 FATAL: JWT Token is empty or null! SDK Login failed to map the token.");
         } else {
-            logger.info("🔑 Sending Token: Bearer {}... (Length: {})",
-                    token.substring(0, Math.min(15, token.length())), token.length());
+            logger.info("🔑 Sending Token: Bearer {}... (Length: {})", token.substring(0, Math.min(15, token.length())), token.length());
         }
 
         return HttpRequest.newBuilder(URI.create(url))
@@ -597,20 +433,18 @@ public class AngelOneService {
                 .header("X-ClientPublicIP", staticIp)
                 .header("X-MACAddress", "00:00:00:00:00:00")
                 .header("X-PrivateKey", angelOne.getApiKey())
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"); // DO NOT MISS THIS
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     }
 
     private static String nz(Object o) {
         return o == null ? "0" : o.toString();
     }
 
-    /** Unique tag (<= 20 chars) so we can find our own order in the order book after a timeout. */
     private static String newOrderTag() {
         return "CR" + Long.toString(System.currentTimeMillis(), 36)
                 + UUID.randomUUID().toString().replace("-", "").substring(0, 4);
     }
 
-    /** Builds the REST body with the same rules the old OrderParams code used. */
     private JSONObject buildOrderBody(Token token, String tag) {
         JSONObject b = new JSONObject();
         b.put("variety", token.getVariety());
@@ -640,11 +474,6 @@ public class AngelOneService {
         return b;
     }
 
-    /**
-     * Looks for our order (by tag) in Angel's order book. DIRECT call (read only).
-     * Returns the orderid if found, null if the book was read successfully and the
-     * order is absent, and throws OrderStatusUnknownException if the book cannot be read.
-     */
     private String findOrderIdByTag(String tag) {
         for (int check = 1; check <= 2; check++) {
             try {
@@ -668,23 +497,12 @@ public class AngelOneService {
                 Thread.currentThread().interrupt();
                 throw new OrderStatusUnknownException("Interrupted while checking order book for tag " + tag);
             } catch (Exception e) {
-                throw new OrderStatusUnknownException(
-                        "Could not read order book to verify tag " + tag + ": " + e);
+                throw new OrderStatusUnknownException("Could not read order book to verify tag " + tag + ": " + e);
             }
         }
         return null;
     }
 
-    /**
-     * Places the order through the static-IP proxy (Angel only accepts order APIs
-     * from the whitelisted IP). Same contract as before: returns the Token with
-     * orderId (and executed price) filled in, or with orderId == null if the order
-     * was not placed.
-     *
-     * Duplicate protection: if the outcome is ambiguous (timeout / 5xx / unreadable
-     * reply), the order book is checked by our unique tag before returning. If even
-     * that fails, OrderStatusUnknownException is thrown so callers do not retry.
-     */
     public Token placeOrder(SmartConnect smartConnect, Token token) throws SmartAPIException, IOException {
         final String tag = newOrderTag();
         String orderId = null;
@@ -704,43 +522,36 @@ public class AngelOneService {
             int code = resp.statusCode();
             String text = resp.body();
 
-            // --- 🟢 NEW: REACTIVE RETRY LOGIC FOR EXPIRED/MISSING TOKENS ---
             if (code >= 200 && code < 300) {
                 JSONObject checkJson = new JSONObject(text);
-                // Check both casing variations just to be safe
                 String errorCode = checkJson.optString("errorCode", checkJson.optString("errorcode", ""));
 
                 if ("AG8003".equalsIgnoreCase(errorCode)) {
                     logger.warn("⚠️ Angel Token Missing/Expired (AG8003). Forcing re-login and retrying order...");
-                    angelOne.forceReLogin(); // Wipes old state and generates a fresh session
+                    angelOne.forceReLogin();
 
-                    // Rebuild the request to pick up the NEW token from angelOne.getAccessToken()
                     req = angelRequest(ORDER_PLACE_URL)
                             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                             .build();
 
-                    // Resend the order
                     resp = proxyClient.sendOrder(req);
                     code = resp.statusCode();
-                    text = resp.body(); // Update text with the new response
+                    text = resp.body();
                 }
             }
-            // --- END OF NEW LOGIC ---
 
             if (code >= 200 && code < 300) {
                 JSONObject json = new JSONObject(text);
-                // Note: Checking both 'status' and 'success' flags based on Angel's API variations
                 if (json.optBoolean("status", false) || json.optBoolean("success", false)) {
                     JSONObject data = json.optJSONObject("data");
                     logger.info("angelone response : {}", data);
                     String id = data != null ? data.optString("orderid", "") : "";
                     if (id == null || id.isBlank()) {
-                        ambiguous = true; // accepted but no id returned
+                        ambiguous = true;
                     } else {
                         orderId = id;
                     }
                 } else {
-                    // Clean rejection from Angel (margin, IP not whitelisted, etc.)
                     logger.error("Angel REJECTED order {} | message={} | errorcode={}",
                             token.getSymbol(), json.optString("message"), json.optString("errorCode", json.optString("errorcode")));
                     return token;
@@ -749,7 +560,6 @@ public class AngelOneService {
                 logger.error("Angel order HTTP {} (outcome unknown): {}", code, text);
                 ambiguous = true;
             } else {
-                // 4xx (proxy 407/403, Angel 401/403 etc.): the order was not placed
                 logger.error("Angel order NOT placed. HTTP {}: {}", code, text);
                 return token;
             }
@@ -766,7 +576,7 @@ public class AngelOneService {
         }
 
         if (orderId == null && ambiguous) {
-            orderId = findOrderIdByTag(tag); // may throw OrderStatusUnknownException
+            orderId = findOrderIdByTag(tag);
             if (orderId == null) {
                 logger.error("Order tag {} confirmed ABSENT from order book -> treated as not placed", tag);
                 return token;
@@ -779,45 +589,32 @@ public class AngelOneService {
         }
 
         token.setOrderId(orderId);
-        token.setPrice(getOrderDetails(orderId)); // direct trade-book read, unchanged
+        token.setPrice(getOrderDetails(orderId));
         logger.info("Angel order placed | symbol={} | orderId={}", token.getSymbol(), orderId);
         return token;
     }
 
-    //Get executed price for calculate SL
     public double getOrderDetails(String orderId) {
         double executedPrice = 0;
-        try
-        {
+        try {
             Thread.sleep(2000);
             SmartConnect smartConnect = angelOne.signIn();
             JSONObject trades = smartConnect.getTrades();
             JSONArray jsonArray = trades.getJSONArray("data");
-            //System.out.println(jsonArray.length());
-
 
             for (Object o : jsonArray) {
                 JSONObject jsonLineItem = (JSONObject) o;
-
                 if (jsonLineItem.getString("orderid").equalsIgnoreCase(orderId)) {
                     executedPrice = Double.valueOf(jsonLineItem.getInt("fillprice"));
-                    //logger.info("Executed Price :" + executedPrice);
                     return executedPrice;
                 }
             }
-        }
-        catch(Exception ex)
-        {
+        } catch(Exception ex) {
             logger.error("Error while get order details :" + ex.getMessage());
         }
-
         return executedPrice;
     }
 
-    /**
-     * PURE BROKER COUPLING: Fetches raw positions directly from AngelOne API.
-     * Returns the raw JSONObject for the Risk Engine to process.
-     */
     public JSONObject getRawPositions() {
         try {
             SmartConnect smartConnectInstance = angelOne.signIn();

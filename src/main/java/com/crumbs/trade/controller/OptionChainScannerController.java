@@ -21,16 +21,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/options/scanner")
 @RequiredArgsConstructor
-@Tag(name = "Option Chain Scanner", description = "APIs for scanning NSE/MCX options, calculating RSI & MA indicators, and tracking lifecycle extremes.")
+@Tag(name = "Option Chain Scanner", description = "APIs for scanning NSE/MCX options, calculating RSI & MA indicators, and triggering alerts.")
 public class OptionChainScannerController {
 
     private final OptionChainScannerService scannerService;
@@ -98,7 +98,6 @@ public class OptionChainScannerController {
                         rawResolvedSymbols.addAll(allNames);
                     }
                 } else if ("ALL_MCX".equals(trimmedSymbol)) {
-                    // 👈 Added MCX resolution block matching your scheduler
                     rawResolvedSymbols.addAll(List.of("CRUDEOILM", "GOLDM","SILVERM"));
                 } else {
                     rawResolvedSymbols.add(symbol);
@@ -225,74 +224,5 @@ public class OptionChainScannerController {
     public ResponseEntity<List<String>> getAvailableTimeFrames() {
         List<String> timeFrames = optionPriceService.getUniqueTimeFrames();
         return ResponseEntity.ok(timeFrames);
-    }
-    // ==========================================
-    // STRADDLE VWAP CHARTING API
-    // ==========================================
-
-    @Operation(
-            summary = "Retrieve Straddle VWAP Chart Data",
-            description = "Fetches 1-minute time-series data. Use the 'since' parameter for lightweight live polling."
-    )
-    @GetMapping("/vwap/chart")
-    public ResponseEntity<VwapChartResponseDto> getStraddleVwapChartData(
-            @Parameter(description = "Underlying symbol (e.g. NIFTY)", example = "NIFTY")
-            @RequestParam(defaultValue = "NIFTY") String symbol,
-
-            @Parameter(description = "Date in YYYY-MM-DD format (defaults to today)")
-            @RequestParam(required = false) String date,
-
-            @Parameter(description = "Delta fetch: Only return records after this timestamp (ISO format)")
-            @RequestParam(required = false) String since) {
-
-        LocalDate targetDate = (date != null && !date.isBlank()) ? LocalDate.parse(date) : LocalDate.now();
-
-        // SMART POLLING: If 'since' is provided, start from there. Otherwise, start from morning.
-        LocalDateTime startQuery = (since != null && !since.isBlank())
-                ? LocalDateTime.parse(since)
-                : targetDate.atStartOfDay();
-
-        LocalDateTime endOfDay = targetDate.atTime(23, 59, 59);
-
-        // Fetch records
-        List<StraddleVwapData> chartData = optionPriceService.getVwapChartData(
-                symbol.trim().toUpperCase(), startQuery, endOfDay);
-
-        Map<Double, List<StraddleVwapData>> groupedByStrike = chartData.stream()
-                .collect(Collectors.groupingBy(StraddleVwapData::getStrike));
-
-        Double atmStrike = null;
-        BigDecimal latestSpot = BigDecimal.ZERO;
-
-        if (!chartData.isEmpty()) {
-            StraddleVwapData latestRecord = chartData.get(chartData.size() - 1);
-            latestSpot = latestRecord.getSpotPrice();
-
-            if (latestSpot != null) {
-                double spot = latestSpot.doubleValue();
-                atmStrike = groupedByStrike.keySet().stream()
-                        .min(java.util.Comparator.comparingDouble(s -> Math.abs(s - spot)))
-                        .orElse(null);
-            }
-        }
-
-        // Extract and sort all available strikes for the UI dropdown
-        List<Double> availableStrikes = groupedByStrike.keySet().stream()
-                .sorted()
-                .toList();
-
-        VwapChartResponseDto response = VwapChartResponseDto.builder()
-                .currentAtmStrike(atmStrike)
-                .latestSpotPrice(latestSpot)
-                .availableStrikes(availableStrikes)
-                .strikeData(groupedByStrike)
-                .build();
-
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/vwap/symbols")
-    public ResponseEntity<List<String>> getSymbols() {
-        return ResponseEntity.ok(optionPriceService.getUniqueSymbols());
     }
 }
