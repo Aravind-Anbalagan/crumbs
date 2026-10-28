@@ -3,7 +3,7 @@ package com.crumbs.trade.service;
 import com.crumbs.trade.dto.*;
 import com.crumbs.trade.entity.Strategy;
 import com.crumbs.trade.repo.StrategyRepo;
-import com.crumbs.trade.utility.BrokerProxyClient;
+import com.crumbs.trade.broker.BrokerProxyClient;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;

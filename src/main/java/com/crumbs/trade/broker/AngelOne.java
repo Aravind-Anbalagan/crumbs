@@ -1,12 +1,21 @@
 package com.crumbs.trade.broker;
 
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.models.User;
+import com.crumbs.trade.broker.BrokerProxyClient;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
+
+import java.net.URI;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 
 @Component
 public class AngelOne {
@@ -15,6 +24,12 @@ public class AngelOne {
 
     private SmartConnect smartConnect;
     private User user;
+
+    @Autowired
+    private BrokerProxyClient proxyClient;
+
+    @Value("${STATIC_IP:${PROXY_HOST:127.0.0.1}}")
+    private String staticIp;
 
     // NOTE: placeholder values; move real values to environment variables
     private final String apiKey   = "7d0kJJe7";
@@ -34,10 +49,8 @@ public class AngelOne {
     /**
      * Login with exponential backoff (max 5 attempts).
      *
-     * Login and market-data calls connect DIRECTLY. Angel One only requires the
-     * registered static IP for order APIs (place / modify / cancel / GTT).
-     * The old JVM-wide ProxySelector.setDefault(...) has been removed because it
-     * pushed every HTTP client in the app (including Samco) through the proxy.
+     * Login passes through the BrokerProxyClient to bind the
+     * JWT Token to the DigitalOcean IP, preventing AG8003 IP Mismatch errors.
      */
     public synchronized SmartConnect signIn() {
         try {
@@ -47,7 +60,7 @@ public class AngelOne {
 
             applyNetworkTimeouts();
 
-            logger.info("Logging in to Angel One (direct connection)...");
+            logger.info("Logging in to Angel One (VIA PROXY for IP Binding)...");
 
             GoogleAuthenticator gAuth = new GoogleAuthenticator();
             smartConnect = new SmartConnect(apiKey);
@@ -58,32 +71,62 @@ public class AngelOne {
 
             while (retryCount < maxRetry) {
                 String code = String.valueOf(gAuth.getTotpPassword(totpKey));
+
                 try {
-                    user = smartConnect.generateSession(clientID, clientPass, code);
-                    if (user != null && user.getAccessToken() != null) {
+                    // 1. Build the Manual Login Request
+                    JSONObject loginBody = new JSONObject();
+                    loginBody.put("clientcode", clientID);
+                    loginBody.put("password", clientPass);
+                    loginBody.put("totp", code);
+
+                    // USING official angelbroking.com domain AND User-Agent header
+                    HttpRequest loginReq = HttpRequest.newBuilder(URI.create("https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"))
+                            .timeout(Duration.ofSeconds(15))
+                            .POST(HttpRequest.BodyPublishers.ofString(loginBody.toString()))
+                            .header("Content-Type", "application/json")
+                            .header("Accept", "application/json")
+                            .header("X-UserType", "USER")
+                            .header("X-SourceID", "WEB")
+                            .header("X-ClientLocalIP", "127.0.0.1")
+                            .header("X-ClientPublicIP", staticIp)
+                            .header("X-MACAddress", "00:00:00:00:00:00")
+                            .header("X-PrivateKey", apiKey)
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                            .build();
+
+                    // 2. Send Login Request through the Proxy
+                    HttpResponse<String> resp = proxyClient.sendOrder(loginReq);
+                    JSONObject respJson = new JSONObject(resp.body());
+
+                    if (respJson.optBoolean("status", false)) {
+                        JSONObject data = respJson.getJSONObject("data");
+
+                        // 3. Manually populate the SDK User object
+                        user = new User();
+                        user.setAccessToken(data.getString("jwtToken"));
+                        user.setFeedToken(data.getString("feedToken"));
+                        user.setRefreshToken(data.getString("refreshToken"));
+                        user.setUserId(clientID);
+
+                        // 4. Update SmartConnect State
                         smartConnect.setAccessToken(user.getAccessToken());
-                        smartConnect.setUserId(user.getUserId());
-                        logger.info("✅ Angel Login Successful on attempt {}", retryCount + 1);
+                        smartConnect.setUserId(clientID);
+
+                        logger.info("✅ Proxied Angel Login Successful on attempt {}", retryCount + 1);
                         return smartConnect;
+                    } else {
+                        logger.warn("⚠️ Login attempt {}/{} failed from broker: {}",
+                                retryCount + 1, maxRetry, respJson.optString("message"));
                     }
-                    logger.warn("⚠️ Login attempt {}/{} returned no access token (user={})",
-                            retryCount + 1, maxRetry, user);
                 } catch (Exception ex) {
-                    // Log the real cause (toString includes the exception class) plus stack trace
-                    logger.warn("⚠️ Login attempt {}/{} failed: {}",
-                            retryCount + 1, maxRetry, ex.toString(), ex);
+                    logger.warn("⚠️ Login attempt {}/{} failed: {}", retryCount + 1, maxRetry, ex.getMessage());
                 }
 
                 retryCount++;
                 if (retryCount < maxRetry) {
                     logger.info("Waiting {}ms before next retry...", waitTime);
-                    try {
-                        Thread.sleep(waitTime);
-                        waitTime *= 2; // 2s -> 4s -> 8s -> 16s
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Login retry interrupted", ie);
-                    }
+                    Thread.sleep(waitTime);
+                    waitTime *= 2;
                 }
             }
             throw new RuntimeException("Angel session generation failed after " + maxRetry + " attempts.");

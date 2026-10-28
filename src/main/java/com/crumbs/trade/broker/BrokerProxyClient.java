@@ -1,4 +1,4 @@
-package com.crumbs.trade.utility;
+package com.crumbs.trade.broker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,20 +17,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-/**
- * HTTP client that sends requests through the static-IP proxy (Tinyproxy on the
- * DigitalOcean droplet). It is scoped to this bean only; it does NOT change the
- * JVM-wide proxy settings, so other HTTP clients in the app keep connecting directly.
- *
- * Requires:
- *  - Railway variables: PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS
- *  - JVM flag (Dockerfile ENV JAVA_TOOL_OPTIONS):
- *        -Djdk.http.auth.tunneling.disabledSchemes=
- *    Without it, Java will not send Basic proxy credentials for HTTPS (CONNECT) tunnels
- *    and the proxy answers 407.
- *
- * If PROXY_HOST is blank, this client connects directly (useful for local runs).
- */
 @Component
 public class BrokerProxyClient {
 
@@ -62,18 +48,23 @@ public class BrokerProxyClient {
 
         if (proxyEnabled) {
             builder.proxy(ProxySelector.of(new InetSocketAddress(this.host, port)));
-            final String u = user == null ? "" : user;
-            final char[] p = pass == null ? new char[0] : pass.toCharArray();
-            builder.authenticator(new Authenticator() {
-                @Override
-                protected PasswordAuthentication getPasswordAuthentication() {
-                    // Only answer proxy challenges, never origin-server challenges
-                    if (getRequestorType() == RequestorType.PROXY) {
-                        return new PasswordAuthentication(u, p);
+
+            // 🟢 CRITICAL FIX: Only attach Authenticator if a proxy username is provided
+            // This bypasses Java Bug JDK-8326949 which silently deletes the Authorization header
+            if (user != null && !user.trim().isEmpty()) {
+                final String u = user.trim();
+                final char[] p = pass == null ? new char[0] : pass.toCharArray();
+                builder.authenticator(new Authenticator() {
+                    @Override
+                    protected PasswordAuthentication getPasswordAuthentication() {
+                        if (getRequestorType() == RequestorType.PROXY) {
+                            return new PasswordAuthentication(u, p);
+                        }
+                        return null;
                     }
-                    return null;
-                }
-            });
+                });
+            }
+
             logger.info("BrokerProxyClient: proxy enabled -> {}:{}", this.host, port);
         } else {
             logger.warn("BrokerProxyClient: PROXY_HOST/PROXY_PORT not set, using DIRECT connection");
@@ -86,25 +77,14 @@ public class BrokerProxyClient {
         return proxyEnabled;
     }
 
-    /**
-     * THE ONLY METHOD THAT USES THE PROXY FOR TRADING TRAFFIC.
-     * Call it solely for order placement / modification / cancellation.
-     * Every other API call (login, quotes, candles, option chain, order status,
-     * positions, ...) must use sendDirect(...).
-     */
     public HttpResponse<String> sendOrder(HttpRequest request) throws Exception {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    /** Direct connection, never proxied. Use for login and market data. */
     public HttpResponse<String> sendDirect(HttpRequest request) throws Exception {
         return directClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    /**
-     * Manual diagnostic only (NOT called automatically unless PROXY_SELFTEST=true).
-     * Returns the public IP seen when going through the proxy.
-     */
     public String checkIp() throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create("https://checkip.amazonaws.com"))
                 .timeout(Duration.ofSeconds(15))
@@ -117,7 +97,6 @@ public class BrokerProxyClient {
         return resp.body().trim();
     }
 
-    /** Startup self-test: OFF by default so the proxy carries order traffic only. */
     @Value("${PROXY_SELFTEST:false}")
     private boolean selfTestEnabled;
 

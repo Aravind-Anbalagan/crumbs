@@ -18,7 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.crumbs.trade.repo.*;
-import com.crumbs.trade.utility.BrokerProxyClient;
+import com.crumbs.trade.broker.BrokerProxyClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -147,7 +147,7 @@ public class AngelOneService {
     @Value("${STATIC_IP:${PROXY_HOST:127.0.0.1}}")
     private String staticIp;
 
-    private static final String ANGEL_HOST      = "https://apiconnect.angelone.in";
+    private static final String ANGEL_HOST = "https://apiconnect.angelbroking.com";
     private static final String ORDER_PLACE_URL = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/placeOrder";
     private static final String ORDER_BOOK_URL  = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/getOrderBook";
 
@@ -576,9 +576,19 @@ public class AngelOneService {
     // -------------------------------------------------------------------------
 
     private HttpRequest.Builder angelRequest(String url) {
+        String token = angelOne.getAccessToken();
+
+        // 1. STRICT DEBUG LOGGING
+        if (token == null || token.trim().isEmpty() || token.equals("null")) {
+            logger.error("🚨 FATAL: JWT Token is empty or null! SDK Login failed to map the token.");
+        } else {
+            logger.info("🔑 Sending Token: Bearer {}... (Length: {})",
+                    token.substring(0, Math.min(15, token.length())), token.length());
+        }
+
         return HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(15))
-                .header("Authorization", "Bearer " + angelOne.getAccessToken())
+                .header("Authorization", "Bearer " + token)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("X-UserType", "USER")
@@ -586,7 +596,8 @@ public class AngelOneService {
                 .header("X-ClientLocalIP", "127.0.0.1")
                 .header("X-ClientPublicIP", staticIp)
                 .header("X-MACAddress", "00:00:00:00:00:00")
-                .header("X-PrivateKey", angelOne.getApiKey());
+                .header("X-PrivateKey", angelOne.getApiKey())
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"); // DO NOT MISS THIS
     }
 
     private static String nz(Object o) {
@@ -693,10 +704,35 @@ public class AngelOneService {
             int code = resp.statusCode();
             String text = resp.body();
 
+            // --- 🟢 NEW: REACTIVE RETRY LOGIC FOR EXPIRED/MISSING TOKENS ---
+            if (code >= 200 && code < 300) {
+                JSONObject checkJson = new JSONObject(text);
+                // Check both casing variations just to be safe
+                String errorCode = checkJson.optString("errorCode", checkJson.optString("errorcode", ""));
+
+                if ("AG8003".equalsIgnoreCase(errorCode)) {
+                    logger.warn("⚠️ Angel Token Missing/Expired (AG8003). Forcing re-login and retrying order...");
+                    angelOne.forceReLogin(); // Wipes old state and generates a fresh session
+
+                    // Rebuild the request to pick up the NEW token from angelOne.getAccessToken()
+                    req = angelRequest(ORDER_PLACE_URL)
+                            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                            .build();
+
+                    // Resend the order
+                    resp = proxyClient.sendOrder(req);
+                    code = resp.statusCode();
+                    text = resp.body(); // Update text with the new response
+                }
+            }
+            // --- END OF NEW LOGIC ---
+
             if (code >= 200 && code < 300) {
                 JSONObject json = new JSONObject(text);
-                if (json.optBoolean("status", false)) {
+                // Note: Checking both 'status' and 'success' flags based on Angel's API variations
+                if (json.optBoolean("status", false) || json.optBoolean("success", false)) {
                     JSONObject data = json.optJSONObject("data");
+                    logger.info("angelone response : {}", data);
                     String id = data != null ? data.optString("orderid", "") : "";
                     if (id == null || id.isBlank()) {
                         ambiguous = true; // accepted but no id returned
@@ -706,7 +742,7 @@ public class AngelOneService {
                 } else {
                     // Clean rejection from Angel (margin, IP not whitelisted, etc.)
                     logger.error("Angel REJECTED order {} | message={} | errorcode={}",
-                            token.getSymbol(), json.optString("message"), json.optString("errorcode"));
+                            token.getSymbol(), json.optString("message"), json.optString("errorCode", json.optString("errorcode")));
                     return token;
                 }
             } else if (code >= 500) {
