@@ -41,6 +41,12 @@ public class OptionPriceScannerScheduler {
     private final NiftyRepo niftyRepo;
     private final StrategyRepo strategyRepo;
 
+    // ==========================================
+    // ⚙️ SCANNER CONFIGURATION TOGGLES
+    // ==========================================
+    // Set to true if you want to include dynamic F&O stocks that hit the % threshold
+    private static final boolean SCAN_DYNAMIC_FNO_STOCKS = false;
+
     private static final List<String> MCX_SYMBOLS = List.of("CRUDEOILM", "GOLDM","SILVERM");
     private static final List<String> NSE_SYMBOLS = List.of("NIFTY", "BANKNIFTY");
 
@@ -61,30 +67,37 @@ public class OptionPriceScannerScheduler {
     private List<String> getDailySymbolsToScan(LocalDate today, BigDecimal threshold) {
         if (trackingDate == null || !trackingDate.equals(today)) {
             dailyLockedStrikes.clear();
+
+            // Always add predefined index symbols
             NSE_SYMBOLS.forEach(sym -> dailyLockedStrikes.put(sym, 0.0));
+
             trackingDate = today;
-            logger.info("🔄 Resetting daily scanning symbols list for new trading day: {}", today);
+            logger.info("🔄 Resetting daily scanning symbols list for new trading day: {}. Dynamic F&O Scanning enabled: {}", today, SCAN_DYNAMIC_FNO_STOCKS);
         }
 
-        List<String> allNames = niftyRepo.getAllNames();
-        if (allNames != null) {
-            for (String symbol : allNames) {
-                try {
-                    if (!dailyLockedStrikes.containsKey(symbol)) {
-                        Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(symbol);
-                        if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
-                            BigDecimal currentChange = stockOpt.get().getPercentageChange();
-                            if (currentChange.abs().compareTo(threshold) >= 0) {
-                                logger.info("🎯 Symbol {} touched threshold {}%. Adding to persistent daily scan list.", symbol, threshold);
-                                dailyLockedStrikes.put(symbol, 0.0);
+        // Only scan database for F&O stocks if the flag is TRUE
+        if (SCAN_DYNAMIC_FNO_STOCKS) {
+            List<String> allNames = niftyRepo.getAllNames();
+            if (allNames != null) {
+                for (String symbol : allNames) {
+                    try {
+                        if (!dailyLockedStrikes.containsKey(symbol)) {
+                            Optional<com.crumbs.trade.entity.Nifty> stockOpt = niftyRepo.findByName(symbol);
+                            if (stockOpt.isPresent() && stockOpt.get().getPercentageChange() != null) {
+                                BigDecimal currentChange = stockOpt.get().getPercentageChange();
+                                if (currentChange.abs().compareTo(threshold) >= 0) {
+                                    logger.info("🎯 Symbol {} touched threshold {}%. Adding to persistent daily scan list.", symbol, threshold);
+                                    dailyLockedStrikes.put(symbol, 0.0);
+                                }
                             }
                         }
+                    } catch (Exception e) {
+                        logger.error("⚠️ Error evaluating percentage threshold for symbol '{}': {}", symbol, e.getMessage());
                     }
-                } catch (Exception e) {
-                    logger.error("⚠️ Error evaluating percentage threshold for symbol '{}': {}", symbol, e.getMessage());
                 }
             }
         }
+
         return new ArrayList<>(dailyLockedStrikes.keySet());
     }
 
@@ -104,6 +117,7 @@ public class OptionPriceScannerScheduler {
                 ? activeConfig.getMinPercentageChange() : BigDecimal.valueOf(5.0);
 
         List<String> symbolsToScan = getDailySymbolsToScan(today, threshold);
+
         String interval = activeConfig.getDefaultInterval() != null
                 ? activeConfig.getDefaultInterval() : "ONE_HOUR";
 
