@@ -444,7 +444,7 @@ public class StrategyService {
     }
 
     // =========================================================================
-    // DIRECTIONAL ORDER EXECUTION (Fixed: All logic handled inside StrategyService)
+    // DIRECTIONAL ORDER EXECUTION
     // =========================================================================
     public void executeCPRStrategyOrders(String signal,
                                          BigDecimal currentPrice,
@@ -474,10 +474,10 @@ public class StrategyService {
                     if (!exitCurrentTrade("SIGNAL_REVERSAL", currentPrice)) return;
                 }
             } else {
-                return; // WAIT signal, do nothing
+                return; // WAIT signal
             }
 
-            // 2. Build the Token Explicitly (Bypassing OrderService limitations)
+            // 2. Build the Token
             Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
             SmartConnect sc = angelOne.signIn();
 
@@ -508,27 +508,19 @@ public class StrategyService {
             OrderMeta meta = buildOrderMeta(currentPrice, first5High, first5Low, upperBand, lowerBand, pivot, marketType, signal);
             token.setSlPrice(meta.getSlPrice());
 
-            // 4. Place Order as a "SELL" (So MonitorOrderService correctly treats it as a Short position)
-            orderService.orderPlaceWithToken(token, AppConstant.CPR_STRATEGY, "SELL", false);
+            // 4. Force Type to SELL for the Risk Engine PnL Math
+            token.setType("SELL");
+            token.setSignal(signal);
 
-            // 5. Guarantee DB Integrity (Inject missing fields that AngelOneService drops)
-            Orders newlySaved = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
-            if (newlySaved != null) {
-                newlySaved.setAskPrice(premium != null ? premium : BigDecimal.ZERO);
-                newlySaved.setStrike(BigDecimal.valueOf(nearestStrike));
-                newlySaved.setSl(meta.getSlPrice());
-                newlySaved.setOptionType(optionType);
-                orderRepository.save(newlySaved);
-            }
+            // 5. Place Order
+            orderService.orderPlaceWithToken(token, AppConstant.CPR_STRATEGY, "SELL", false);
 
             // 6. Update Daily Flags
             if ("BUY".equals(signal)) cprBuyTradeTaken.set(true);
             else cprSellTradeTaken.set(true);
 
-        } catch (Exception e) {
+        } catch (Exception | SmartAPIException e) {
             logger.error("❌ Error placing CPR order", e);
-        } catch (SmartAPIException e) {
-            throw new RuntimeException(e);
         }
     }
 

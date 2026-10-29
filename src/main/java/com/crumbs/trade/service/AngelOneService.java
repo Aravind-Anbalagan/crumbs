@@ -298,10 +298,10 @@ public class AngelOneService {
         orders.setOrderid(token.getOrderId() != null ? token.getOrderId() : "1");
         orders.setCreatedOn(LocalDateTime.now());
 
+        // 1. Entry Price (Unified fallback logic)
         BigDecimal actualPremium = token.getAskPrice() != null ? token.getAskPrice() :
                 (token.getEntryPrice() != null ? token.getEntryPrice() :
                         (token.getPrice() != null ? BigDecimal.valueOf(token.getPrice()) : BigDecimal.ZERO));
-
         orders.setAskPrice(actualPremium);
 
         Double sl = token.getTriggerPrice();
@@ -315,14 +315,33 @@ public class AngelOneService {
         } else {
             orders.setType(safe(token.getType()));
         }
+
         orders.setExchange(safe(token.getExch_seg()));
         orders.setActive(1);
         orders.setBreakeven(BigDecimal.valueOf(breakEven));
+
         try {
             orders.setQuantity(token.getQuantity());
         } catch (Exception e) {
             orders.setQuantity(0);
         }
+
+        // 2. Save Strike Price
+        if (token.getStrike() != null) {
+            orders.setStrike(token.getStrike());
+        }
+
+        // 3. Save Stoploss (Overriding the Double trigger price if SL price explicitly set)
+        if (token.getSlPrice() != null) {
+            orders.setSl(token.getSlPrice());
+        }
+
+        // 4. Save Option Type (PE or CE)
+        if (token.getSymbol() != null) {
+            if (token.getSymbol().endsWith("PE")) orders.setOptionType("PE");
+            else if (token.getSymbol().endsWith("CE")) orders.setOptionType("CE");
+        }
+
         return orderRepository.save(orders);
     }
 
