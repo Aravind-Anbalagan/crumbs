@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.crumbs.trade.repo.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -30,10 +31,6 @@ import com.crumbs.trade.dto.StrangleCprDto;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Stoploss;
 import com.crumbs.trade.entity.Strategy;
-import com.crumbs.trade.repo.CPRRepo;
-import com.crumbs.trade.repo.OrderRepository;
-import com.crumbs.trade.repo.PriceRepo;
-import com.crumbs.trade.repo.StrategyRepo;
 import com.crumbs.trade.utility.AppConstant;
 import com.crumbs.trade.utility.NSEWorkingDays;
 
@@ -96,7 +93,9 @@ public class StrategyService {
     @Autowired PriceUtilService          priceUtilService;
     @Autowired StraddleIntradayService   straddleIntradayService;
     @Autowired StraddleMarketDataService straddleMarketDataService;
-
+    @Autowired MonitorOrderService monitorOrderService;
+    @Autowired
+    IndexesRepo indexesRepo;
     // =========================================================================
     // STEP 1 — Fetch CPR + First 5-min candle  (called at 09:20:10)
     // FIX: CPR values are validated before persisting, so a failed getCPR()
@@ -445,11 +444,7 @@ public class StrategyService {
     }
 
     // =========================================================================
-    // DIRECTIONAL ORDER EXECUTION
-    // Bullish ("BUY" signal)  -> Sell PE
-    // Bearish ("SELL" signal) -> Sell CE
-    // FIX: never place the new leg if the reversal exit failed
-    //      (prevents holding short CE + short PE simultaneously).
+    // DIRECTIONAL ORDER EXECUTION (Fixed: All logic handled inside StrategyService)
     // =========================================================================
     public void executeCPRStrategyOrders(String signal,
                                          BigDecimal currentPrice,
@@ -461,44 +456,74 @@ public class StrategyService {
             if (eodDone.get()) return;
             if (buySLHit.get() && sellSLHit.get()) return;
 
+            // 1. Reversal and Flag Checks
             if ("BUY".equals(signal)) {
-                // Safeguard: If already holding a Bullish trade (e.g. after app restart), sync flag and skip
                 if (activeTrade != null && isBullishTrade(activeTrade)) {
-                    cprBuyTradeTaken.set(true);
-                    return;
+                    cprBuyTradeTaken.set(true); return;
                 }
                 if (cprBuyTradeTaken.get() || buySLHit.get()) return;
-
                 if (activeTrade != null && isBearishTrade(activeTrade)) {
-                    if (!exitCurrentTrade("SIGNAL_REVERSAL", currentPrice)) {
-                        logger.error("🚨 Reversal exit failed — NOT placing new BUY leg.");
-                        return;
-                    }
+                    if (!exitCurrentTrade("SIGNAL_REVERSAL", currentPrice)) return;
                 }
-
-                orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "BUY",
-                        buildOrderMeta(currentPrice, first5High, first5Low, upperBand, lowerBand, pivot, marketType, "BUY"));
-                cprBuyTradeTaken.set(true);
-
             } else if ("SELL".equals(signal)) {
-                // Safeguard: If already holding a Bearish trade (e.g. after app restart), sync flag and skip
                 if (activeTrade != null && isBearishTrade(activeTrade)) {
-                    cprSellTradeTaken.set(true);
-                    return;
+                    cprSellTradeTaken.set(true); return;
                 }
                 if (cprSellTradeTaken.get() || sellSLHit.get()) return;
-
                 if (activeTrade != null && isBullishTrade(activeTrade)) {
-                    if (!exitCurrentTrade("SIGNAL_REVERSAL", currentPrice)) {
-                        logger.error("🚨 Reversal exit failed — NOT placing new SELL leg.");
-                        return;
-                    }
+                    if (!exitCurrentTrade("SIGNAL_REVERSAL", currentPrice)) return;
                 }
-
-                orderService.orderPlace(AppConstant.CPR_STRATEGY, 0, "SELL",
-                        buildOrderMeta(currentPrice, first5High, first5Low, upperBand, lowerBand, pivot, marketType, "SELL"));
-                cprSellTradeTaken.set(true);
+            } else {
+                return; // WAIT signal, do nothing
             }
+
+            // 2. Build the Token Explicitly (Bypassing OrderService limitations)
+            Strategy strategy = strategyRepo.findByName(AppConstant.CPR_STRATEGY);
+            SmartConnect sc = angelOne.signIn();
+
+            int nearestStrike = chartService.findNearestMultiple(currentPrice.intValue(), 50);
+            String optionType = "BUY".equals(signal) ? "PE" : "CE";
+            String tradingSymbol = String.format("%s%s%d%s", strategy.getName(), strategy.getExpiry(), nearestStrike, optionType);
+
+            com.crumbs.trade.entity.Indexes idx = indexesRepo.findByNameAndSymbol(strategy.getName(), tradingSymbol);
+            if (idx == null) {
+                logger.error("❌ Index not found for symbol {}", tradingSymbol);
+                return;
+            }
+
+            com.crumbs.trade.dto.Token token = new com.crumbs.trade.dto.Token();
+            token.setSymbol(tradingSymbol);
+            token.setToken(idx.getToken());
+            token.setExch_seg(idx.getExchange());
+            token.setQuantity(idx.getLotsize());
+            token.setStrike(BigDecimal.valueOf(nearestStrike));
+
+            // 3. Fetch real Option Premium
+            BigDecimal premium = angelOneService.getcurrentPrice(sc, idx.getExchange(), tradingSymbol, idx.getToken(), "ltp");
+            if (premium != null) {
+                token.setAskPrice(premium);
+                token.setEntryPrice(premium);
+            }
+
+            OrderMeta meta = buildOrderMeta(currentPrice, first5High, first5Low, upperBand, lowerBand, pivot, marketType, signal);
+            token.setSlPrice(meta.getSlPrice());
+
+            // 4. Place Order as a "SELL" (So MonitorOrderService correctly treats it as a Short position)
+            orderService.orderPlaceWithToken(token, AppConstant.CPR_STRATEGY, "SELL", false);
+
+            // 5. Guarantee DB Integrity (Inject missing fields that AngelOneService drops)
+            Orders newlySaved = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
+            if (newlySaved != null) {
+                newlySaved.setAskPrice(premium != null ? premium : BigDecimal.ZERO);
+                newlySaved.setStrike(BigDecimal.valueOf(nearestStrike));
+                newlySaved.setSl(meta.getSlPrice());
+                newlySaved.setOptionType(optionType);
+                orderRepository.save(newlySaved);
+            }
+
+            // 6. Update Daily Flags
+            if ("BUY".equals(signal)) cprBuyTradeTaken.set(true);
+            else cprSellTradeTaken.set(true);
 
         } catch (Exception e) {
             logger.error("❌ Error placing CPR order", e);
@@ -569,7 +594,14 @@ public class StrategyService {
     private boolean exitCurrentTrade(String reason, BigDecimal indexPrice) {
         try {
             logger.info("⚠️ Initiating trade exit. Reason: {} | Index Price: {}", reason, indexPrice);
-            orderService.exitActiveTrade(AppConstant.CPR_STRATEGY);
+
+            // Fetch the active leg(s)
+            Orders activeTrade = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
+
+            if (activeTrade != null) {
+                // Pass it directly to the Monitor Service to process the instant exit and save the reason
+                monitorOrderService.forceExit(Collections.singletonList(activeTrade), AppConstant.CPR_STRATEGY, reason);
+            }
 
             Orders stillOpen = orderRepository.findByNameAndActive(AppConstant.CPR_STRATEGY, 1);
             if (stillOpen != null) {
@@ -580,8 +612,6 @@ public class StrategyService {
         } catch (Exception e) {
             logger.error("❌ Exit '{}' failed", reason, e);
             return false;
-        } catch (SmartAPIException e) {
-            throw new RuntimeException(e);
         }
     }
 
