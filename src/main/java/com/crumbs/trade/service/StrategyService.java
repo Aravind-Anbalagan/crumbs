@@ -483,7 +483,7 @@ public class StrategyService {
 
             int nearestStrike = chartService.findNearestMultiple(currentPrice.intValue(), 50);
             String optionType = "BUY".equals(signal) ? "PE" : "CE";
-            String tradingSymbol = String.format("%s%s%d%s", strategy.getName(), strategy.getExpiry(), nearestStrike, optionType);
+            String tradingSymbol = String.format("%s%s%d%s", strategy.getSymbol(), strategy.getExpiry(), nearestStrike, optionType);
 
             com.crumbs.trade.entity.Indexes idx = indexesRepo.findByNameAndSymbol(strategy.getName(), tradingSymbol);
             if (idx == null) {
