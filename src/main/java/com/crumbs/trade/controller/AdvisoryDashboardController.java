@@ -1,5 +1,6 @@
 package com.crumbs.trade.controller;
 
+import com.crumbs.trade.advisory.AdvisoryEngineService;
 import com.crumbs.trade.advisory.AdvisoryLedger;
 import com.crumbs.trade.advisory.AdvisoryLedgerRepository;
 import com.crumbs.trade.advisory.AdvisoryEngineScheduler;
@@ -23,7 +24,7 @@ public class AdvisoryDashboardController {
 
     private final AdvisoryLedgerRepository ledgerRepository;
     private final AdvisoryEngineScheduler advisoryEngineScheduler;
-
+    private final AdvisoryEngineService AdvisoryEngineService;
     // =========================================================================
     // 🖥️ UI CONSUMED APIs
     // =========================================================================
@@ -103,5 +104,10 @@ public class AdvisoryDashboardController {
                 "status", "SUCCESS",
                 "message", "Ledger wiped cleanly. Ready for fresh ₹ PnL testing."
         ));
+    }
+    @GetMapping("/live-record/{id}")
+    public ResponseEntity<AdvisoryLedger> getLiveAdvisoryRecord(@PathVariable Long id) {
+        AdvisoryLedger liveRecord = AdvisoryEngineService.getLiveTradeDetails(id);
+        return ResponseEntity.ok(liveRecord);
     }
 }

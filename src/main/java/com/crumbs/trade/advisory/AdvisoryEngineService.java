@@ -624,19 +624,42 @@ public class AdvisoryEngineService {
             if (optionIndex == null || optionIndex.getToken() == null) return null;
 
             String optionToken = optionIndex.getToken();
+            String tradingSymbol = optionIndex.getSymbol();
             ExchangeType exType = exchange.contains("MCX") ? ExchangeType.MCX_FO : ExchangeType.NSE_FO;
 
+            // =========================================================
+            // 1. ATTEMPT WEBSOCKET FETCH (Fastest)
+            // =========================================================
             BigDecimal exitLtp = webSocketService.getLatestLTP(exType, optionToken);
 
             if (exitLtp != null && exitLtp.compareTo(BigDecimal.ZERO) > 0) {
                 return exitLtp;
-            } else {
-                log.debug("⚠️ WebSocket LTP missing for token {}. Will retry next scan.", optionToken);
-                return null;
             }
 
+            // =========================================================
+            // 2. FALLBACK TO REST API (Using AngelOneService.getcurrentPrice)
+            // =========================================================
+            log.warn("⚠️ WebSocket LTP missing for {}. Falling back to REST API...", tradingSymbol);
+
+            String apiExchange = exchange.contains("MCX") ? "MCX" : "NFO";
+
+            // Generate the SmartConnect session
+            com.angelbroking.smartapi.SmartConnect smartConnect = angelOne.signIn();
+
+            if (smartConnect != null) {
+                // Call the actual method from your AngelOneService
+                BigDecimal restLtp = angelOneService.getcurrentPrice(smartConnect, apiExchange, tradingSymbol, optionToken);
+
+                if (restLtp != null && restLtp.compareTo(BigDecimal.ZERO) > 0) {
+                    log.info("✅ REST API successfully returned LTP ₹{} for {}", restLtp, tradingSymbol);
+                    return restLtp;
+                }
+            }
+
+            log.error("❌ Both WebSocket and REST API failed to return a price for {}", tradingSymbol);
+
         } catch (Exception e) {
-            log.error("❌ Exception fetching exit LTP for {}: {}", prev.getSymbol(), e.getMessage());
+            log.error("❌ Exception fetching live premium for {}: {}", prev.getSymbol(), e.getMessage());
         }
         return null;
     }
@@ -733,5 +756,32 @@ public class AdvisoryEngineService {
             log.error("❌ Error fetching option index for {}: {}", record.getSymbol(), e.getMessage());
         }
         return null;
+    }
+    // Add this new method to AdvisoryEngineService.java
+    @Transactional
+    public AdvisoryLedger getLiveTradeDetails(Long recordId) {
+        AdvisoryLedger record = ledgerRepository.findById(recordId)
+                .orElseThrow(() -> new RuntimeException("Record not found"));
+
+        if ("ACTIVE".equals(record.getStatus()) && record.getEntryPremium() != null) {
+            Indexes optionIndex = getOptionIndexMetadata(record);
+            String exchange = optionIndex != null ? optionIndex.getExchange() : "NFO";
+
+            // Fetch live price via WS or API fallback
+            BigDecimal liveLtp = safelyFetchExitPremium(record, exchange);
+
+            if (liveLtp != null) {
+                BigDecimal pointsPnl = record.getEntryPremium().subtract(liveLtp);
+                int safeLotSize = record.getLotSize() != null ? record.getLotSize() : 1;
+                BigDecimal absolutePnl = pointsPnl.multiply(BigDecimal.valueOf(safeLotSize));
+
+                record.setCurrentPremium(liveLtp);
+                record.setUnrealizedPnl(absolutePnl);
+
+                // Save to DB so the timeline matrix is instantly updated for subsequent loads
+                ledgerRepository.save(record);
+            }
+        }
+        return record;
     }
 }

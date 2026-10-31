@@ -2,6 +2,7 @@ package com.crumbs.trade.controller;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.Proxy;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +23,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
@@ -235,7 +237,15 @@ public class CommonController {
                 return null;
             };
 
-            restTemplate.execute(angelOneApiUrl, HttpMethod.GET, requestCallback, responseExtractor);
+            // Create a request factory that explicitly bypasses all proxies
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setProxy(Proxy.NO_PROXY);
+
+            // Instantiate a local RestTemplate specifically for this direct call
+            RestTemplate directRestTemplate = new RestTemplate(requestFactory);
+
+            // Execute the call using the direct RestTemplate instead of the Autowired one
+            directRestTemplate.execute(angelOneApiUrl, HttpMethod.GET, requestCallback, responseExtractor);
 
             String msg = "✅ Saved to: " + localTarget.toAbsolutePath();
             log.info(msg);

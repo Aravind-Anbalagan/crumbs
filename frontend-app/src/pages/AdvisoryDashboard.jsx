@@ -102,6 +102,41 @@ export default function AdvisoryDashboard() {
             .finally(() => setLoading(false));
     };
 
+    // ⚡ NEW: Fetches Real-time LTP/PnL when a cell is clicked
+    const fetchLiveTradeData = (recordId) => {
+            if (!recordId) return;
+
+            // Flag the dialog as loading live data
+            setDialogData(prev => prev ? { ...prev, isLiveLoading: true } : null);
+
+            // 🚨 FIX: Use string concatenation to ensure the ID is properly attached
+            fetch('/api/v1/advisory/live-record/' + recordId)
+                .then(res => {
+                    // If it returns HTML (like index.html), it will fail the JSON parse here
+                    if (!res.ok) throw new Error('Live fetch failed with status ' + res.status);
+
+                    // Add a check to ensure we are actually parsing JSON, not HTML
+                    const contentType = res.headers.get("content-type");
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        return res.json();
+                    } else {
+                        throw new Error("Received HTML instead of JSON. Check the Network tab URL.");
+                    }
+                })
+                .then(liveData => {
+                    setDialogData(prev => {
+                        if (prev && prev.id === liveData.id) {
+                            return { ...prev, ...liveData, isLiveLoading: false };
+                        }
+                        return prev;
+                    });
+                })
+                .catch(err => {
+                    console.error("Failed to fetch live PnL:", err);
+                    setDialogData(prev => prev ? { ...prev, isLiveLoading: false } : null);
+                });
+        };
+
     const handleScanActive = () => {
         setScanningAll(true);
         setError(null);
@@ -443,7 +478,20 @@ export default function AdvisoryDashboard() {
                                                     <div
                                                         key={dayObj.dateString}
                                                         className={`day-cell ${colorClass} ${cell.isWeekend ? 'is-weekend' : ''}`}
-                                                        onClick={() => cell.record && setDialogData({ ...cell.record, formattedDate: `${dayObj.dayNum} ${dayObj.monthStr}` })}
+                                                        onClick={() => {
+                                                            if (cell.record) {
+                                                                // 1. Immediately open dialog with cached DB state
+                                                                setDialogData({
+                                                                    ...cell.record,
+                                                                    formattedDate: `${dayObj.dayNum} ${dayObj.monthStr}`
+                                                                });
+
+                                                                // 2. Trigger background refresh for live LTP/PnL if active
+                                                                if (cell.record.status === 'ACTIVE') {
+                                                                    fetchLiveTradeData(cell.record.id);
+                                                                }
+                                                            }
+                                                        }}
                                                     >
                                                         {type === 'ENTRY_BULLISH' && <span className="marker-icon">▲</span>}
                                                         {type === 'ENTRY_BEARISH' && <span className="marker-icon">▼</span>}
@@ -538,19 +586,31 @@ export default function AdvisoryDashboard() {
                                     </span>
                                 </div>
 
+                                {/* ⚡ NEW UI: Live Loading State for Exit / Live */}
                                 <div className="d-box">
                                     <label>Exit / Live</label>
                                     <span>
-                                        {dialogData.exitPremium ? `₹${dialogData.exitPremium}` : (dialogData.status === 'ACTIVE' && dialogData.currentPremium ? `₹${dialogData.currentPremium}` : 'LIVE')}
+                                        {dialogData.exitPremium
+                                            ? `₹${dialogData.exitPremium}`
+                                            : (dialogData.status === 'ACTIVE'
+                                                ? (dialogData.isLiveLoading ? '...' : `₹${dialogData.currentPremium || '-'}`)
+                                                : 'LIVE')}
                                     </span>
                                     <span className="d-subtext">
                                         {dialogData.status === 'HISTORY' ? formatDateTime(dialogData.timestamp) : (dialogData.status === 'ACTIVE' ? 'Active Now' : '')}
                                     </span>
                                 </div>
 
+                                {/* ⚡ NEW UI: Live Loading State for Unrealized PnL */}
                                 <div className="d-box highlight-box">
                                     <label>Unrealized (MTM)</label>
-                                    <span className="pnl-text">{dialogData.status === 'ACTIVE' ? formatPnL(dialogData.unrealizedPnl) : 'N/A (Closed)'}</span>
+                                    <span className="pnl-text">
+                                        {dialogData.status === 'ACTIVE'
+                                            ? (dialogData.isLiveLoading
+                                                ? <span style={{fontSize: '1rem', color: '#00a8ff'}}>⏳ Fetching Live...</span>
+                                                : formatPnL(dialogData.unrealizedPnl))
+                                            : 'N/A (Closed)'}
+                                    </span>
                                 </div>
                             </div>
 
