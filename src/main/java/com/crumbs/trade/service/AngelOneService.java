@@ -10,7 +10,6 @@ import java.net.http.HttpResponse;
 import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -29,13 +28,10 @@ import org.springframework.stereotype.Service;
 
 import com.angelbroking.smartapi.SmartConnect;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
-import com.angelbroking.smartapi.models.Order;
-import com.angelbroking.smartapi.models.OrderParams;
 import com.angelbroking.smartapi.utils.Constants;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.dto.Token;
 import com.crumbs.trade.entity.Indexes;
-import com.crumbs.trade.entity.OptionsGreeks;
 import com.crumbs.trade.entity.Orders;
 import com.crumbs.trade.entity.Strategy;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -83,10 +79,10 @@ public class AngelOneService {
     @Autowired OptionPriceRepo optionPriceRepo;
 
     // -------------------------------------------------------------------------
-    // STATIC-IP PROXY (orders only)
+    // STATIC-IP PROXY (orders, order book, trade book, positions)
     // -------------------------------------------------------------------------
 
-    /** Only placeOrder(...) uses proxyClient.sendOrder(...). Everything else is direct. */
+    /** Order-related REST calls go through proxyClient.sendOrder(...) so Angel sees the static IP. */
     @Autowired
     BrokerProxyClient proxyClient;
 
@@ -97,6 +93,8 @@ public class AngelOneService {
     private static final String ANGEL_HOST = "https://apiconnect.angelbroking.com";
     private static final String ORDER_PLACE_URL = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/placeOrder";
     private static final String ORDER_BOOK_URL  = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/getOrderBook";
+    private static final String TRADE_BOOK_URL  = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/getTradeBook";
+    private static final String POSITION_URL    = ANGEL_HOST + "/rest/secure/angelbroking/order/v1/getPosition";
 
     public static class OrderStatusUnknownException extends RuntimeException {
         public OrderStatusUnknownException(String message) {
@@ -433,13 +431,21 @@ public class AngelOneService {
         return token;
     }
 
+    // -------------------------------------------------------------------------
+    // REST helpers (all go through the static-IP proxy)
+    // -------------------------------------------------------------------------
+
     private HttpRequest.Builder angelRequest(String url) {
         String token = angelOne.getAccessToken();
         if (token == null || token.trim().isEmpty() || token.equals("null")) {
-            logger.error("🚨 FATAL: JWT Token is empty or null! SDK Login failed to map the token.");
-        } else {
-            logger.info("🔑 Sending Token: Bearer {}... (Length: {})", token.substring(0, Math.min(15, token.length())), token.length());
+            logger.error("FATAL: JWT token is empty or null!");
+            throw new IllegalStateException("Angel access token is empty");
         }
+        token = token.trim();
+
+        // Never log the token itself. Log only metadata.
+        logger.debug("Angel request {} | Authorization=Bearer *** (len={}) | X-ClientPublicIP={}",
+                url, token.length(), staticIp);
 
         return HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(15))
@@ -455,6 +461,30 @@ public class AngelOneService {
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     }
 
+    private static String errorCodeOf(String body) {
+        try {
+            JSONObject j = new JSONObject(body);
+            return j.optString("errorCode", j.optString("errorcode", ""));
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static boolean isTokenError(String errorCode) {
+        return "AG8003".equalsIgnoreCase(errorCode) || "AG8002".equalsIgnoreCase(errorCode);
+    }
+
+    /** GET through the proxy; on token errors re-login once and retry. */
+    private HttpResponse<String> proxiedGet(String url) throws Exception {
+        HttpResponse<String> resp = proxyClient.sendOrder(angelRequest(url).GET().build());
+        if (isTokenError(errorCodeOf(resp.body()))) {
+            logger.warn("Token error on GET {} -> forcing re-login and retrying once", url);
+            angelOne.forceReLogin();
+            resp = proxyClient.sendOrder(angelRequest(url).GET().build());
+        }
+        return resp;
+    }
+
     private static String nz(Object o) {
         return o == null ? "0" : o.toString();
     }
@@ -466,6 +496,7 @@ public class AngelOneService {
 
     private JSONObject buildOrderBody(Token token, String tag) {
         JSONObject b = new JSONObject();
+
         b.put("variety", token.getVariety());
         b.put("tradingsymbol", token.getSymbol());
         b.put("symboltoken", token.getToken());
@@ -476,6 +507,7 @@ public class AngelOneService {
         b.put("duration", Constants.DURATION_DAY);
         b.put("quantity", String.valueOf(token.getQuantity()));
         b.put("ordertag", tag);
+        b.put("scripconsent", "yes");
 
         String price = "0";
         if ("INTRADAY".equalsIgnoreCase(token.getProductType())) {
@@ -497,7 +529,8 @@ public class AngelOneService {
         for (int check = 1; check <= 2; check++) {
             try {
                 Thread.sleep(1500);
-                HttpResponse<String> r = proxyClient.sendDirect(angelRequest(ORDER_BOOK_URL).GET().build());
+                // Through the proxy (static IP), not direct
+                HttpResponse<String> r = proxiedGet(ORDER_BOOK_URL);
                 JSONObject json = new JSONObject(r.body());
                 if (r.statusCode() != 200 || !json.optBoolean("status", false)) {
                     throw new IllegalStateException("order book HTTP " + r.statusCode() + ": " + r.body());
@@ -531,8 +564,9 @@ public class AngelOneService {
             JSONObject body = buildOrderBody(token, tag);
             logger.info("Angel order -> {} {} qty={} variety={} type={} tag={} (via static-IP proxy)",
                     token.getTransactionType(), token.getSymbol(), token.getQuantity(),
-                    token.getVariety(), token.getOrderType(), tag);
+                    body.optString("variety"), token.getOrderType(), tag);
 
+            // 1. Send through the proxy
             HttpRequest req = angelRequest(ORDER_PLACE_URL)
                     .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                     .build();
@@ -541,22 +575,21 @@ public class AngelOneService {
             int code = resp.statusCode();
             String text = resp.body();
 
-            if (code >= 200 && code < 300) {
-                JSONObject checkJson = new JSONObject(text);
-                String errorCode = checkJson.optString("errorCode", checkJson.optString("errorcode", ""));
+            // 2. Token missing/invalid: Angel may answer with any HTTP status, so check regardless of code.
+            //    Safe to retry: a token error means the order was never accepted.
+            if (isTokenError(errorCodeOf(text))) {
+                logger.warn("Angel token error {} (HTTP {}). Forcing re-login and retrying order once...",
+                        errorCodeOf(text), code);
 
-                if ("AG8003".equalsIgnoreCase(errorCode)) {
-                    logger.warn("⚠️ Angel Token Missing/Expired (AG8003). Forcing re-login and retrying order...");
-                    angelOne.forceReLogin();
+                angelOne.forceReLogin();
 
-                    req = angelRequest(ORDER_PLACE_URL)
-                            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-                            .build();
-
-                    resp = proxyClient.sendOrder(req);
-                    code = resp.statusCode();
-                    text = resp.body();
-                }
+                // Rebuild so angelRequest() injects the NEW token
+                req = angelRequest(ORDER_PLACE_URL)
+                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                        .build();
+                resp = proxyClient.sendOrder(req);
+                code = resp.statusCode();
+                text = resp.body();
             }
 
             if (code >= 200 && code < 300) {
@@ -572,14 +605,16 @@ public class AngelOneService {
                     }
                 } else {
                     logger.error("Angel REJECTED order {} | message={} | errorcode={}",
-                            token.getSymbol(), json.optString("message"), json.optString("errorCode", json.optString("errorcode")));
+                            token.getSymbol(), json.optString("message"),
+                            json.optString("errorCode", json.optString("errorcode")));
                     return token;
                 }
             } else if (code >= 500) {
                 logger.error("Angel order HTTP {} (outcome unknown): {}", code, text);
                 ambiguous = true;
             } else {
-                logger.error("Angel order NOT placed. HTTP {}: {}", code, text);
+                logger.error("Angel order NOT placed. HTTP {} | errorcode={} | body={}",
+                        code, errorCodeOf(text), text);
                 return token;
             }
 
@@ -613,33 +648,46 @@ public class AngelOneService {
         return token;
     }
 
+    /** Fill price for an order, read from the trade book through the static-IP proxy. */
     public double getOrderDetails(String orderId) {
         double executedPrice = 0;
         try {
             Thread.sleep(2000);
-            SmartConnect smartConnect = angelOne.signIn();
-            JSONObject trades = smartConnect.getTrades();
-            JSONArray jsonArray = trades.getJSONArray("data");
-
-            for (Object o : jsonArray) {
-                JSONObject jsonLineItem = (JSONObject) o;
-                if (jsonLineItem.getString("orderid").equalsIgnoreCase(orderId)) {
-                    executedPrice = Double.valueOf(jsonLineItem.getInt("fillprice"));
-                    return executedPrice;
+            HttpResponse<String> r = proxiedGet(TRADE_BOOK_URL);
+            JSONObject json = new JSONObject(r.body());
+            if (!json.optBoolean("status", false)) {
+                logger.error("Trade book rejected | message={} | errorcode={}",
+                        json.optString("message"), errorCodeOf(r.body()));
+                return executedPrice;
+            }
+            JSONArray rows = json.optJSONArray("data");
+            if (rows != null) {
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject row = rows.getJSONObject(i);
+                    if (orderId.equalsIgnoreCase(row.optString("orderid", ""))) {
+                        return row.optDouble("fillprice", 0);
+                    }
                 }
             }
-        } catch(Exception ex) {
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } catch (Exception ex) {
             logger.error("Error while get order details :" + ex.getMessage());
         }
         return executedPrice;
     }
 
+    /** Positions, read through the static-IP proxy. Returns null on failure. */
     public JSONObject getRawPositions() {
         try {
-            SmartConnect smartConnectInstance = angelOne.signIn();
-            if (smartConnectInstance != null) {
-                return smartConnectInstance.getPosition();
+            HttpResponse<String> r = proxiedGet(POSITION_URL);
+            JSONObject json = new JSONObject(r.body());
+            if (!json.optBoolean("status", false)) {
+                logger.error("Positions rejected | message={} | errorcode={}",
+                        json.optString("message"), errorCodeOf(r.body()));
+                return null;
             }
+            return json;
         } catch (Exception e) {
             logger.error("Failed to fetch raw positions from AngelOne: {}", e.getMessage());
         }
