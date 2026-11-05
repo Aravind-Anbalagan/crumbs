@@ -36,7 +36,7 @@ public class ShortStraddleScheduler {
     })
     public void straddleCrude() {
         executeIfActive(() -> shortStraddleService.evaluate("CRUDEOIL"));
-        executeIfActive(() -> shortStraddleService.evaluate("GOLDM"));
+        executeIfActive(() -> shortStraddleService.evaluate("NIFTY"));
     }
 
     /**
