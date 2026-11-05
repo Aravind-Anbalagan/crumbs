@@ -471,7 +471,10 @@ public class AngelOneService {
     }
 
     private static boolean isTokenError(String errorCode) {
-        return "AG8003".equalsIgnoreCase(errorCode) || "AG8002".equalsIgnoreCase(errorCode);
+        // Must include AG7002 so TradeBook and OrderBook fetches also bypass the WAF
+        return "AG8003".equalsIgnoreCase(errorCode) ||
+                "AG8002".equalsIgnoreCase(errorCode) ||
+                "AG7002".equalsIgnoreCase(errorCode);
     }
 
     /** GET through the proxy; on token errors re-login once and retry. */
@@ -577,19 +580,25 @@ public class AngelOneService {
 
             // 2. Token missing/invalid: Angel may answer with any HTTP status, so check regardless of code.
             //    Safe to retry: a token error means the order was never accepted.
-            if (isTokenError(errorCodeOf(text))) {
-                logger.warn("Angel token error {} (HTTP {}). Forcing re-login and retrying order once...",
-                        errorCodeOf(text), code);
+            if (code >= 200 && code < 300) {
+                JSONObject checkJson = new JSONObject(text);
+                String errorCode = checkJson.optString("errorCode", checkJson.optString("errorcode", ""));
 
-                angelOne.forceReLogin();
+                // Catch BOTH AG8003 (Token Expired) AND AG7002 (WAF IP Block due to dead session)
+                if ("AG8003".equalsIgnoreCase(errorCode) || "AG7002".equalsIgnoreCase(errorCode)) {
+                    logger.warn("⚠️ Angel Gateway Block ({}). Token likely expired. Forcing fresh login...", errorCode);
+                    angelOne.forceReLogin(); // Wipes old state and generates a fresh session
 
-                // Rebuild so angelRequest() injects the NEW token
-                req = angelRequest(ORDER_PLACE_URL)
-                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-                        .build();
-                resp = proxyClient.sendOrder(req);
-                code = resp.statusCode();
-                text = resp.body();
+                    // Rebuild the request to pick up the NEW token from angelOne.getAccessToken()
+                    req = angelRequest(ORDER_PLACE_URL)
+                            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                            .build();
+
+                    // Resend the exit order through the proxy
+                    resp = proxyClient.sendOrder(req);
+                    code = resp.statusCode();
+                    text = resp.body(); // Update text with the new response
+                }
             }
 
             if (code >= 200 && code < 300) {
