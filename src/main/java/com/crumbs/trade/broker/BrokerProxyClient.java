@@ -7,23 +7,28 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import java.net.Authenticator;
 import java.net.InetSocketAddress;
-import java.net.PasswordAuthentication;
 import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 
 @Component
 public class BrokerProxyClient {
 
     private static final Logger logger = LoggerFactory.getLogger(BrokerProxyClient.class);
 
+    static {
+        // Allow Basic auth on HTTPS (CONNECT) proxy tunnels
+        System.setProperty("jdk.http.auth.tunneling.disabledSchemes", "");
+    }
+
     private final HttpClient client;
-    /** Direct connection (Railway's own IP): login and market data. */
+    /** Direct connection (no proxy): login and market data. */
     private final HttpClient directClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .version(HttpClient.Version.HTTP_1_1)
@@ -31,6 +36,9 @@ public class BrokerProxyClient {
     private final boolean proxyEnabled;
     private final String host;
     private final int port;
+
+    /** "Basic xxx" or null. Sent as Proxy-Authorization instead of using an Authenticator. */
+    private final String proxyAuthHeader;
 
     public BrokerProxyClient(
             @Value("${PROXY_HOST:}") String host,
@@ -46,30 +54,28 @@ public class BrokerProxyClient {
                 .connectTimeout(Duration.ofSeconds(10))
                 .version(HttpClient.Version.HTTP_1_1);
 
+        String authHeader = null;
+
         if (proxyEnabled) {
             builder.proxy(ProxySelector.of(new InetSocketAddress(this.host, port)));
 
-            // 🟢 CRITICAL FIX: Only attach Authenticator if a proxy username is provided
-            // This bypasses Java Bug JDK-8326949 which silently deletes the Authorization header
+            // NOTE: no builder.authenticator(...) here. Attaching a proxy Authenticator
+            // can cause the JDK to drop the request's own Authorization header
+            // (JDK-8326949), which makes Angel answer "Token missing / AG8003".
+            // Proxy credentials are sent as a Proxy-Authorization header instead.
             if (user != null && !user.trim().isEmpty()) {
-                final String u = user.trim();
-                final char[] p = pass == null ? new char[0] : pass.toCharArray();
-                builder.authenticator(new Authenticator() {
-                    @Override
-                    protected PasswordAuthentication getPasswordAuthentication() {
-                        if (getRequestorType() == RequestorType.PROXY) {
-                            return new PasswordAuthentication(u, p);
-                        }
-                        return null;
-                    }
-                });
+                String creds = user.trim() + ":" + (pass == null ? "" : pass);
+                authHeader = "Basic " + Base64.getEncoder()
+                        .encodeToString(creds.getBytes(StandardCharsets.UTF_8));
             }
 
-            logger.info("BrokerProxyClient: proxy enabled -> {}:{}", this.host, port);
+            logger.info("BrokerProxyClient: proxy enabled -> {}:{} (auth={})",
+                    this.host, port, authHeader != null);
         } else {
             logger.warn("BrokerProxyClient: PROXY_HOST/PROXY_PORT not set, using DIRECT connection");
         }
 
+        this.proxyAuthHeader = authHeader;
         this.client = builder.build();
     }
 
@@ -77,8 +83,19 @@ public class BrokerProxyClient {
         return proxyEnabled;
     }
 
+    private HttpRequest withProxyAuth(HttpRequest request) {
+        if (!proxyEnabled || proxyAuthHeader == null) {
+            return request;
+        }
+        // Copy the request (keeps all headers incl. Authorization) and add Proxy-Authorization
+        return HttpRequest.newBuilder(request, (k, v) -> true)
+                .header("Proxy-Authorization", proxyAuthHeader)
+                .build();
+    }
+
+    /** Goes out through the static-IP proxy. Use for anything Angel IP-checks. */
     public HttpResponse<String> sendOrder(HttpRequest request) throws Exception {
-        return client.send(request, HttpResponse.BodyHandlers.ofString());
+        return client.send(withProxyAuth(request), HttpResponse.BodyHandlers.ofString());
     }
 
     public HttpResponse<String> sendDirect(HttpRequest request) throws Exception {
@@ -90,7 +107,7 @@ public class BrokerProxyClient {
                 .timeout(Duration.ofSeconds(15))
                 .GET()
                 .build();
-        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> resp = client.send(withProxyAuth(req), HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() != 200) {
             throw new RuntimeException("checkip returned HTTP " + resp.statusCode());
         }
@@ -111,4 +128,7 @@ public class BrokerProxyClient {
             logger.error("Proxy self-test failed: {}", e.toString(), e);
         }
     }
+
+    public String getHost() { return host; }
+    public int getPort() { return port; }
 }

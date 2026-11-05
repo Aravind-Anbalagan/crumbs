@@ -67,15 +67,11 @@ public class AngelWebSocketService {
     private NiftyRepo niftyRepo;
     @Autowired
     private org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler taskScheduler;
-    /**
-     * ⬅️ CHANGED: Replaced @PostConstruct with @Async + @EventListener
-     * This tells Spring to let the application fully start up and open port 8080,
-     * then executes the broker connection safely in a background thread.
-     */
+
     @org.springframework.scheduling.annotation.Async
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void startWebSocket() {
-        
+
         if (!isTradingDay()) {
             log.info("Today is weekend. Skipping Angel WebSocket startup.");
             return;
@@ -144,8 +140,6 @@ public class AngelWebSocketService {
             smartStreamTicker.connect();
             log.info("WebSocket connect() invoked");
 
-            // ⬅️ CHANGED: Swapped unmanaged raw thread for Spring's taskScheduler 
-            // This avoids creating stray platform threads that leak memory inside the container.
             taskScheduler.schedule(() -> {
                 log.info("Running initial safety subscription check...");
                 subscribeDefaultInstruments();
@@ -171,7 +165,6 @@ public class AngelWebSocketService {
         String key = exchangeType.name() + "_" + normalizedToken;
 
         if (subscribedTokens.containsKey(key)) {
-            //log.info("Already subscribed | {}", key);
             return;
         }
 
@@ -179,14 +172,17 @@ public class AngelWebSocketService {
         Set<TokenID> tokenSet = new HashSet<>();
         tokenSet.add(tokenId);
 
-        smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
+        // 🛡️ Added null check to prevent weekend/holiday crash
+        if (smartStreamTicker != null) {
+            smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
+        } else {
+            log.warn("Skipping WebSocket subscription for {} — smartStreamTicker is null (Weekend/Holiday)", key);
+        }
 
         // Store TokenID object so reconnect can re-subscribe correctly
         subscribedTokens.put(key, tokenId);
-
-        //log.info("Subscribed successfully | {}", key);
     }
-    
+
     public synchronized void unsubscribeAll() {
         try {
             if (smartStreamTicker == null) {
@@ -205,7 +201,6 @@ public class AngelWebSocketService {
 
             log.info("Unsubscribed all tokens | Count: {}", tokenSet.size());
 
-            // Clear all internal tracking
             subscribedTokens.clear();
             latestLtpMap.clear();
             lastTickTime.clear();
@@ -235,10 +230,9 @@ public class AngelWebSocketService {
     }
 
     // Staleness detector — runs every 60s
-    // If no tick received for a subscribed instrument in 60s, force resubscribe
     @Scheduled(fixedRate = 60000)
     public void checkTickFreshness() {
-        if (subscribedTokens.isEmpty()) return;
+        if (subscribedTokens.isEmpty() || smartStreamTicker == null) return;
 
         long now = System.currentTimeMillis();
         for (Map.Entry<String, TokenID> entry : subscribedTokens.entrySet()) {
@@ -250,8 +244,9 @@ public class AngelWebSocketService {
                 try {
                     Set<TokenID> tokenSet = new HashSet<>();
                     tokenSet.add(entry.getValue());
-                    smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
-                    //log.info("Resubscribed | {}", key);
+                    if (smartStreamTicker != null) {
+                        smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
+                    }
                 } catch (Exception e) {
                     log.error("Resubscribe failed for {} | {}", key, e.getMessage());
                 }
@@ -267,10 +262,9 @@ public class AngelWebSocketService {
     private void reconnect() {
         try {
             retryCount++;
-            // Calculate wait time: 3s, 10s, 30s, 60s...
             long waitTime = Math.min((long)Math.pow(3, retryCount) * 1000, 60000);
             log.warn("Rate limited. Retrying in {}ms (Attempt {})", waitTime, retryCount);
-            
+
             Thread.sleep(waitTime);
 
             angelOne.forceReLogin();
@@ -278,13 +272,11 @@ public class AngelWebSocketService {
 
             smartStreamTicker = new SmartStreamTicker(clientCode, feedToken, listener);
             smartStreamTicker.connect();
-            
-            // Reset retry count on success
-            retryCount = 0; 
+
+            retryCount = 0;
             log.info("Reconnected successfully");
-            
+
             Thread.sleep(2000);
-            // ... (resubscribe logic)
         } catch (Exception e) {
             log.error("Reconnect failed", e);
         }
@@ -298,40 +290,34 @@ public class AngelWebSocketService {
         }
     }
 
- // Subscribe default instruments from DB on connect
+    // Subscribe default instruments from DB on connect
     private void subscribeDefaultInstruments() {
         try {
-            // 1. NIFTY (NSE Derivatives)
             Strategy nifty = strategyRepo.findByName("NIFTY");
             if (nifty != null) {
                 subscribe(ExchangeType.NSE_FO, nifty.getToken());
             }
 
-            // 2. CRUDEOIL (MCX Derivatives)
             Strategy crude = strategyRepo.findByName("CRUDEOIL");
             if (crude != null) {
                 subscribe(ExchangeType.MCX_FO, crude.getToken());
             }
-            
-            // 3. NIFTY INDEX (NSE Cash/Index)
+
             Strategy nifty_index = strategyRepo.findByName("NIFTY_INDEX");
             if (nifty_index != null) {
                 subscribe(ExchangeType.NSE_CM, nifty_index.getToken());
             }
 
-            // 4. SENSEX (BSE Derivatives)
             Strategy sensex = strategyRepo.findByName("BANKNIFTY");
             if (sensex != null) {
                 subscribe(ExchangeType.NSE_CM, sensex.getToken());
             }
 
-            // 5. SENSEX INDEX (BSE Cash/Index)
             Strategy sensex_index = strategyRepo.findByName("SENSEX_INDEX");
             if (sensex_index != null) {
                 subscribe(ExchangeType.BSE_CM, sensex_index.getToken());
             }
 
-            // 6. NATURALGAS (MCX Derivatives)
             Strategy naturalgas = strategyRepo.findByName("GOLDM");
             if (naturalgas != null) {
                 subscribe(ExchangeType.MCX_FO, naturalgas.getToken());
@@ -342,13 +328,13 @@ public class AngelWebSocketService {
             log.error("Default subscription failed", e);
         }
     }
-    
+
     private boolean isTradingDay() {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
         DayOfWeek day = today.getDayOfWeek();
         return !(day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY);
     }
-    
+
     public synchronized void unsubscribe(ExchangeType exchangeType, String token) {
         String normalizedToken = normalizeToken(token);
         String key = exchangeType.name() + "_" + normalizedToken;
@@ -359,19 +345,17 @@ public class AngelWebSocketService {
         Set<TokenID> tokenSet = new HashSet<>();
         tokenSet.add(tokenId);
 
-        smartStreamTicker.unsubscribe(SmartStreamSubsMode.LTP, tokenSet);
-        
+        if (smartStreamTicker != null) {
+            smartStreamTicker.unsubscribe(SmartStreamSubsMode.LTP, tokenSet);
+        }
+
         subscribedTokens.remove(key);
         latestLtpMap.remove(key);
         lastTickTime.remove(key);
-        
+
         log.info("Unsubscribed successfully | {}", key);
     }
 
-    /**
-     * Bulk subscribes all active tokens from the fo_stocks table.
-     * Can be called manually or after morning pre-cache finishes.
-     */
     public synchronized void subscribeAllFnoStocks() {
         try {
             List<Nifty> fnoStocks = niftyRepo.findAll();
@@ -392,6 +376,8 @@ public class AngelWebSocketService {
             if (!tokenSet.isEmpty() && smartStreamTicker != null) {
                 smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
                 log.info("✅ Bulk subscribed to {} F&O Stocks on NSE_CM", tokenSet.size());
+            } else {
+                log.warn("Skipping bulk subscription: smartStreamTicker is null (Weekend/Holiday)");
             }
         } catch (Exception e) {
             log.error("Failed to bulk subscribe F&O stocks", e);
