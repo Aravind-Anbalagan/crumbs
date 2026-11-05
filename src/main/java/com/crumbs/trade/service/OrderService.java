@@ -470,13 +470,17 @@ public class OrderService {
 
         prepareBuyOrder(token, activeTrade.getName());
 
-        // ✅ NEW: an exit only counts if the broker returned an order id
-        Token placed = angelOneService.placeOrder(sc, token);
-        if (placed == null || placed.getOrderId() == null || placed.getOrderId().isBlank()) {
-            throw new IOException("EXIT ORDER FAILED (no order id) for " + activeTrade.getSymbol());
+        // ✅ CRITICAL FIX: Route the exit order through the exact same logic flow
+        // as the entry order so it picks up the static IP proxy headers.
+        try {
+            // Using skipActiveCheck = true because we are intentionally closing it
+            orderPlaceWithToken(token, activeTrade.getName(), "BUY", true);
+        } catch (Exception e) {
+            logger.error("❌ EXIT ORDER FAILED for {}. Reason: {}", activeTrade.getSymbol(), e.getMessage());
+            throw new IOException("EXIT ORDER FAILED for " + activeTrade.getSymbol(), e);
         }
 
-        logger.info("✅ EXIT BUY ORDER SENT → {} | orderId={}", activeTrade.getSymbol(), placed.getOrderId());
+        logger.info("✅ EXIT BUY ORDER SENT → {}", activeTrade.getSymbol());
     }
 
     // =========================================================================
