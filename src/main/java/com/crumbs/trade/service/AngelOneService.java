@@ -78,6 +78,9 @@ public class AngelOneService {
     @Autowired RiskConfigurationRepository riskConfigurationRepository;
     @Autowired OptionPriceRepo optionPriceRepo;
 
+    // ✅ ADDED TELEGRAM SERVICE FOR IP BLOCK ALERTS
+    @Autowired TelegramService telegramService;
+
     // -------------------------------------------------------------------------
     // STATIC-IP PROXY (orders, order book, trade book, positions)
     // -------------------------------------------------------------------------
@@ -177,7 +180,6 @@ public class AngelOneService {
         optionsGreeksRepo.deleteAll();
         riskConfigurationRepository.resetAllTrailingData();
         optionPriceRepo.deleteAll();
-        // REMOVED straddleVwapRepo.deleteAll();
     }
 
     public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol, String symboltoken, String keyword) {
@@ -470,11 +472,10 @@ public class AngelOneService {
         }
     }
 
+    // ✅ REVERTED: AG7002 removed so read requests don't retry endlessly if the IP flips
     private static boolean isTokenError(String errorCode) {
-        // Must include AG7002 so TradeBook and OrderBook fetches also bypass the WAF
         return "AG8003".equalsIgnoreCase(errorCode) ||
-                "AG8002".equalsIgnoreCase(errorCode) ||
-                "AG7002".equalsIgnoreCase(errorCode);
+                "AG8002".equalsIgnoreCase(errorCode);
     }
 
     /** GET through the proxy; on token errors re-login once and retry. */
@@ -578,23 +579,34 @@ public class AngelOneService {
             int code = resp.statusCode();
             String text = resp.body();
 
-            // 2. Token missing/invalid: Angel may answer with any HTTP status, so check regardless of code.
-            //    Safe to retry: a token error means the order was never accepted.
             if (code >= 200 && code < 300) {
                 JSONObject checkJson = new JSONObject(text);
                 String errorCode = checkJson.optString("errorCode", checkJson.optString("errorcode", ""));
+                String msg = checkJson.optString("message", "");
 
-                // Catch BOTH AG8003 (Token Expired) AND AG7002 (WAF IP Block due to dead session)
-                if ("AG8003".equalsIgnoreCase(errorCode) || "AG7002".equalsIgnoreCase(errorCode)) {
-                    logger.warn("⚠️ Angel Gateway Block ({}). Token likely expired. Forcing fresh login...", errorCode);
+                // ✅ 1. HARD FAIL ON IP BLOCK: Prevent loop & send Telegram alert
+                if ("AG7002".equalsIgnoreCase(errorCode) || msg.toLowerCase().contains("not a registered ip")) {
+                    String alert = "🚨 Angel IP BLOCK: " + msg + " -> Check DigitalOcean egress routing immediately!";
+                    logger.error(alert);
+                    try {
+                        telegramService.sendMessage(alert);
+                    } catch (Exception ignored) {}
+
+                    // Throw exception to stop the endless retry loop instantly
+                    throw new SmartAPIException("IP_NOT_REGISTERED: " + msg);
+                }
+
+                // ✅ 2. RETRY ON EXPIRED TOKENS: Re-login only for legitimate expiration
+                if ("AG8003".equalsIgnoreCase(errorCode) || "AG8002".equalsIgnoreCase(errorCode)) {
+                    logger.warn("⚠️ Angel Token Expired ({}). Forcing fresh login...", errorCode);
                     angelOne.forceReLogin(); // Wipes old state and generates a fresh session
 
-                    // Rebuild the request to pick up the NEW token from angelOne.getAccessToken()
+                    // Rebuild the request to pick up the NEW token
                     req = angelRequest(ORDER_PLACE_URL)
                             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                             .build();
 
-                    // Resend the exit order through the proxy
+                    // Resend the order through the proxy
                     resp = proxyClient.sendOrder(req);
                     code = resp.statusCode();
                     text = resp.body(); // Update text with the new response
