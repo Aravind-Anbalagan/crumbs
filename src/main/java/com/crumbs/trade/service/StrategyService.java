@@ -285,7 +285,7 @@ public class StrategyService {
         BigDecimal first5Low   = cprDetails.getLow();
 
         if (topPivot == null || bottomPivot == null || pivot == null || first5High == null || first5Low == null) {
-            logger.warn("⚠️ CPR or First 5-min candle missing — skipping signal.");
+            logger.error("⚠️ CPR or First 5-min candle missing — skipping signal.");
             return;
         }
 
@@ -297,7 +297,7 @@ public class StrategyService {
                 strategy.getTradingsymbol(), strategy.getToken(), "open");
 
         if (todayOpen == null) {
-            logger.warn("⚠️ Unable to fetch today open price.");
+            logger.error("⚠️ Unable to fetch today open price.");
             return;
         }
 
@@ -307,7 +307,11 @@ public class StrategyService {
                 smartconnect, strategy.getExchange(),
                 strategy.getTradingsymbol(), strategy.getToken(), "ltp");
 
-        if (currentPrice == null) return;
+        if (currentPrice == null)
+        {
+            logger.error("⚠️ Unable to fetch ltp price.");
+            return;
+        }
 
         logger.info("💹 LTP={} | first5H={} first5L={} | upperBand={} lowerBand={}",
                 currentPrice, first5High, first5Low, upperBand, lowerBand);
