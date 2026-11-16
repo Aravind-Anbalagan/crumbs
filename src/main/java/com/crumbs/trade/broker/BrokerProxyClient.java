@@ -117,7 +117,7 @@ public class BrokerProxyClient {
     @Value("${PROXY_SELFTEST:false}")
     private boolean selfTestEnabled;
 
-    @EventListener(ApplicationReadyEvent.class)
+   /* @EventListener(ApplicationReadyEvent.class)
     public void proxySelfTest() {
         if (!selfTestEnabled) {
             return;
@@ -127,7 +127,7 @@ public class BrokerProxyClient {
         } catch (Exception e) {
             logger.error("Proxy self-test failed: {}", e.toString(), e);
         }
-    }
+    }*/
 
     public String getHost() { return host; }
     public int getPort() { return port; }

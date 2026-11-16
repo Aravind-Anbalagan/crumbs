@@ -88,6 +88,16 @@ public class AngelWebSocketService {
                 @Override
                 public void onConnected() {
                     log.info("SmartStream CONNECTED successfully");
+
+                    // 1. Resubscribe any tokens that were added to the map before the socket fully opened,
+                    // or recovered from a sudden disconnect/reconnect.
+                    if (!subscribedTokens.isEmpty()) {
+                        Set<TokenID> tokenSet = new HashSet<>(subscribedTokens.values());
+                        smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
+                        log.info("Pushed {} existing subscriptions to WebSocket", tokenSet.size());
+                    }
+
+                    // 2. Add defaults
                     subscribeDefaultInstruments();
                 }
 
@@ -164,23 +174,20 @@ public class AngelWebSocketService {
         String normalizedToken = normalizeToken(token);
         String key = exchangeType.name() + "_" + normalizedToken;
 
-        if (subscribedTokens.containsKey(key)) {
-            return;
-        }
-
         TokenID tokenId = new TokenID(exchangeType, normalizedToken);
         Set<TokenID> tokenSet = new HashSet<>();
         tokenSet.add(tokenId);
 
-        // 🛡️ Added null check to prevent weekend/holiday crash
+        // Track the token BEFORE sending the command
+        subscribedTokens.put(key, tokenId);
+
+        // 🛡️ Always send the command to the WebSocket so the broker knows
         if (smartStreamTicker != null) {
             smartStreamTicker.subscribe(SmartStreamSubsMode.LTP, tokenSet);
+            log.debug("Sent subscription command for {}", key);
         } else {
             log.warn("Skipping WebSocket subscription for {} — smartStreamTicker is null (Weekend/Holiday)", key);
         }
-
-        // Store TokenID object so reconnect can re-subscribe correctly
-        subscribedTokens.put(key, tokenId);
     }
 
     public synchronized void unsubscribeAll() {
@@ -211,13 +218,18 @@ public class AngelWebSocketService {
     }
 
     // LTP Getter
+    // LTP Getter
     public BigDecimal getLatestLTP(ExchangeType exchangeType, String token) {
         String normalizedToken = normalizeToken(token);
         String key = exchangeType.name() + "_" + normalizedToken;
 
         BigDecimal price = latestLtpMap.get(key);
         if (price == null) {
-            log.warn("LTP not available yet | {}", key);
+            log.warn("LTP not available yet | {} | Triggering auto-subscribe...", key);
+
+            // Auto-subscribe if it's missing so the next cycle will have it
+            subscribe(exchangeType, token);
+
             return BigDecimal.ZERO;
         }
 
