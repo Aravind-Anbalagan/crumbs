@@ -102,7 +102,7 @@ public class StraddleTokenService {
         // Formula: rangeValue = (desired number of strikes away from ATM) * stepInterval
         // Example: 5 strikes away * 50 interval = 250 range
 
-        int rangeValue = 800; // Default (NIFTY)
+        int rangeValue = 1000; // Default (NIFTY)
 
         if (name != null) {
             String upperName = name.toUpperCase();
