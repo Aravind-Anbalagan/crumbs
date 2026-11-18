@@ -53,7 +53,7 @@ public class AngelOne {
             smartConnect = new SmartConnect(apiKey);
 
             int retryCount = 0;
-            int maxRetry   = 5;
+            int maxRetry   = 10;
             long waitTime  = 2000;
 
             while (retryCount < maxRetry) {
