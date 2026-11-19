@@ -21,7 +21,7 @@ public class StaraddleController {
     public ResponseEntity<String> triggerNiftyStraddle() {
         try {
             // Manually invoke the scheduled method
-            straddleScheduler.straddleCrude();
+            straddleScheduler.straddleNifty();
             //shortStraddleService.evaluate("BANKNIFTY");
             return ResponseEntity.ok("NIFTY and SENSEX straddle execution completed successfully.");
         } catch (Exception e) {

@@ -41,6 +41,8 @@ public class StraddleMarketDataService {
     private static final long INITIAL_RETRY_DELAY_MS = 2000;
 
     public List<StraddlePremiumDto> getPriceForAllTheStrikesBatch(List<StraddlePremiumDto> strikeList, SmartConnect smartconnect, String exchange) {
+        final int BATCH_SIZE = 50;
+
         try {
             List<String> tokens = new ArrayList<>();
             for (StraddlePremiumDto dto : strikeList) {
@@ -52,45 +54,51 @@ public class StraddleMarketDataService {
                 return strikeList;
             }
 
-            logger.info("Fetching prices for {} tokens", tokens.size());
-            JSONObject payload = new JSONObject();
-            payload.put("mode", "FULL");
-            JSONObject map = new JSONObject();
-            map.put(exchange, tokens);
-            payload.put("exchangeTokens", map);
+            int totalTokens = tokens.size();
+            logger.info("Fetching prices for {} tokens in batches of {}", totalTokens, BATCH_SIZE);
 
-            JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
-            if (response == null) {
-                logger.error("Null response from market data API");
-                return strikeList;
-            }
+            Map<String, BigDecimal> ltpMap = new HashMap<>(totalTokens);
+            Map<String, BigDecimal> openMap = new HashMap<>(totalTokens);
+            Map<String, BigDecimal> oIMap = new HashMap<>(totalTokens);
+            Map<String, BigDecimal> volumeMap = new HashMap<>(totalTokens);
+            Map<String, BigDecimal> highMap = new HashMap<>(totalTokens);
+            Map<String, BigDecimal> lowMap = new HashMap<>(totalTokens);
 
-            JSONArray fetched = response.optJSONArray("fetched");
-            if (fetched == null || fetched.length() == 0) {
-                logger.error("No data fetched from market API");
-                return strikeList;
-            }
-            int size = fetched.length();
-            logger.info("Received {} price records from API", size);
+            for (int start = 0; start < totalTokens; start += BATCH_SIZE) {
+                int end = Math.min(start + BATCH_SIZE, totalTokens);
+                List<String> batchTokens = tokens.subList(start, end);
 
-			Map<String, BigDecimal> ltpMap = new HashMap<>(size);
-			Map<String, BigDecimal> openMap = new HashMap<>(size);
-			Map<String, BigDecimal> oIMap = new HashMap<>(size);
-			Map<String, BigDecimal> volumeMap = new HashMap<>(size);
-			Map<String, BigDecimal> highMap = new HashMap<>(size);
-			Map<String, BigDecimal> lowMap = new HashMap<>(size);
+                JSONObject payload = new JSONObject();
+                payload.put("mode", "FULL");
+                JSONObject map = new JSONObject();
+                map.put(exchange, batchTokens);
+                payload.put("exchangeTokens", map);
 
+                JSONObject response = predictionService.callMarketDataWithRetry(smartconnect, payload);
+                if (response == null) {
+                    logger.error("Null response from market data API for batch {}-{}", start, end);
+                    continue;
+                }
 
-            for (int i = 0; i < fetched.length(); i++) {
-                JSONObject item = fetched.getJSONObject(i);
-                String token = item.optString("symbolToken", null);
-                if (token != null) {
-                    ltpMap.put(token, item.optBigDecimal("ltp", BigDecimal.ZERO));
-                    openMap.put(token, item.optBigDecimal("open", BigDecimal.ZERO));
-                    oIMap.put(token, item.optBigDecimal("opnInterest", BigDecimal.ZERO));
-                    volumeMap.put(token, item.optBigDecimal("tradeVolume", BigDecimal.ZERO));
-                    highMap.put(token, item.optBigDecimal("high", BigDecimal.ZERO));
-                    lowMap.put(token, item.optBigDecimal("low", BigDecimal.ZERO));
+                JSONArray fetched = response.optJSONArray("fetched");
+                if (fetched == null || fetched.length() == 0) {
+                    logger.error("No data fetched from market API for batch {}-{}", start, end);
+                    continue;
+                }
+
+                logger.info("Received {} price records for batch {}-{}", fetched.length(), start, end);
+
+                for (int i = 0; i < fetched.length(); i++) {
+                    JSONObject item = fetched.getJSONObject(i);
+                    String token = item.optString("symbolToken", null);
+                    if (token != null) {
+                        ltpMap.put(token, item.optBigDecimal("ltp", BigDecimal.ZERO));
+                        openMap.put(token, item.optBigDecimal("open", BigDecimal.ZERO));
+                        oIMap.put(token, item.optBigDecimal("opnInterest", BigDecimal.ZERO));
+                        volumeMap.put(token, item.optBigDecimal("tradeVolume", BigDecimal.ZERO));
+                        highMap.put(token, item.optBigDecimal("high", BigDecimal.ZERO));
+                        lowMap.put(token, item.optBigDecimal("low", BigDecimal.ZERO));
+                    }
                 }
             }
 
