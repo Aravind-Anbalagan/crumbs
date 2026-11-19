@@ -54,6 +54,23 @@ const formatTimeOnly = (isoString) => {
     return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+// Safe Spread Suggestion Parser (handles JSON string or object)
+const parseSpreadSuggestion = (raw) => {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+};
+
+// Safe Fixed Decimal Formatter
+const formatNum = (val, decimals = 2) => {
+    const num = Number(val);
+    return Number.isFinite(num) ? num.toFixed(decimals) : '-';
+};
+
 export default function AdvisoryDashboard() {
     const [timelineData, setTimelineData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -104,38 +121,38 @@ export default function AdvisoryDashboard() {
 
     // ⚡ NEW: Fetches Real-time LTP/PnL when a cell is clicked
     const fetchLiveTradeData = (recordId) => {
-            if (!recordId) return;
+        if (!recordId) return;
 
-            // Flag the dialog as loading live data
-            setDialogData(prev => prev ? { ...prev, isLiveLoading: true } : null);
+        // Flag the dialog as loading live data
+        setDialogData(prev => prev ? { ...prev, isLiveLoading: true } : null);
 
-            // 🚨 FIX: Use string concatenation to ensure the ID is properly attached
-            fetch('/api/v1/advisory/live-record/' + recordId)
-                .then(res => {
-                    // If it returns HTML (like index.html), it will fail the JSON parse here
-                    if (!res.ok) throw new Error('Live fetch failed with status ' + res.status);
+        // 🚨 FIX: Use string concatenation to ensure the ID is properly attached
+        fetch('/api/v1/advisory/live-record/' + recordId)
+            .then(res => {
+                // If it returns HTML (like index.html), it will fail the JSON parse here
+                if (!res.ok) throw new Error('Live fetch failed with status ' + res.status);
 
-                    // Add a check to ensure we are actually parsing JSON, not HTML
-                    const contentType = res.headers.get("content-type");
-                    if (contentType && contentType.indexOf("application/json") !== -1) {
-                        return res.json();
-                    } else {
-                        throw new Error("Received HTML instead of JSON. Check the Network tab URL.");
+                // Add a check to ensure we are actually parsing JSON, not HTML
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    return res.json();
+                } else {
+                    throw new Error("Received HTML instead of JSON. Check the Network tab URL.");
+                }
+            })
+            .then(liveData => {
+                setDialogData(prev => {
+                    if (prev && prev.id === liveData.id) {
+                        return { ...prev, ...liveData, isLiveLoading: false };
                     }
-                })
-                .then(liveData => {
-                    setDialogData(prev => {
-                        if (prev && prev.id === liveData.id) {
-                            return { ...prev, ...liveData, isLiveLoading: false };
-                        }
-                        return prev;
-                    });
-                })
-                .catch(err => {
-                    console.error("Failed to fetch live PnL:", err);
-                    setDialogData(prev => prev ? { ...prev, isLiveLoading: false } : null);
+                    return prev;
                 });
-        };
+            })
+            .catch(err => {
+                console.error("Failed to fetch live PnL:", err);
+                setDialogData(prev => prev ? { ...prev, isLiveLoading: false } : null);
+            });
+    };
 
     const handleScanActive = () => {
         setScanningAll(true);
@@ -361,6 +378,11 @@ export default function AdvisoryDashboard() {
         const start = (currentPage - 1) * PAGE_SIZE;
         return filteredMatrix.slice(start, start + PAGE_SIZE);
     }, [filteredMatrix, currentPage]);
+
+    const spreadSuggestion = useMemo(
+        () => parseSpreadSuggestion(dialogData?.suggestion),
+        [dialogData]
+    );
 
     const formatPnL = (pnl) => {
         if (pnl === null || pnl === undefined) return '-';
@@ -613,6 +635,82 @@ export default function AdvisoryDashboard() {
                                     </span>
                                 </div>
                             </div>
+
+                            {spreadSuggestion ? (
+                                <div className="spread-suggestion-panel">
+                                    <div className="spread-header">
+                                        <div className="spread-title-group">
+                                            <label>Spread Suggestion</label>
+                                            <span className={`spread-badge ${spreadSuggestion.spreadType === 'PE_SPREAD' ? 'pe' : 'ce'}`}>
+                                                {spreadSuggestion.spreadType?.replace('_', ' ')} · {spreadSuggestion.direction}
+                                            </span>
+                                        </div>
+                                        <span className="spread-meta">
+                                            Lot: <strong>{spreadSuggestion.lotSize ?? '-'}</strong>
+                                            {spreadSuggestion.expiry ? ` · ${spreadSuggestion.expiry}` : ''}
+                                        </span>
+                                    </div>
+
+                                    <div className="spread-legs-grid">
+                                        {spreadSuggestion.sellLeg && (
+                                            <div className="spread-leg-card leg-sell">
+                                                <div className="leg-top">
+                                                    <span className="leg-badge sell">SELL LEG</span>
+                                                    <span className="leg-ltp">₹{formatNum(spreadSuggestion.sellLeg.ltp)}</span>
+                                                </div>
+                                                <div className="leg-strike">
+                                                    {spreadSuggestion.sellLeg.strike} {spreadSuggestion.sellLeg.optionType}
+                                                </div>
+                                                <div className="leg-greeks">
+                                                    Delta: {formatNum(spreadSuggestion.sellLeg.delta)} · IV: {formatNum(spreadSuggestion.sellLeg.iv, 1)}%
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {spreadSuggestion.buyLeg && (
+                                            <div className="spread-leg-card leg-buy">
+                                                <div className="leg-top">
+                                                    <span className="leg-badge buy">BUY LEG (HEDGE)</span>
+                                                    <span className="leg-ltp">₹{formatNum(spreadSuggestion.buyLeg.ltp)}</span>
+                                                </div>
+                                                <div className="leg-strike">
+                                                    {spreadSuggestion.buyLeg.strike} {spreadSuggestion.buyLeg.optionType}
+                                                </div>
+                                                <div className="leg-greeks">
+                                                    Delta: {formatNum(spreadSuggestion.buyLeg.delta)} · IV: {formatNum(spreadSuggestion.buyLeg.iv, 1)}%
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="spread-metrics-grid">
+                                        <div className="spread-metric">
+                                            <label>Net Credit</label>
+                                            <span>₹{formatNum(spreadSuggestion.netCredit)}</span>
+                                        </div>
+                                        <div className="spread-metric">
+                                            <label>Max Profit</label>
+                                            <span className="text-green">+₹{formatNum(spreadSuggestion.maxProfit)}</span>
+                                        </div>
+                                        <div className="spread-metric">
+                                            <label>Max Loss</label>
+                                            <span className="text-red">-₹{formatNum(spreadSuggestion.maxLoss)}</span>
+                                        </div>
+                                        <div className="spread-metric">
+                                            <label>R:R Ratio</label>
+                                            <span>{formatNum(spreadSuggestion.riskReward)}</span>
+                                        </div>
+                                        <div className="spread-metric">
+                                            <label>Breakeven</label>
+                                            <span>₹{formatNum(spreadSuggestion.breakeven)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : dialogData.actionTaken === 'NEW_ENTRY' ? (
+                                <div className="spread-empty-note">
+                                    No spread suggestion available within the ₹6,000 max loss limit.
+                                </div>
+                            ) : null}
 
                             <div className="dialog-reasoning">
                                 <label>AI Reasoning & Logic</label>

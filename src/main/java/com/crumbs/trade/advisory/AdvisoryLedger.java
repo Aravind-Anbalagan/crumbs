@@ -152,4 +152,7 @@ public class AdvisoryLedger {
 
     @Column(name = "expiry_low_anchor", precision = 10, scale = 2)
     private BigDecimal expiryLowAnchor;
+
+    @Column(name = "suggestion", columnDefinition = "TEXT")
+    private String suggestion;
 }

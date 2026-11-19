@@ -30,4 +30,5 @@ public class OptionRecommendation {
     private BigDecimal entryIv;
     private BigDecimal unrealizedPnl;
     private BigDecimal realizedPnl;
+    private String suggestion;
 }

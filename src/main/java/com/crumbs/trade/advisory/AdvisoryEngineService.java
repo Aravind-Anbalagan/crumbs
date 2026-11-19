@@ -43,7 +43,7 @@ public class AdvisoryEngineService {
     private final AngelWebSocketService webSocketService;
     private final AngelOneService angelOneService;
     private final AngelOne angelOne;
-
+    private final SpreadSuggestionService spreadSuggestionService;
     private static final Map<String, Lock> SYMBOL_LOCKS = new ConcurrentHashMap<>();
 
     @Autowired
@@ -282,6 +282,7 @@ public class AdvisoryEngineService {
                 .entryPremium(newRecord.getEntryPremium())
                 .entryDelta(newRecord.getEntryDelta())
                 .entryIv(newRecord.getEntryIv())
+                .suggestion(newRecord.getSuggestion())
                 .build();
     }
 
@@ -332,6 +333,10 @@ public class AdvisoryEngineService {
                 newRecord.setRecommendedStrike(oiData.putWall().strike());
                 Indexes optIndex = getOptionIndexMetadata(newRecord);
                 newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
+                if (optIndex != null) {
+                    newRecord.setSuggestion(spreadSuggestionService.buildSpreadSuggestionJson(
+                            "PE", oiData.putWall(), oiData.allPuts(), newRecord.getLotSize(), newRecord.getExpiryDate()));
+                }
                 newRecord.setEntryPremium(oiData.putWall().ltp());
                 newRecord.setEntryDelta(BigDecimal.valueOf(oiData.putWall().delta()));
                 newRecord.setEntryIv(BigDecimal.valueOf(oiData.putWall().iv()));
@@ -368,6 +373,10 @@ public class AdvisoryEngineService {
                 newRecord.setRecommendedStrike(oiData.callWall().strike());
                 Indexes optIndex = getOptionIndexMetadata(newRecord);
                 newRecord.setLotSize(optIndex != null ? Integer.valueOf(optIndex.getLotsize()) : 1);
+                if (optIndex != null) {
+                    newRecord.setSuggestion(spreadSuggestionService.buildSpreadSuggestionJson(
+                            "CE", oiData.callWall(), oiData.allCalls(), newRecord.getLotSize(), newRecord.getExpiryDate()));
+                }
                 newRecord.setEntryPremium(oiData.callWall().ltp());
                 newRecord.setEntryDelta(BigDecimal.valueOf(oiData.callWall().delta()));
                 newRecord.setEntryIv(BigDecimal.valueOf(oiData.callWall().iv()));
@@ -425,7 +434,7 @@ public class AdvisoryEngineService {
         current.setEntryDate(prev.getEntryDate() != null ? prev.getEntryDate() : prev.getTimestamp());
         current.setCurrentPremium(prev.getCurrentPremium());
         current.setLotSize(prev.getLotSize());
-
+        current.setSuggestion(prev.getSuggestion());
         // 🔥 IN-FLIGHT TRADE MIGRATION SAFETY CHECK 🔥
         // If this trade was opened BEFORE the code update, it won't have expiry anchors.
         // We seamlessly fall back to the live Futures data so the trade doesn't break.

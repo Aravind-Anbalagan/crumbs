@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList; // 👈 ADD
+import java.util.List;      // 👈 ADD
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
@@ -20,12 +22,24 @@ public class AdvisoryOiService {
     private final SamcoSessionManager sessionManager;
     private final ObjectMapper objectMapper;
 
-    // 🚀 NON-BLOCKING THROTTLE: Tracks the absolute time the next API call is allowed
     private static final AtomicLong NEXT_ALLOWED_API_TIME = new AtomicLong(0);
     private static final long RATE_LIMIT_DELAY_MS = 1200;
 
     public record StrikeDetails(BigDecimal strike, long openInterest, BigDecimal ltp, double delta, double theta, double iv) {}
-    public record AdvisoryOiData(StrikeDetails putWall, StrikeDetails callWall, String expiry) {}
+
+    // 👇 REPLACE YOUR EXISTING AdvisoryOiData LINE WITH THIS
+    public record AdvisoryOiData(
+            StrikeDetails putWall,
+            StrikeDetails callWall,
+            String expiry,
+            List<StrikeDetails> allPuts,
+            List<StrikeDetails> allCalls) {
+
+        // Keeps all existing 3-argument calls working unchanged
+        public AdvisoryOiData(StrikeDetails putWall, StrikeDetails callWall, String expiry) {
+            this(putWall, callWall, expiry, List.of(), List.of());
+        }
+    }
 
     public AdvisoryOiData fetchLiveOiAndGreeks(String symbol, String exchange, String expiry) {
         StrikeDetails maxPut = null;
@@ -35,15 +49,16 @@ public class AdvisoryOiService {
         String resolvedExpiry = expiry;
         String jsonResponse = null;
 
+        List<StrikeDetails> allPuts = new ArrayList<>();  // 👈 ADD
+        List<StrikeDetails> allCalls = new ArrayList<>(); // 👈 ADD
+
         int maxRetries = 4;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                // 1. Calculate how long THIS thread needs to sleep, and instantly update the tracker for the NEXT thread
                 long now = System.currentTimeMillis();
                 long executionTime = NEXT_ALLOWED_API_TIME.updateAndGet(lastTime -> Math.max(lastTime + RATE_LIMIT_DELAY_MS, now));
                 long sleepTime = executionTime - System.currentTimeMillis();
 
-                // 2. Sleep outside of any locks. Threads wait in parallel.
                 if (sleepTime > 0) {
                     Thread.sleep(sleepTime);
                 }
@@ -51,7 +66,7 @@ public class AdvisoryOiService {
                 String sessionToken = sessionManager.getSession();
                 jsonResponse = samco.getOptionChain(sessionToken, exchange, symbol, expiry, null, null);
 
-                break; // API call succeeded
+                break;
 
             } catch (Exception e) {
                 boolean isRateLimit = e.getMessage() != null && e.getMessage().contains("429");
@@ -68,7 +83,6 @@ public class AdvisoryOiService {
                 }
 
                 try {
-                    // Exponential backoff outside of the throttle lock
                     Thread.sleep(2000L * attempt);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
@@ -77,7 +91,6 @@ public class AdvisoryOiService {
             }
         }
 
-        // Proceed to parse JSON... (Keep your existing JSON parsing logic exactly as it was)
         try {
             if (jsonResponse == null || jsonResponse.isEmpty()) {
                 return new AdvisoryOiData(null, null, resolvedExpiry);
@@ -102,12 +115,20 @@ public class AdvisoryOiService {
                     double theta = parseDoubleSafely(detail.theta());
                     double iv = parseDoubleSafely(detail.impliedVolatility());
 
-                    if ("PE".equalsIgnoreCase(detail.optionType()) && currentOi > maxPutOi) {
-                        maxPutOi = currentOi;
-                        maxPut = new StrikeDetails(currentStrike, currentOi, ltp, delta, theta, iv);
-                    } else if ("CE".equalsIgnoreCase(detail.optionType()) && currentOi > maxCallOi) {
-                        maxCallOi = currentOi;
-                        maxCall = new StrikeDetails(currentStrike, currentOi, ltp, delta, theta, iv);
+                    StrikeDetails strikeObj = new StrikeDetails(currentStrike, currentOi, ltp, delta, theta, iv); // 👈 ADD
+
+                    if ("PE".equalsIgnoreCase(detail.optionType())) {
+                        allPuts.add(strikeObj); // 👈 ADD
+                        if (currentOi > maxPutOi) {
+                            maxPutOi = currentOi;
+                            maxPut = strikeObj;
+                        }
+                    } else if ("CE".equalsIgnoreCase(detail.optionType())) {
+                        allCalls.add(strikeObj); // 👈 ADD
+                        if (currentOi > maxCallOi) {
+                            maxCallOi = currentOi;
+                            maxCall = strikeObj;
+                        }
                     }
                 }
             }
@@ -115,7 +136,7 @@ public class AdvisoryOiService {
             log.error("❌ Failed to parse OI and Greeks for {}: {}", symbol, e.getMessage(), e);
         }
 
-        return new AdvisoryOiData(maxPut, maxCall, resolvedExpiry);
+        return new AdvisoryOiData(maxPut, maxCall, resolvedExpiry, allPuts, allCalls); // 👈 UPDATE
     }
 
     private Double parseDoubleSafely(String value) {
