@@ -67,7 +67,7 @@ public class FnoScannerService {
     private final AngelWebSocketService angelWebSocketService;
     private final TelegramService telegramService;
     private final TokenService tokenService;
-
+    private final VwapStraddleService vwapStraddleService; // 👈 Add this line
     // Track subscribed tokens to prevent duplicate subscriptions
     private final Set<String> subscribedTokens = ConcurrentHashMap.newKeySet();
 
@@ -512,6 +512,7 @@ public class FnoScannerService {
                 strategyType,
                 statusMessage
         });
+        safeAddToVwapStraddle(stock.getName(), ltp);
     }
 
     // Extract transactional save
@@ -712,5 +713,13 @@ public class FnoScannerService {
             return minutes + " min";
         }
         return String.format("%.1f hours", minutes / 60.0);
+    }
+    private void safeAddToVwapStraddle(String stockName, BigDecimal spotLtp) {
+        try {
+            vwapStraddleService.autoAddAtmFromScanner(stockName, spotLtp);
+        } catch (Exception e) {
+            logger.warn("⚠️ Non-fatal: Failed to auto-add {} to VWAP Straddle watchlist: {}",
+                    stockName, e.getMessage());
+        }
     }
 }
