@@ -1,0 +1,767 @@
+/* ── Theme Tokens (Dark Default — syncs with MainLayout .theme-dark) ──────── */
+.vs-shell {
+    --vs-bg:
+            radial-gradient(circle at 12% 0%, rgba(56, 189, 248, 0.08), transparent 36%),
+            radial-gradient(circle at 88% 8%, rgba(245, 158, 11, 0.06), transparent 32%),
+            #070b14;
+    --vs-surface: #0f172a;
+    --vs-surface-alt: #0b1220;
+    --vs-surface-header: rgba(11, 18, 32, 0.72);
+    --vs-border: #1e293b;
+    --vs-border-row: rgba(30, 41, 59, 0.7);
+    --vs-input-border: #263449;
+    --vs-text: #e2e8f0;
+    --vs-text-strong: #f8fafc;
+    --vs-text-muted: #94a3b8;
+    --vs-text-faint: #64748b;
+    --vs-accent: #38bdf8;
+    --vs-amber: #fbbf24;
+    --vs-green: #4ade80;
+    --vs-red: #f87171;
+    --vs-row-hover: rgba(30, 41, 59, 0.5);
+    --vs-row-selected: rgba(14, 165, 233, 0.12);
+    --vs-btn-bg: #111c33;
+    --vs-btn-hover: #192847;
+    --vs-btn-border: #26354f;
+    --vs-chip-bg: #1e293b;
+    --vs-track-bg: #1e293b;
+    --vs-switch-bg: #1e293b;
+    --vs-switch-border: #334155;
+    --vs-switch-thumb: #64748b;
+    --vs-waiting-bg: rgba(148, 163, 184, 0.12);
+    --vs-waiting-border: rgba(148, 163, 184, 0.25);
+    --vs-waiting-text: #cbd5e1;
+    --vs-inpos-bg: rgba(34, 197, 94, 0.14);
+    --vs-inpos-border: rgba(34, 197, 94, 0.35);
+    --vs-inpos-text: #4ade80;
+    --vs-spread-below-bg: rgba(34, 197, 94, 0.14);
+    --vs-spread-above-bg: rgba(239, 68, 68, 0.14);
+    --vs-err-bg: rgba(127, 29, 29, 0.35);
+    --vs-err-border: rgba(239, 68, 68, 0.45);
+    --vs-err-text: #fecaca;
+    --vs-overlay-bg: rgba(11, 18, 32, 0.78);
+    --vs-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+
+    width: 100%;
+    min-height: 100%;
+    background: var(--vs-bg);
+    color: var(--vs-text);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 12px 16px 20px;
+    box-sizing: border-box;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* ── Light Theme Overrides (syncs with MainLayout .theme-light) ───────────── */
+.theme-light .vs-shell {
+    --vs-bg: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    --vs-surface: #ffffff;
+    --vs-surface-alt: #f8fafc;
+    --vs-surface-header: #f8fafc;
+    --vs-border: #e2e8f0;
+    --vs-border-row: #eef2f7;
+    --vs-input-border: #cbd5e1;
+    --vs-text: #1e293b;
+    --vs-text-strong: #0f172a;
+    --vs-text-muted: #475569;
+    --vs-text-faint: #64748b;
+    --vs-accent: #0284c7;
+    --vs-amber: #b45309;
+    --vs-green: #15803d;
+    --vs-red: #dc2626;
+    --vs-row-hover: #f8fafc;
+    --vs-row-selected: rgba(2, 132, 199, 0.08);
+    --vs-btn-bg: #ffffff;
+    --vs-btn-hover: #f1f5f9;
+    --vs-btn-border: #cbd5e1;
+    --vs-chip-bg: #e2e8f0;
+    --vs-track-bg: #e2e8f0;
+    --vs-switch-bg: #f1f5f9;
+    --vs-switch-border: #cbd5e1;
+    --vs-switch-thumb: #94a3b8;
+    --vs-waiting-bg: #f1f5f9;
+    --vs-waiting-border: #cbd5e1;
+    --vs-waiting-text: #475569;
+    --vs-inpos-bg: rgba(22, 163, 74, 0.12);
+    --vs-inpos-border: rgba(22, 163, 74, 0.35);
+    --vs-inpos-text: #15803d;
+    --vs-spread-below-bg: rgba(22, 163, 74, 0.12);
+    --vs-spread-above-bg: rgba(220, 38, 38, 0.1);
+    --vs-err-bg: #fef2f2;
+    --vs-err-border: #fca5a5;
+    --vs-err-text: #b91c1c;
+    --vs-overlay-bg: rgba(255, 255, 255, 0.82);
+    --vs-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.vs-container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Add Strike Form Card ─────────────────────────────────────────────────── */
+.vs-add-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    background: var(--vs-surface);
+    border: 1px solid var(--vs-border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    box-shadow: var(--vs-shadow);
+}
+
+.vs-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.vs-field.grow    { flex: 1.4 1 210px; }
+.vs-field.medium  { flex: 1 1 165px; }
+.vs-field.compact { flex: 0 0 100px; }
+
+.vs-field label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--vs-text-muted);
+}
+
+.vs-field input {
+    height: 36px;
+    background: var(--vs-surface-alt);
+    border: 1px solid var(--vs-input-border);
+    color: var(--vs-text-strong);
+    border-radius: 8px;
+    padding: 0 12px;
+    font-size: 0.88rem;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.vs-field input:focus {
+    border-color: var(--vs-accent);
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+}
+
+.vs-segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 36px;
+    background: var(--vs-surface-alt);
+    border: 1px solid var(--vs-input-border);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 3px;
+}
+
+.vs-segmented button {
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--vs-text-faint);
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.vs-segmented button.active {
+    background: #0ea5e9;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(14, 165, 233, 0.35);
+}
+
+.vs-btn-primary {
+    height: 36px;
+    padding: 0 18px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #2563eb 0%, #0284c7 100%);
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+    transition: transform 0.12s, filter 0.15s;
+}
+
+.vs-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+.vs-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ── Error Toast ──────────────────────────────────────────────────────────── */
+.vs-alert-error {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--vs-err-bg);
+    border: 1px solid var(--vs-err-border);
+    color: var(--vs-err-text);
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+}
+
+.vs-alert-error button {
+    background: none;
+    border: none;
+    color: var(--vs-err-text);
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+/* ── Watchlist Table Card ─────────────────────────────────────────────────── */
+.vs-table-card {
+    background: var(--vs-surface);
+    border: 1px solid var(--vs-border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--vs-shadow);
+}
+
+.vs-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--vs-border);
+    background: var(--vs-surface-header);
+}
+
+.vs-table-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.vs-table-header h2 {
+    margin: 0;
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--vs-text-strong);
+}
+
+.vs-table-hint {
+    font-size: 0.78rem;
+    color: var(--vs-text-faint);
+}
+
+.vs-table-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.vs-sync-inline {
+    font-size: 0.76rem;
+    color: var(--vs-text-faint);
+}
+
+.vs-sync-inline strong {
+    color: var(--vs-text-muted);
+    font-weight: 600;
+}
+
+.vs-btn-refresh {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--vs-btn-bg);
+    color: var(--vs-text);
+    border: 1px solid var(--vs-btn-border);
+    border-radius: 7px;
+    padding: 5px 11px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.vs-btn-refresh:hover:not(:disabled) {
+    background: var(--vs-btn-hover);
+}
+
+.vs-spin {
+    display: inline-block;
+    animation: vs-rotate 0.8s linear infinite;
+}
+
+.vs-table-scroll {
+    overflow-x: auto;
+}
+
+.vs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.vs-table th {
+    text-align: left;
+    padding: 9px 14px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--vs-text-faint);
+    background: var(--vs-surface-alt);
+    border-bottom: 1px solid var(--vs-border);
+    white-space: nowrap;
+}
+
+.vs-table th.num,
+.vs-table td.num {
+    text-align: right;
+}
+
+.vs-table th.center,
+.vs-table td.center {
+    text-align: center;
+}
+
+.vs-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--vs-border-row);
+    vertical-align: middle;
+}
+
+.vs-row {
+    cursor: pointer;
+    transition: background 0.14s;
+}
+
+.vs-row:hover {
+    background: var(--vs-row-hover);
+}
+
+.vs-row.selected {
+    background: var(--vs-row-selected);
+    box-shadow: inset 3px 0 0 var(--vs-accent);
+}
+
+.vs-row.paused {
+    opacity: 0.56;
+}
+
+.vs-inst {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.vs-inst-name {
+    font-weight: 600;
+    color: var(--vs-text-strong);
+    white-space: nowrap;
+}
+
+.vs-inst-strike {
+    color: var(--vs-accent);
+    font-family: ui-monospace, monospace;
+}
+
+.vs-inst-meta {
+    font-size: 0.72rem;
+    color: var(--vs-text-faint);
+}
+
+/* Status Pill */
+.vs-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.vs-status-pill .vs-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.vs-status-pill.waiting {
+    background: var(--vs-waiting-bg);
+    border: 1px solid var(--vs-waiting-border);
+    color: var(--vs-waiting-text);
+}
+.vs-status-pill.waiting .vs-dot {
+    background: #94a3b8;
+}
+
+.vs-status-pill.in_position {
+    background: var(--vs-inpos-bg);
+    border: 1px solid var(--vs-inpos-border);
+    color: var(--vs-inpos-text);
+}
+.vs-status-pill.in_position .vs-dot {
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+}
+
+/* Prices & Spread */
+.txt-green { color: var(--vs-green); font-weight: 600; }
+.txt-red   { color: var(--vs-red); font-weight: 600; }
+.txt-amber { color: var(--vs-amber); font-weight: 500; }
+.txt-muted { color: var(--vs-text-faint); }
+
+.vs-spread-chip {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.vs-spread-chip.below {
+    background: var(--vs-spread-below-bg);
+    color: var(--vs-green);
+}
+
+.vs-spread-chip.above {
+    background: var(--vs-spread-above-bg);
+    color: var(--vs-red);
+}
+
+/* Hit Progress Bar */
+.vs-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 110px;
+}
+
+.vs-progress-track {
+    flex: 1;
+    height: 6px;
+    background: var(--vs-track-bg);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.vs-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.25s ease;
+}
+
+.vs-progress-fill.entry { background: linear-gradient(90deg, #0ea5e9, #22c55e); }
+.vs-progress-fill.exit  { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+.vs-progress-text {
+    font-size: 0.78rem;
+    color: var(--vs-text);
+    min-width: 30px;
+    text-align: right;
+}
+
+/* Inline Inputs */
+.vs-inline-input {
+    width: 54px;
+    height: 29px;
+    text-align: center;
+    background: var(--vs-surface-alt);
+    border: 1px solid var(--vs-input-border);
+    color: var(--vs-text-strong);
+    border-radius: 6px;
+    font-size: 0.84rem;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.vs-inline-input:focus {
+    border-color: var(--vs-accent);
+}
+
+/* Pill Toggle Switches & Mini Loader */
+.vs-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px 3px 4px;
+    border-radius: 999px;
+    border: 1px solid var(--vs-switch-border);
+    background: var(--vs-switch-bg);
+    color: var(--vs-text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.vs-switch.loading {
+    opacity: 0.75;
+    cursor: wait;
+}
+
+.vs-switch-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--vs-switch-thumb);
+    transition: background 0.15s;
+}
+
+.vs-mini-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    box-sizing: border-box;
+    animation: vs-rotate 0.65s linear infinite;
+}
+
+.vs-switch.on {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #10b981;
+}
+
+.vs-switch.on .vs-switch-thumb {
+    background: #10b981;
+}
+
+.vs-switch.monitor.on {
+    background: rgba(2, 132, 199, 0.14);
+    border-color: rgba(2, 132, 199, 0.42);
+    color: var(--vs-accent);
+}
+
+.vs-switch.monitor.on .vs-switch-thumb {
+    background: var(--vs-accent);
+}
+
+/* Action Icon Buttons */
+.vs-icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--vs-text-faint);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.vs-icon-btn.delete:hover {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: var(--vs-red);
+}
+
+.vs-icon-btn.close {
+    background: var(--vs-chip-bg);
+    color: var(--vs-text);
+}
+
+.vs-icon-btn.close:hover {
+    filter: brightness(0.92);
+}
+
+.vs-empty-state {
+    text-align: center;
+    padding: 32px 16px !important;
+    color: var(--vs-text-faint);
+}
+
+/* ── Chart Panel (Slide-In on Select) ─────────────────────────────────────── */
+.vs-chart-panel {
+    background: var(--vs-surface);
+    border: 1px solid var(--vs-border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--vs-shadow);
+    animation: vs-slide-up 0.2s ease-out;
+}
+
+.vs-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--vs-border);
+    background: var(--vs-surface-header);
+}
+
+.vs-chart-title-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.vs-chart-symbol-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.vs-chart-symbol-row h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--vs-text-strong);
+}
+
+.vs-strike-accent {
+    color: var(--vs-accent);
+    font-family: ui-monospace, monospace;
+}
+
+.vs-expiry-chip {
+    font-size: 0.74rem;
+    color: var(--vs-text-muted);
+    background: var(--vs-chip-bg);
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.vs-chart-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+}
+
+.vs-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.vs-metric-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--vs-text-faint);
+}
+
+.vs-metric-val {
+    font-family: ui-monospace, monospace;
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: var(--vs-text-strong);
+}
+
+.vs-metric-val.cp  { color: var(--vs-accent); }
+.vs-metric-val.cv  { color: var(--vs-amber); }
+.vs-metric-val.pos { color: var(--vs-green); }
+.vs-metric-val.neg { color: var(--vs-red); }
+
+.vs-chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.vs-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.vs-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vs-legend-item.cp { color: var(--vs-accent); }
+.vs-legend-item.cv { color: var(--vs-amber); }
+
+.vs-line-swatch {
+    display: inline-block;
+    width: 16px;
+    height: 0;
+}
+
+.vs-line-swatch.solid  { border-top: 2.5px solid var(--vs-accent); }
+.vs-line-swatch.dashed { border-top: 2px dashed var(--vs-amber); }
+
+.vs-chart-body {
+    position: relative;
+    padding: 8px 12px 12px;
+    background: var(--vs-surface-alt);
+}
+
+.vs-chart-canvas {
+    width: 100%;
+    height: 480px;
+}
+
+.vs-chart-empty-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 0.86rem;
+    color: var(--vs-text-muted);
+    background: var(--vs-overlay-bg);
+    pointer-events: none;
+}
+
+.vs-pulse-ring {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--vs-accent);
+    animation: vs-pulse 1.6s infinite;
+}
+
+/* ── Animations & Responsive ──────────────────────────────────────────────── */
+@keyframes vs-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.4; transform: scale(0.85); }
+}
+
+@keyframes vs-rotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+@keyframes vs-slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 560px) {
+    .vs-shell { padding: 10px 10px 20px; }
+    .vs-field.compact { flex: 1 1 90px; }
+    .vs-btn-primary { width: 100%; }
+}

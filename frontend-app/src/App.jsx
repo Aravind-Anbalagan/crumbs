@@ -3,13 +3,13 @@ import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import Dashboard from './pages/Dashboard';
 import MainLayout from './layouts/MainLayout';
-// 1. Import your new native React page
-import StrategySetup from './pages/StrategySetup'; 
+import StrategySetup from './pages/StrategySetup';
 import OrderHistory from './pages/OrderHistory';
 import OITracker from './pages/OITracker';
 import AdvisoryDashboard from './pages/AdvisoryDashboard';
 import OptionPrice from './pages/OptionPrice';
 import VwapStraddle from './pages/VwapStraddle';
+import VwapStraddlePage from './pages/VwapStraddlePage';
 
 const ProtectedRoute = ({ children }) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
@@ -23,40 +23,47 @@ const RootRedirect = () => {
 
 export default function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<RootRedirect />} />
-        
-        {/* Public Routes */}
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/signup" element={<SignUp />} />
+      <Router>
+        <Routes>
+          <Route path="/" element={<RootRedirect />} />
 
-        {/* Protected Routes */}
-        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          {/* 2. Add your new native React route */}
-          <Route path="dashboard/strategy-setup" element={<StrategySetup />} />
-          <Route path="dashboard/history" element={<OrderHistory />} />
-          {/* Dynamic dashboard route for legacy iframes */}
-          <Route path="dashboard/:pageName" element={<Dashboard />} />
-          <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
-          <Route path="dashboard/oi-tracker" element={<OITracker />} />
-          <Route path="dashboard/advisory" element={<AdvisoryDashboard />} />
-          <Route path="dashboard/option-price" element={<OptionPrice />} />
-          <Route path="dashboard/vwap-straddle" element={<VwapStraddle />} />
-          {/* Direct access redirects */}
-          <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
-          <Route path="result" element={<Navigate to="/dashboard/result" replace />} />
-          <Route path="pre-market" element={<Navigate to="/dashboard/pre-market" replace />} />
-          <Route path="intraday" element={<Navigate to="/dashboard/intraday" replace />} />
-          <Route path="short-straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
-          <Route path="straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
-          <Route path="future" element={<Dashboard />} />  {/* 👈 ADD THIS LINE */}
-          <Route path="futures" element={<Dashboard />} /> {/* 👈 AND THIS (Optional) */}
-        </Route>
+          {/* Public Routes */}
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
 
-        {/* Catch-all for bad URLs */}
-        <Route path="*" element={<Navigate to="/signin" replace />} />
-      </Routes>
-    </Router>
+          {/* Protected Routes */}
+          <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+            <Route path="dashboard/strategy-setup" element={<StrategySetup />} />
+            <Route path="dashboard/history" element={<OrderHistory />} />
+            <Route path="dashboard/:pageName" element={<Dashboard />} />
+            <Route path="dashboard" element={<Navigate to="/dashboard/stock" replace />} />
+            <Route path="dashboard/oi-tracker" element={<OITracker />} />
+            <Route path="dashboard/advisory" element={<AdvisoryDashboard />} />
+            <Route path="dashboard/option-price" element={<OptionPrice />} />
+            <Route path="dashboard/vwap-straddle" element={<VwapStraddle />} />
+            <Route
+                path="dashboard/vwap-short-straddle"
+                element={
+                  <div style={{ height: '100%', overflowY: 'auto' }}>
+                    <VwapStraddlePage />
+                  </div>
+                }
+            />
+
+            {/* Direct access redirects */}
+            <Route path="stock" element={<Navigate to="/dashboard/stock" replace />} />
+            <Route path="result" element={<Navigate to="/dashboard/result" replace />} />
+            <Route path="pre-market" element={<Navigate to="/dashboard/pre-market" replace />} />
+            <Route path="intraday" element={<Navigate to="/dashboard/intraday" replace />} />
+            <Route path="short-straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
+            <Route path="straddle" element={<Navigate to="/dashboard/short-straddle" replace />} />
+            <Route path="future" element={<Dashboard />} />
+            <Route path="futures" element={<Dashboard />} />
+          </Route>
+
+          {/* Catch-all for bad URLs */}
+          <Route path="*" element={<Navigate to="/signin" replace />} />
+        </Routes>
+      </Router>
   );
 }

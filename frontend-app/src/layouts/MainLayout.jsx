@@ -69,15 +69,16 @@ const MENU = [
         desc: 'Premium-collecting neutral setup',
       },
       {
-          to: '/dashboard/vwap-straddle', // 👈 Added here
-          label: 'VWAP Straddle',
-          desc: 'Intraday combined VWAP crossovers',
-        },
+        to: '/dashboard/vwap-short-straddle',
+        label: 'VWAP Short Straddle',
+        desc: 'Watchlist CP vs CV hit monitor & alerts',
+      },
        {
           to: '/dashboard/oi-tracker',
           label: '⚡ OI Tracker',
           desc: 'Live OI momentum & PCR skew',
-        }
+        },
+
     ],
   },
   {

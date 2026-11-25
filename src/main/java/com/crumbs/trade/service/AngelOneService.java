@@ -77,6 +77,7 @@ public class AngelOneService {
     @Autowired OptionsGreeksRepo optionsGreeksRepo;
     @Autowired RiskConfigurationRepository riskConfigurationRepository;
     @Autowired OptionPriceRepo optionPriceRepo;
+    @Autowired VwapStraddleWatchlistRepo vwapStraddleWatchlistRepo;
 
     // ✅ ADDED TELEGRAM SERVICE FOR IP BLOCK ALERTS
     @Autowired TelegramService telegramService;
@@ -180,6 +181,7 @@ public class AngelOneService {
         optionsGreeksRepo.deleteAll();
         riskConfigurationRepository.resetAllTrailingData();
         optionPriceRepo.deleteAll();
+        vwapStraddleWatchlistRepo.deleteAll();
     }
 
     public BigDecimal getcurrentPrice(SmartConnect smartConnect, String exchange, String tradingSymbol, String symboltoken, String keyword) {
