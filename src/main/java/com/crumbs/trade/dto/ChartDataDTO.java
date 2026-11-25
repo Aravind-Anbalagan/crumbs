@@ -14,4 +14,7 @@ public class ChartDataDTO {
     private TrendDTO trend;
     public TrendDTO getTrend() { return trend; }
     public void setTrend(TrendDTO trend) { this.trend = trend; }
+    private ThreeCandleDTO threeCandle;
+    public ThreeCandleDTO getThreeCandle() { return threeCandle; }
+    public void setThreeCandle(ThreeCandleDTO threeCandle) { this.threeCandle = threeCandle; }
 }

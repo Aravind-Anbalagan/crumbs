@@ -12,7 +12,7 @@ const TF_SECS    = { ONE_MINUTE:60, FIVE_MINUTE:300, FIFTEEN_MINUTE:900, THIRTY_
 const TF_SHORT   = { ONE_MINUTE:'1M', FIVE_MINUTE:'5M', FIFTEEN_MINUTE:'15M', THIRTY_MINUTE:'30M', ONE_HOUR:'1H', ONE_DAY:'1D' };
 const IST_OFFSET = 19800;
 const MAX_RETRY  = 3, RETRY_DELAY = 2000;
-const NON_LAYER  = new Set(['candles','signals','supportLevels','resistanceLevels','decision','previousDayCandle','trend',
+const NON_LAYER  = new Set(['candles','signals','supportLevels','resistanceLevels','decision','previousDayCandle','trend','threeCandle',
   'final_signal','finalSignal','final_confidence','finalConfidence','final_reason','finalReason']);
 const LAYER_COLORS = ['#22c55e','#ef4444','#3b82f6','#f59e0b','#a855f7','#06b6d4','#f97316','#ec4899'];
 
@@ -21,6 +21,7 @@ function frozenKey(){ return 'frozenLines_'+selectedSymbol+'_'+selectedTimeFrame
 
 // ── State ─────────────────────────────────────────────────────
 let chart=null, candleSeries=null, volumeSeries=null;
+let tcPriceLines=[];
 let selectedSymbol='NIFTY', selectedTimeFrame='FIVE_MINUTE';
 let lastCandles=[], lastData=null;
 let isFirstLoad=true, chartReady=false, isRefreshing=false, pendingReload=false;
@@ -42,7 +43,7 @@ const errorEl=$('error'), toastEl=$('apiErrorToast');
 const pricePanel=$('pricePanel'), srTooltip=$('srTooltip');
 const ppPrice=$('ppPrice'),ppChange=$('ppChange'),ppOpen=$('ppOpen'),ppHigh=$('ppHigh'),ppLow=$('ppLow');
 const drawIndicator=$('drawIndicator'), settingsMenu=$('settingsMenu');
-const chkSupport=$('chkSupport'), chkResistance=$('chkResistance');
+const chkSupport=$('chkSupport'), chkResistance=$('chkResistance'), chkThreeCandle=$('chkThreeCandle');
 const chkVolume=$('chkVolume'), chkPrice=$('chkPrice'), chkGrid=$('chkGrid'), chkLive=$('chkLive');
 const idleScreen=$('idleScreen');
 
@@ -196,9 +197,9 @@ function showSRTooltip(lvl, mx, my){
   const type      = lvl._type;
   const isSupport = type === 'support';
   const conf      = (lvl.confidence || 'LOW').toUpperCase();
-  const price    = Number(lvl.price);
-  const v        = lvl.visited || 0;
-  const vc       = !!lvl.heavyVolume;
+  const price     = Number(lvl.price);
+  const v         = lvl.visited || 0;
+  const vc        = !!lvl.heavyVolume;
   const r = srReacted(lvl);
   const b = srBroken(lvl);
   const typeEl = $('ttType');
@@ -259,7 +260,7 @@ function initSRCrosshair(){
   });
 }
 
-// ── Trend & Decision panel ────────────────────────────────────
+// ── Trend, Decision & 3-Candle Breakout ───────────────────────
 function renderTrend(t){
   const box = $('dpTrend'); if(!box) return;
   if(!t || !t.direction){
@@ -305,6 +306,83 @@ function drawDecisionLine(){
     decisionLine=candleSeries.createPriceLine({price:Number(d.level),color:col,lineWidth:2,
       lineStyle:LightweightCharts.LineStyle.Dotted,axisLabelVisible:true,title:'▶ '+d.signal});
   }catch(e){}
+}
+
+function toChartTime(epochSec){
+  let t = Number(epochSec);
+  if (t > 10000000000) t = Math.floor(t / 1000);
+  if (selectedTimeFrame === 'ONE_DAY') {
+    const d = new Date((t + IST_OFFSET) * 1000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  }
+  return t;
+}
+
+function clearThreeCandleLines(){
+  tcPriceLines.forEach(l => { try{ candleSeries.removePriceLine(l); }catch(e){} });
+  tcPriceLines = [];
+}
+
+function renderThreeCandle(tc){
+  const box = $('dp3c');
+  if (box) {
+    if (!tc) {
+      box.className = 'dp-3c';
+      $('dp3cStatus').textContent = '3C: –';
+      $('dp3cMeta').textContent   = '';
+    } else {
+      const st = (tc.status || 'FLAT').toUpperCase();
+      box.className = 'dp-3c ' + (st === 'BUY' ? 'buy' : st === 'SELL' ? 'sell' : '');
+      if (st === 'FLAT') {
+        $('dp3cStatus').textContent = '3C: FLAT';
+        $('dp3cMeta').textContent   = (tc.boxLow != null && tc.boxHigh != null)
+          ? `Box ${Number(tc.boxLow).toFixed(1)}–${Number(tc.boxHigh).toFixed(1)}` : '';
+      } else {
+        $('dp3cStatus').textContent = `3C: ${st} @ ${Number(tc.entryPrice).toFixed(1)}`;
+        $('dp3cMeta').textContent   = `Trail SL ${Number(tc.trailingSl).toFixed(1)}`;
+      }
+    }
+  }
+
+  if (!candleSeries) return;
+  clearThreeCandleLines();
+
+  const on = !chkThreeCandle || chkThreeCandle.checked;
+  if (!on || !tc) {
+    candleSeries.setMarkers([]);
+    return;
+  }
+
+  // 1) Crisp BUY / SELL / SL markers directly on trigger candles
+ const markers = (tc.events || []).map(ev => {
+     const isBuy = ev.type === 'BUY', isSell = ev.type === 'SELL';
+     return {
+       time:     toChartTime(ev.time),
+       position: isBuy ? 'belowBar' : 'aboveBar',
+       color:    isBuy ? '#16a34a' : isSell ? '#dc2626' : '#f59e0b',
+       shape:    isBuy ? 'arrowUp' : isSell ? 'arrowDown' : 'circle',
+       text:     `${ev.text} ${Number(ev.price).toFixed(1)}`,
+     };
+   }).sort((a, b) => (typeof a.time === 'string' ? a.time.localeCompare(b.time) : a.time - b.time));
+  candleSeries.setMarkers(markers);
+
+  // 2) Active Entry & Trail SL price lines only (no connecting lines across candles)
+  const st = (tc.status || 'FLAT').toUpperCase();
+  if (st !== 'FLAT') {
+    const col = st === 'BUY' ? '#16a34a' : '#dc2626';
+    if (tc.entryPrice != null) {
+      tcPriceLines.push(candleSeries.createPriceLine({
+        price: Number(tc.entryPrice), color: col, lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: `3C ${st}`,
+      }));
+    }
+    if (tc.trailingSl != null) {
+      tcPriceLines.push(candleSeries.createPriceLine({
+        price: Number(tc.trailingSl), color: '#f59e0b', lineWidth: 2,
+        lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: '3C SL',
+      }));
+    }
+  }
 }
 
 // ── Dynamic Layers ────────────────────────────────────────────
@@ -368,7 +446,7 @@ function drawLayer(key,data){
 function redrawAllLayers(){
   if(!lastData||!candleSeries)return;
   Object.keys(layerReg).forEach(k=>{clearLayer(k);if(layerReg[k].enabled)drawLayer(k,lastData);});
-  redrawSR(); redrawUserLines(); drawDecisionLine();
+  redrawSR(); redrawUserLines(); drawDecisionLine(); renderThreeCandle(lastData.threeCandle);
 }
 
 // ── SSE ───────────────────────────────────────────────────────
@@ -531,13 +609,14 @@ function initChart(){
   candleSeries = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
   volumeSeries = chart.addHistogramSeries({ color: 'rgba(38,166,154,.5)', priceFormat: { type: 'volume' }, priceScaleId: 'volume', lineWidth: 1, visible: chkVolume.checked });
   chart.priceScale('volume').applyOptions({ scaleMargins: { top: .85, bottom: 0 } });
+
   initSRCrosshair();
   chartReady = true;
 }
 function destroyChart(){
   hideSRTooltip(); srRegistry={};
   drawnLines.forEach(ld=>{try{if(ld.type==='hline')candleSeries.removePriceLine(ld.line);else chart.removeSeries(ld.series);}catch(e){}});
-  drawnLines=[]; decisionLine=null; clearLines(srSupLines); clearLines(srResLines);
+  drawnLines=[]; decisionLine=null; clearLines(srSupLines); clearLines(srResLines); clearThreeCandleLines();
   Object.values(layerReg).forEach(cfg=>{cfg.lines.forEach(l=>{try{candleSeries.removePriceLine(l);}catch(e){}});cfg.lines=[];});
   if(chart){
     if(candleSeries){try{chart.removeSeries(candleSeries);}catch(e){} candleSeries=null;}
@@ -639,7 +718,7 @@ function scheduleNextRefresh(){
 function startFullReload(){
   clearTimers(); retryCount=0;
   destroyChart(); isFirstLoad=true; lastCandles=[];
-  renderTrend(null); renderDecision(null);
+  renderTrend(null); renderThreeCandle(null); renderDecision(null);
   refresh(true);
 }
 function requestReload(){
@@ -667,12 +746,13 @@ async function refresh(firstLoad){
   let willRetry=false;
   try{
     const data=await fetchData();
-    if(pendingReload) return;   // drop stale response; finally will load newly selected symbol/TF
+    if(pendingReload) return;
 
     chartEl.style.display='block';
     if(!chart)initChart();
     updateChart(data);
     renderTrend(data.trend);
+    renderThreeCandle(data.threeCandle);
     renderDecision(data.decision);
     loaderEl.style.display='none'; errorEl.style.display='none'; retryCount=0;
     if(firstLoad)setTimeout(()=>{if(chart)chart.resize(chartEl.clientWidth,chartEl.clientHeight);},50);
@@ -680,7 +760,8 @@ async function refresh(firstLoad){
     if(pendingReload) return;
 
     renderTrend(null);
-    renderDecision(null);   // never leave an old BUY on screen after a failed refresh
+    renderThreeCandle(null);
+    renderDecision(null);
     if(firstLoad && retryCount<MAX_RETRY){
       retryCount++; willRetry=true;
       loaderText.textContent='Connection failed. Retrying…';
@@ -785,6 +866,7 @@ function zoomToToday(){
 
 // ── Event wiring ──────────────────────────────────────────────
 chartEl.addEventListener('click', onChartClick);
+chkThreeCandle.addEventListener('change',()=>renderThreeCandle(lastData && lastData.threeCandle));
 chkVolume.addEventListener('change',()=>{if(volumeSeries)volumeSeries.applyOptions({visible:chkVolume.checked});});
 chkPrice.addEventListener('change', ()=>refreshPricePanel());
 chkGrid.addEventListener('change',  ()=>{if(chart)chart.applyOptions({grid:{vertLines:{visible:chkGrid.checked,color:'#eee'},horzLines:{visible:chkGrid.checked,color:'#eee'}}});});
@@ -796,7 +878,7 @@ $('chkDebug').addEventListener('change',()=>{ if(chartReady && !isRefreshing) re
 
 // chkDebug intentionally NOT in ALL_CHKS so Reset / Uncheck All do not flip it
 const SR_CHKS=['chkSupport','chkResistance',...CONFIDENCE_LEVELS.map(k=>'chk'+k)];
-const ALL_CHKS=['chkVolume','chkPrice','chkGrid','chkLive',...SR_CHKS];
+const ALL_CHKS=['chkThreeCandle','chkVolume','chkPrice','chkGrid','chkLive',...SR_CHKS];
 
 $('btnReset').addEventListener('click',()=>{
   ALL_CHKS.forEach(id=>{const el=$(id);if(el)el.checked=true;});

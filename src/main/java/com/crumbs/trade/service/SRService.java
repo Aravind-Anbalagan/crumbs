@@ -55,6 +55,7 @@ public class SRService {
     @Autowired CandleCache candleCache;
     @Autowired TradeDecisionService decisionService;
     @Autowired TrendService trendService;
+    @Autowired ThreeCandleService threeCandleService;
     // ── Previous-day OHLC cache ───────────────────────────────────────────────
     // FIX 1: Store the date alongside the value so the entry is evicted on the
     //         next calendar day rather than living forever in the JVM.
@@ -309,6 +310,7 @@ public class SRService {
         }
         dto.setDecision(decisionService.decide(dto.getCandles(), result.getSupportLevels(),
                 result.getResistanceLevels(), live, timeFrame, trend));
+        dto.setThreeCandle(threeCandleService.analyze(dto.getCandles(), timeFrame));
         TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
         return dto;
     }

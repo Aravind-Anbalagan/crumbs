@@ -207,7 +207,7 @@
         #decisionPanel.wait { border-left-color: #f59e0b; }
         .dp-trend {
           display: flex; align-items: center; justify-content: space-between; gap: 8px;
-          padding: 6px 10px; border-radius: 8px; margin-bottom: 10px;
+          padding: 6px 10px; border-radius: 8px; margin-bottom: 8px;
           font-size: 11px; font-weight: 700;
         }
         .dp-trend.up       { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
@@ -215,6 +215,14 @@
         .dp-trend.sideways { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
         .dp-trend-badge    { letter-spacing: .4px; white-space: nowrap; }
         .dp-trend-meta     { font-family: monospace; font-size: 10px; font-weight: 600; opacity: .9; text-align: right; }
+        .dp-3c {
+          display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          padding: 5px 10px; border-radius: 7px; margin-bottom: 10px;
+          font-size: 11px; font-weight: 700; font-family: monospace;
+          background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb;
+        }
+        .dp-3c.buy  { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+        .dp-3c.sell { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
         .dp-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
         .dp-signal { font-size: 18px; font-weight: 800; letter-spacing: 1px; padding: 4px 14px; border-radius: 8px; color: #fff; background: #9ca3af; }
         .buy  .dp-signal { background: #16a34a; }
@@ -292,6 +300,7 @@
             <div class="sec-title" id="layerTitle" style="display:none">Other Layers</div>
             <div id="dynamicLayersContainer"></div>
             <div class="sec-title">Display</div>
+            <label><input type="checkbox" id="chkThreeCandle" checked><span>3-Candle Breakout</span></label>
             <label><input type="checkbox" id="chkVolume" checked><span>Volume</span></label>
             <label><input type="checkbox" id="chkPrice"  checked><span>Current Price</span></label>
             <label><input type="checkbox" id="chkGrid"   checked><span>Grid</span></label>
@@ -319,6 +328,10 @@
         <div class="dp-trend sideways" id="dpTrend">
             <span class="dp-trend-badge" id="dpTrendBadge">TREND: –</span>
             <span class="dp-trend-meta"  id="dpTrendMeta"></span>
+        </div>
+        <div class="dp-3c" id="dp3c">
+            <span id="dp3cStatus">3C: –</span>
+            <span id="dp3cMeta"></span>
         </div>
         <div class="dp-head">
             <span class="dp-signal" id="dpSignal">–</span>
