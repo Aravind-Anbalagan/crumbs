@@ -11,4 +11,7 @@ public class ChartDataDTO {
     private CandleDTO         previousDayCandle;
     private List<SignalDTO>   signals;
     private DecisionDTO decision;
+    private TrendDTO trend;
+    public TrendDTO getTrend() { return trend; }
+    public void setTrend(TrendDTO trend) { this.trend = trend; }
 }

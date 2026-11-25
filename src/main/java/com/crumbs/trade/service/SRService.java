@@ -12,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import com.crumbs.trade.dto.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -22,12 +23,6 @@ import org.springframework.stereotype.Service;
 import com.angelbroking.smartapi.SmartConnect;
 import com.crumbs.trade.broker.AngelOne;
 import com.crumbs.trade.cache.CandleCache;
-import com.crumbs.trade.dto.CandleDTO;
-import com.crumbs.trade.dto.CandleRequestDto;
-import com.crumbs.trade.dto.ChartDataDTO;
-import com.crumbs.trade.dto.PriceActionResult;
-import com.crumbs.trade.dto.SRLevelDTO;
-import com.crumbs.trade.dto.StrategyDTO;
 import com.crumbs.trade.entity.Indexes;
 import com.crumbs.trade.entity.PricesIndex;
 import com.crumbs.trade.entity.Signals;
@@ -59,6 +54,7 @@ public class SRService {
     @Autowired LevelRepository levelRepo;
     @Autowired CandleCache candleCache;
     @Autowired TradeDecisionService decisionService;
+    @Autowired TrendService trendService;
     // ── Previous-day OHLC cache ───────────────────────────────────────────────
     // FIX 1: Store the date alongside the value so the entry is evicted on the
     //         next calendar day rather than living forever in the JVM.
@@ -67,7 +63,8 @@ public class SRService {
 
     private static final ZoneId             NSE_ZONE  = ZoneId.of("Asia/Kolkata");
     private static final DateTimeFormatter  FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-
+    private static final Map<String, String> lastFetchedToDate = new ConcurrentHashMap<>();
+    private static final Map<String, Long>   lastFetchedAt     = new ConcurrentHashMap<>();
     Logger logger = LoggerFactory.getLogger(SRService.class);
 
     // ==================== TIMEFRAME ENUM ====================
@@ -103,16 +100,39 @@ public class SRService {
 
     public List<PricesIndex> getCandleData(CandleRequestDto candleRequestDto, String name, String symbol) {
         Indexes indexes = indexesRepo.findByNameAndSymbol(name, symbol);
-        if (indexes != null) {
-            chartService.readCandle(
-                indexes, candleRequestDto.getType(), false,
-                candleRequestDto.getTimeFrame(), name,
-                candleRequestDto.getFromDate(), candleRequestDto.getToDate(), name
-            );
-            String cacheKey = CandleCache.cacheKey(name, symbol, candleRequestDto.getTimeFrame());
-            return candleCache.get(cacheKey);
+        if (indexes == null) return Collections.emptyList();
+
+        String tf       = candleRequestDto.getTimeFrame();
+        String cacheKey = CandleCache.cacheKey(name, symbol, tf);
+        List<PricesIndex> cached = candleCache.get(cacheKey);
+
+        long now = System.currentTimeMillis();
+        boolean sameToDate  = Objects.equals(candleRequestDto.getToDate(), lastFetchedToDate.get(cacheKey));
+        boolean freshEnough = (now - lastFetchedAt.getOrDefault(cacheKey, 0L)) < minRefreshMs(tf);
+
+        if (cached != null && !cached.isEmpty() && sameToDate && freshEnough) {
+            return cached;
         }
-        return Collections.emptyList();
+
+        chartService.readCandle(
+                indexes, candleRequestDto.getType(), false,
+                tf, name,
+                candleRequestDto.getFromDate(), candleRequestDto.getToDate(), name
+        );
+        lastFetchedToDate.put(cacheKey, candleRequestDto.getToDate());
+        lastFetchedAt.put(cacheKey, now);
+        return candleCache.get(cacheKey);
+    }
+
+    private long minRefreshMs(String tf) {
+        return switch (tf.toUpperCase()) {
+            case "ONE_MINUTE"     -> 30_000L;    // 30 sec
+            case "FIVE_MINUTE"    -> 60_000L;    // 1 min
+            case "FIFTEEN_MINUTE" -> 180_000L;   // 3 min
+            case "THIRTY_MINUTE"  -> 300_000L;   // 5 min
+            case "ONE_HOUR"       -> 300_000L;   // 5 min
+            default               -> 900_000L;   // 15 min (ONE_DAY)
+        };
     }
 
     public BigDecimal getCurrentPriceForIndex(String name, String symbol) {
@@ -272,12 +292,23 @@ public class SRService {
         TimerLog.end(logger, "getPreviousDayCandle", t);
 
         dto.setCandles(toCandleList(candles));
-        BigDecimal live = getCurrentPriceForIndex(name, symbol);   // ZERO on failure, so the decision falls back to last close
+        // 1) Fetch higher timeframe candles (uses CandleCache — fast after first load)
+        String htfTf = trendService.parentTimeFrame(timeFrame);
+        List<CandleDTO> htfCandles = htfTf.equalsIgnoreCase(timeFrame)
+                ? dto.getCandles()
+                : toCandleList(dedupe(getCandleData(getCandleTiming(htfTf, exchange), name, symbol)));
+
+        // 2) Compute MTF + EMA + ADX trend
+        TrendDTO trend = trendService.analyze(dto.getCandles(), timeFrame, htfCandles, htfTf);
+        dto.setTrend(trend);
+
+        // 3) Pass trend into decision engine as a hard directional gate
+        BigDecimal live = getCurrentPriceForIndex(name, symbol);
         if (live == null || live.signum() <= 0) {
             logger.warn("Live price unavailable for {}, using last close", name);
         }
         dto.setDecision(decisionService.decide(dto.getCandles(), result.getSupportLevels(),
-                result.getResistanceLevels(), live, timeFrame));
+                result.getResistanceLevels(), live, timeFrame, trend));
         TimerLog.end(logger, "=== TOTAL analyzeIntraday ===", total);
         return dto;
     }

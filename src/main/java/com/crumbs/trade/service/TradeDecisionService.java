@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import com.crumbs.trade.dto.TrendDTO;
 import org.springframework.stereotype.Service;
 
 import com.crumbs.trade.dto.CandleDTO;
@@ -26,16 +27,37 @@ public class TradeDecisionService {
 
     public DecisionDTO decide(List<CandleDTO> raw, List<SRLevelDTO> sup, List<SRLevelDTO> res,
                               BigDecimal live, String tf) {
+        return decide(raw, sup, res, live, tf, null);
+    }
+
+    public DecisionDTO decide(List<CandleDTO> raw, List<SRLevelDTO> sup, List<SRLevelDTO> res,
+                              BigDecimal live, String tf, TrendDTO trend) {
         List<C> cs = clean(raw);
         if (cs.size() < MIN_CANDLES) return out("WAIT", "Not enough clean candle data.", null, null, null);
+
+        // ── Hard Trend Gate (runs BEFORE S&R) ──
+        String allowed = (trend != null && trend.getAllowedSide() != null) ? trend.getAllowedSide() : "BOTH";
+        if ("NONE".equalsIgnoreCase(allowed)) {
+            return out("WAIT", trend.getReason(), null, "Wait for MTF alignment and ADX >= 20.", null);
+        }
+
         double atr = atr(cs);
         if (atr <= 0) return out("WAIT", "Cannot measure volatility.", null, null, null);
         double px = (live != null && live.signum() > 0) ? live.doubleValue() : cs.get(cs.size() - 1).c;
 
         List<Double> S = prices(sup), R = prices(res);
-        Double s = nearest(S, px, atr, true);
-        Double r = nearest(R, px, atr, false);
-        if (s == null && r == null) return out("WAIT", "No strong level nearby.", null, null, null);
+        // Only look at the allowed side's levels for entry (opposite side still used for targets)
+        Double s = "SELL".equalsIgnoreCase(allowed) ? null : nearest(S, px, atr, true);
+        Double r = "BUY".equalsIgnoreCase(allowed)  ? null : nearest(R, px, atr, false);
+
+        if (s == null && r == null) {
+            String msg = "BUY".equalsIgnoreCase(allowed)
+                    ? "Trend is UP (BUY only). No support nearby — wait for a pullback."
+                    : "SELL".equalsIgnoreCase(allowed)
+                    ? "Trend is DOWN (SELL only). No resistance nearby — wait for a rally."
+                    : "No strong level nearby.";
+            return out("WAIT", msg, null, null, null);
+        }
 
         boolean useSupport = r == null || (s != null && Math.abs(px - s) <= Math.abs(r - px));
         return useSupport
