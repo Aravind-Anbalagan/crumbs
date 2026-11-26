@@ -1,5 +1,6 @@
 package com.crumbs.trade.service;
 
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import com.crumbs.trade.dto.CandleDTO;
@@ -69,10 +70,19 @@ public class TrendService {
 
     private record TfResult(String dir, double ema20, double ema50, double adx) {}
 
-    private TfResult evaluateTf(List<CandleDTO> cs) {
-        if (cs == null || cs.size() < EMA_SLOW) {
+    private TfResult evaluateTf(List<CandleDTO> raw) {
+        if (raw == null || raw.isEmpty()) {
             return new TfResult("SIDEWAYS", 0, 0, 0);
         }
+        List<CandleDTO> cs = raw.stream()
+                .filter(c -> c != null && c.getHigh() != null && c.getLow() != null && c.getClose() != null)
+                .sorted(Comparator.comparingLong(CandleDTO::getTime))
+                .toList();
+
+        if (cs.size() < EMA_SLOW) {
+            return new TfResult("SIDEWAYS", 0, 0, 0);
+        }
+
         double close = cs.get(cs.size() - 1).getClose().doubleValue();
         double ema20 = ema(cs, EMA_FAST);
         double ema50 = ema(cs, EMA_SLOW);
@@ -147,6 +157,7 @@ public class TrendService {
     }
 
     private String shortTf(String tf) {
+        if (tf == null) return "1D";
         return switch (tf.toUpperCase()) {
             case "ONE_MINUTE"     -> "1M";
             case "FIVE_MINUTE"    -> "5M";
@@ -157,6 +168,6 @@ public class TrendService {
         };
     }
 
-    private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
-    private double round2(double v) { return Math.round(v * 100.0) / 100.0; }
+    private double round1(double v) { return Double.isFinite(v) ? Math.round(v * 10.0) / 10.0 : 0.0; }
+    private double round2(double v) { return Double.isFinite(v) ? Math.round(v * 100.0) / 100.0 : 0.0; }
 }

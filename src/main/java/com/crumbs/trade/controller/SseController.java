@@ -20,9 +20,8 @@ public class SseController {
 
     @GetMapping(value = "/stream/market", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(HttpServletResponse response) {
-        response.setHeader("X-Accel-Buffering", "no");  // disable nginx buffering
-        response.setHeader("Cache-Control", "no-cache");
-        response.setHeader("Connection", "keep-alive");
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
         return sseService.register();
     }
 }

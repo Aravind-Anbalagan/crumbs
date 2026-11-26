@@ -31,7 +31,7 @@ let isFrozen=false;
 let ssePrevPrice=null;
 let srSupLines=[], srResLines=[], srRegistry={};
 let layerReg={}, layerColorIdx=0;
-let sseSource=null, iKeyCurrent=null;
+let sseSource=null, sseReconnectTimer=null, iKeyCurrent=null;
 let decisionLine=null;
 const iKeyCache={}, pendingTicks=[];
 
@@ -353,20 +353,20 @@ function renderThreeCandle(tc){
     return;
   }
 
-  // 1) Crisp BUY / SELL / SL markers directly on trigger candles
- const markers = (tc.events || []).map(ev => {
-     const isBuy = ev.type === 'BUY', isSell = ev.type === 'SELL';
-     return {
-       time:     toChartTime(ev.time),
-       position: isBuy ? 'belowBar' : 'aboveBar',
-       color:    isBuy ? '#16a34a' : isSell ? '#dc2626' : '#f59e0b',
-       shape:    isBuy ? 'arrowUp' : isSell ? 'arrowDown' : 'circle',
-       text:     `${ev.text} ${Number(ev.price).toFixed(1)}`,
-     };
-   }).sort((a, b) => (typeof a.time === 'string' ? a.time.localeCompare(b.time) : a.time - b.time));
+  // 1) BUY / SELL / SL markers with trigger price on candles
+  const markers = (tc.events || []).map(ev => {
+    const isBuy = ev.type === 'BUY', isSell = ev.type === 'SELL';
+    return {
+      time:     toChartTime(ev.time),
+      position: isBuy ? 'belowBar' : 'aboveBar',
+      color:    isBuy ? '#16a34a' : isSell ? '#dc2626' : '#f59e0b',
+      shape:    isBuy ? 'arrowUp' : isSell ? 'arrowDown' : 'circle',
+      text:     `${ev.text} ${Number(ev.price).toFixed(1)}`,
+    };
+  }).sort((a, b) => (typeof a.time === 'string' ? a.time.localeCompare(b.time) : a.time - b.time));
   candleSeries.setMarkers(markers);
 
-  // 2) Active Entry & Trail SL price lines only (no connecting lines across candles)
+  // 2) Active Entry & Trail SL price lines only
   const st = (tc.status || 'FLAT').toUpperCase();
   if (st !== 'FLAT') {
     const col = st === 'BUY' ? '#16a34a' : '#dc2626';
@@ -468,13 +468,21 @@ async function resolveKey(name){
     pendingTicks.length=0;
   }
 }
+function disconnectSSE(){
+  clearTimeout(sseReconnectTimer); sseReconnectTimer=null;
+  if(sseSource){ sseSource.close(); sseSource=null; }
+}
 function connectSSE(){
-  if(sseSource){sseSource.close();sseSource=null;}
+  disconnectSSE();
+  if(document.hidden) return;
   sseSource=new EventSource('/api/stream/market');
   sseSource.onopen=()=>{$('sseDot').className='live';$('sseLabel').textContent='Live';};
   sseSource.onerror=()=>{
     $('sseDot').className='';$('sseLabel').textContent='Reconnecting…';
-    sseSource.close();sseSource=null;setTimeout(connectSSE,3000);
+    disconnectSSE();
+    if(!document.hidden){
+      sseReconnectTimer=setTimeout(connectSSE, 3000);
+    }
   };
   sseSource.addEventListener('ltp',e=>{
     let d;try{d=JSON.parse(e.data);}catch(ex){return;}
@@ -646,6 +654,24 @@ function updateChart(data){
     candles.push({ time: finalTime, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: Number(c.volume) || 0 });
   }
   candles.sort((a, b) => (typeof a.time === 'string' ? a.time.localeCompare(b.time) : a.time - b.time));
+
+  // Preserve live SSE high/low/close if the 30s poll is slightly behind the live stream
+  if (!isFirstLoad && lastCandles.length && candles.length) {
+    const live = lastCandles[lastCandles.length - 1];
+    const api  = candles[candles.length - 1];
+    const sameBar   = live.time === api.time;
+    const liveAhead = typeof live.time === 'string' ? live.time > api.time : +live.time > +api.time;
+
+    if (sameBar) {
+      const c = ssePrevPrice !== null ? ssePrevPrice : api.close;
+      api.high  = Math.max(api.high, live.high, c);
+      api.low   = Math.min(api.low,  live.low,  c);
+      api.close = c;
+    } else if (liveAhead) {
+      candles.push(live);
+    }
+  }
+
   syncLayers(data);
   if(isFirstLoad){
     candleSeries.setData(candles);
@@ -673,7 +699,7 @@ function updateChart(data){
     }else{
       const nl=candles[candles.length-1],ol=lastCandles[lastCandles.length-1];
       if(ol.time===nl.time){
-        if(ol.close!==nl.close||ol.high!==nl.high||ol.low!==nl.low||ol.volume!==nl.volume){
+        if(ol.open!==nl.open||ol.close!==nl.close||ol.high!==nl.high||ol.low!==nl.low||ol.volume!==nl.volume){
           candleSeries.update(nl); volumeSeries.update({time:nl.time,value:nl.volume,color:vc(nl)});
           lastCandles[lastCandles.length-1]=nl;
         }
@@ -923,6 +949,7 @@ window.addEventListener('resize',()=>{if(chart)chart.resize(chartEl.clientWidth,
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){
     stopClock(); clearTimeout(refreshTimer); refreshTimer=null;
+    disconnectSSE();
   }else{
     startClock(); connectSSE();
     if(chkLive.checked && chartReady && !isRefreshing) refresh(false);

@@ -10,6 +10,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 
 @Service
 public class SseService {
@@ -19,22 +20,29 @@ public class SseService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public SseEmitter register() {
-        SseEmitter emitter = new SseEmitter(0L); // 0L = no timeout
+        SseEmitter emitter = new SseEmitter(0L);
 
         emitter.onCompletion(() -> {
             emitters.remove(emitter);
             log.info("SSE client disconnected (completion). Total: {}", emitters.size());
         });
         emitter.onTimeout(() -> {
-            emitter.complete(); // ← must explicitly complete before removing
             emitters.remove(emitter);
+            completeQuietly(emitter);
             log.info("SSE client timed out. Total: {}", emitters.size());
         });
         emitter.onError(e -> {
-            emitter.completeWithError(e); // ← must explicitly complete before removing
             emitters.remove(emitter);
-            log.info("SSE client error. Total: {}", emitters.size());
+            log.info("SSE client error ({}). Total: {}", e.getMessage(), emitters.size());
         });
+
+        try {
+            // Flushes HTTP headers immediately so EventSource.onopen fires right away
+            emitter.send(SseEmitter.event().comment("connected"));
+        } catch (Exception e) {
+            completeQuietly(emitter);
+            return emitter;
+        }
 
         emitters.add(emitter);
         log.info("SSE client connected. Total: {}", emitters.size());
@@ -52,35 +60,36 @@ public class SseService {
             return;
         }
 
-        List<SseEmitter> dead = new ArrayList<>();
-        for (SseEmitter emitter : emitters) {
-            try {
-                emitter.send(SseEmitter.event().name(eventName).data(json));
-            } catch (Exception e) {
-                dead.add(emitter); // broken pipe = client gone
-            }
-        }
-        if (!dead.isEmpty()) {
-            emitters.removeAll(dead);
-            log.info("Removed {} dead emitters. Total: {}", dead.size(), emitters.size());
-        }
+        sendToAll(() -> SseEmitter.event().name(eventName).data(json), "Broadcast");
     }
 
-    // Heartbeat every 15s — keeps connection alive AND flushes dead emitters
+    // Heartbeat every 15s — keeps HTTP/2 proxy alive and clears dead clients
     @Scheduled(fixedRate = 15000)
     public void heartbeat() {
         if (emitters.isEmpty()) return;
+        sendToAll(() -> SseEmitter.event().name("heartbeat").data("ping"), "Heartbeat");
+    }
+
+    private void sendToAll(Supplier<SseEmitter.SseEventBuilder> eventSupplier, String source) {
         List<SseEmitter> dead = new ArrayList<>();
         for (SseEmitter emitter : emitters) {
             try {
-                emitter.send(SseEmitter.event().name("heartbeat").data("ping"));
+                emitter.send(eventSupplier.get());
             } catch (Exception e) {
                 dead.add(emitter);
             }
         }
         if (!dead.isEmpty()) {
             emitters.removeAll(dead);
-            log.info("Heartbeat removed {} dead emitters. Total: {}", dead.size(), emitters.size());
+            dead.forEach(this::completeQuietly);
+            log.info("{} removed {} dead emitters. Total: {}", source, dead.size(), emitters.size());
+        }
+    }
+
+    private void completeQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ignored) {
         }
     }
 }

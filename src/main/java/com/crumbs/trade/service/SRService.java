@@ -345,7 +345,7 @@ public class SRService {
         requestObject.put("todate",      toDate);
 
         JSONArray responseArray = smartConnect.candleData(requestObject);
-        if (!responseArray.isEmpty()) {
+        if (responseArray != null && !responseArray.isEmpty()) {
             JSONArray ohlcArray = (JSONArray) responseArray.get(0);
             candleDTO.setOpen(new BigDecimal(String.valueOf(ohlcArray.getDouble(1))));
             candleDTO.setHigh(new BigDecimal(String.valueOf(ohlcArray.getDouble(2))));
@@ -404,14 +404,15 @@ public class SRService {
     }
 
     private List<PricesIndex> dedupe(List<PricesIndex> in) {
+        if (in == null || in.isEmpty()) return Collections.emptyList();
         Map<Instant, PricesIndex> m = new TreeMap<>();
         for (PricesIndex p : in) {
-            if (p.getTimestamp() == null) continue;
+            if (p == null || p.getTimestamp() == null) continue;
             Instant key = Instant.parse(p.getTimestamp());
             PricesIndex old = m.get(key);
             boolean hasVol   = p.getVolume() != null && p.getVolume().signum() > 0;
             boolean oldNoVol = old == null || old.getVolume() == null || old.getVolume().signum() == 0;
-            if (old == null || (hasVol && oldNoVol)) m.put(key, p);   // keep the row with volume
+            if (old == null || (hasVol && oldNoVol)) m.put(key, p);
         }
         return new ArrayList<>(m.values());
     }
