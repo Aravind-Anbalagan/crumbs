@@ -8,6 +8,7 @@
   --st-warn-bg: rgba(251, 191, 36, 0.16);
   --st-side-bg: rgba(148, 163, 184, 0.15);
   --st-accent: #4facfe;
+  --st-accent-bg: rgba(79, 172, 254, 0.16);
   --st-pill-bg: rgba(255, 255, 255, 0.04);
   --st-input-bg: rgba(15, 20, 32, 0.9);
   --st-row-atm: rgba(79, 172, 254, 0.12);
@@ -34,6 +35,7 @@
   --st-warn-bg: rgba(217, 119, 6, 0.14);
   --st-side-bg: rgba(100, 116, 139, 0.12);
   --st-accent: #0288d1;
+  --st-accent-bg: rgba(2, 136, 209, 0.13);
   --st-pill-bg: rgba(15, 23, 42, 0.04);
   --st-input-bg: #ffffff;
   --st-row-atm: rgba(2, 136, 209, 0.1);
@@ -207,10 +209,10 @@
   gap: 8px;
 }
 
-/* KPI Grid */
+/* KPI Grid (Seller Action + 4 Core Cards) */
 .st-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   flex-shrink: 0;
 }
@@ -249,6 +251,54 @@
 .st-bear { color: var(--st-bear); }
 .st-warn { color: var(--st-warn); }
 .st-muted { color: var(--text-muted); }
+
+/* Seller Action Card & Pill */
+.st-action-card.tone-bull { border-color: var(--st-bull); }
+.st-action-card.tone-accent { border-color: var(--st-accent); }
+.st-action-card.tone-warn { border-color: var(--st-warn); }
+.st-action-card.tone-bear { border-color: var(--st-bear); }
+
+.st-action-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.st-action-pill.tone-bull {
+  background: var(--st-bull-bg);
+  color: var(--st-bull);
+  border-color: var(--st-bull);
+}
+
+.st-action-pill.tone-accent {
+  background: var(--st-accent-bg);
+  color: var(--st-accent);
+  border-color: var(--st-accent);
+}
+
+.st-action-pill.tone-warn {
+  background: var(--st-warn-bg);
+  color: var(--st-warn);
+  border-color: var(--st-warn);
+}
+
+.st-action-pill.tone-bear {
+  background: var(--st-bear-bg);
+  color: var(--st-bear);
+  border-color: var(--st-bear);
+}
+
+.st-action-pill.tone-muted {
+  background: var(--st-side-bg);
+  color: var(--text-muted);
+  border-color: var(--glass-border);
+}
 
 /* Chart Container */
 .st-chart-shell {
@@ -480,9 +530,12 @@
 .st-zone.RESISTANCE { background: var(--st-bear-bg); color: var(--st-bear); }
 
 /* Responsive Breakpoints */
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .st-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .st-action-card {
+    grid-column: 1 / -1;
   }
   .st-chart-host {
     height: 360px;

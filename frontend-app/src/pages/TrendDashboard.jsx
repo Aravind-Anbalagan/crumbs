@@ -17,7 +17,7 @@ const API_ROOT = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const TREND_API = `${API_ROOT}/api/trend`;
 
 const POLL_MS = 60_000;
-const RADIUS_OPTIONS = [1, 2, 3, 4, 5];
+const RADIUS_OPTIONS = [3, 5, 10, 0]; // Default ±3 (7); 0 = ALL (Full Chain)
 
 const REGIME_BG = {
   dark: {
@@ -72,7 +72,7 @@ async function saveStrikeRadiusConfig(name, radius) {
 }
 
 // =========================================================================
-// Formatting & Chart Helpers
+// Formatting, Seller Action & Chart Helpers
 // =========================================================================
 function formatCompact(val) {
   if (val == null) return '-';
@@ -90,6 +90,118 @@ function formatNum(val, decimals = 1) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+}
+
+function formatRadiusLabel(r) {
+  return r === 0 ? 'ALL (Full Chain)' : `±${r} (${2 * r + 1})`;
+}
+
+function formatDurationMins(mins) {
+  if (mins == null || mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function getSellerAction(latest) {
+  if (!latest) return null;
+  const { confirmedState, pendingState, pendingMinutes, volRegime } = latest;
+
+  if (pendingState && (pendingMinutes ?? 0) >= 5) {
+    return {
+      label: 'PAUSE — FLIP PENDING',
+      tone: 'warn',
+      detail: `Wait for ${pendingState} confirmation before fresh entry`,
+    };
+  }
+
+  if (confirmedState === 'SIDEWAYS') {
+    if (volRegime === 'EXPANSION_RISK') {
+      return {
+        label: 'WAIT — IV EXPANDING',
+        tone: 'warn',
+        detail: 'Spot is flat but premiums are expanding above VWAP',
+      };
+    }
+    return {
+      label: 'SELL STRADDLE',
+      tone: 'bull',
+      detail:
+        volRegime === 'THETA_DECAY'
+          ? 'Sideways + Theta Decay — ideal for both legs'
+          : 'Sideways regime — neutral selling favored',
+    };
+  }
+
+  if (confirmedState === 'BULLISH') {
+    if (volRegime === 'EXPANSION_RISK') {
+      return {
+        label: 'NO SELL — BULL BREAKOUT',
+        tone: 'bear',
+        detail: 'Upside breakout + IV expansion — hedge/exit CE',
+      };
+    }
+    return {
+      label: 'SELL PE ONLY',
+      tone: 'accent',
+      detail: 'Controlled uptrend — avoid naked CE selling',
+    };
+  }
+
+  if (confirmedState === 'BEARISH') {
+    if (volRegime === 'EXPANSION_RISK') {
+      return {
+        label: 'NO SELL — BEAR BREAKOUT',
+        tone: 'bear',
+        detail: 'Downside breakout + IV expansion — hedge/exit PE',
+      };
+    }
+    return {
+      label: 'SELL CE ONLY',
+      tone: 'accent',
+      detail: 'Controlled downtrend — avoid naked PE selling',
+    };
+  }
+
+  return { label: 'OBSERVE', tone: 'muted', detail: 'Waiting for regime clarity' };
+}
+
+function getSellerActionWithSince(timeline, latest) {
+  const current = getSellerAction(latest);
+  if (!current || !latest) return null;
+
+  let sinceTime = latest.timeLabel || '--:--';
+  let sinceEpoch = latest.epochSeconds ?? 0;
+
+  if (Array.isArray(timeline) && timeline.length > 0) {
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      const pt = timeline[i];
+      if (!pt || (latest.epochSeconds != null && pt.epochSeconds > latest.epochSeconds)) {
+        continue;
+      }
+      const ptAction = getSellerAction(pt);
+      if (ptAction && ptAction.label === current.label) {
+        sinceTime = pt.timeLabel || sinceTime;
+        sinceEpoch = pt.epochSeconds ?? sinceEpoch;
+      } else {
+        break;
+      }
+    }
+  }
+
+  const ageMins =
+    latest.epochSeconds != null && sinceEpoch > 0
+      ? Math.max(0, Math.round((latest.epochSeconds - sinceEpoch) / 60))
+      : 0;
+
+  return {
+    ...current,
+    sinceTime,
+    ageMins,
+    ageLabel: formatDurationMins(ageMins),
+    isNew: ageMins <= 15,
+  };
 }
 
 function buildMarker(pt) {
@@ -347,7 +459,7 @@ export default function TrendDashboard() {
   const [tradeDate, setTradeDate] = useState('');
   const [instruments, setInstruments] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [strikeRadius, setStrikeRadius] = useState(3);
+  const [strikeRadius, setStrikeRadius] = useState(3); // Default ±3 (7 strikes); 0 = ALL
   const [savedRadius, setSavedRadius] = useState(3);
   const [chartData, setChartData] = useState(null);
   const [latestTick, setLatestTick] = useState(null);
@@ -451,16 +563,23 @@ export default function TrendDashboard() {
       const res = await fetchTrendLatest(selected.name, selected.expiry, strikeRadius);
       if (res?.latest) {
         setLatestTick(res.latest);
-        setChartData((prev) =>
-          prev
-            ? {
-                ...prev,
-                consolidatedMessage: res.consolidatedMessage,
-                latest: res.latest,
-                strikeBreakdown: res.strikeBreakdown,
-              }
-            : prev
-        );
+        setChartData((prev) => {
+          if (!prev) return prev;
+          const prevTimeline = prev.timeline || [];
+          const lastPt = prevTimeline[prevTimeline.length - 1];
+          const nextTimeline =
+            lastPt && lastPt.epochSeconds === res.latest.epochSeconds
+              ? [...prevTimeline.slice(0, -1), res.latest]
+              : [...prevTimeline, res.latest];
+
+          return {
+            ...prev,
+            consolidatedMessage: res.consolidatedMessage,
+            latest: res.latest,
+            timeline: nextTimeline,
+            strikeBreakdown: res.strikeBreakdown,
+          };
+        });
         setInstruments((prev) =>
           prev.map((inst) =>
             inst.name === selected.name && inst.expiry === selected.expiry
@@ -548,9 +667,15 @@ export default function TrendDashboard() {
     : `Loading ${selected?.name || ''} trend chart...`;
 
   const latest = chartData?.latest;
+  const sellerAction = getSellerActionWithSince(chartData?.timeline, latest);
   const stateClass = latest?.confirmedState || 'SIDEWAYS';
   const stateTxtClass =
     stateClass === 'BULLISH' ? 'st-bull' : stateClass === 'BEARISH' ? 'st-bear' : '';
+  const volLabel = (latest?.volRegime || 'NEUTRAL_VOL').replaceAll('_', ' ');
+  const activeRadius = chartData?.strikeRadius ?? strikeRadius;
+  const radiusChoices = RADIUS_OPTIONS.includes(strikeRadius)
+    ? RADIUS_OPTIONS
+    : [...RADIUS_OPTIONS, strikeRadius];
 
   return (
     <div className={`st-page ${isFullscreen ? 'st-fullscreen' : ''}`}>
@@ -587,6 +712,12 @@ export default function TrendDashboard() {
         </div>
 
         <div className="st-controls">
+          {isFullscreen && sellerAction && (
+            <span className={`st-action-pill tone-${sellerAction.tone}`} title={sellerAction.detail}>
+              {sellerAction.label} • Since {sellerAction.sinceTime} ({sellerAction.ageLabel})
+            </span>
+          )}
+
           <label className="st-ctrl-label">
             <span>Strikes</span>
             <select
@@ -595,9 +726,9 @@ export default function TrendDashboard() {
               onChange={(e) => setStrikeRadius(Number(e.target.value))}
               disabled={isBusy}
             >
-              {RADIUS_OPTIONS.map((r) => (
+              {radiusChoices.map((r) => (
                 <option key={r} value={r}>
-                  ±{r} ({2 * r + 1})
+                  {formatRadiusLabel(r)}
                 </option>
               ))}
             </select>
@@ -659,9 +790,26 @@ export default function TrendDashboard() {
         </div>
       )}
 
-      {/* KPI Strip */}
+      {/* KPI Strip (Seller Action + 4 Core Signals) */}
       {!isFullscreen && latest && (
         <section className={`st-kpi-grid ${isBusy ? 'st-dimmed' : ''}`}>
+          {sellerAction && (
+            <div className={`st-glass st-kpi-card st-action-card tone-${sellerAction.tone}`}>
+              <span className="st-kpi-label">
+                Seller Action • Since {sellerAction.sinceTime} ({sellerAction.ageLabel})
+                {sellerAction.isNew && <span className="st-new-tag">NEW</span>}
+              </span>
+              <span className="st-kpi-value">
+                <span className={`st-action-pill tone-${sellerAction.tone}`}>
+                  {sellerAction.label}
+                </span>
+              </span>
+              <span className="st-kpi-sub" title={sellerAction.detail}>
+                {sellerAction.detail}
+              </span>
+            </div>
+          )}
+
           <div className="st-glass st-kpi-card">
             <span className="st-kpi-label">Confirmed Trend</span>
             <span className={`st-kpi-value ${stateTxtClass}`}>
@@ -669,7 +817,7 @@ export default function TrendDashboard() {
               {latest.pendingState && (
                 <span className="st-warn" style={{ fontSize: 11 }}>
                   ⏳ → {latest.pendingState} ({Math.floor(latest.pendingMinutes)}m/
-                  {chartData?.confirmMinutes ?? 8}m)
+                  {chartData?.confirmMinutes ?? 15}m)
                 </span>
               )}
             </span>
@@ -680,7 +828,9 @@ export default function TrendDashboard() {
           </div>
 
           <div className="st-glass st-kpi-card">
-            <span className="st-kpi-label">VWAP Consensus (±{chartData?.strikeRadius})</span>
+            <span className="st-kpi-label">
+              VWAP Consensus ({activeRadius === 0 ? 'ALL' : `±${activeRadius}`})
+            </span>
             <span
               className={`st-kpi-value ${
                 latest.priceSignal === 'BEARISH'
@@ -720,7 +870,7 @@ export default function TrendDashboard() {
                   : ''
               }`}
             >
-              {latest.volRegime.replace('_', ' ')}
+              {volLabel}
             </span>
             <span className="st-kpi-sub">
               ATM Comb vs VWAP: {latest.atmCombDiffPct > 0 ? '+' : ''}
@@ -746,11 +896,12 @@ export default function TrendDashboard() {
         <section className={`st-glass st-strike-section ${isBusy ? 'st-dimmed' : ''}`}>
           <div className="st-strike-header">
             <strong>
-              {chartData.name} ({chartData.expiry}) — ATM ±{chartData.strikeRadius} (
+              {chartData.name} ({chartData.expiry}) —{' '}
+              {activeRadius === 0 ? 'ALL Strikes' : `ATM ±${activeRadius}`} (
               {chartData.strikeBreakdown.length} Strikes)
             </strong>
             <span className={`st-state-pill ${stateClass}`}>
-              {stateClass} • {latest?.volRegime?.replace('_', ' ') || 'NEUTRAL VOL'}
+              {stateClass} • {volLabel}
             </span>
           </div>
 

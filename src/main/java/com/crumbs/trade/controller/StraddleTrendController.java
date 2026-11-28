@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -29,8 +30,6 @@ public class StraddleTrendController {
     private final StraddleTrendService   trendService;
     private final StraddleTrendScheduler trendScheduler;
     private final StraddleTrendCache     trendCache;
-
-    public record StrikeRadiusResponse(String target, int strikeRadius, int totalStrikes) {}
 
     public StraddleTrendController(
             StraddleTrendService trendService,
@@ -79,12 +78,14 @@ public class StraddleTrendController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) Integer strikeRadius) {
 
-        boolean useDefaultRadius = (strikeRadius == null
-                || strikeRadius == trendService.getStrikeRadius(name));
+        int defaultRadius = trendService.getStrikeRadius(name);
+        int effectiveRadius = (strikeRadius == null)
+                ? defaultRadius
+                : trendService.clampRadius(strikeRadius);
 
-        if (date == null && useDefaultRadius) {
+        if (date == null && effectiveRadius == defaultRadius) {
             TrendChartResponse cached = trendCache.get(name, expiry).orElse(null);
-            if (cached != null) {
+            if (cached != null && cached.strikeRadius() == effectiveRadius) {
                 return ResponseEntity.ok(cached);
             }
             TrendChartResponse computed = trendService.evaluateSession(name, expiry, null, null);
@@ -95,7 +96,7 @@ public class StraddleTrendController {
         }
 
         return ResponseEntity.ok(
-                trendService.evaluateSession(name, expiry, date, strikeRadius)
+                trendService.evaluateSession(name, expiry, date, effectiveRadius)
         );
     }
 
@@ -105,38 +106,51 @@ public class StraddleTrendController {
             @RequestParam String expiry,
             @RequestParam(required = false) Integer strikeRadius) {
 
-        boolean useDefaultRadius = (strikeRadius == null
-                || strikeRadius == trendService.getStrikeRadius(name));
+        int defaultRadius = trendService.getStrikeRadius(name);
+        int effectiveRadius = (strikeRadius == null)
+                ? defaultRadius
+                : trendService.clampRadius(strikeRadius);
 
         TrendChartResponse full;
-        if (useDefaultRadius) {
-            full = trendCache.get(name, expiry)
-                    .orElseGet(() -> {
-                        TrendChartResponse fresh = trendService.evaluateSession(name, expiry, null, null);
-                        if (fresh.latest() != null) {
-                            trendCache.put(fresh);
-                        }
-                        return fresh;
-                    });
+        if (effectiveRadius == defaultRadius) {
+            TrendChartResponse cached = trendCache.get(name, expiry).orElse(null);
+            if (cached != null && cached.strikeRadius() == effectiveRadius) {
+                full = cached;
+            } else {
+                full = trendService.evaluateSession(name, expiry, null, null);
+                if (full.latest() != null) {
+                    trendCache.put(full);
+                }
+            }
         } else {
-            full = trendService.evaluateSession(name, expiry, null, strikeRadius);
+            full = trendService.evaluateSession(name, expiry, null, effectiveRadius);
         }
 
         return ResponseEntity.ok(TrendLatestResponse.from(full));
     }
 
     @PutMapping("/config/radius")
-    public ResponseEntity<StrikeRadiusResponse> updateStrikeRadius(
+    public ResponseEntity<?> updateStrikeRadius(
             @RequestParam(defaultValue = "ALL") String name,
             @RequestParam int radius) {
 
-        int applied = trendService.updateStrikeRadius(name, radius);
+        if (radius < StraddleTrendService.ALL_STRIKES
+                || radius > StraddleTrendService.MAX_RADIUS) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error",
+                    "radius must be 0 (ALL) or between 1 and " + StraddleTrendService.MAX_RADIUS
+            ));
+        }
+
+        int saved = trendService.updateStrikeRadius(name, radius);
         trendScheduler.refreshCacheAfterRadiusChange(name);
 
-        return ResponseEntity.ok(new StrikeRadiusResponse(
-                name.toUpperCase(),
-                applied,
-                (2 * applied) + 1
+        int totalStrikes = (saved == StraddleTrendService.ALL_STRIKES) ? 0 : (2 * saved + 1);
+        return ResponseEntity.ok(Map.of(
+                "target", name.trim().toUpperCase(),
+                "strikeRadius", saved,
+                "totalStrikes", totalStrikes,
+                "scope", saved == StraddleTrendService.ALL_STRIKES ? "ALL" : "±" + saved
         ));
     }
 }
