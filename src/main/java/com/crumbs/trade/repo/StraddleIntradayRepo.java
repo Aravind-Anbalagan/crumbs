@@ -196,4 +196,55 @@ public interface StraddleIntradayRepo extends JpaRepository<StraddleIntraday, Lo
 
 	List<StraddleIntraday> findByNameAndTimestampBetweenOrderByTimestampAsc(
 			String name, LocalDateTime start, LocalDateTime end);
+
+    // =====================================================
+// Trend Engine Queries (Multi-Index Dynamic Support)
+// =====================================================
+
+    @Query("""
+    SELECT MAX(s.timestamp)
+    FROM StraddleIntraday s
+""")
+    Optional<LocalDateTime> findLatestTimestamp();
+
+    @Query("""
+    SELECT DISTINCT s.name, s.expiry
+    FROM StraddleIntraday s
+    WHERE s.timestamp BETWEEN :start AND :end
+    ORDER BY s.name ASC, s.expiry ASC
+""")
+    List<Object[]> findActiveInstruments(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
+    @Query("""
+    SELECT DISTINCT s.strike
+    FROM StraddleIntraday s
+    WHERE s.name = :name
+      AND s.expiry = :expiry
+      AND s.timestamp BETWEEN :start AND :end
+    ORDER BY s.strike ASC
+""")
+    List<BigDecimal> findDistinctStrikesForSession(
+            @Param("name") String name,
+            @Param("expiry") String expiry,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
+    @Query("""
+    SELECT s
+    FROM StraddleIntraday s
+    WHERE s.name = :name
+      AND s.expiry = :expiry
+      AND s.timestamp BETWEEN :start AND :end
+    ORDER BY s.timestamp ASC, s.strike ASC
+""")
+    List<StraddleIntraday> findSessionRows(
+            @Param("name") String name,
+            @Param("expiry") String expiry,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
 }
